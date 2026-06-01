@@ -6,7 +6,7 @@ over facial identity, expressions, and head pose. This repository contains the
 core NumPy and Jax based GNM model implementation, and tools for visualization
 and semantic sampling of parameters.
 
-![GNM Teaser Image (Placeholder - Replace with an actual image)]
+![GNM Teaser Image](gnm/assets/readme/teaser.gif)]
 
 ## Features
 
@@ -120,7 +120,8 @@ To experiment with generating a human head mesh from custom identity,
 expression, joint rotations and global translation, please see
 `gnm/shape/demos/gnm_head_demo.ipynb`.
 
-![sampling](assets/readme/gnm_head_demo.gif)
+![sampling](gnm/assets/readme/gnm_head_demo.gif)
+
 
 ## Using the Semantic Sampler
 Generate meaningful identity and expression parameters using the
@@ -168,7 +169,7 @@ mesh_identity.export("sampled_identity_face.obj")
 To experiment with identity and expression sampling and blending, please see
 `gnm/shape/demos/semantic_gnm_demo.ipynb`.
 
-![sampling](assets/readme/semantic_gnm_demo.gif)
+![sampling](gnm/assets/readme/semantic_gnm_demo.gif)
 
 ## Generating a Complete Face
 Combine identity and expression parameters from the samplers.
