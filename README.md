@@ -1,10 +1,10 @@
-# GNM Face Model
+# GNM Head Model
 
 **GNM** is a state-of-the-art parametric 3D statistical model of the human
-face and head, learned from a large dataset of 3D scans. It provides
-fine-grained control over facial identity, expressions, and head pose. This
-repository contains the core NumPy and Jax based GNM model implementation, and
-tools for visualization and semantic sampling of parameters.
+head, learned from a large dataset of 3D scans. It provides fine-grained control
+over facial identity, expressions, and head pose. This repository contains the
+core NumPy and Jax based GNM model implementation, and tools for visualization
+and semantic sampling of parameters.
 
 ![GNM Teaser Image (Placeholder - Replace with an actual image)]
 
@@ -114,6 +114,14 @@ mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
 mesh.show()
 ```
 
+### Demo
+
+To experiment with generating a human head mesh from custom identity,
+expression, joint rotations and global translation, please see
+`gnm/shape/demos/gnm_head_demo.ipynb`.
+
+![sampling](assets/readme/gnm_head_demo.gif)
+
 ## Using the Semantic Sampler
 Generate meaningful identity and expression parameters using the
 `ExpressionSampler` and `IdentitySampler`.
@@ -156,6 +164,12 @@ mesh_identity.show()
 mesh_identity.export("sampled_identity_face.obj")
 ```
 
+### Demo
+To experiment with identity and expression sampling and blending, please see
+`gnm/shape/demos/semantic_gnm_demo.ipynb`.
+
+![sampling](assets/readme/semantic_gnm_demo.gif)
+
 ## Generating a Complete Face
 Combine identity and expression parameters from the samplers.
 
@@ -183,7 +197,7 @@ The GNM model is controlled by two primary sets of coefficients that determine
 the identity and expression of the generated face. The following dimensions are
 relevant for the GNM v3.x.
 
-### Identity Parameters (`vertex_identity_basis`)
+### Identity Parameters
 
 *   **Shape:** `[batch_size, 253]`
 *   **Description:** Controls the unique physical characteristics of the individual. These are divided into:
@@ -193,7 +207,7 @@ relevant for the GNM v3.x.
 *   **Total:** 253 identity components.
 *   **Typical Range:** -3 to +3
 
-### Expression Parameters (`expression_basis`)
+### Expression Parameters
 
 *   **Shape:** `[batch_size, 383]`
 *   **Description:** Controls the facial movement and blendshape weights. These are divided into:
@@ -205,19 +219,19 @@ relevant for the GNM v3.x.
 *   **Total:** 383 expression components.
 *   **Typical Range:** -3 to +3.
 
-### Joint Parameters (`rotations, translations`)
+### Joint Parameters
 
-*   **Shape:** `[batch_size, 4x3 Rotation matrix, 3 translations]`
-*   **Description:** Controls the head position and joint angles for head pose and eyeball orientation.
+*   **Shape:** rotations: `[batch_size, 4x3 Rotation matrix]`, global translation: `[batch_size, 3]`
+*   **Description:** Controls the global head position and joint angles for head pose and eyeball orientation.
 
 ## Model Data
-The GNM model data (e.g., `gnm.npz`) contains the template shape, identity
+The GNM model data (e.g., `gnm_head.npz`) contains the template shape, identity
 basis, expression basis, skinning weights, and UV layout. This file is provided
-within the `gnm/data/versions/v{MAJOR}_{MINOR}` directory.
+within the `gnm/shape/data/versions/v{MAJOR}_{MINOR}` directory.
 
 The Semantic Sampler models
 (`expression_decoder_model.h5`, `identity_decoder_model.h5`) are located as
-in `gnm/data/`.
+in `gnm/shape/data/semantic_sampler`.
 
 ## Model Limitations Regarding Gender Representation
 This 3D Morphable Model (3DMM) is trained on datasets that categorize human head
@@ -227,7 +241,8 @@ identities and is not representative of all individuals. The use of these
 categories stems from the limitations of available large-scale 3D scan datasets
 and follows common practice in the historical development of 3DMMs. Users should
 be aware of this limitation and consider the potential implications for fairness
-and representation in their specific applications. We encourage the community to explore and develop more inclusive datasets and models as the field progresses.
+and representation in their specific applications. We encourage the community to
+explore and develop more inclusive datasets and models as the field progresses.
 
 ## Citation
 If you use GNM in your research, please cite:
@@ -243,4 +258,4 @@ and how we handle external contributions.
 
 ## License
 This project is licensed under the Apache License, Version 2.0. See the
-`LICENSE` file for details.
+[LICENSE](LICENSE) file for details.
