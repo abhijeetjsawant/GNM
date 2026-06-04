@@ -213,16 +213,15 @@ The Semantic Sampler models
 (`expression_decoder_model.h5`, `identity_decoder_model.h5`) are located as
 in `gnm/shape/data/semantic_sampler`.
 
-## Model Limitations Regarding Gender Representation
-This 3D Morphable Model (3DMM) is trained on datasets that categorize human head
-data into binary gender categories: male and female. We acknowledge that this
-binary classification does not encompass the full spectrum of human gender
-identities and is not representative of all individuals. The use of these
-categories stems from the limitations of available large-scale 3D scan datasets
-and follows common practice in the historical development of 3DMMs. Users should
-be aware of this limitation and consider the potential implications for fairness
-and representation in their specific applications. We encourage the community to
-explore and develop more inclusive datasets and models as the field progresses.
+## Model Limitations in Human Representation
+This model was trained on datasets using binary gender categories and four broad
+demographic groups based on conventions in 3DMM literature and data
+availability. These categories do not fully represent the spectrum of human
+gender identities or the full diversity of the global population. Please see the
+technical report for a more detailed discussion of these limitations and the
+dataset statistics. Users should be aware of these limitations and consider the
+potential implications for fairness and representation in their specific
+applications.
 
 ## Citation
 If you use GNM in your research, please cite:
