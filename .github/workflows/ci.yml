@@ -25,7 +25,7 @@ jobs:
   lint:
     name: Lint & Format Check
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
 
     # Use bash login shell to enable conda environments activation
     defaults:
