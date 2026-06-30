@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run weekly on Sundays at 00:00 UTC to catch regressions caused by upstream dependency updates
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+# Restrict default permissions of GITHUB_TOKEN to read-only for repository contents.
+permissions:
+  contents: read
+
+# Concurrency group ensures that only one workflow run per branch/PR is active at a time.
+# If a new commit is pushed, any running job for that PR/branch is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # Run linters and formatters matching Google's internal style
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Use bash login shell to enable conda environments activation
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # ratchet:actions/checkout@v7.0.0
+
+      # Cache Conda packages locally on the runner to accelerate environment creation.
+      - name: Cache Conda packages
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # ratchet:actions/cache@v6.0.0
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ hashFiles('gnm/shape/environment.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-conda-
+
+      # Setup Conda to install dependencies from environment.yml.
+      - name: Setup Conda
+        uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5 # ratchet:conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: gnm
+          environment-file: gnm/shape/environment.yml
+          python-version: "3.13"
+          auto-activate-base: false
+          use-only-tar-bz2: true
+
+      # Runs Pylint using the committed .pylintrc configuration at the root
+      - name: Run Pylint Check
+        run: pylint gnm/
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # Keep running other OSes even if one fails
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.13"]
+
+    # Use bash login shell to enable conda environments activation
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # ratchet:actions/checkout@v7.0.0
+        with:
+          lfs: true # Ensure Git LFS assets (like model files/weights) are fully downloaded
+
+      # Cache Conda packages locally on the runner to accelerate environment creation.
+      - name: Cache Conda packages
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # ratchet:actions/cache@v6.0.0
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ hashFiles('gnm/shape/environment.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-conda-
+
+      # Setup Conda to install dependencies from environment.yml.
+      # This handles binary dependencies (like rtree, opencv, etc.) robustly across OSes.
+      - name: Setup Conda
+        uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5 # ratchet:conda-incubator/setup-miniconda@v4.0.1
+        with:
+          activate-environment: gnm
+          environment-file: gnm/shape/environment.yml
+          python-version: ${{ matrix.python-version }}
+          auto-activate-base: false
+          use-only-tar-bz2: true
+
+      - name: Install package (Editable Mode)
+        run: |
+          cd gnm/shape
+          pip install --no-deps -e .
+
+      - name: Run unit tests
+        run: |
+          cd gnm/shape
+          python run_all_tests.py
