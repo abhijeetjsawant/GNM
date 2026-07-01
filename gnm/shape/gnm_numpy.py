@@ -151,7 +151,7 @@ class GNM(gnm_base.GNMBase):
       model_data: Mapping[str, Any],
   ) -> GNM:
     """Creates a GNM instance from a model data."""
-    instance = super().__new__(cls)
+    instance = super().__new__(cls)  # pylint: disable=no-value-for-parameter
 
     # Set the data fields.
     for field in dataclasses.fields(cls):

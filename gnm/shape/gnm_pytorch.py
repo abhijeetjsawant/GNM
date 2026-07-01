@@ -182,7 +182,7 @@ class GNM(gnm_base.GNMBase, torch.nn.Module):
       model_data: Mapping[str, Any],
   ) -> GNM:
     """Creates a GNM instance from a model data."""
-    instance = super().__new__(cls)
+    instance = super().__new__(cls)  # pylint: disable=no-value-for-parameter
     super(GNM, instance).__init__()
 
     # Set the data fields.

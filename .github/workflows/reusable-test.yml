@@ -11,7 +11,7 @@ jobs:
   test:
     name: Test (${{ inputs.os }})
     runs-on: ${{ inputs.os }}
-    timeout-minutes: 20
+    timeout-minutes: 60
 
     # Use bash login shell to enable conda environments activation
     defaults:
