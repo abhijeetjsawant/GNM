@@ -16,7 +16,6 @@ dependencies:
   - mediapy
   - notebook
   - numpy
-  - opencv-python-headless
   - opt-einsum
   - scipy
   - tqdm
@@ -30,4 +29,6 @@ dependencies:
       - tensorflow
       # Not available on conda-forge.
       - tensorflow-graphics
+      # Installed via pip to avoid macOS failing to build.
+      - opencv-python-headless
 
