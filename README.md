@@ -66,8 +66,8 @@ and semantic sampling of parameters.
 2.  Create virtual environment and install dependencies:
 
     ```bash
-    conda env create -f environment.yml
-    conda activate gnm
+    mamba env create -f environment.yml
+    mamba activate gnm
     pip install -e .
     ```
 

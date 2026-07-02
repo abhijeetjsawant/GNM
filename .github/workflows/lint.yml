@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
-    # Use bash login shell to enable conda environments activation
+    # Use bash login shell to enable micromamba environment activation
     defaults:
       run:
         shell: bash -el {0}
@@ -36,24 +36,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # ratchet:actions/checkout@v7.0.0
 
-      # Cache Conda packages locally on the runner to accelerate environment creation.
-      - name: Cache Conda packages
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # ratchet:actions/cache@v6.0.0
+      # Setup Micromamba to install dependencies from environment.yml.
+      - name: Setup Micromamba
+        uses: mamba-org/setup-micromamba@d7c9bd84e824b79d2af72a2d4196c7f4300d3476 # ratchet:mamba-org/setup-micromamba@v3
         with:
-          path: ~/conda_pkgs_dir
-          key: ${{ runner.os }}-conda-${{ hashFiles('gnm/shape/environment.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-conda-
-
-      # Setup Conda to install dependencies from environment.yml.
-      - name: Setup Conda
-        uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5 # ratchet:conda-incubator/setup-miniconda@v4.0.1
-        with:
-          activate-environment: gnm
           environment-file: gnm/shape/environment.yml
-          python-version: "3.13"
-          auto-activate-base: false
-          use-only-tar-bz2: true
+          environment-name: gnm
+          cache-environment: true
+          init-shell: bash
 
       # Runs Pylint using the committed .pylintrc configuration at the root
       - name: Run Pylint Check

@@ -287,7 +287,7 @@ class GNM(gnm_base.GNMBase):
       )
     config = self._landmarks[landmarks_type]
 
-    vertices = self.__call__(
+    vertices = self(
         identity=identity,
         expression=expression,
         rotations=rotations,

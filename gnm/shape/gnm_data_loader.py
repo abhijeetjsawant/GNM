@@ -37,7 +37,18 @@ class GNMModelDataNotLinkedError(Exception):
   pass
 
 
-def _get_newest_minor_for_major(
+def _get_model_path_from_version_and_variant(
+    version: gnm_specs.GNMMajorVersion,
+    variant: gnm_specs.GNMVariant,
+) -> epath.Path:
+  """Returns the GNM model runfiles path for given variant and version."""
+  version_value = major_to_newest_full_version(version).value.replace('.', '_')
+  version_dir_name = f'v{version_value}'
+  model_file_name = f'{_VARIANT_TO_MODEL_FILE_NAME_MAP[variant]}.npz'
+  return _MODELS_VERSIONS_DIR / version_dir_name / model_file_name
+
+
+def major_to_newest_full_version(
     major: gnm_specs.GNMMajorVersion,
 ) -> gnm_specs.GNMVersion:
   """Returns the newest GNMVersion for a given GNMMajorVersion."""
@@ -45,17 +56,6 @@ def _get_newest_minor_for_major(
       e for e in gnm_specs.GNMVersion if e.value.split('.')[0] == major.value
   ]
   return sorted(minors, key=lambda e: int(e.value.split('.')[1]))[-1]
-
-
-def _get_model_path_from_version_and_variant(
-    version: gnm_specs.GNMMajorVersion,
-    variant: gnm_specs.GNMVariant,
-) -> epath.Path:
-  """Returns the GNM model runfiles path for given variant and version."""
-  version_value = _get_newest_minor_for_major(version).value.replace('.', '_')
-  version_dir_name = f'v{version_value}'
-  model_file_name = f'{_VARIANT_TO_MODEL_FILE_NAME_MAP[variant]}.npz'
-  return _MODELS_VERSIONS_DIR / version_dir_name / model_file_name
 
 
 def full_version_to_major(

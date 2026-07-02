@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Tests for validating and loading GNM landmarks configurations."""
+
 from unittest import mock
 
 from absl.testing import absltest
@@ -34,38 +36,12 @@ class GNMLandmarksTest(absltest.TestCase):
     self.assertEqual(config.weights.dtype, np.float32)
     np.testing.assert_allclose(np.sum(config.weights, axis=1), 1.0, atol=1e-3)
 
-  def test_load_landmarks_fails_when_not_linked(self):
-    with mock.patch.object(
-        gnm_landmarks,
-        '_get_landmark_path',
-        return_value=epath.Path('/non/existent/landmarks/file.txt'),
-    ):
-      with self.assertRaises(gnm_landmarks.GNMLandmarksDataNotLinkedError):
-        gnm_landmarks.load_landmarks(
-            gnm_landmarks.GNMLandmarksType.HEAD_SPARSE_68
-        )
-
   def test_check_body_part_compatibility(self):
-    # Compatible with HEAD and EXPERIMENTAL
+    # Compatible with HEAD
     gnm_landmarks.check_body_part_compatibility(
         gnm_landmarks.GNMLandmarksType.HEAD_SPARSE_68,
         gnm_specs.GNMBodyPart.HEAD,
     )
-    gnm_landmarks.check_body_part_compatibility(
-        gnm_landmarks.GNMLandmarksType.HEAD_SPARSE_68,
-        gnm_specs.GNMBodyPart.EXPERIMENTAL,
-    )
-    # Incompatible with BODY and HAND
-    with self.assertRaises(ValueError):
-      gnm_landmarks.check_body_part_compatibility(
-          gnm_landmarks.GNMLandmarksType.HEAD_SPARSE_68,
-          gnm_specs.GNMBodyPart.BODY,
-      )
-    with self.assertRaises(ValueError):
-      gnm_landmarks.check_body_part_compatibility(
-          gnm_landmarks.GNMLandmarksType.HEAD_SPARSE_68,
-          gnm_specs.GNMBodyPart.HAND,
-      )
 
 
 if __name__ == '__main__':

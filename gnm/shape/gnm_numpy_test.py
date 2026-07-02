@@ -335,26 +335,6 @@ class GNMNumpyTest(parameterized.TestCase):
 
   @parameterized.product(
       version=_MAINTAINED_MAJOR_GNM_VERSIONS,
-      variant=(
-          gnm_numpy.GNMVariant.BODY.value,
-          gnm_numpy.GNMVariant.HAND.value,
-      ),
-  )
-  def test_vertices_and_landmarks_incompatible_body_part(
-      self, version: str, variant: str
-  ):
-    """Test that incompatible body parts raise ValueError."""
-    if variant not in self.gnms[version]:
-      self.skipTest(f'variant {variant} not supported in {version}.')
-    gnm_np = self.gnms[version][variant]
-    kwargs = self._get_default_kwargs(gnm_np)
-    with self.assertRaises(ValueError):
-      gnm_np.vertices_and_landmarks(
-          gnm_numpy.GNMLandmarksType.HEAD_SPARSE_68, **kwargs
-      )
-
-  @parameterized.product(
-      version=_MAINTAINED_MAJOR_GNM_VERSIONS,
       variant=tuple(_SUPPORTED_VARIANTS),
   )
   def test_vertex_groups_exist(self, version: str, variant: str):

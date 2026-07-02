@@ -398,7 +398,7 @@ class GNM(gnm_base.GNMBase):
     indices, weights = self._landmarks[landmarks_type]
     weights = weights.astype(identity.dtype)
 
-    vertices = self.__call__(
+    vertices = self(
         identity=identity,
         expression=expression,
         rotations=rotations,

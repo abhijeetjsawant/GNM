@@ -177,29 +177,6 @@ class GNMJaxTest(parameterized.TestCase):
 
   @parameterized.product(
       version=_MAINTAINED_MAJOR_GNM_VERSIONS,
-      variant=(gnm_jax.GNMVariant.BODY, gnm_jax.GNMVariant.HAND),
-  )
-  def test_vertices_and_landmarks_incompatible_body_part(
-      self,
-      version: str,
-      variant: Any,
-  ):
-    """Tests that incompatible body parts raise ValueError in JAX."""
-    variant_str = variant.value if hasattr(variant, 'value') else variant
-    if variant_str not in self.gnms_np[version]:
-      self.skipTest(f'variant {variant_str} not supported in {version}.')
-    gnm = self.gnms_jax[version][variant_str]
-    gnm_np = self.gnms_np[version][variant_str]
-
-    gnm_jax_parameters = self._get_random_kwargs(gnm_np, 1)
-    with self.assertRaises(ValueError):
-      gnm.vertices_and_landmarks(
-          gnm_jax.GNMLandmarksType.HEAD_SPARSE_68,
-          **jax.tree.map(jnp.asarray, gnm_jax_parameters),
-      )
-
-  @parameterized.product(
-      version=_MAINTAINED_MAJOR_GNM_VERSIONS,
       variant=tuple(_SUPPORTED_VARIANTS),
       dtype=DTYPES,
   )

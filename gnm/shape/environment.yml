@@ -19,7 +19,6 @@ dependencies:
   - opencv
   - opt-einsum
   - scipy
-  - tensorflow
   - tqdm
   - trimesh
   - typeguard
@@ -27,5 +26,8 @@ dependencies:
   - pylint
   - pytorch
   - pip:
+      # Installed via pip to avoid macOS dynamic linking conflicts with conda-forge's libprotobuf.
+      - tensorflow
+      # Not available on conda-forge.
       - tensorflow-graphics
 

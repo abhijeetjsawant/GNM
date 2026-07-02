@@ -37,7 +37,8 @@ _LANDMARKS_TYPE_TO_BODY_PART_MAP = {
 
 @dataclasses.dataclass(frozen=True)
 class LandmarksConfiguration:
-  """Configuration holding landmark definition indices and barycentric weights."""
+  """Configuration holding landmark definition indices and barycentric weights.
+  """
 
   indices: np.ndarray
   weights: np.ndarray
@@ -74,10 +75,10 @@ def check_body_part_compatibility(
 ) -> None:
   """Checks if the landmark type is compatible with the model body part."""
   expected_body_part = _LANDMARKS_TYPE_TO_BODY_PART_MAP[landmarks_type]
-  if body_part not in (expected_body_part, gnm_specs.GNMBodyPart.EXPERIMENTAL):
+  if body_part != expected_body_part:
     raise ValueError(
         f'Landmark type {landmarks_type} is only compatible with GNM models'
-        f' of body part {expected_body_part} (or EXPERIMENTAL), but got'
+        f' of body part {expected_body_part}, but got'
         f' body part {body_part}.'
     )
 
