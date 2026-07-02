@@ -14,7 +14,6 @@
 
 """Test utilities for GNM, primarily for mocking TFHub access."""
 
-from gnm.shape import gnm_data_loader
 from gnm.shape import gnm_numpy
 import numpy as np
 import numpy.typing as npt

@@ -16,7 +16,7 @@ dependencies:
   - mediapy
   - notebook
   - numpy
-  - opencv
+  - opencv-python-headless
   - opt-einsum
   - scipy
   - tqdm

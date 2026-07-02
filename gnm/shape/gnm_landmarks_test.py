@@ -14,10 +14,7 @@
 
 """Tests for validating and loading GNM landmarks configurations."""
 
-from unittest import mock
-
 from absl.testing import absltest
-from etils import epath
 from gnm.shape import gnm_landmarks
 from gnm.shape.data.versions import gnm_specs
 import numpy as np
