@@ -25,3 +25,4 @@ jobs:
     uses: ./.github/workflows/reusable-test.yml
     with:
       os: windows-latest
+      environment-file: gnm/shape/environment-windows.yml

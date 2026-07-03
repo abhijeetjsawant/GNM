@@ -6,6 +6,9 @@ on:
       os:
         required: true
         type: string
+      environment-file:
+        required: true
+        type: string
 
 jobs:
   test:
@@ -24,12 +27,12 @@ jobs:
         with:
           lfs: true # Ensure Git LFS assets (like model files/weights) are fully downloaded
 
-      # Setup Micromamba to install dependencies from environment.yml.
+      # Setup Micromamba to install dependencies from environment-*.yml.
       # This handles binary dependencies (like rtree, opencv, etc.) robustly across OSes.
       - name: Setup Micromamba
         uses: mamba-org/setup-micromamba@d7c9bd84e824b79d2af72a2d4196c7f4300d3476 # ratchet:mamba-org/setup-micromamba@v3
         with:
-          environment-file: gnm/shape/environment.yml
+          environment-file: ${{ inputs.environment-file }}
           environment-name: gnm
           cache-environment: true
           init-shell: bash

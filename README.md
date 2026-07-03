@@ -63,10 +63,23 @@ and semantic sampling of parameters.
     cd gnm/shape
     ```
 
-2.  Create virtual environment and install dependencies:
+2.  Create virtual environment and install dependencies (select the OS-specific file):
 
+    *   **Linux:**
+        ```bash
+        mamba env create -f environment-linux.yml
+        ```
+    *   **macOS:**
+        ```bash
+        mamba env create -f environment-macos.yml
+        ```
+    *   **Windows:**
+        ```bash
+        mamba env create -f environment-windows.yml
+        ```
+
+    Then activate and install the package:
     ```bash
-    mamba env create -f environment.yml
     mamba activate gnm
     pip install -e .
     ```

@@ -25,3 +25,4 @@ jobs:
     uses: ./.github/workflows/reusable-test.yml
     with:
       os: ubuntu-latest
+      environment-file: gnm/shape/environment-linux.yml
