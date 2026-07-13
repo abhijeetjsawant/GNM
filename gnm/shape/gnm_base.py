@@ -40,13 +40,13 @@ class GNMBase(abc.ABC):
   ) -> Self:
     """Creates a GNM instance from a local model file."""
     data_dict = gnm_data_loader.load_model_from_runfile(version, variant)
-    return cls._from_model_data(data_dict)
+    return cls._from_model_data(data_dict)  # pyrefly: ignore[bad-return]
 
   @classmethod
   def from_gnm(cls, gnm: GNMBase) -> Self:
     """Creates a GNM instance from another GNM instance."""
     data_dict = gnm.to_numpy_data_dict()
-    return cls._from_model_data(data_dict)
+    return cls._from_model_data(data_dict)  # pyrefly: ignore[bad-return]
 
   @abc.abstractmethod
   def to_numpy_data_dict(self) -> dict[str, Any]:

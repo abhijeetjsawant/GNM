@@ -91,7 +91,7 @@ class GNMJaxTest(parameterized.TestCase):
       n_batch = (n_batch,)
 
     expression_shape = (*n_batch, gnm_np.expression_dim)
-    return {
+    return {  # pyrefly: ignore[bad-return]
         'identity': self.rng.uniform(size=(*n_batch, gnm_np.identity_dim)),
         'expression': self.rng.uniform(size=expression_shape),
         'rotations': self.rng.uniform(size=(*n_batch, gnm_np.num_joints, 3)),

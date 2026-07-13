@@ -53,12 +53,12 @@ def get_vertex_colors(
   Returns:
     Per-vertex colors (V, 3) for GNM, highlighting eyes and teeth.
   """
-  color = np.array(color)
+  color = np.array(color)  # pyrefly: ignore[bad-assignment]
   colors = np.zeros((gnm_np.num_vertices, 3))
 
   for region, (scale, offset) in _VERTEX_GROUP_COLOR_MODIFIERS.items():
     if region in gnm_np.vertex_group_names:
-      colors[gnm_np.vertex_group_indices(region)] = color * scale + offset
+      colors[gnm_np.vertex_group_indices(region)] = color * scale + offset  # pyrefly: ignore[unsupported-operation]
   return colors
 
 

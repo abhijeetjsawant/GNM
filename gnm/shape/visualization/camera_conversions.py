@@ -135,8 +135,8 @@ def opencv_intrinsics_to_opengl_view_matrix(
   zero = np.zeros_like(fx)
   ones = np.ones_like(fx)
 
-  near = ones * near
-  far = ones * far
+  near = ones * near  # pyrefly: ignore[bad-assignment]
+  far = ones * far  # pyrefly: ignore[bad-assignment]
   near_minus_far = near - far
 
   # The next two rows apply the camera intrinsics to the XY coordinates and map
@@ -301,7 +301,7 @@ def opencv_intrinsics_to_opengl_view_matrix_tf(
   # the result to [-1, 1].
   row1 = [
       2.0 / width * ones * fx,
-      -2.0 / width * skew_coefficient,
+      -2.0 / width * skew_coefficient,  # pyrefly: ignore[unsupported-operation]
       -(2 * cx / width - ones),
       zero,
   ]

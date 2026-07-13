@@ -303,7 +303,7 @@ class GNMTensorflowTest(parameterized.TestCase):
 
     vertices_tf = gnm_tf(**gnm_tf_parameters)
     vertices_gathered = tf.gather(vertices_tf, keep_vertices, axis=1)
-    vertices_pruned = gnm_pruned(**gnm_tf_parameters)
+    vertices_pruned = gnm_pruned(**gnm_tf_parameters)  # pyrefly: ignore[bad-argument-type]
 
     with self.subTest('Test number of vertices'):
       self.assertLen(keep_vertices, gnm_pruned.num_vertices)

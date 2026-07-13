@@ -54,9 +54,9 @@ def _write_images(
     images: np.ndarray,
 ) -> None:
   """Writes a row of images to the undeclared outputs directory."""
-  png_path = outputs_dir / f'{name}.png'
+  png_path = outputs_dir / f'{name}.png'  # pyrefly: ignore[unsupported-operation]
   height, width = images.shape[-3:-1]
-  stack = np.hstack(images.reshape(-1, height, width, 3))
+  stack = np.hstack(images.reshape(-1, height, width, 3))  # pyrefly: ignore[no-matching-overload]
   media.write_image(png_path, stack)
 
 
@@ -145,7 +145,7 @@ class RenderGNMTest(parameterized.TestCase):
 
     renders = render_gnm.render_gnm(
         gnm_np,
-        **(self.rendering_kwargs | {'world_to_camera': world_to_camera}),
+        **(self.rendering_kwargs | {'world_to_camera': world_to_camera}),  # pyrefly: ignore[bad-argument-type]
     )
     self.assertLen(renders, spin_period)
     _write_gif(
@@ -230,7 +230,7 @@ class RenderGNMTest(parameterized.TestCase):
         gnm_np,
         vertices=vertices,
         multiple_gnms=True,
-        **rendering_kwargs,
+        **rendering_kwargs,  # pyrefly: ignore[bad-argument-type]
     )
 
     # Check we've rendered a single image with multiple GNMs.
@@ -401,7 +401,7 @@ class RenderGNMTest(parameterized.TestCase):
         vertices=vertices,
         vertex_colors=vertex_colors,
         multiple_gnms=True,
-        **rendering_kwargs,
+        **rendering_kwargs,  # pyrefly: ignore[bad-argument-type]
     )
 
     _write_images(
@@ -760,11 +760,11 @@ class TestProjectPointsForGNM(parameterized.TestCase):
 
     with self.subTest('Face joints in mask'):
       x, y = joints_image.T.astype(np.int32)
-      self.assertTrue(mask[y, x].all())
+      self.assertTrue(mask[y, x].all())  # pyrefly: ignore[bad-index]
 
     with self.subTest('Point above face not in mask'):
       x, y = external_point_image.T.astype(np.int32)
-      self.assertFalse(mask[y, x].all())
+      self.assertFalse(mask[y, x].all())  # pyrefly: ignore[bad-index]
 
     # Draw points on the image and save.
     image = (image * 255).astype(np.uint8)
@@ -815,7 +815,7 @@ class TestProjectPointsForGNM(parameterized.TestCase):
         x = joints_image[..., 0].astype(np.int32)
         y = joints_image[..., 1].astype(np.int32)
         for i in range(spin_period):
-          self.assertTrue(mask[i, y[i], x[i]].all())
+          self.assertTrue(mask[i, y[i], x[i]].all())  # pyrefly: ignore[bad-index]
 
     # Draw points on the image and save.
     image = (image * 255).astype(np.uint8)
