@@ -1,3 +1,105 @@
+# AutoAnim: verified GNM facial-animation prototype
+
+This checkout pins Google's GNM repository at
+`3de70dfca5f3244620f44103c24b7cedc0dcb8b6` and adds a local Python/CLI/web
+application for four evaluated workflows:
+
+- real audio → Audio2Face-3D Claire on Apple Silicon → bounded 52-channel
+  ARKit plus 16-channel tongue solve → semantic 383-D GNM retarget → dense
+  mesh preview with audio, with a transparent Rhubarb procedural fallback;
+- one real photo → MediaPipe landmarks → confidence-gated GNM visible-geometry
+  fit → neutral OBJ/GLB, overlay, parameters, and explicit uncertainty;
+- ordered front/three-quarter/profile photos → one shared perspective identity
+  solve → provenance-aware UV texture bake → textured GLB and coverage audit;
+- moving face video → exact-PTS MediaPipe performance capture → dense
+  geometry-calibrated GNM expression, head, translation, and gaze animation.
+
+The learned audio motion is materially smoother than the procedural baseline,
+but its initial ARKit-to-GNM map is not artist-calibrated and is deliberately
+reported as not production-approved. The fallback remains coarse viseme timing.
+Automatic tone labels are an unvalidated acoustic/lexical heuristic. The photo
+result is a visible-geometry estimate, not a metric 3D clone. Multiview improves
+observability and texture coverage but cannot recover perfect hidden anatomy or
+intrinsic albedo from ordinary RGB photos. Monocular video has no claim to
+ground-truth microexpression capture.
+
+Every GLB opens in the same media-synchronized Three.js viewer with surface,
+texture, topology, exposure, orbit, zoom, and camera-reset controls. The exact
+Three.js runtime is downloaded from the official npm package, checksum-pinned,
+served locally under a restrictive CSP, and included in health readiness; the
+viewer does not need a CDN after bootstrap.
+
+## Quick start
+
+Requirements: Python 3.12, ffmpeg/ffprobe, curl, unzip, tar, and `shasum`. The learned backend
+also requires Apple Silicon macOS 15+, Swift 6+, and Xcode's Metal toolchain;
+macOS/Linux can use the procedural fallback.
+
+```bash
+scripts/bootstrap.sh
+scripts/bootstrap_a2f.sh
+source .venv/bin/activate
+export RHUBARB_BIN="$PWD/.cache/autoanim_gnm/rhubarb/rhubarb"
+scripts/fetch_test_fixtures.sh
+
+autoanim-gnm health --json
+autoanim-gnm audio .cache/autoanim_gnm/fixtures/libri-human-speech-8s.wav --out artifacts/jobs --backend auto
+autoanim-gnm image .cache/autoanim_gnm/fixtures/official-portrait.jpg --out artifacts/jobs
+autoanim-gnm multiview front.jpg left-3q.jpg right-3q.jpg --roles front,left_3q,right_3q --out artifacts/jobs
+
+# Calibrated audit mode: JSON maps every ordered image to measured K/D/R|t and
+# reserves at least one camera as a leakage-proof held-out evaluation view.
+autoanim-gnm multiview front.png left.png right.png profile.png \
+  --calibration rig.json --out artifacts/jobs
+autoanim-gnm video performance.mp4 --out artifacts/jobs
+autoanim-gnm serve --host 127.0.0.1 --port 8000 --artifacts artifacts/jobs
+```
+
+The global `--model-path`, `--rhubarb-bin`, `--a2f-runner`, and `--a2f-assets`
+options may be placed before the subcommand when using non-default locations.
+Use `--backend learned` to require the neural path or `--backend fallback` for
+the deterministic compiler. The web app is then available at
+<http://127.0.0.1:8000>.
+
+Run the normal suite after fetching fixtures:
+
+```bash
+pytest -q
+```
+
+The licensed RAVDESS emotional-speech fixture is opt-in and roughly 200 MiB:
+
+```bash
+AUTOANIM_FETCH_RAVDESS=1 scripts/fetch_test_fixtures.sh
+```
+
+The small CREMA-D moving-actor fixture is also opt-in. Review its
+ODbL/DbCL attribution and performer/publicity caveats before fetching:
+
+```bash
+AUTOANIM_FETCH_CREMA_D=1 scripts/fetch_test_fixtures.sh
+```
+
+See [the external fixture notice](docs/TEST_FIXTURES.md) for the pinned source,
+checksum, attribution, and validation scope.
+
+Research and implementation evidence:
+
+- [GNM architecture research](docs/RESEARCH.md)
+- [pipeline feasibility](docs/FEASIBILITY.md)
+- [application spec and phase gates](docs/SPEC.md)
+- [production lipsync research, benchmark, and executed plan](docs/PRODUCTION_LIPSYNC_RESEARCH.md)
+- [current audio production audit and remaining gates](docs/AUDIO_PRODUCTION_RESEARCH.md)
+- [expanded multiview, texture, video, viewer research and phased plan](docs/EXPANDED_RESEARCH_AND_PLAN.md)
+- [calibrated multiview camera contract and held-out evaluation](docs/CALIBRATED_MULTIVIEW.md)
+- [interactive viewer design and validation contract](docs/VIEWER_RESEARCH.md)
+- [requirement-by-requirement completion audit](docs/COMPLETION_AUDIT.md)
+- [final verification and retained metrics](docs/VERIFICATION.md)
+
+The original upstream project overview follows.
+
+---
+
 # GNM: Generative aNthropometric Model and Ecosystem
 
 ![GNM Teaser Image](assets/readme/gnm_logo.png)

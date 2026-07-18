@@ -1,0 +1,18 @@
+NVIDIA Audio2Face-3D v2.3.1 Claire model notice
+
+Model source:
+https://huggingface.co/nvidia/Audio2Face-3D-v2.3.1-Claire
+
+The model card identifies the governing terms as the NVIDIA Open Model License:
+https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
+
+The Claire model weights, geometry bases, blendshape targets, configurations,
+and other model-package files are not relicensed by AutoAnim or by Google
+GNM's Apache-2.0 license. Review and satisfy the governing NVIDIA terms for the
+intended use, distribution method, geography, and product before release.
+
+The checksum-pinned model card is retained as README.md beside the local model
+assets (SHA-256
+17385721f7940e3e4d4d2e266a54ace3aff5dadea8518334135d05a716cb3518).
+This notice records provenance; it is not legal advice or a substitute for the
+governing license text.

@@ -1,0 +1,15 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.coverage
+htmlcov/
+.cache/
+artifacts/
+tmp/
+.playwright-cli/
+output/
+*.egg-info/
+.DS_Store
+gnm/shape/build/
+native/a2f-runner/.build/
