@@ -57,6 +57,8 @@ def evaluate_production_readiness(
     source_input_verified: bool = False,
     delivery_artifact_verified: bool = False,
     performance_evidence_artifact_verified: bool = False,
+    audio_visual_repair_artifacts_verified: bool = False,
+    audio_visual_repair_qualification_verified: bool = False,
     character_revision: dict[str, Any] | None = None,
     character_resolution_error: str | None = None,
     direction: dict[str, Any] | None = None,
@@ -292,6 +294,102 @@ def evaluate_production_readiness(
         summary="The driving performance passed source-specific production validation.",
         evidence=performance_evidence,
         remediation=performance_remediation,
+    )
+
+    retarget = _mapping(performance.get("retargeting"))
+    repair = _mapping(retarget.get("audio_visual_repair"))
+    repair_status = repair.get("status")
+    repair_enabled = bool(
+        kind == "video_performance"
+        and repair_status not in (None, "disabled")
+    )
+    repair_claims = _mapping(repair.get("claims"))
+    repair_locks = _mapping(repair.get("locks"))
+    repair_artifacts_present = all(
+        isinstance(artifacts.get(name), dict)
+        for name in (
+            "audio_visual_source",
+            "audio_visual_repair",
+            "audio_visual_repair_arrays",
+            "audio_visual_source_controls",
+            "audio_visual_source_arkit_controls",
+            "audio_visual_source_normalized_audio",
+            "audio_visual_source_raw",
+            "audio_visual_source_retarget_calibration",
+            "audio_visual_source_rhubarb",
+            "audio_visual_source_cues",
+            "audio_visual_source_timeline",
+            "audio_video_timing",
+            "audio_visual_timing_consumption",
+            "performance_revision_chain",
+            "audio_visual_repair_qualification",
+        )
+    )
+    repair_passed = bool(
+        not repair_enabled
+        or (
+            repair.get("schemaVersion") == "autoanim.audio-visual-repair.v1"
+            and repair_status in {"repaired", "exact_noop"}
+            and repair.get("policy")
+            == "video_authoritative_conservative_audio_repair_v1"
+            and repair_locks.get("upperFaceExact")
+            and repair_locks.get("pupilExact")
+            and repair_locks.get("headPoseAndTranslationExact")
+            and repair_locks.get("sourcePtsAndTimestampsExact")
+            and repair_locks.get("visibleContactProtectedByVisualOwnership")
+            and repair_locks.get("mouthContinuityGeometryValidated")
+            and repair_locks.get("tongueCoefficientContinuityValidated")
+            and repair_claims.get("tongueVisibleValidated")
+            and repair_claims.get("contradictoryMediaValidated")
+            and repair_claims.get("artistPreferenceValidated")
+            and isinstance(
+                repair_claims.get("qualificationProfileSha256"), str
+            )
+            and repair_claims.get("productionValidated")
+            and repair_artifacts_present
+            and audio_visual_repair_artifacts_verified
+            and audio_visual_repair_qualification_verified
+        )
+    )
+    gates["audio_visual_repair"] = _gate(
+        passed=repair_passed,
+        summary=(
+            "Learned audio repair is either disabled or independently qualified against "
+            "contradictory media, visible tongue footage, and a hash-bound artist-preference profile."
+        ),
+        evidence={
+            "enabled": repair_enabled,
+            "status": repair_status,
+            "schema_version": repair.get("schemaVersion"),
+            "policy": repair.get("policy"),
+            "locks": repair_locks,
+            "artifacts_present": repair_artifacts_present,
+            "artifact_bytes_verified": audio_visual_repair_artifacts_verified,
+            "qualification_profile_bytes_verified": (
+                audio_visual_repair_qualification_verified
+            ),
+            "tongue_visible_validated": repair_claims.get(
+                "tongueVisibleValidated", False
+            ),
+            "contradictory_media_validated": repair_claims.get(
+                "contradictoryMediaValidated", False
+            ),
+            "artist_preference_validated": repair_claims.get(
+                "artistPreferenceValidated", False
+            ),
+            "qualification_profile_sha256": repair_claims.get(
+                "qualificationProfileSha256"
+            ),
+            "production_validated": repair_claims.get(
+                "productionValidated", False
+            ),
+        },
+        remediation=(
+            "Evaluate the exact repair profile on retained labeled A/V takes, including "
+            "contradictory dubbed media and visible tongue gestures; pass phone/contact timing, "
+            "oral geometry, and blinded artist-preference gates before approval."
+        ),
+        required=repair_enabled,
     )
 
     viewer_passed = bool(

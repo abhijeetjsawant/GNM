@@ -31,6 +31,15 @@ from .rig import ControlRig
 
 DEFAULT_CLAIRE_MODEL = "aufklarer/Audio2Face-3D-v2.3.1-Claire-MLX"
 RUNNER_ENVIRONMENT_VARIABLE = "AUTOANIM_A2F_RUNNER"
+MODEL_DIRECTORY_ENVIRONMENT_VARIABLE = "AUTOANIM_A2F_MODEL_DIR"
+_A2F_MODEL_REQUIRED_FILES = frozenset(
+    {
+        "audio2face3d.safetensors",
+        "default_emotion.f32",
+        "model_config.json",
+        "network_info.json",
+    }
+)
 SUPPORTED_A2F_EMOTIONS = frozenset(
     {
         "neutral",
@@ -340,6 +349,75 @@ def resolve_a2f_runner(explicit: str | Path | None = None) -> Path:
     raise A2FRunnerError(
         f"Audio2Face runner is unavailable (searched: {searched}). "
         f"Set {RUNNER_ENVIRONMENT_VARIABLE} or build native/a2f-runner."
+    )
+
+
+def resolve_a2f_model_directory(
+    explicit: str | Path | None = None,
+    *,
+    model: str = DEFAULT_CLAIRE_MODEL,
+) -> Path:
+    """Resolve the exact local Audio2Face bundle used by speech-swift.
+
+    The native runner otherwise resolves a model ID through speech-swift's
+    cache at inference time. Production evidence needs a concrete directory
+    whose bytes can be hashed and passed with ``--model-dir``. This resolver
+    mirrors speech-swift's current flat-cache compatibility and Hub-style
+    cache paths without downloading or changing either location.
+    """
+
+    if explicit is not None:
+        candidates = [Path(explicit).expanduser()]
+    else:
+        configured = os.environ.get(MODEL_DIRECTORY_ENVIRONMENT_VARIABLE)
+        if configured:
+            candidates = [Path(configured).expanduser()]
+        else:
+            if not isinstance(model, str) or not model.strip():
+                raise A2FRunnerError("Audio2Face model ID cannot be empty")
+            components = model.split("/")
+            if (
+                len(components) != 2
+                or any(not component or component in {".", ".."} for component in components)
+                or any("/" in component or "\\" in component for component in components)
+            ):
+                raise A2FRunnerError(
+                    "Audio2Face model ID must be one safe organization/repository pair"
+                )
+            cache_override = os.environ.get("QWEN3_CACHE_DIR") or os.environ.get(
+                "QWEN3_ASR_CACHE_DIR"
+            )
+            cache_root = (
+                Path(cache_override).expanduser()
+                if cache_override and cache_override.strip()
+                else Path.home() / "Library" / "Caches"
+            )
+            speech_cache = cache_root / "qwen3-speech"
+            flat_key = "".join(
+                character if character.isalnum() or character in ".-_" else "_"
+                for character in model.replace("/", "_")
+            ).strip("._") or "model"
+            candidates = [
+                speech_cache / flat_key,
+                speech_cache / "models" / components[0] / components[1],
+            ]
+
+    diagnostics: list[str] = []
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        missing = sorted(
+            name for name in _A2F_MODEL_REQUIRED_FILES if not (resolved / name).is_file()
+        )
+        if resolved.is_dir() and not missing:
+            return resolved
+        diagnostics.append(
+            f"{candidate} (missing: {', '.join(missing) if missing else 'directory'})"
+        )
+    searched = "; ".join(diagnostics) or "<none>"
+    raise A2FRunnerError(
+        "Audio2Face model bundle is unavailable or incomplete "
+        f"(searched: {searched}). Set {MODEL_DIRECTORY_ENVIRONMENT_VARIABLE} "
+        "to a complete local Claire MLX bundle."
     )
 
 

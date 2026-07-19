@@ -20,6 +20,7 @@ from .errors import AutoAnimError
 
 
 VALID_CUES = frozenset("XABCDEFGH")
+PRIMARY_AUDIO_STREAM_SPECIFIER = "0:a:0"
 EMOTIONS = frozenset(("neutral", "joy", "sad", "anger", "fear", "disgust", "surprise", "contempt"))
 WORD_LISTS = {
     "joy": {"happy", "glad", "delighted", "love", "wonderful", "excited", "joy"},
@@ -121,7 +122,11 @@ def normalize_audio(input_path: str | Path, output_path: str | Path) -> float:
         "error",
         "-i",
         str(input_path),
+        "-map",
+        PRIMARY_AUDIO_STREAM_SPECIFIER,
         "-vn",
+        "-sn",
+        "-dn",
         "-ac",
         "1",
         "-ar",

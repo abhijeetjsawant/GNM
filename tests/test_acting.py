@@ -322,6 +322,89 @@ def test_service_directs_from_measured_audio_windows_and_retains_provenance(
     assert stored["configuration"]["source_job_id"] == job_id
 
 
+def test_service_acting_context_retains_mixed_video_audio_repair_authority(
+    tmp_path: Path,
+) -> None:
+    service = ApplicationService(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    media = tmp_path / "take.mp4"
+    media.write_bytes(b"video")
+    job_id, job_dir, _, manifest = service.store.start(
+        "video_performance", media, {}
+    )
+    timestamps = np.linspace(0.0, 29.0 / 30.0, 30, dtype=np.float64)
+    source_pts = np.arange(30, dtype=np.int64) * 1001
+    write_npz(
+        job_dir / "performance.npz",
+        timestamps_seconds=timestamps,
+        source_pts=source_pts,
+        expression=np.zeros((30, 383), dtype=np.float32),
+        rotations=np.zeros((30, 4, 3), dtype=np.float32),
+        effective_quality=np.ones(30, dtype=np.float32),
+        source_lip_gap_interocular=np.full(30, 0.08, dtype=np.float32),
+        source_lip_contact_confidence=np.zeros(30, dtype=np.float32),
+    )
+    write_npz(
+        job_dir / "audio-visual-repair.npz",
+        source_pts=source_pts,
+        lower_face_audio_weight=np.linspace(0.0, 1.0, 30, dtype=np.float32),
+        tongue_audio_weight=np.linspace(0.0, 0.8, 30, dtype=np.float32),
+        audio_visual_contact_conflict=np.zeros(30, dtype=bool),
+    )
+    service.store.finish(
+        manifest,
+        job_dir,
+        {
+            "kind": "video_performance",
+            "capture": {"duration_s": 1.0},
+            "retargeting": {
+                "neutral_baseline_method": "labeled_reference",
+                "audio_visual_repair": {
+                    "schemaVersion": "autoanim.audio-visual-repair.v1",
+                    "policy": "video_authoritative_conservative_audio_repair_v1",
+                    "status": "repaired",
+                    "bindings": {"sourcePtsSha256": "pts"},
+                    "sourceAuthority": {"upperFace": "video_locked"},
+                    "claims": {
+                        "changesFinalGNMMotion": True,
+                        "productionValidated": False,
+                    },
+                },
+            },
+            "warnings": [],
+            "artifacts": {
+                "controls": "performance.npz",
+                "audio_visual_repair_arrays": "audio-visual-repair.npz",
+            },
+        },
+        {},
+    )
+    executable = _fake_provider(
+        tmp_path / "fake-codex-video",
+        provider="codex",
+        plan=_plan(),
+    )
+
+    result = service.direct(
+        job_id,
+        provider="codex",
+        instructions="follow the captured performance",
+        transcript="Hello.",
+        provider_executable=executable,
+        timeout_seconds=10,
+    )
+    assert result["source"]["motion_evidence"] == (
+        "visual_video_tracking_primary_exact_pts; "
+        "learned_audio_lower_face_repair_and_tongue"
+    )
+    assert result["source"]["audio_is_animation_source"] is True
+    assert result["source"]["video_visual_tracking_is_animation_source"] is True
+    assert result["source"]["video_audio_repair_is_animation_source"] is True
+    assert result["source"]["video_motion_authority"] == (
+        "mixed_visual_primary_audio_repair"
+    )
+    assert result["metrics"]["performance_window_count"] == 2
+
+
 def test_service_rejects_overlong_body_preview_before_provider_runs(
     tmp_path: Path,
 ) -> None:

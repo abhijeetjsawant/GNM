@@ -7,6 +7,7 @@ import wave
 import numpy as np
 import pytest
 
+import autoanim_gnm.audio as audio_module
 from autoanim_gnm.animation import (
     LipContactCalibration,
     _activation_matrix,
@@ -22,6 +23,7 @@ from autoanim_gnm.animation import (
 )
 from autoanim_gnm.audio import (
     MouthCue,
+    PRIMARY_AUDIO_STREAM_SPECIFIER,
     analyze_emotion,
     normalize_cues,
 )
@@ -60,6 +62,29 @@ A2F_READY = A2F_RUNNER.exists() and all(
         "bs_tongue_config.json",
     )
 )
+
+
+def test_normalization_explicitly_selects_the_primary_audio_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observed: list[str] = []
+    monkeypatch.setattr(audio_module, "probe_media", lambda _path: {"duration": 0.1})
+
+    def fake_run(command: list[str]) -> None:
+        observed.extend(command)
+        with wave.open(command[-1], "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(16_000)
+            output.writeframes(b"\x00\x00" * 1_600)
+
+    monkeypatch.setattr(audio_module, "_run", fake_run)
+    duration = audio_module.normalize_audio(
+        tmp_path / "multi-audio.mkv", tmp_path / "normalized.wav"
+    )
+    assert duration == pytest.approx(0.1)
+    assert observed[observed.index("-map") + 1] == PRIMARY_AUDIO_STREAM_SPECIFIER
+    assert "-sn" in observed and "-dn" in observed
 
 
 def test_cue_normalization_fills_gaps_and_merges() -> None:

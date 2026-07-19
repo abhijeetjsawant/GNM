@@ -194,6 +194,136 @@ def test_video_gate_requires_subject_and_labeled_neutral_calibration() -> None:
     ] is False
 
 
+def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
+    performance, character, _ = _approved_fixture()
+    performance.update(
+        {
+            "kind": "video_performance",
+            "capture": {
+                "production_validated": True,
+                "performance_evidence_schema_version": (
+                    "autoanim.performance-evidence.v2"
+                ),
+                "performance_evidence_policy": "observation_only_no_motion_effect",
+            },
+            "retargeting": {
+                "subject_calibrated": True,
+                "neutral_baseline_validated": True,
+                "audio_visual_repair": {
+                    "schemaVersion": "autoanim.audio-visual-repair.v1",
+                    "policy": "video_authoritative_conservative_audio_repair_v1",
+                    "status": "repaired",
+                    "locks": {
+                        "upperFaceExact": True,
+                        "pupilExact": True,
+                        "headPoseAndTranslationExact": True,
+                        "sourcePtsAndTimestampsExact": True,
+                        "visibleContactProtectedByVisualOwnership": True,
+                        "mouthContinuityGeometryValidated": True,
+                        "tongueCoefficientContinuityValidated": True,
+                    },
+                    "claims": {
+                        "tongueVisibleValidated": False,
+                        "contradictoryMediaValidated": False,
+                        "productionValidated": False,
+                    },
+                },
+            },
+            "metrics": {},
+        }
+    )
+    performance["artifacts"].update(
+        {
+            "performance_evidence": {"name": "performance-evidence.json"},
+            "audio_visual_source": {"name": "audio-visual-source.json"},
+            "audio_visual_repair": {"name": "audio-visual-repair.json"},
+            "audio_visual_repair_arrays": {"name": "audio-visual-repair.npz"},
+            "audio_visual_source_controls": {"name": "audio-visual-source-controls.npz"},
+            "audio_visual_source_arkit_controls": {
+                "name": "audio-visual-source-arkit-controls.npz"
+            },
+            "audio_visual_source_normalized_audio": {"name": "audio-visual-source.wav"},
+            "audio_visual_source_raw": {"name": "audio-visual-source-a2f.jsonl"},
+            "audio_visual_source_retarget_calibration": {
+                "name": "audio-visual-source-retarget-calibration.npz"
+            },
+            "audio_visual_source_rhubarb": {"name": "audio-visual-source-rhubarb.json"},
+            "audio_visual_source_cues": {"name": "audio-visual-source-cues.json"},
+            "audio_visual_source_timeline": {"name": "audio-visual-source-timeline.json"},
+            "audio_video_timing": {"name": "audio-video-timing.json"},
+            "audio_visual_timing_consumption": {
+                "name": "audio-visual-timing-consumption.json"
+            },
+            "performance_revision_chain": {
+                "name": "performance-revision-chain.json"
+            },
+            "audio_visual_repair_qualification": {
+                "name": "audio-visual-repair-qualification.json"
+            },
+        }
+    )
+    report = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        performance_evidence_artifact_verified=True,
+        character_revision=character,
+    )
+    assert report["failures"] == ["audio_visual_repair"]
+    assert report["gates"]["audio_visual_repair"]["required"] is True
+    assert report["gates"]["audio_visual_repair"]["passed"] is False
+    assert report["gates"]["audio_visual_repair"]["evidence"][
+        "tongue_visible_validated"
+    ] is False
+
+    repair = performance["retargeting"]["audio_visual_repair"]
+    repair["claims"] = {
+        "tongueVisibleValidated": True,
+        "contradictoryMediaValidated": True,
+        "artistPreferenceValidated": True,
+        "qualificationProfileSha256": "a" * 64,
+        "productionValidated": True,
+    }
+    unverified = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        performance_evidence_artifact_verified=True,
+        character_revision=character,
+    )
+    assert unverified["gates"]["audio_visual_repair"]["passed"] is False
+    assert unverified["gates"]["audio_visual_repair"]["evidence"][
+        "artifact_bytes_verified"
+    ] is False
+    verified = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        performance_evidence_artifact_verified=True,
+        audio_visual_repair_artifacts_verified=True,
+        character_revision=character,
+    )
+    assert verified["gates"]["audio_visual_repair"]["passed"] is False
+    assert verified["gates"]["audio_visual_repair"]["evidence"][
+        "qualification_profile_bytes_verified"
+    ] is False
+    verified = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        performance_evidence_artifact_verified=True,
+        audio_visual_repair_artifacts_verified=True,
+        audio_visual_repair_qualification_verified=True,
+        character_revision=character,
+    )
+    assert verified["gates"]["audio_visual_repair"]["passed"] is True
+    assert "audio_visual_repair" not in verified["failures"]
+
+
 def test_character_and_material_hashes_must_match_exact_revision() -> None:
     performance, character, direction = _approved_fixture()
     character["gnm"]["identity_sha256"] = "different-identity"

@@ -8,13 +8,22 @@ from hashlib import sha256
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 from typing import Any, Mapping
 
 import numpy as np
 
-from .a2f import ARKitGNMRetargeter
+from .a2f import (
+    A2FRunnerError,
+    ARKitGNMRetargeter,
+    resolve_a2f_model_directory,
+    resolve_a2f_runner,
+)
 from .animation import _face_local_mouth, calibrate_lip_contact
+from .audio import PRIMARY_AUDIO_STREAM_SPECIFIER, resolve_rhubarb
 from .animated_gltf import AnimationCompressionError, export_animated_gnm_glb
+from .audio_pipeline import _resolve_a2f_assets, run_audio_pipeline
+from .audio_visual_repair import apply_audio_visual_repair
 from .calibrated_retarget import CalibratedRetargetError, CalibratedRetargeter
 from .errors import AutoAnimError
 from .gltf_export import export_gnm_glb
@@ -88,6 +97,26 @@ def _array_sha256(value: np.ndarray) -> str:
     return digest.hexdigest()
 
 
+def _file_sha256(path: str | Path) -> str:
+    digest = sha256()
+    with Path(path).open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _directory_sha256(path: str | Path) -> tuple[str, int]:
+    root = Path(path).resolve()
+    files = sorted(candidate for candidate in root.rglob("*") if candidate.is_file())
+    digest = sha256()
+    for candidate in files:
+        relative = candidate.relative_to(root).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(8, "little"))
+        digest.update(relative)
+        digest.update(bytes.fromhex(_file_sha256(candidate)))
+    return digest.hexdigest(), len(files)
+
+
 def _apply_video_mouth_aperture_edit(
     *,
     output_dir: Path,
@@ -99,6 +128,7 @@ def _apply_video_mouth_aperture_edit(
     source_sha256: str,
     model_sha256: str,
     retarget_calibration_hash: str | None,
+    upstream_source_mode: str = "video_follow",
 ) -> tuple[GNMPerformanceTrack, MouthApertureCorrectionResult]:
     """Create a PTS-bound, contact-vetoed revision of a video performance."""
 
@@ -193,7 +223,7 @@ def _apply_video_mouth_aperture_edit(
         output_dir / "mouth-aperture-edit.json",
         {
             "schema_version": correction.schema_version,
-            "source_mode": "video_follow",
+            "source_mode": upstream_source_mode,
             "status": (
                 "corrected"
                 if corrected_count
@@ -213,6 +243,8 @@ def _apply_video_mouth_aperture_edit(
                 "retarget_calibration_sha256": retarget_calibration_hash,
                 "base_performance_input_sha256": correction.input_sha256,
                 "revised_performance_output_sha256": correction.output_sha256,
+                "base_expression_sha256": _array_sha256(base_expression),
+                "revised_expression_sha256": _array_sha256(correction.expression),
             },
             "timeline": {
                 "frame_count": performance.frame_count,
@@ -737,7 +769,7 @@ def _export_static_performance_glb(
     )
 
 
-def run_video_pipeline(
+def _run_video_pipeline_impl(
     input_path: str | Path,
     output_dir: str | Path,
     *,
@@ -750,6 +782,9 @@ def run_video_pipeline(
     character_ref: dict[str, Any] | None = None,
     audio_video_timing_evidence: bool = True,
     require_audio_visual_repair: bool = False,
+    rhubarb_bin: str | Path | None = None,
+    a2f_runner: str | Path | None = None,
+    a2f_offline: bool = False,
     mouth_aperture_gain: float = 1.0,
     mouth_aperture_author: str | None = None,
     mouth_aperture_reason: str | None = None,
@@ -764,6 +799,28 @@ def run_video_pipeline(
     )
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
+    snapshot_hash = _file_sha256(source)
+    resolved_a2f_asset_dir = (
+        Path(a2f_asset_dir).resolve() if a2f_asset_dir is not None else None
+    )
+    resolved_a2f_runner = (
+        Path(a2f_runner).resolve() if a2f_runner is not None else None
+    )
+    resolved_a2f_model_dir: Path | None = None
+    a2f_model_bundle_before: tuple[str, int] | None = None
+    resolved_rhubarb = Path(rhubarb_bin).resolve() if rhubarb_bin is not None else None
+    if require_audio_visual_repair:
+        try:
+            resolved_a2f_asset_dir = _resolve_a2f_assets(a2f_asset_dir).resolve()
+            resolved_a2f_runner = resolve_a2f_runner(a2f_runner)
+            resolved_a2f_model_dir = resolve_a2f_model_directory()
+            a2f_model_bundle_before = _directory_sha256(resolved_a2f_model_dir)
+            resolved_rhubarb = resolve_rhubarb(rhubarb_bin).resolve()
+        except (A2FRunnerError, AutoAnimError, OSError) as exc:
+            raise AutoAnimError(
+                "DEPENDENCY_MISSING",
+                f"Learned audio-visual repair dependencies are unavailable: {exc}",
+            ) from exc
     capture = capture_video(source, model_path)
     detected_count = int(np.count_nonzero(capture.detected))
     if detected_count == 0:
@@ -788,15 +845,6 @@ def run_video_pipeline(
             require_available=require_audio_visual_repair,
         )
         write_json(output / "audio-video-timing.json", audio_video_timing)
-        if (
-            require_audio_visual_repair
-            and audio_video_timing["fusionGate"]["status"] != "ready"
-        ):
-            raise AutoAnimError(
-                "AUDIO_VISUAL_REPAIR_BLOCKED",
-                "Audio-visual repair was requested, but its fusion evidence is blocked",
-                {"reasons": audio_video_timing["fusionGate"]["reasons"]},
-            )
 
     adapter = GNMAdapter()
     identity_value = (
@@ -812,10 +860,10 @@ def run_video_pipeline(
     calibration_hash: str | None = None
     retarget_artifacts: dict[str, str] = {}
     source_names = set(capture.blendshape_names)
-    if a2f_asset_dir is not None:
+    if resolved_a2f_asset_dir is not None:
         try:
             retargeter = CalibratedRetargeter.from_directory(
-                a2f_asset_dir,
+                resolved_a2f_asset_dir,
                 adapter=adapter,
             )
             retargeter.calibration.save(output / "retarget_calibration.npz")
@@ -846,6 +894,200 @@ def run_video_pipeline(
         contact_rig=contact_rig,
         lip_contact_calibration=lip_contact_calibration,
     )
+    visual_root_expression = np.asarray(performance.expression, dtype=np.float32).copy()
+    visual_root_expression_sha256 = _array_sha256(visual_root_expression)
+    audio_visual_repair = None
+    audio_visual_source_result: dict[str, Any] | None = None
+    audio_visual_artifacts: dict[str, str] = {}
+    if require_audio_visual_repair:
+        if audio_video_timing is None:
+            raise AutoAnimError(
+                "AUDIO_VISUAL_REPAIR_BLOCKED",
+                "Audio-visual repair requires retained-source timing evidence",
+            )
+        # The local v2.3 learned path is an explicitly unqualified repair
+        # source. Neutral acoustic inference prevents it from overwriting the
+        # captured video's upper-face acting or broad affect. The independently
+        # timestamped controls are retained while render-only intermediates are
+        # discarded with the temporary workspace.
+        with tempfile.TemporaryDirectory(
+            prefix=".audio-visual-source-", dir=output
+        ) as temporary_dir:
+            temporary = Path(temporary_dir)
+            audio_visual_source_result = run_audio_pipeline(
+                source,
+                temporary,
+                fps=30,
+                emotion="neutral",
+                rhubarb_bin=resolved_rhubarb,
+                backend="learned",
+                a2f_runner=resolved_a2f_runner,
+                a2f_asset_dir=resolved_a2f_asset_dir,
+                a2f_model_dir=resolved_a2f_model_dir,
+                a2f_offline=a2f_offline,
+                emotion_strength=0.0,
+                identity=identity_value,
+            )
+            retained_sources = {
+                "audio_visual_source_controls": (
+                    "controls.npz",
+                    "audio-visual-source-controls.npz",
+                ),
+                "audio_visual_source_arkit_controls": (
+                    "arkit_controls.npz",
+                    "audio-visual-source-arkit-controls.npz",
+                ),
+                "audio_visual_source_normalized_audio": (
+                    "normalized.wav",
+                    "audio-visual-source.wav",
+                ),
+                "audio_visual_source_raw": (
+                    "a2f_raw.jsonl",
+                    "audio-visual-source-a2f.jsonl",
+                ),
+                "audio_visual_source_retarget_calibration": (
+                    "retarget_calibration.npz",
+                    "audio-visual-source-retarget-calibration.npz",
+                ),
+                "audio_visual_source_rhubarb": (
+                    "rhubarb.json",
+                    "audio-visual-source-rhubarb.json",
+                ),
+                "audio_visual_source_cues": (
+                    "cues.json",
+                    "audio-visual-source-cues.json",
+                ),
+                "audio_visual_source_timeline": (
+                    "timeline.json",
+                    "audio-visual-source-timeline.json",
+                ),
+            }
+            for logical_name, (source_name, destination_name) in retained_sources.items():
+                candidate = temporary / source_name
+                if not candidate.is_file():
+                    raise AutoAnimError(
+                        "AUDIO_VISUAL_REPAIR_BLOCKED",
+                        f"Learned audiovisual source omitted required artifact {source_name}",
+                    )
+                shutil.copy2(candidate, output / destination_name)
+                audio_visual_artifacts[logical_name] = destination_name
+            audio_visual_repair = apply_audio_visual_repair(
+                performance,
+                audio_controls_path=temporary / "controls.npz",
+                audio_result=audio_visual_source_result,
+                timing_evidence=audio_video_timing,
+                output_dir=output,
+                rig=contact_rig,
+            )
+        performance = audio_visual_repair.performance
+        if resolved_a2f_model_dir is None or a2f_model_bundle_before is None:
+            raise AutoAnimError(
+                "INTERNAL_ERROR", "Audio2Face repair has no resolved model bundle"
+            )
+        a2f_model_bundle_after = _directory_sha256(resolved_a2f_model_dir)
+        if a2f_model_bundle_after != a2f_model_bundle_before:
+            raise AutoAnimError(
+                "INPUT_CHANGED",
+                "Audio2Face model bundle changed during audiovisual repair inference",
+            )
+        retained_hashes = {
+            logical_name: _file_sha256(output / artifact_name)
+            for logical_name, artifact_name in audio_visual_artifacts.items()
+        }
+        asset_bindings: dict[str, str] = {}
+        if resolved_a2f_asset_dir is not None:
+            for asset_name in (
+                "model_data.npz",
+                "bs_skin.npz",
+                "bs_skin_config.json",
+                "bs_tongue.npz",
+                "bs_tongue_config.json",
+            ):
+                asset_candidate = resolved_a2f_asset_dir / asset_name
+                if asset_candidate.is_file():
+                    asset_bindings[asset_name] = _file_sha256(asset_candidate)
+        runner_binding = (
+            _file_sha256(resolved_a2f_runner)
+            if resolved_a2f_runner is not None and resolved_a2f_runner.is_file()
+            else None
+        )
+        metallib_binding = None
+        if resolved_a2f_runner is not None:
+            metallib = resolved_a2f_runner.parent / "mlx.metallib"
+            if metallib.is_file():
+                metallib_binding = _file_sha256(metallib)
+        rhubarb_binding = None
+        rhubarb_resources_binding = None
+        if resolved_rhubarb is not None:
+            rhubarb_binding = _file_sha256(resolved_rhubarb)
+            resource_root = resolved_rhubarb.parent / "res" / "sphinx"
+            if resource_root.is_dir():
+                resource_sha, resource_files = _directory_sha256(resource_root)
+                rhubarb_resources_binding = {
+                    "sha256": resource_sha,
+                    "fileCount": resource_files,
+                }
+        write_json(
+            output / "audio-visual-source.json",
+            {
+                "schemaVersion": "autoanim.audio-visual-source.v1",
+                "status": "candidate_unqualified",
+                "motionBackend": audio_visual_source_result["analysis"][
+                    "motion_backend"
+                ],
+                "backendName": audio_visual_source_result["analysis"]["backend"],
+                "retargeter": audio_visual_source_result["analysis"]["retargeter"],
+                "retargetCalibrationHash": audio_visual_source_result["analysis"][
+                    "retarget_calibration_hash"
+                ],
+                "sourceAuthority": "lower_face_repair_and_dedicated_tongue_only",
+                "normalizedAudioStreamSpecifier": PRIMARY_AUDIO_STREAM_SPECIFIER,
+                "timingPrimaryAudioStreamIndex": audio_video_timing[
+                    "audioVideoJoin"
+                ]["audio"]["streamIndex"],
+                "causalInputs": {
+                    "speechActivityClassified": True,
+                    "rhubarbMouthCuesUsed": True,
+                    "lexicalTranscriptGenerated": False,
+                    "automaticEmotionApplied": False,
+                },
+                "bindings": {
+                    "immutableSourceMediaSha256": snapshot_hash,
+                    "captureSourceSha256": capture.provenance.source_sha256,
+                    "audioVideoTimingSha256": _file_sha256(
+                        output / "audio-video-timing.json"
+                    ),
+                    "identitySha256": _array_sha256(identity_value),
+                    "captureModelSha256": capture.provenance.model_sha256,
+                    "a2fRunnerSha256": runner_binding,
+                    "a2fMetallibSha256": metallib_binding,
+                    "a2fModelBundle": {
+                        "modelId": "aufklarer/Audio2Face-3D-v2.3.1-Claire-MLX",
+                        "sha256": a2f_model_bundle_after[0],
+                        "fileCount": a2f_model_bundle_after[1],
+                        "resolvedLocally": True,
+                        "passedAsExplicitModelDirectory": True,
+                        "unchangedDuringInference": True,
+                    },
+                    "rhubarbExecutableSha256": rhubarb_binding,
+                    "rhubarbSphinxResources": rhubarb_resources_binding,
+                    "a2fAssetsSha256": asset_bindings,
+                    "retainedArtifactsSha256": retained_hashes,
+                },
+                "quality": audio_visual_source_result["quality"],
+                "metrics": audio_visual_source_result["metrics"],
+                "warnings": audio_visual_source_result["warnings"],
+                "productionValidated": False,
+            },
+        )
+        audio_visual_artifacts.update(
+            {
+                "audio_visual_source": "audio-visual-source.json",
+                "audio_visual_repair": "audio-visual-repair.json",
+                "audio_visual_repair_arrays": "audio-visual-repair.npz",
+            }
+        )
+    pre_mouth_expression_sha256 = _array_sha256(performance.expression)
     performance, mouth_aperture_edit = _apply_video_mouth_aperture_edit(
         output_dir=output,
         rig=contact_rig,
@@ -856,6 +1098,11 @@ def run_video_pipeline(
         source_sha256=capture.provenance.source_sha256,
         model_sha256=capture.provenance.model_sha256,
         retarget_calibration_hash=calibration_hash,
+        upstream_source_mode=(
+            "video_primary_with_audio_visual_repair"
+            if audio_visual_repair is not None
+            else "video_follow"
+        ),
     )
     retarget_artifacts.update(
         {
@@ -863,6 +1110,104 @@ def run_video_pipeline(
             "mouth_aperture_edit_arrays": "mouth-aperture-edit.npz",
         }
     )
+    final_expression_sha256 = _array_sha256(performance.expression)
+    revision_chain = {
+        "schemaVersion": "autoanim.performance-revision-chain.v1",
+        "status": "candidate_unqualified" if audio_visual_repair is not None else "visual_only",
+        "sourcePtsSha256": _array_sha256(performance.source_pts),
+        "immutableSourceMediaSha256": snapshot_hash,
+        "revisions": [
+            {
+                "name": "visual_video_retarget",
+                "inputAuthority": "immutable_video_snapshot",
+                "outputExpressionSha256": visual_root_expression_sha256,
+            },
+            {
+                "name": "learned_audio_visual_repair",
+                "applied": audio_visual_repair is not None,
+                "inputExpressionSha256": visual_root_expression_sha256,
+                "outputExpressionSha256": (
+                    audio_visual_repair.report["bindings"]["outputExpressionSha256"]
+                    if audio_visual_repair is not None
+                    else visual_root_expression_sha256
+                ),
+                "reportSha256": (
+                    _file_sha256(output / "audio-visual-repair.json")
+                    if audio_visual_repair is not None
+                    else None
+                ),
+            },
+            {
+                "name": "authored_mouth_aperture",
+                "applied": mouth_aperture_gain != 1.0,
+                "inputExpressionSha256": pre_mouth_expression_sha256,
+                "outputExpressionSha256": final_expression_sha256,
+                "compositeInputSha256": mouth_aperture_edit.input_sha256,
+                "compositeOutputSha256": mouth_aperture_edit.output_sha256,
+                "reportSha256": _file_sha256(output / "mouth-aperture-edit.json"),
+            },
+        ],
+        "finalPerformanceExpressionSha256": final_expression_sha256,
+        "chainConsistent": bool(
+            _array_sha256(mouth_aperture_edit.expression)
+            == final_expression_sha256
+            and (
+                audio_visual_repair is None
+                or pre_mouth_expression_sha256
+                == audio_visual_repair.report["bindings"]["outputExpressionSha256"]
+            )
+        ),
+        "productionValidated": False,
+    }
+    if not revision_chain["chainConsistent"]:
+        raise AutoAnimError(
+            "INTERNAL_ERROR", "Final performance does not match its revision hash chain"
+        )
+    write_json(output / "performance-revision-chain.json", revision_chain)
+    retarget_artifacts["performance_revision_chain"] = "performance-revision-chain.json"
+    if audio_visual_repair is not None and audio_video_timing is not None:
+        timing_consumption = {
+            "schemaVersion": "autoanim.audio-visual-timing-consumption.v1",
+            "status": "candidate_unqualified",
+            "timingEvidenceSha256": _file_sha256(output / "audio-video-timing.json"),
+            "audioVisualSourceManifestSha256": _file_sha256(
+                output / "audio-visual-source.json"
+            ),
+            "timingEvidenceSchemaVersion": audio_video_timing.get("schemaVersion"),
+            "timingEvidencePolicy": audio_video_timing.get("policy"),
+            "timingEvidenceStatus": audio_video_timing.get("status"),
+            "fusionGate": audio_video_timing.get("fusionGate"),
+            "retainedSourceSync": audio_video_timing["audioVideoJoin"].get("sync"),
+            "joinMapping": audio_visual_repair.report["clockJoin"]["mapping"],
+            "coveredVideoFrames": audio_visual_repair.report["clockJoin"][
+                "coveredVideoFrames"
+            ],
+            "videoFrames": performance.frame_count,
+            "uncoveredFramesReceiveZeroAudioWeight": True,
+            "timeWarpApplied": False,
+            "repairBindings": audio_visual_repair.report["bindings"],
+            "finalPerformanceExpressionSha256": final_expression_sha256,
+            "revisionChainSha256": _file_sha256(
+                output / "performance-revision-chain.json"
+            ),
+            "repairChangesFinalGNMMotion": bool(
+                audio_visual_repair.report["claims"]["changesFinalGNMMotion"]
+            ),
+            "authoredMouthRevisionChangesMotion": bool(
+                mouth_aperture_gain != 1.0
+                and np.any(mouth_aperture_edit.correction_applied)
+            ),
+            "finalTrackDiffersFromVisualRoot": bool(
+                not np.array_equal(performance.expression, visual_root_expression)
+            ),
+            "productionValidated": False,
+        }
+        write_json(
+            output / "audio-visual-timing-consumption.json", timing_consumption
+        )
+        audio_visual_artifacts["audio_visual_timing_consumption"] = (
+            "audio-visual-timing-consumption.json"
+        )
     serialize_performance(output, performance)
     proxy = _proxy_video(source, output / "source-proxy.mp4")
     proxy_frames, proxy_pts_error, proxy_video_start = _proxy_timing_error(source, proxy)
@@ -873,7 +1218,7 @@ def run_video_pipeline(
         retarget_caveat,
         VIDEO_TRACKING_CAVEAT,
     ]
-    if audio_video_timing is not None:
+    if audio_video_timing is not None and audio_visual_repair is None:
         timing_status = str(audio_video_timing["status"])
         if timing_status != "available_observation":
             warnings.append(
@@ -1204,20 +1549,47 @@ def run_video_pipeline(
             "teeth-proximity risk band in the control track or reconstructed viewer; exact "
             "surface penetration is not established."
         )
-    warnings.append(
-        "ORAL_TONGUE_SOURCE_UNAVAILABLE: monocular RGB does not provide a dedicated tongue "
-        "motion signal, so this pipeline does not infer or validate tongue articulation."
+    dedicated_audio_tongue_frames = (
+        int(
+            audio_visual_repair.report["metrics"][
+                "dedicatedTongueDrivenFrames"
+            ]
+        )
+        if audio_visual_repair is not None
+        else 0
     )
+    lower_face_basis_coupling_possible_frames = int(
+        np.count_nonzero(
+            np.max(np.abs(performance.expression[:, 200:350]), axis=1) > 1.0e-6
+        )
+    )
+    if dedicated_audio_tongue_frames == 0:
+        warnings.append(
+            "ORAL_TONGUE_SOURCE_UNAVAILABLE: monocular RGB does not provide a dedicated tongue "
+            "motion signal and no learned dedicated tongue controls changed the final track."
+        )
+    else:
+        warnings.append(
+            "ORAL_TONGUE_AUDIO_INFERRED_UNVALIDATED: dedicated tongue controls come from the "
+            "learned audio source, but the RGB video cannot independently validate tongue "
+            "visibility or surface collision."
+        )
     tongue_geometry_motion_frames = int(
         oral_control_report["tongue_motion"]["moving_frames_over_0_1mm"]
     )
-    if tongue_geometry_motion_frames:
-        warnings.append(
-            "ORAL_UNSOURCED_TONGUE_BASIS_COUPLING: GNM lower-face expression modes moved "
-            "tongue vertices even though the video supplied no dedicated tongue signal; "
-            "treat the tongue performance as unsourced and require an artist or dedicated "
-            "tongue-capture pass."
-        )
+    if tongue_geometry_motion_frames and lower_face_basis_coupling_possible_frames:
+        if dedicated_audio_tongue_frames:
+            warnings.append(
+                "ORAL_TONGUE_BASIS_COUPLING: GNM lower-face expression modes can move tongue "
+                "vertices independently of dedicated tongue controls; source attribution is "
+                "mixed and visible tongue validation remains an artist gate."
+            )
+        else:
+            warnings.append(
+                "ORAL_UNSOURCED_TONGUE_BASIS_COUPLING: GNM lower-face expression modes moved "
+                "tongue vertices without a dedicated tongue signal; require an artist or "
+                "dedicated tongue-capture pass."
+            )
     if not oral_glb_report["claims"]["structural_reconstruction_validated"]:
         warnings.append(
             "ORAL_GLB_NOT_STRUCTURALLY_VALIDATED: the viewer fallback is static or its "
@@ -1261,6 +1633,9 @@ def run_video_pipeline(
                     "audio_video_timing_policy": AUDIO_VIDEO_TIMING_POLICY,
                     "audio_video_timing_status": audio_video_timing["status"],
                     "audio_video_timing_consumed_by_retargeting": False,
+                    "audio_video_sample_join_consumed_by_audio_visual_repair": (
+                        audio_visual_repair is not None
+                    ),
                 }
                 if audio_video_timing is not None
                 else {}
@@ -1300,6 +1675,14 @@ def run_video_pipeline(
                 "production_validated": False,
             },
             "subject_calibrated": False,
+            "audio_visual_repair": (
+                audio_visual_repair.report
+                if audio_visual_repair is not None
+                else {
+                    "status": "disabled",
+                    "productionValidated": False,
+                }
+            ),
             "neutral_baseline_frame_indices": list(
                 performance.provenance.baseline_frame_indices
             ),
@@ -1336,9 +1719,16 @@ def run_video_pipeline(
                 "control_evidence"
             ]["isolated_tongue_geometry_active_frames"],
             "tongue_geometry_motion_frames": tongue_geometry_motion_frames,
-            "tongue_motion_source": (
-                "gnm_lower_face_basis_coupling_no_dedicated_source"
+            "dedicated_audio_tongue_frames": dedicated_audio_tongue_frames,
+            "lower_face_basis_coupling_possible_frames": (
+                lower_face_basis_coupling_possible_frames
             ),
+            "tongue_motion_source": (
+                "mixed_learned_audio_dedicated_plus_gnm_lower_face_basis_coupling"
+                if dedicated_audio_tongue_frames > 0
+                else "gnm_lower_face_basis_coupling_no_dedicated_source"
+            ),
+            "tongue_visible_validated": False,
             "tongue_teeth_collision_risk_frames": tongue_teeth_risk_frames,
             "control_tongue_teeth_collision_risk_frames": (
                 control_tongue_teeth_risk_frames
@@ -1417,6 +1807,32 @@ def run_video_pipeline(
                     for report in mouth_aperture_edit.reports
                 )
             ),
+            **(
+                {
+                    "audio_visual_lower_face_repaired_frames": (
+                        audio_visual_repair.report["metrics"][
+                            "lowerFaceRepairedFrames"
+                        ]
+                    ),
+                    "audio_visual_dedicated_tongue_driven_frames": (
+                        audio_visual_repair.report["metrics"][
+                            "dedicatedTongueDrivenFrames"
+                        ]
+                    ),
+                    "audio_visual_contact_conflict_frames": (
+                        audio_visual_repair.report["metrics"][
+                            "audioVisualContactConflictFrames"
+                        ]
+                    ),
+                    "audio_visual_final_contact_attainment_fraction": (
+                        audio_visual_repair.report["metrics"][
+                            "finalAudioContactAttainmentFraction"
+                        ]
+                    ),
+                }
+                if audio_visual_repair is not None
+                else {}
+            ),
             **source_motion,
             **final_output_retention,
             "mesh_finite": True,
@@ -1437,9 +1853,76 @@ def run_video_pipeline(
                 if audio_video_timing is not None
                 else {}
             ),
+            **audio_visual_artifacts,
             **retarget_artifacts,
         },
         "warnings": warnings,
     }
     write_json(output / "result.json", result)
     return result
+
+
+def run_video_pipeline(
+    input_path: str | Path,
+    output_dir: str | Path,
+    *,
+    model_path: str | Path,
+    identity: np.ndarray | None = None,
+    a2f_asset_dir: str | Path | None = None,
+    texture_path: str | Path | None = None,
+    runtime_material_paths: Mapping[str, str | Path] | None = None,
+    texture_triangle_uvs: np.ndarray | None = None,
+    character_ref: dict[str, Any] | None = None,
+    audio_video_timing_evidence: bool = True,
+    require_audio_visual_repair: bool = False,
+    rhubarb_bin: str | Path | None = None,
+    a2f_runner: str | Path | None = None,
+    a2f_offline: bool = False,
+    mouth_aperture_gain: float = 1.0,
+    mouth_aperture_author: str | None = None,
+    mouth_aperture_reason: str | None = None,
+) -> dict:
+    """Run video capture and always remove the immutable working snapshot."""
+
+    original_source = Path(input_path).resolve()
+    output = Path(output_dir).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    if not original_source.is_file():
+        raise AutoAnimError("INPUT_INVALID", f"Video input does not exist: {original_source}")
+    # Every capture, audio decode, timing probe, and viewer proxy reads this
+    # invocation's one context-owned snapshot. Hashing the original before and
+    # after the copy rejects concurrent upload replacement, and the context
+    # removes only the directory it created on both success and failure.
+    original_hash_before = _file_sha256(original_source)
+    with tempfile.TemporaryDirectory(
+        prefix=".video-source-snapshot-", dir=output
+    ) as snapshot_workspace:
+        source = Path(snapshot_workspace) / original_source.name
+        shutil.copy2(original_source, source)
+        original_hash_after = _file_sha256(original_source)
+        snapshot_hash = _file_sha256(source)
+        if original_hash_before != original_hash_after or snapshot_hash != original_hash_before:
+            raise AutoAnimError(
+                "INPUT_CHANGED",
+                "Video input changed while the immutable processing snapshot was created",
+            )
+        source.chmod(0o400)
+        return _run_video_pipeline_impl(
+            source,
+            output,
+            model_path=model_path,
+            identity=identity,
+            a2f_asset_dir=a2f_asset_dir,
+            texture_path=texture_path,
+            runtime_material_paths=runtime_material_paths,
+            texture_triangle_uvs=texture_triangle_uvs,
+            character_ref=character_ref,
+            audio_video_timing_evidence=audio_video_timing_evidence,
+            require_audio_visual_repair=require_audio_visual_repair,
+            rhubarb_bin=rhubarb_bin,
+            a2f_runner=a2f_runner,
+            a2f_offline=a2f_offline,
+            mouth_aperture_gain=mouth_aperture_gain,
+            mouth_aperture_author=mouth_aperture_author,
+            mouth_aperture_reason=mouth_aperture_reason,
+        )

@@ -113,6 +113,14 @@ def build_parser() -> argparse.ArgumentParser:
     video.add_argument("--mouth-aperture-author")
     video.add_argument("--mouth-aperture-reason")
     video.add_argument(
+        "--audio-visual-repair",
+        action="store_true",
+        help=(
+            "Run learned audio inference and conservatively repair only weak visual mouth "
+            "frames plus dedicated tongue controls"
+        ),
+    )
+    video.add_argument(
         "--usage-scope",
         choices=("personal", "production", "commercial", "research"),
         default="production",
@@ -301,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
                 character_id=args.character,
                 character_revision_id=args.character_revision,
                 usage_scope=args.usage_scope,
+                audio_visual_repair=args.audio_visual_repair,
                 mouth_aperture_gain=args.mouth_aperture_gain,
                 mouth_aperture_author=args.mouth_aperture_author,
                 mouth_aperture_reason=args.mouth_aperture_reason,

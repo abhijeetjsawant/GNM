@@ -267,6 +267,7 @@ def create_app(
         character_id: str = Form(""),
         character_revision_id: str = Form(""),
         usage_scope: str = Form("production"),
+        audio_visual_repair: bool = Form(False),
         mouth_aperture_gain: float = Form(1.0),
         mouth_aperture_author: str = Form(""),
         mouth_aperture_reason: str = Form(""),
@@ -284,6 +285,7 @@ def create_app(
                 character_id=character_id or None,
                 character_revision_id=character_revision_id or None,
                 usage_scope=usage_scope,
+                audio_visual_repair=audio_visual_repair,
                 mouth_aperture_gain=mouth_aperture_gain,
                 mouth_aperture_author=mouth_aperture_author or None,
                 mouth_aperture_reason=mouth_aperture_reason or None,
@@ -649,6 +651,38 @@ def create_app(
                         "production_validated": readiness["publishable"],
                     }
                 )
+                repair = (
+                    manifest.get("retargeting", {}).get("audio_visual_repair", {})
+                    if manifest.get("kind") == "video_performance"
+                    and isinstance(manifest.get("retargeting"), dict)
+                    else {}
+                )
+                if isinstance(repair, dict) and repair.get("status") not in {
+                    None,
+                    "disabled",
+                }:
+                    metrics = repair.get("metrics", {})
+                    viewer_metadata.update(
+                        {
+                            "audio_visual_repair": repair.get("status"),
+                            "repair_quality": "candidate_unqualified",
+                            "lower_face_repaired_frames": (
+                                metrics.get("lowerFaceRepairedFrames")
+                                if isinstance(metrics, dict)
+                                else None
+                            ),
+                            "audio_tongue_frames": (
+                                metrics.get("dedicatedTongueDrivenFrames")
+                                if isinstance(metrics, dict)
+                                else None
+                            ),
+                            "audio_visual_contact_conflicts": (
+                                metrics.get("audioVisualContactConflictFrames")
+                                if isinstance(metrics, dict)
+                                else None
+                            ),
+                        }
+                    )
             elif viewer_metadata:
                 viewer_metadata["production_validated"] = False
             return HTMLResponse(
@@ -764,6 +798,7 @@ UI_HTML = r"""<!doctype html>
       <label for="video-file">Face performance video</label><input id="video-file" name="file" type="file" accept="video/*" required>
       <label for="video-character">Target character</label><select id="video-character" class="character-select" name="character_id"><option value="">Default neutral GNM</option></select>
       <label for="video-scope">Intended use</label><select id="video-scope" class="usage-scope" name="usage_scope"><option value="production">Production</option><option value="commercial">Commercial</option><option value="personal">Personal</option><option value="research">Research</option></select>
+      <label><input id="audio-visual-repair" style="width:auto" type="checkbox" name="audio_visual_repair" value="true"> Conservative learned audio repair · candidate</label><small>Off by default. Video keeps head, gaze, upper-face acting, reliable mouth shapes, and visible contacts. Learned audio uses a global tracker-quality heuristic to repair weak/missing lip evidence and supplies an unvalidated dedicated tongue track.</small>
       <label for="video-mouth-aperture">Mouth opening correction · <output id="video-mouth-aperture-value">1.00×</output></label><input id="video-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.25" step="0.01" value="1"><small>Video remains authoritative. Confirmed closures are protected, and 1.00 preserves the retarget byte-for-byte.</small>
       <label for="video-mouth-author">Edit author (required above 1.00)</label><input id="video-mouth-author" name="mouth_aperture_author" maxlength="160" placeholder="Artist or operator">
       <label for="video-mouth-reason">Edit reason (required above 1.00)</label><textarea id="video-mouth-reason" name="mouth_aperture_reason" maxlength="500" placeholder="Example: increase open vowels without weakening visible bilabials"></textarea>
@@ -784,7 +819,7 @@ UI_HTML = r"""<!doctype html>
   <p class="note" id="health">Checking local model and native-tool readiness…</p>
 </main>
 <script>
-const health=document.querySelector('#health');fetch('/api/health').then(r=>r.json()).then(x=>health.textContent=`Health: ${x.status}. GNM ${x.checks.gnm.ready?'ready':'missing'}, Audio2Face ${x.checks.a2f_runner?.ready&&x.checks.a2f_assets?.ready&&x.checks.a2f_provenance?.ready?'ready':'missing'}, MediaPipe ${x.checks.mediapipe_model.ready?'ready':'missing'}, Rhubarb ${x.checks.rhubarb.ready?'ready':'missing'}, offline viewer ${x.checks.viewer_bundle?.ready?'ready':'missing'}.`);
+const health=document.querySelector('#health'),audioVisualRepair=document.querySelector('#audio-visual-repair');fetch('/api/health').then(r=>r.json()).then(x=>{const a2fReady=x.checks.a2f_runner?.ready&&x.checks.a2f_assets?.ready&&x.checks.a2f_provenance?.ready&&x.checks.rhubarb?.ready;audioVisualRepair.disabled=!a2fReady;audioVisualRepair.title=a2fReady?'Unvalidated learned repair is available':'Learned Audio2Face and Rhubarb dependencies are unavailable';health.textContent=`Health: ${x.status}. GNM ${x.checks.gnm.ready?'ready':'missing'}, Audio2Face ${a2fReady?'ready':'missing'}, MediaPipe ${x.checks.mediapipe_model.ready?'ready':'missing'}, Rhubarb ${x.checks.rhubarb.ready?'ready':'missing'}, offline viewer ${x.checks.viewer_bundle?.ready?'ready':'missing'}.`});
 function artifactUrl(job,name){return `/api/jobs/${job}/files/${encodeURIComponent(name)}`}
 const characterList=document.querySelector('#character-list');
 const workspaceCharacter=document.querySelector('#workspace-character');
@@ -842,7 +877,7 @@ for(const [formId,endpoint] of [['audio-form','/api/audio'],['image-form','/api/
   try{const response=await fetch(endpoint,{method:'POST',body:new FormData(form)}),data=await response.json();if(!response.ok)throw new Error(`${data.code}: ${data.message}`);status.textContent=`Succeeded · ${data.job_id}`;result.innerHTML='';
    if(data.kind==='audio_animation'){const q=document.createElement('div');q.className='quality';const learned=data.analysis.motion_backend==='learned_a2f';const title=document.createElement('strong');title.textContent=learned?'Learned face + tongue controls · geometry calibrated':'Procedural fallback · not production';q.append(title);const detail=document.createElement('small');detail.textContent=`Stationary speech transitions ${(100*data.metrics.lower_face_stationary_fraction).toFixed(1)}% · mouth-step p95 ${data.metrics.mouth_step_p95_interocular.toFixed(3)} IOD · limited frames ${data.metrics.mouth_speed_limited_frames}. Tongue collision and perceptual speech quality still require review. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);setActivePerformance(data.job_id,data.kind)}
    if(data.kind==='image_fit'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent=`Visible-geometry fit · ${data.fit.confidence} confidence`;q.append(title);const detail=document.createElement('small');detail.textContent=`Landmark NME ${data.fit.nme.toFixed(4)} · stability ${data.fit.stability_rms.toFixed(4)} · ${(100*data.fit.coefficient_bound_fraction).toFixed(1)}% coefficients at bounds. This neutral fit does not reconstruct hidden geometry or metric depth. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);document.querySelector('#character-job').value=data.job_id}
-		   if(data.kind==='video_performance'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent=data.retargeting.geometry_calibrated?'Video performance · geometry calibrated':'Video performance · semantic fallback';q.append(title);const contact=data.metrics.final_contact_geometry_attained_fraction;const contactText=contact===null?'no scored closure':`${(100*contact).toFixed(1)}% contact attained`;const aperture=data.metrics.final_lip_aperture_open_p95_ratio;const apertureText=aperture===null?'aperture n/a':`aperture amplitude ${(100*aperture).toFixed(1)}%`;const detail=document.createElement('small');detail.textContent=`Face presence ${(100*data.metrics.face_presence_fraction).toFixed(1)}% · ${contactText} · ${apertureText} · expression timing ${data.metrics.final_expression_motion_correlation===null?'n/a':data.metrics.final_expression_motion_correlation.toFixed(3)} · baseline loss ${(100*data.metrics.negative_baseline_residual_clipped_fraction).toFixed(1)}% · proxy timing error ${data.metrics.proxy_pts_max_error_ms.toFixed(2)} ms. Video mode follows visual mouth/expression/head/gaze, not its audio; occluded tongue is not inferred. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);setActivePerformance(data.job_id,data.kind)}
+		   if(data.kind==='video_performance'){const q=document.createElement('div');q.className='quality';const repair=data.retargeting.audio_visual_repair||{status:'disabled'},repaired=repair.status!=='disabled';const title=document.createElement('strong');title.textContent=`Video performance · ${data.retargeting.geometry_calibrated?'geometry calibrated':'semantic fallback'}${repaired?' · audiovisual repair candidate':''}`;q.append(title);const contact=data.metrics.final_contact_geometry_attained_fraction;const contactText=contact===null?'no scored closure':`${(100*contact).toFixed(1)}% contact attained`;const aperture=data.metrics.final_lip_aperture_open_p95_ratio;const apertureText=aperture===null?'aperture n/a':`aperture amplitude ${(100*aperture).toFixed(1)}%`;const authority=repaired?`Visual head/gaze/upper face/reliable lips locked · audio changed ${repair.metrics.lowerFaceRepairedFrames} globally low-quality/missing-observation lower-face frames, drove ${repair.metrics.dedicatedTongueDrivenFrames} tongue frames, and diagnosed ${repair.metrics.audioVisualContactConflictFrames} trusted-frame contact disagreements. Candidate is not production validated.`:'Visual-only motion; audio is playback only and tongue is not inferred.';const detail=document.createElement('small');detail.textContent=`Face presence ${(100*data.metrics.face_presence_fraction).toFixed(1)}% · ${contactText} · ${apertureText} · expression timing ${data.metrics.final_expression_motion_correlation===null?'n/a':data.metrics.final_expression_motion_correlation.toFixed(3)} · baseline loss ${(100*data.metrics.negative_baseline_residual_clipped_fraction).toFixed(1)}% · proxy timing error ${data.metrics.proxy_pts_max_error_ms.toFixed(2)} ms. ${authority} ${data.warnings.join(' ')}`;q.append(detail);result.append(q);setActivePerformance(data.job_id,data.kind)}
    if(data.kind==='multiview_reconstruction'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent='Shared identity · provenance-aware texture';q.append(title);const detail=document.createElement('small');const holdout=data.capture.held_out?.evaluated?` · held-out NME ${data.capture.held_out.aggregate_nme.toFixed(4)} (${data.capture.held_out.passed?'pass':'fail'})`:'';detail.textContent=`Fit NME ${data.fit.nme.toFixed(4)}${holdout} · direct texture ${(100*data.texture.observed_fraction).toFixed(1)}% · ${data.capture.accepted_view_indices.length}/${data.capture.view_count} views accepted. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);document.querySelector('#character-job').value=data.job_id}
    if(data.kind==='acting_direction'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent=`Acting proposal + unapproved body preview · ${data.direction.beat_count} beat${data.direction.beat_count===1?'':'s'}`;q.append(title);const detail=document.createElement('small');detail.textContent=`${data.direction.summary} · evidence ${data.source.motion_evidence}. Lipsync overrides are disabled; approve/edit and recompile before publish. ${data.warnings.join(' ')}`;q.append(detail);result.append(q)}
    await appendProductionReadiness(data,result);

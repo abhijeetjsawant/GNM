@@ -270,6 +270,7 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
         "geometry_calibrated_dense_contact_aperture_v3"
     )
     assert result["retargeting"]["geometry_calibrated"] is True
+    assert result["retargeting"]["audio_visual_repair"]["status"] == "disabled"
     assert len(result["retargeting"]["calibration_hash"]) == 64
     assert result["retargeting"]["matched_source_controls"] == 51
     assert result["retargeting"]["matched_source_fraction"] > 0.98

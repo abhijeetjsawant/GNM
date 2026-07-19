@@ -19,6 +19,7 @@ from autoanim_gnm.a2f import (
     ClaireTongueSolver,
     parse_a2f_jsonl,
     recover_a2f_auxiliary_track,
+    resolve_a2f_model_directory,
     resolve_a2f_runner,
     run_a2f_runner,
 )
@@ -160,6 +161,32 @@ def test_runner_resolver_rejects_non_executable(tmp_path: Path) -> None:
     target.write_text("not executable", encoding="utf-8")
     with pytest.raises(A2FRunnerError, match="unavailable"):
         resolve_a2f_runner(target)
+
+
+def test_model_resolver_mirrors_hub_cache_and_requires_complete_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("QWEN3_CACHE_DIR", str(tmp_path))
+    model = (
+        tmp_path
+        / "qwen3-speech"
+        / "models"
+        / "aufklarer"
+        / "Audio2Face-3D-v2.3.1-Claire-MLX"
+    )
+    model.mkdir(parents=True)
+    for name in (
+        "audio2face3d.safetensors",
+        "default_emotion.f32",
+        "model_config.json",
+        "network_info.json",
+    ):
+        (model / name).write_bytes(name.encode("utf-8"))
+
+    assert resolve_a2f_model_directory() == model.resolve()
+    (model / "network_info.json").unlink()
+    with pytest.raises(A2FRunnerError, match="incomplete"):
+        resolve_a2f_model_directory()
 
 
 def _write_tiny_assets(root: Path, *, regularization: float = 0.0) -> tuple[np.ndarray, tuple[str, ...]]:

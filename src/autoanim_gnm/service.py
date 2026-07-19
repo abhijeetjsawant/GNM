@@ -47,6 +47,10 @@ from .serialization import write_json, write_npz
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def default_model_path() -> Path:
     configured = os.environ.get("AUTOANIM_FACE_LANDMARKER")
     return Path(configured) if configured else PROJECT_ROOT / ".cache/autoanim_gnm/face_landmarker.task"
@@ -279,6 +283,7 @@ class ApplicationService:
         character_id: str | None = None,
         character_revision_id: str | None = None,
         usage_scope: str = "production",
+        audio_visual_repair: bool = False,
         mouth_aperture_gain: float = 1.0,
         mouth_aperture_author: str | None = None,
         mouth_aperture_reason: str | None = None,
@@ -298,6 +303,7 @@ class ApplicationService:
             "character_id": character.character_id if character is not None else None,
             "character_revision_id": character.revision_id if character is not None else None,
             "usage_scope": usage_scope,
+            "audio_visual_repair": audio_visual_repair,
             "mouth_aperture_gain": mouth_aperture_gain,
             "mouth_aperture_author": mouth_aperture_author,
             "mouth_aperture_reason": mouth_aperture_reason,
@@ -325,6 +331,10 @@ class ApplicationService:
                     character.triangle_uvs if character is not None else None
                 ),
                 character_ref=self._character_ref(character),
+                require_audio_visual_repair=audio_visual_repair,
+                rhubarb_bin=self.rhubarb_bin,
+                a2f_runner=self.a2f_runner,
+                a2f_offline=self.a2f_offline,
                 mouth_aperture_gain=mouth_aperture_gain,
                 mouth_aperture_author=mouth_aperture_author,
                 mouth_aperture_reason=mouth_aperture_reason,
@@ -406,6 +416,62 @@ class ApplicationService:
             except (FileNotFoundError, OSError, ValueError):
                 pass
 
+        audio_visual_repair_artifacts_verified = False
+        audio_visual_repair_qualification_verified = False
+        repair = _mapping(
+            _mapping(performance.get("retargeting")).get(
+                "audio_visual_repair"
+            )
+        )
+        if (
+            performance.get("kind") == "video_performance"
+            and repair.get("status") not in (None, "disabled")
+        ):
+            required_repair_artifacts = (
+                "audio_visual_source",
+                "audio_visual_repair",
+                "audio_visual_repair_arrays",
+                "audio_visual_source_controls",
+                "audio_visual_source_arkit_controls",
+                "audio_visual_source_normalized_audio",
+                "audio_visual_source_raw",
+                "audio_visual_source_retarget_calibration",
+                "audio_visual_source_rhubarb",
+                "audio_visual_source_cues",
+                "audio_visual_source_timeline",
+                "audio_video_timing",
+                "audio_visual_timing_consumption",
+                "performance_revision_chain",
+            )
+            try:
+                for logical_name in required_repair_artifacts:
+                    entry = _mapping(_mapping(artifact_ledger).get(logical_name))
+                    name = entry.get("name")
+                    if not isinstance(name, str):
+                        raise FileNotFoundError(logical_name)
+                    self.store.artifact(performance_job_id, name)
+                audio_visual_repair_artifacts_verified = True
+            except FileNotFoundError:
+                pass
+            qualification_hash = _mapping(repair.get("claims")).get(
+                "qualificationProfileSha256"
+            )
+            qualification_entry = _mapping(
+                _mapping(artifact_ledger).get("audio_visual_repair_qualification")
+            )
+            qualification_name = qualification_entry.get("name")
+            if (
+                isinstance(qualification_hash, str)
+                and len(qualification_hash) == 64
+                and isinstance(qualification_name, str)
+                and qualification_entry.get("sha256") == qualification_hash
+            ):
+                try:
+                    self.store.artifact(performance_job_id, qualification_name)
+                    audio_visual_repair_qualification_verified = True
+                except FileNotFoundError:
+                    pass
+
         direction = None
         direction_manifest_verified = False
         if direction_job_id is not None and direction_job_id.strip():
@@ -456,6 +522,12 @@ class ApplicationService:
             delivery_artifact_verified=delivery_artifact_verified,
             performance_evidence_artifact_verified=(
                 performance_evidence_artifact_verified
+            ),
+            audio_visual_repair_artifacts_verified=(
+                audio_visual_repair_artifacts_verified
+            ),
+            audio_visual_repair_qualification_verified=(
+                audio_visual_repair_qualification_verified
             ),
             character_revision=character_revision,
             character_resolution_error=character_resolution_error,
@@ -685,6 +757,13 @@ class ApplicationService:
             write_json(job_dir / "body-track.json", body_manifest)
             write_json(job_dir / "humanoid-skeleton.json", CANONICAL_HUMANOID.as_dict())
             write_json(job_dir / "gnm-body-attachment.json", attachment_contract())
+            source_repair = _mapping(
+                _mapping(source.get("retargeting")).get("audio_visual_repair")
+            )
+            source_repair_claims = _mapping(source_repair.get("claims"))
+            source_repair_changes_motion = bool(
+                source_repair_claims.get("changesFinalGNMMotion", False)
+            )
             result = {
                 "kind": "acting_direction",
                 "status": "succeeded",
@@ -692,8 +771,23 @@ class ApplicationService:
                     "job_id": source_job_id,
                     "kind": source["kind"],
                     "motion_evidence": performance_context["motion_evidence"],
-                    "audio_is_animation_source": source["kind"] == "audio_animation",
+                    "audio_is_animation_source": bool(
+                        source["kind"] == "audio_animation"
+                        or source_repair_changes_motion
+                    ),
                     "video_visual_tracking_is_animation_source": source["kind"] == "video_performance",
+                    "video_audio_repair_is_animation_source": bool(
+                        source["kind"] == "video_performance"
+                        and source_repair_changes_motion
+                    ),
+                    "video_motion_authority": (
+                        "mixed_visual_primary_audio_repair"
+                        if source["kind"] == "video_performance"
+                        and source_repair_changes_motion
+                        else "visual_only"
+                        if source["kind"] == "video_performance"
+                        else "audio"
+                    ),
                 },
                 "model": {
                     "provider": provider,
@@ -747,6 +841,7 @@ class ApplicationService:
         controls = artifacts.get("controls")
         if not isinstance(controls, dict) or not isinstance(controls.get("name"), str):
             raise AutoAnimError("INTERNAL_ERROR", "Source job has no allowlisted control artifact")
+        repair_context: dict[str, Any] | None = None
         try:
             controls_path = self.store.artifact(job_id, controls["name"])
             with np.load(controls_path, allow_pickle=False) as values:
@@ -771,7 +866,92 @@ class ApplicationService:
                         "source_lip_gap": np.asarray(values["source_lip_gap_interocular"], dtype=np.float64),
                         "source_lip_contact": np.asarray(values["source_lip_contact_confidence"], dtype=np.float64),
                     }
-                    evidence = "visual_video_tracking_exact_pts; audio_not_used_for_motion"
+                    repair = _mapping(
+                        _mapping(result.get("retargeting")).get(
+                            "audio_visual_repair"
+                        )
+                    )
+                    repair_changes_motion = bool(
+                        _mapping(repair.get("claims")).get(
+                            "changesFinalGNMMotion", False
+                        )
+                    )
+                    if repair_changes_motion:
+                        repair_artifact = artifacts.get(
+                            "audio_visual_repair_arrays"
+                        )
+                        if not isinstance(repair_artifact, dict) or not isinstance(
+                            repair_artifact.get("name"), str
+                        ):
+                            raise AutoAnimError(
+                                "INTERNAL_ERROR",
+                                "Mixed video performance has no allowlisted audio-repair evidence",
+                            )
+                        repair_path = self.store.artifact(
+                            job_id, repair_artifact["name"]
+                        )
+                        with np.load(repair_path, allow_pickle=False) as repair_values:
+                            repair_pts = np.asarray(
+                                repair_values["source_pts"], dtype=np.int64
+                            )
+                            control_pts = np.asarray(
+                                values["source_pts"], dtype=np.int64
+                            )
+                            audio_lower_weight = np.asarray(
+                                repair_values["lower_face_audio_weight"],
+                                dtype=np.float64,
+                            )
+                            audio_tongue_weight = np.asarray(
+                                repair_values["tongue_audio_weight"],
+                                dtype=np.float64,
+                            )
+                            contact_disagreement = np.asarray(
+                                repair_values["audio_visual_contact_conflict"],
+                                dtype=np.float64,
+                            )
+                        if (
+                            not np.array_equal(repair_pts, control_pts)
+                            or audio_lower_weight.shape != timestamps.shape
+                            or audio_tongue_weight.shape != timestamps.shape
+                            or contact_disagreement.shape != timestamps.shape
+                        ):
+                            raise AutoAnimError(
+                                "INTERNAL_ERROR",
+                                "Audio-repair acting evidence does not bind to final video source PTS",
+                            )
+                        series.update(
+                            {
+                                "audio_lower_face_weight": audio_lower_weight,
+                                "audio_tongue_weight": audio_tongue_weight,
+                                "audio_visual_contact_disagreement": contact_disagreement,
+                            }
+                        )
+                        evidence = (
+                            "visual_video_tracking_primary_exact_pts; "
+                            "learned_audio_lower_face_repair_and_tongue"
+                        )
+                        repair_context = {
+                            "schema_version": repair.get("schemaVersion"),
+                            "policy": repair.get("policy"),
+                            "status": repair.get("status"),
+                            "bindings": repair.get("bindings"),
+                            "source_authority": repair.get("sourceAuthority"),
+                            "production_validated": _mapping(
+                                repair.get("claims")
+                            ).get("productionValidated", False),
+                            "final_revision_chain_sha256": _mapping(
+                                artifacts.get("performance_revision_chain")
+                            ).get("sha256"),
+                            "authored_mouth_aperture_revision": _mapping(
+                                _mapping(result.get("retargeting")).get(
+                                    "mouth_aperture_artist_edit"
+                                )
+                            ),
+                        }
+                    else:
+                        evidence = (
+                            "visual_video_tracking_exact_pts; audio_not_used_for_motion"
+                        )
         except (FileNotFoundError, OSError, KeyError, ValueError) as exc:
             raise AutoAnimError("INTERNAL_ERROR", "Source control artifact is unreadable") from exc
         if (
@@ -821,6 +1001,7 @@ class ApplicationService:
                 "emotion": result.get("analysis", {}).get("emotion"),
                 "emotion_validated": result.get("analysis", {}).get("emotion_validated"),
                 "neutral_baseline_method": result.get("retargeting", {}).get("neutral_baseline_method"),
+                "audio_visual_repair": repair_context,
                 "warnings": result.get("warnings", [])[:12],
             },
         }

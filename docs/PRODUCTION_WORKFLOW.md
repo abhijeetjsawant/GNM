@@ -102,7 +102,7 @@ character" is resolved to an exact revision before a job starts.
 | Multiple images to GNM | Shared identity solve, optional calibrated cameras and held-out view, UV bake | Working research pipeline; ordinary photos cannot prove perfect likeness |
 | Texture | Up to 1024 RGB reconstruction atlas composed in explicit linear-sRGB with one sRGB output encode, plus a CLI import path for complete base/normal/displacement/specular/roughness/SSS/radius/confidence/mask packages; exact subject/revision/identity/UV binding; immutable material revisions; bounded native-8K TIFF validation and deterministic at-most-4K glTF base/normal/roughness/specular projection | Source-precision retention, bounded chunked projection and audio/video rendering work. Recovering measured 4K/8K skin from capture, tagged-profile/chart calibration, semantic masking, selectable browser LOD pyramids, pore/relighting validation, SSS/displacement rendering and artist look-dev approval remain open |
 | Audio animation | Rhubarb timing plus native Claire MLX learned motion, 52 skin/16 tongue controls, dense GNM retarget, character contact solve, authored neutral-relative aperture pass and measured lip-order repair | Working structural track; independent phone/perceptual approval and a physical oral rig remain open |
-| Video animation | Exact source PTS, MediaPipe face/expression/head/translation/gaze, direct inner-lip geometry, identity-calibrated contact/aperture, and exact source-audio sample/PTS evidence | Motion follows the video visually; audio is diagnostic only and cannot change controls. Microexpression/FACS ground truth and audiovisual repair semantics remain open |
+| Video animation | Exact source PTS, MediaPipe face/expression/head/translation/gaze, direct inner-lip geometry, identity-calibrated contact/aperture, and exact source-audio sample/PTS evidence. A separately named conservative repair mode now runs learned audio motion, locks reliable visual acting, repairs only weak/missing lower-face evidence, and supplies dedicated audio-inferred tongue controls | Working deterministic fusion candidate, not a trained multimodal model. RGB mouth-specific uncertainty, visible tongue truth, FACS/gaze ground truth and real audiovisual production qualification remain open |
 | Character reuse | Versioned identity/preview/material revision, exact revision transport, consent scope/expiry/revocation, content hashes and HMAC trust root | Working local trust boundary; hosted deployment should move signing to KMS/HSM |
 | LLM acting | Codex and Claude terminal adapters, no tools, strict schema and semantic validator, trusted envelope, measured performance windows | Produces an editable proposal; its body/gaze portion is deterministically compiled, but artist approval still follows |
 | Full body | 25-joint canonical humanoid, 48 kHz integer-tick body/gaze track, OpenUSD/glTF/VRM mappings, contact constraints, GNM ownership contract, and a real pinned MakeHuman/MPFB neutral-body provider | A validated neutral mesh/skin now exists; character attachment, seam calibration, mocap reconstruction, locomotion, skinned USD/glTF export, corrective deformation and production capture remain open |
@@ -283,6 +283,48 @@ at least five fit plus two untouched holdout views, median reprojection below
 reflectance truth, unseen-light rendering, and preservation of approximately
 0.1–0.5 mm spatial detail.
 
+### Likeness audit decision: evaluate before increasing resolution
+
+The current single-image solve is a 68-point weak-perspective fit restricted to
+10 or 20 identity modes. Multiview can optimize all 170 head-supported modes,
+but still uses the mapped 68 points as identity evidence; modes `170:253` have
+no landmark support and the dense 478-point face is currently used for texture
+coverage rather than dense surface fitting. A larger atlas would therefore make
+the present geometric mismatch and baked illumination sharper, not make the
+person more accurate.
+
+The next appearance/identity vertical slice must start with one consented real
+subject and then expand to at least ten subjects. Each subject needs five or
+more fit cameras, two physically distinct held-out cameras, at least 120
+degrees of yaw, two repeated rig sessions, raw ChArUco observations, lossless
+or RAW color with chart/profile evidence, metric scale, and an independent
+neutral scan. Polarized/multilight sequences are additionally required for any
+reflectance or pore claim. Fit/held-out membership and hashes are frozen before
+optimization; changing a held-out input must leave the identity artifact
+bit-identical.
+
+The 68-point solve remains the initializer. The production candidate adds
+part-aware dense correspondences or normal/UV evidence, profile silhouettes,
+explicit ear/nose/eye/mouth/cheek/jaw/scalp losses, semantic occluder masks,
+shared calibrated cameras, uncertainty/effective-rank reporting and a bounded
+normal-direction residual surface stored separately from GNM identity. Pilot
+gates are recomputed calibration RMS `<=0.40 px`, held-out reprojection median
+`<2 px` / p95 `<5 px`, no-scale scan point-to-surface median `<=1.0 mm` / p95
+`<=2.5 mm`, normal error median `<=8 degrees` / p95 `<=20 degrees`, repeated-fit
+median vertex drift `<=0.5 mm`, p95 `<=1.5 mm`, and coefficient saturation
+`<=10%`. Both GNM-only and GNM-plus-residual results must pass independently;
+residual geometry cannot hide a failing parametric identity.
+
+Appearance should expose two proposed product labels (the current manifest
+schemas do not yet encode these names). Arbitrary portraits would produce
+`baked_rgb_nonrelightable`. Only controlled capture may produce measured
+diffuse/specular/normal/roughness/displacement maps. A measured skin atlas must
+be at least 90% observed, 0% generic, at most 5% inpainted, record native
+mm/texel, achieve chart delta-E00 median `<=2` / p95 `<=4`, and pass held-out
+light rendering before `relight_validated=true`. Hair stays a separate
+strand/card/volume asset; generated rear views are labeled inferred and never
+count as likeness evidence.
+
 Suggested tiers:
 
 - **Preview:** current 1K RGB atlas, explicitly unvalidated and non-relightable.
@@ -323,6 +365,24 @@ proximity risks. GNM tongue controls and isolated tongue geometry were active
 on 209/211 frames. This is structural evidence, not independent phoneme,
 surface-collision, visibility or perceptual approval.
 
+The next audio backend is not another smoothing layer. It is an external,
+GPU-capable Audio2Face v3 sequence worker behind the already versioned sequence
+contract; the Mac service remains the evidence/retarget/orchestration host. The
+worker must bind model, runtime, PCM, character identity, retarget calibration,
+chunk overlap/state and output timebase hashes. The current local v2.3 path
+remains useful as an offline candidate and regression oracle, not the production
+claim.
+
+Qualification freezes at least 40 rights-cleared utterances from at least ten
+speakers, with independent phone intervals and visible P/B/M, F/V, rounded-vowel
+and open-vowel apex labels. Release gates are median apex error `<=1` video
+frame, p95 `<=2`, P/B/M contact recall `>=90%`, false contact `<=5%`, no added
+lip-order/tongue-teeth structural risk, and blinded artist preference `>=60%`
+with the confidence interval above 50% against the current v2.3 baseline.
+Sequence onset/release, fast speech, coarticulation, non-speech vocals,
+multilingual material and deliberately shifted audio are scored separately; an
+aggregate pass cannot hide a failed subgroup.
+
 An LLM does not replace the acoustic model. AutoAnim sends it a bounded summary
 of measured energy, speech activity, pitch/accent and existing motion windows,
 plus optional transcript and direction. The output is declarative beats with
@@ -338,7 +398,9 @@ solver.
 
 ### Video mode
 
-Video motion is derived from **visual frames**, not the audio track:
+Video has two explicit policies. The default API/CLI policy remains
+`video_follow`; its motion is derived from **visual frames**, not the audio
+track:
 
 - MediaPipe blendshapes drive expression;
 - inner-lip landmark geometry drives contact and open-mouth aperture;
@@ -346,6 +408,31 @@ Video motion is derived from **visual frames**, not the audio track:
 - eye-look controls drive the two GNM eye joints;
 - exact decoded PTS is preserved;
 - source audio is copied only into the proxy/playback clock.
+
+The browser can request `audio_visual_repair`. That named revision first runs
+the learned Audio2Face v2.3 source in neutral-affect mode, then consumes the
+exact retained-source sample/PTS join. It never replaces head rotation,
+translation, gaze/pupil controls, upper-face acting, reliable lip geometry or
+visible contact. It may repair GNM lower-face modes `200:350` only where the
+full-face observation is missing or below the frozen global tracker-quality
+threshold; the current tracker does not expose a mouth-specific uncertainty.
+It may supply
+dedicated tongue modes `350:382` during speech because the current RGB capture
+has no dedicated tongue channel. Trusted visual ownership and observed contact
+are hard protections; audio/visual contact disagreements on trusted frames are
+diagnostics, not a separate causal veto. Every input, resampled control, weight and output is stored
+in `audio-visual-repair.npz`; the JSON artifact binds source PTS, native PCM,
+input/audio/output controls and the authority locks by SHA-256.
+The repair resolves Claire's pretrained MLX bundle to a concrete local
+directory, passes that directory explicitly to the native runner, and hashes
+all model files before and after inference. Its source manifest also binds the
+runner, Metal library, Rhubarb executable/resources, all dense-retarget assets,
+the selected primary audio stream and every retained intermediate. Production
+readiness independently byte-verifies those causal artifacts and the original
+audio/video timing report. It additionally requires a separately retained
+qualification-profile artifact whose ledger hash exactly matches the profile
+hash claimed by the repair; setting approval booleans or an arbitrary hash is
+insufficient.
 
 The earlier retained CREMA-D run had 0.974 lip-opening timing correlation but
 an affine amplitude slope of 0.582: roughly 40% under-opening. The current
@@ -360,12 +447,14 @@ ratio `0.90–1.10`. One soft contact target remains below the 95% attainment
 review threshold even though all high-confidence source contact events are
 retained, so the take is still review-required.
 
-Video tongue remains zero because the pinned result schema does not expose or
-ingest a tongue channel and the RGB lane has no pixel-derived tongue surface
-solve. A future audio-visual fusion mode must be separately named and tested on
-contradictory media (silent expressive video, expressive audio with neutral
-face, and dubbed misaligned video); default video-follow must continue to honor
-the visible performance.
+Video-follow tongue remains zero because the pinned result schema does not
+expose or ingest a tongue channel and the RGB lane has no pixel-derived tongue
+surface solve. Repair-mode tongue is audio-inferred and therefore retains
+`tongue_visible_validated=false`; it is not evidence that a tongue seen in the
+source was reconstructed. Contradictory media (silent expressive video,
+expressive audio with neutral face, and dubbed/misaligned video) remain required
+qualification fixtures; default video-follow continues to honor the visible
+performance byte-for-byte.
 
 ### Video fidelity audit: what the implementation follows today
 
@@ -374,10 +463,12 @@ lipsync hidden behind a video upload. `video_capture.py` decodes every display
 frame, supplies MediaPipe VIDEO mode with strictly increasing timestamps, and
 preserves the source PTS. `video_retarget.py` uses the tracked inner lips,
 blendshapes, facial transform and eye-look channels. `video_pipeline.py` copies
-audio into the review proxy, but never analyzes that audio or uses it to create
-motion. This means source expressions, mouth opening/closure, head motion and
-eye-look estimates are followed; phonemes, prosody and audible acting are not
-independent evidence in video mode.
+audio into the review proxy in `video_follow` mode. When the separate repair
+flag is requested it also creates a learned neutral audio track and routes it
+through `audio_visual_repair.py`; learned acoustic mouth/tongue motion is then a
+constrained repair source. Prosodic speech activity and Rhubarb mouth-category
+cues are causal inputs, but no lexical transcript is generated and automatic
+audible affect still cannot overwrite visible acting.
 
 The exact-timing transport is stronger than the semantic evidence:
 
@@ -394,7 +485,14 @@ The exact-timing transport is stronger than the semantic evidence:
   data, but it consumes one global quality value. There is no confidence per
   mouth, eye, brow, cheek or blendshape channel. Consequently a hidden mouth
   and a clear brow can be accepted or rejected together, and microexpression
-  retention cannot be distinguished from tracker jitter.
+  retention cannot be distinguished from tracker jitter. This is a production
+  ship blocker, not a tuning issue: the repair candidate may decline to repair
+  a genuinely hand/prop/facial-hair-occluded mouth. Viable next implementations
+  are retained-pixel mouth/occluder segmentation plus temporal reprojection
+  residual, a depth/TrueDepth or synchronized multiview lane, or a trained
+  audiovisual model with calibrated uncertainty. Until one passes a real
+  occlusion set, the UI and schema intentionally call the current gate a global
+  tracker-quality heuristic.
 - Dense retargeting is geometry-calibrated when the Claire calibration assets
   are installed. It is still a mapping from MediaPipe's semantic coefficients,
   not a subject-trained performance solve. `mouthClose` is deliberately
@@ -427,20 +525,26 @@ The exact-timing transport is stronger than the semantic evidence:
   timestamps can therefore be exact while subtle visual errors remain hard for
   an artist to diagnose.
 
-The focused capture/pipeline/viewer suite passed on 2026-07-19: 18 tests,
-including the retained checksum-pinned moving CREMA-D path and the opt-in real
-HTTP pipeline available on this workstation. That proves decode/retarget/proxy/
-viewer transport and the current geometry proxies. CREMA-D supplies no
-frame-level FACS, gaze target, lip-contact, tongue surface or dense 3D ground
-truth, so those tests do not establish production expression accuracy.
+The verification command and current result are recorded in the phase ledger
+below instead of as a hand-maintained test count. The new real-input gate decodes the
+retained CREMA-D video, tracks it with MediaPipe, runs its real audio through
+learned A2F skin/jaw/eye/tongue inference, joins both streams through native
+exact display timestamps relative to decoded-audio start, verifies native PCM
+sample coverage, and validates the resulting GNM controls and
+GLB. It proves video-owned upper face/head/gaze, active dedicated tongue
+transfer, zero reported tongue/teeth proximity-risk frames on that take, and
+fail-closed learned-source selection. CREMA-D supplies no frame-level FACS,
+gaze target, lip-contact, tongue surface or dense 3D ground truth, so those
+tests do not establish production expression accuracy.
 
-### Next implementable phase: constrained audio-visual performance repair
+### Constrained audio-visual performance repair: first pass implemented
 
-Do not average audio and video coefficients. The exact clock-join evidence is
-now implemented; the next step is a named `audio_visual_repair` policy in which
-high-confidence visible performance stays
-authoritative and audio may repair only speech-correlated controls when the
-image evidence is weak. Default `video_follow` remains visual-only.
+Do not average audio and video indiscriminately. The exact clock-join evidence
+and first named `audio_visual_repair` policy are now implemented: high-confidence
+visible performance stays authoritative and learned audio may repair only
+speech-correlated lower-face controls when image evidence is weak. Audio may
+also supply dedicated tongue modes, which RGB cannot observe. Default
+`video_follow` remains visual-only.
 
 The versioned observation contract should use the source video time base as the
 master and record, for every display frame, `source_pts`, rational time base,
@@ -512,11 +616,23 @@ Deliver the phase in four build/review/test loops:
    variable-frame-rate, B-frame, rotation, blur, occlusion,
    multiple-face, cut and missing-frame fixtures; exact source PTS must remain
    bit-identical.
-2. **Constrained fusion:** consume the existing audio observation artifact by
-   versioned interface, add visual-only/fusion modes and conflict intervals.
-   Test clean agreement, silent expression, neutral-face speech, dubbed offset,
-   occluded mouth and contradictory bilabial frames. High-confidence video
-   controls must be bit-identical before/after enabling the repair policy.
+2. **Constrained fusion (deterministic first pass implemented):**
+   `audio_visual_repair.py` validates learned `[T,383]` controls, samples at
+   exact video display start minus decoded-audio start while requiring native
+   sample coverage, resamples without time warp, locks video
+   head/translation/gaze/pupil/upper-face controls, protects reliable visual
+   lips and contacts, repairs only weak/missing lower-face frames, and supplies
+   active dedicated tongue controls. A GNM face-local geometry limiter may only
+   reduce repair weights inside weak intervals; it cannot smooth or modify a
+   trusted video frame. It emits hash-bound JSON/NPZ evidence and
+   fails when learned A2F is unavailable instead of silently using Rhubarb.
+   Unit adversaries cover fallback rejection, PTS tampering, partial audio
+   coverage, contact conflict and authority locks. The retained real CREMA-D
+   video+audio E2E passes. Remaining: pixel-derived regional uncertainty,
+   conflict intervals rather than frame flags, silent-expression,
+   neutral-face-speech, dubbed-offset and deliberate mouth-occlusion real
+   fixtures, and comparison with a trained audiovisual model. High-confidence
+   video controls must remain bit-identical in all of them.
 3. **Artist review viewer (foundation implemented):** the viewer now steps the
    source and paused GLB action to the exact Observation-v2 timestamp and shows
    PTS/tick/time, regional confidence, and missing/unknown state. Remaining:
@@ -817,15 +933,16 @@ adapters.
   character-material-v3 source/derivative provenance. A complete synthetic
   native 8192x8192 package passes the real decode/projection E2E; it makes no
   pore or real-subject claim.
-- Remaining: calibrated polarized recovery, high-frequency residual geometry,
-  a real rights-cleared consented 4K/8K skin package, browser-selectable
+- Remaining: freeze the rights-cleared real-person/scan evaluator, add dense
+  part-aware GNM identity plus separately scored residual geometry, calibrated
+  polarized recovery, a real rights-cleared consented 4K/8K skin package, browser-selectable
   1K/2K/4K external LODs and GPU-budget lifecycle, MaterialX/OpenPBR authoring,
   displacement/SSS renderer adapters and perceptual look-dev approval.
 - Gate: held-out geometry/reprojection, diffuse/specular separation,
   relighting error, coverage, seam delta, color chart, pore-frequency
   validation and artist look-dev approval.
 
-### Phase 6 — oral anatomy and audiovisual fusion (structural audit implemented)
+### Phase 6 — oral anatomy and audiovisual fusion (conservative fusion implemented; anatomy open)
 
 - Visible oral preview, virtual jaw/rigid teeth, tongue attachment and SDF
   collision; phone-aligned corpus.
@@ -834,11 +951,15 @@ adapters.
 - Implemented: the read-only timestamped Observation-v2 foundation specified
   above, exact source-frame stepping and regional evidence readout in the
   interactive viewer, and a hash-bound native-audio-sample/video-PTS join with
-  rational offset/drift and typed fail-closed evidence. The join is explicitly
-  not consumed by retargeting. Next implementation is richer pixel/identity
-  evidence, phone semantics, optional named `audio_visual_repair`, visible-video
-  ownership, conflict intervals, and the remaining side-by-side/overlay review
-  tools. It must not change default `video_follow` behavior.
+  rational offset/drift and typed fail-closed evidence.
+- Implemented: optional named `audio_visual_repair` with a required learned
+  source, exact display-time/decoded-audio clock joining, visible-video ownership
+  locks, globally weak-observation lower-face repair, dedicated audio tongue,
+  contact disagreement diagnostics and complete
+  revision artifacts. Default `video_follow` remains unchanged.
+- Remaining: pixel-derived regional uncertainty, time-interval conflict review,
+  trained multimodal fusion, real contradictory/occlusion fixtures,
+  side-by-side/overlay review and the physical oral system.
 - Gate: rigid-teeth residual `<0.10 mm`, oral penetration p99 `<0.10 mm` / max
   `<0.25 mm`, tongue timing within one annotated frame, no false visibility,
   and the audio-visual acceptance gates defined in the video fidelity audit.
@@ -855,6 +976,36 @@ No phase may advance on mocked unit tests alone. Each phase runs build → code
 review → defined tests → real inputs → fix → complete re-run. Failures remain
 typed artifacts; `production_validated` stays false until independent data and
 artist gates pass.
+
+### 2026-07-19 execution ledger
+
+- Baseline production-workflow safeguards were committed as `a9b48f2` before
+  this slice began.
+- Build: added the opt-in conservative audiovisual repair, exact PTS/decoded-
+  audio clock join, visual authority locks, audio contact propagation,
+  dedicated tongue track, complete revision/evidence artifacts, browser/API/
+  CLI controls and fail-closed production-readiness gate.
+- Swarm review: the audiovisual and likeness reviewers challenged mouth-local
+  uncertainty, temporary-source ownership, audio stream selection, downstream
+  contact preservation, model-weight provenance and incomplete causal-artifact
+  verification. The implementable correctness findings were fixed and
+  re-reviewed; the measurement/data gaps remain explicit blockers.
+- Focused phase gate: `79 passed, 1 skipped, 1 deselected` across audiovisual
+  fusion, A2F, audio, acting, browser/API and readiness contracts.
+- Real-input gate: the checksum-pinned CREMA-D video ran through MediaPipe,
+  Rhubarb, the explicitly resolved Claire MLX bundle, dense GNM retarget,
+  audiovisual repair, final oral/tongue validation and animated GLB export;
+  `1 passed in 22.75s`. The exact post-review rerun, including the original
+  timing-artifact gate, passed in `23.06s`.
+- Full post-review regression: `418 passed, 1 skipped, 1 dependency warning in
+  375.12s`. The single skip is the duplicate opt-in released-Claire asset test;
+  the checksum-pinned real learned video/audio route above ran and passed.
+- Honest release state: the implementation is a working candidate, not a
+  production approval. Production remains blocked on mouth-local visual
+  uncertainty or a trained multimodal model, a rights-cleared labeled A/V
+  cohort with phone/contact/tongue truth and blinded artist preference, dense
+  consented likeness/appearance ground truth, calibrated body attachment and
+  production mocap/skin export.
 
 ## Additional uses unlocked
 
@@ -890,9 +1041,23 @@ artist gates pass.
   and [MPFB Rigify workflow](https://static.makehumancommunity.org/mpfb/docs/rigging_posing/rigify.html).
 - [MediaPipe Face Landmarker VIDEO API](https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/FaceLandmarker)
   and [Google's 52-blendshape model card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Blendshape%20V2.pdf).
+- NVIDIA, [Audio2Face-3D research paper](https://arxiv.org/html/2508.16401),
+  [v3 model card](https://huggingface.co/nvidia/Audio2Face-3D-v3.0),
+  [SDK](https://github.com/NVIDIA/Audio2Face-3D-SDK) and
+  [training framework](https://github.com/NVIDIA/Audio2Face-3D-Training-Framework)
+  — the intended sequence backend and deployment boundary; licenses and GPU
+  runtime requirements must be accepted explicitly.
+- [Montreal Forced Aligner](https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner)
+  — reproducible phone-interval annotation tooling; its alignment remains an
+  evaluator input, not automatic ground truth.
 - Chen et al., [Joint Audio-Video Driven Facial Animation, ICASSP
   2018](https://research.snap.com/publications/joint-audio-video-driven-facial-animation.html)
   — phone alignment and video tracking jointly outperform either source alone.
+- Chatziagapi and Samaras, [AVFace: Towards Detailed Audio-Visual 4D Face
+  Reconstruction, CVPR 2023](https://openaccess.thecvf.com/content/CVPR2023/html/Chatziagapi_AVFace_Towards_Detailed_Audio-Visual_4D_Face_Reconstruction_CVPR_2023_paper.html)
+  — temporal audio/video fusion improves robustness when either modality is
+  insufficient, including visual occlusion; this is architectural evidence,
+  not an installed model.
 - Shi et al., [AV-HuBERT, ICLR
   2022](https://openreview.net/pdf?id=Z1Qlm11uOM) — evidence that correlated
   audio and mouth video improve learned speech representations; it is research
@@ -914,6 +1079,19 @@ artist gates pass.
   In-the-Wild Images](https://deca.is.tue.mpg.de/) — separates person detail
   from expression-dependent detail; useful research direction for
   subject-calibrated detail, not proof of current video fidelity.
+- Google, [MediaPipe Face Mesh V2 model
+  card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Face%20Mesh%20V2.pdf)
+  — monocular landmark depth is relative rather than metric identity evidence.
+- OpenCV, [ChArUco camera calibration](https://docs.opencv.org/trunk/da/d13/tutorial_aruco_calibration.html)
+  and COLMAP, [camera model guidance](https://colmap.github.io/cameras.html) —
+  retain raw observations, per-view errors/uncertainty and simple shared camera
+  models instead of trusting requester-declared calibration scores.
+- Han et al., [High-Quality Facial Geometry and Appearance Capture at Home,
+  CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/papers/Han_High-Quality_Facial_Geometry_and_Appearance_Capture_at_Home_CVPR_2024_paper.pdf)
+  and Wang et al., [3D Face Reconstruction with the Geometric Guidance of
+  Facial Part, CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/html/Wang_3D_Face_Reconstruction_with_the_Geometric_Guidance_of_Facial_Part_CVPR_2024_paper.html)
+  — primary references for controlled appearance capture and part-aware dense
+  geometry; their assets/licenses are not silently adopted here.
 - [MediaPipe repository](https://github.com/google-ai-edge/mediapipe),
   [BlazePose GHUM model card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20BlazePose%20GHUM%203D.pdf)
   and [hand-tracking model card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Hand%20Tracking%20%28Lite_Full%29%20with%20Fairness%20Oct%202021.pdf).

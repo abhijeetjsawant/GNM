@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from autoanim_gnm.api import create_app
 from autoanim_gnm.animation import probe_av
 from autoanim_gnm.artifacts import JobStore, new_ulid
+from autoanim_gnm.cli import build_parser
 
 
 CACHE = Path(os.environ.get("AUTOANIM_CACHE_DIR", ".cache/autoanim_gnm"))
@@ -97,12 +98,49 @@ def test_home_and_health(tmp_path: Path) -> None:
     assert "Learned Audio2Face motion is preferred" in home.text
     assert "Recent local runs" in home.text
     assert "mouth_aperture" in home.text
+    assert "audio_visual_repair" in home.text
+    assert "Conservative learned audio repair" in home.text
+    assert 'id="audio-visual-repair"' in home.text
+    assert 'id="audio-visual-repair" checked' not in home.text
     assert "contact attained" in home.text
     assert "baseline loss" in home.text
     health = client.get("/api/health")
     assert health.status_code == 200
     assert health.json()["status"] == "ready"
     assert health.json()["checks"]["a2f_provenance"]["ready"] is True
+
+
+def test_video_repair_is_opt_in_and_propagates_through_api_and_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parser = build_parser()
+    default = parser.parse_args(["video", "take.mp4", "--out", "jobs"])
+    enabled = parser.parse_args(
+        ["video", "take.mp4", "--out", "jobs", "--audio-visual-repair"]
+    )
+    assert default.audio_visual_repair is False
+    assert enabled.audio_visual_repair is True
+
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    observed: list[bool] = []
+
+    def fake_video(_path: Path, **kwargs: object) -> dict:
+        observed.append(bool(kwargs["audio_visual_repair"]))
+        return {"kind": "video_performance", "status": "succeeded"}
+
+    monkeypatch.setattr(app.state.service, "video", fake_video)
+    client = TestClient(app)
+    disabled = client.post(
+        "/api/video", files={"file": ("take.mp4", b"video", "video/mp4")}
+    )
+    enabled_response = client.post(
+        "/api/video",
+        files={"file": ("take.mp4", b"video", "video/mp4")},
+        data={"audio_visual_repair": "true"},
+    )
+    assert disabled.status_code == 201
+    assert enabled_response.status_code == 201
+    assert observed == [False, True]
 
 
 def test_api_and_cli_require_authorship_for_nondefault_mouth_edit(
