@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
+import cv2
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -32,6 +33,8 @@ from autoanim_gnm.video_pipeline import (
     _export_static_performance_glb,
     _final_output_retention_metrics,
     _mouth_aperture_edit_meets_production_gate,
+    _proxy_timing_error,
+    _proxy_video,
     _rapid_source_mouth_motion,
 )
 from autoanim_gnm.video_evidence import (
@@ -41,6 +44,7 @@ from autoanim_gnm.video_evidence import (
 from autoanim_gnm.video_observation import (
     OBSERVATION_V3_POLICY,
     OBSERVATION_V3_SCHEMA_VERSION,
+    OBSERVATION_V3_VIEW_SCHEMA_VERSION,
     PIXEL_DIAGNOSTIC_CONFIDENCE_CAP,
     PIXEL_OBSERVATION_SCHEMA_VERSION,
     analyze_video_pixels,
@@ -56,12 +60,160 @@ MODEL = CACHE / "face_landmarker.task"
 A2F_ASSETS = CACHE / "a2f-claire"
 CREMA_D_ANGRY = FIXTURES / "crema-d-1001-dfa-ang.flv"
 CREMA_D_ANGRY_SHA256 = "10dc3fd1f2bc8203657431598bd7dc9312462008f93d08fda786043ae6a8d2f4"
+CREMA_D_ARRAY_BASELINE_SHA256 = {
+    "source_pts": "94f984a33588f43a5488e703a81b117e0acb7bef034318c26c97afcdfe18f385",
+    "detected": "8e1bc4b6253c93705e7935f7116fba1bda3383997ca588db079d1eab68bd7c0b",
+    "landmarks_xyz": "e4b8d8890f8c14201eb3387a763eb3dbfb148b2272e669e70f26ad4359047123",
+    "blendshape_scores": "e63bde330c6a8014bbeb50916bc0721d497436048d40ab295d597cd7d29ca63b",
+    "facial_transforms": "a97a36c3de6e576b4744fd32ade491409248a3e39215ec47a0f0e053f5615dd3",
+    "pixel_confidence": "a0a1d6cbfc8d1e5f59118b3e84cef21adc31573f6f99be54a630f3a92427fdc3",
+    "pixel_reason_mask": "5dbe76c62b608df10a97353f0c749eb45ada54d9d171c3d76380867c0e95fa5c",
+    "performance_expression": "3e0f035d4e80eae83f2c946ac873167ba3918a3b64f6cb2c334b4af45586e1c6",
+    "performance_rotations": "a920f2b101606e21d4e1a469e269461b12c28b7df3e7d685946e714c6be2623b",
+}
 RETAINED_CREMA_JOB = Path(
     os.environ.get(
         "AUTOANIM_RETAINED_CREMA_JOB",
         "artifacts/jobs/01kxtx72xy7z1hbmv747hgjzdc",
     )
 )
+
+
+@pytest.mark.skipif(
+    not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+    reason="FFmpeg unavailable",
+)
+@pytest.mark.parametrize(
+    "timestamp_filter",
+    (
+        "setpts=PTS+0.1/TB",
+        "setpts=(0.1+0.1*N+0.1*gte(N\\,2)+0.1*gte(N\\,4))/TB",
+    ),
+    ids=("positive-start-cfr", "positive-start-vfr"),
+)
+def test_browser_proxy_preserves_positive_start_frame_zero(
+    tmp_path: Path,
+    timestamp_filter: str,
+) -> None:
+    source = tmp_path / "positive-start.mkv"
+    subprocess.run(
+        (
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=64x64:rate=10:duration=0.5",
+            "-vf",
+            timestamp_filter,
+            "-fps_mode",
+            "passthrough",
+            "-c:v",
+            "ffv1",
+            str(source),
+        ),
+        check=True,
+        capture_output=True,
+    )
+    source_probe = probe_video(source)
+    assert source_probe.frame_count == 5
+    assert source_probe.source_pts[0] > 0
+
+    proxy = _proxy_video(source, tmp_path / "proxy.mp4")
+    proxy_probe, error, start = _proxy_timing_error(source, proxy)
+
+    assert proxy_probe.frame_count == source_probe.frame_count
+    np.testing.assert_allclose(
+        proxy_probe.timestamps_seconds,
+        source_probe.timestamps_seconds,
+        atol=MAX_PROXY_PTS_ERROR_SECONDS,
+        rtol=0.0,
+    )
+    assert error <= MAX_PROXY_PTS_ERROR_SECONDS
+    assert abs(start) <= MAX_PROXY_PTS_ERROR_SECONDS
+
+
+@pytest.mark.skipif(
+    not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+    reason="FFmpeg unavailable",
+)
+def test_browser_proxy_preserves_audio_delay_from_positive_video_origin(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "delayed-audio.mkv"
+    subprocess.run(
+        (
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=96x64:rate=10:duration=0.5",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=0.4",
+            "-filter_complex",
+            "[0:v]setpts=PTS+0.1/TB[v];[1:a]asetpts=PTS+0.2/TB[a]",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-fps_mode",
+            "passthrough",
+            "-c:v",
+            "ffv1",
+            "-c:a",
+            "pcm_s16le",
+            str(source),
+        ),
+        check=True,
+        capture_output=True,
+    )
+    proxy = _proxy_video(source, tmp_path / "proxy.mp4")
+    proxy_probe, error, start = _proxy_timing_error(source, proxy)
+    stream_document = json.loads(
+        subprocess.run(
+            (
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type,start_time",
+                "-of",
+                "json",
+                str(proxy),
+            ),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
+    stream_starts = {
+        stream["codec_type"]: float(stream["start_time"])
+        for stream in stream_document["streams"]
+    }
+
+    assert proxy_probe.frame_count == 5
+    assert error <= MAX_PROXY_PTS_ERROR_SECONDS
+    assert abs(start) <= MAX_PROXY_PTS_ERROR_SECONDS
+    assert stream_starts["video"] == pytest.approx(0.0, abs=0.001)
+    # AAC exposes one encoder-priming packet before the intended audible
+    # content. The stream start therefore precedes the +100 ms source offset by
+    # approximately one 1024-sample frame, but must not collapse to zero.
+    assert stream_starts["audio"] > 0.05
+    assert stream_starts["audio"] == pytest.approx(
+        0.1,
+        abs=(1024.0 / 48_000.0) + 0.002,
+    )
+
+
+def _array_sha256(value: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(value).tobytes()).hexdigest()
 
 
 @pytest.mark.parametrize(
@@ -447,6 +599,21 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     )
 
     capture_track = load_capture_npz(job_dir / "capture.npz")
+    assert _array_sha256(capture_track.source_pts) == (
+        CREMA_D_ARRAY_BASELINE_SHA256["source_pts"]
+    )
+    assert _array_sha256(capture_track.detected) == (
+        CREMA_D_ARRAY_BASELINE_SHA256["detected"]
+    )
+    assert _array_sha256(capture_track.landmarks_xyz) == (
+        CREMA_D_ARRAY_BASELINE_SHA256["landmarks_xyz"]
+    )
+    assert _array_sha256(capture_track.blendshape_scores) == (
+        CREMA_D_ARRAY_BASELINE_SHA256["blendshape_scores"]
+    )
+    assert _array_sha256(capture_track.facial_transforms) == (
+        CREMA_D_ARRAY_BASELINE_SHA256["facial_transforms"]
+    )
     assert "${SOURCE}" in capture_track.provenance.ffprobe_command
     assert "${SOURCE}" in capture_track.provenance.ffmpeg_command
     assert str(job_dir) not in json.dumps(capture_track.provenance.as_dict())
@@ -454,6 +621,12 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
         job_dir / "pixel-observations.npz"
     )
     pixel_observations.validate_capture(capture_track)
+    assert _array_sha256(pixel_observations.confidence) == (
+        CREMA_D_ARRAY_BASELINE_SHA256["pixel_confidence"]
+    )
+    assert _array_sha256(pixel_observations.reason_mask) == (
+        CREMA_D_ARRAY_BASELINE_SHA256["pixel_reason_mask"]
+    )
     np.testing.assert_array_equal(
         pixel_observations.source_pts, capture_track.source_pts
     )
@@ -556,6 +729,12 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
 
     with np.load(job_dir / "capture.npz", allow_pickle=False) as capture:
         with np.load(job_dir / "performance.npz", allow_pickle=False) as performance:
+            assert _array_sha256(performance["expression"]) == (
+                CREMA_D_ARRAY_BASELINE_SHA256["performance_expression"]
+            )
+            assert _array_sha256(performance["rotations"]) == (
+                CREMA_D_ARRAY_BASELINE_SHA256["performance_rotations"]
+            )
             np.testing.assert_array_equal(
                 performance["timestamps_seconds"], capture["timestamps_seconds"]
             )
@@ -607,6 +786,90 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert viewer.status_code == 200
     assert 'mediaKind="video"' in viewer.text
     assert f"/api/jobs/{result['job_id']}/files/source-proxy.mp4" in viewer.text
+    observation_view_url = (
+        f"/api/jobs/{result['job_id']}/observation-v3-view"
+    )
+    assert observation_view_url in viewer.text
+    assert '"observation_review": "available"' in viewer.text
+    assert "drawDiagnosticOverlay" in viewer.text
+    observation_view_response = TestClient(app).get(observation_view_url)
+    assert observation_view_response.status_code == 200
+    observation_view = observation_view_response.json()
+    assert observation_view["schemaVersion"] == OBSERVATION_V3_VIEW_SCHEMA_VERSION
+    assert len(observation_view["frames"]) == 67
+    assert [frame["sourcePTS"] for frame in observation_view["frames"]] == (
+        source_probe.source_pts.tolist()
+    )
+    assert observation_view["claims"]["changesFinalGNMMotion"] is False
+    assert observation_view["claims"]["confidenceCalibrated"] is False
+    assert all(
+        frame["regions"]["mouth"]["confidence"]
+        <= PIXEL_DIAGNOSTIC_CONFIDENCE_CAP
+        for frame in observation_view["frames"]
+    )
+    review_frame_response = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/review-frames/5.png"
+    )
+    assert review_frame_response.status_code == 200
+    assert review_frame_response.headers["content-type"] == "image/png"
+    assert review_frame_response.headers["x-autoanim-frame-index"] == "5"
+    assert review_frame_response.headers["x-autoanim-proxy-sha256"] == (
+        result["artifacts"]["viewer_media"]["sha256"]
+    )
+    routed_frame = cv2.imdecode(
+        np.frombuffer(review_frame_response.content, dtype=np.uint8),
+        cv2.IMREAD_COLOR,
+    )
+    independently_decoded = subprocess.run(
+        (
+            "ffmpeg",
+            "-v",
+            "error",
+            "-i",
+            str(job_dir / "source-proxy.mp4"),
+            "-vf",
+            "select=between(n\\,4\\,6)",
+            "-frames:v",
+            "3",
+            "-pix_fmt",
+            "bgr24",
+            "-fps_mode",
+            "passthrough",
+            "-f",
+            "rawvideo",
+            "pipe:1",
+        ),
+        check=True,
+        capture_output=True,
+    ).stdout
+    independent_frames = np.frombuffer(
+        independently_decoded, dtype=np.uint8
+    ).reshape(
+        3, proxy_probe.height, proxy_probe.width, 3
+    )
+    cross_decoder_errors = np.abs(
+        independent_frames.astype(np.int16) - routed_frame.astype(np.int16)
+    )
+    selected_error = cross_decoder_errors[1]
+    assert int(np.max(selected_error)) <= 3
+    assert float(np.quantile(selected_error, 0.99)) <= 3.0
+    assert float(np.mean(selected_error)) < float(np.mean(cross_decoder_errors[0]))
+    assert float(np.mean(selected_error)) < float(np.mean(cross_decoder_errors[2]))
+    out_of_range_review_frame = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/review-frames/67.png"
+    )
+    assert out_of_range_review_frame.status_code == 400
+    assert out_of_range_review_frame.json()["code"] == "INPUT_INVALID"
+
+    proxy_path = job_dir / "source-proxy.mp4"
+    proxy_bytes = proxy_path.read_bytes()
+    proxy_path.write_bytes(b"tampered-proxy")
+    tampered_review_frame = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/review-frames/5.png"
+    )
+    assert tampered_review_frame.status_code == 404
+    assert tampered_review_frame.json()["code"] == "ARTIFACT_NOT_FOUND"
+    proxy_path.write_bytes(proxy_bytes)
 
     (job_dir / "observation-v3.json").write_text("{}\n", encoding="utf-8")
     tampered_readiness = TestClient(app).get(
@@ -615,3 +878,6 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     tampered_evidence = tampered_readiness["gates"]["performance"]["evidence"]
     assert tampered_evidence["observation_v3_artifacts_verified"] is False
     assert tampered_evidence["capture_session_artifact_verified"] is False
+    tampered_observation_view = TestClient(app).get(observation_view_url)
+    assert tampered_observation_view.status_code == 404
+    assert tampered_observation_view.json()["code"] == "ARTIFACT_NOT_FOUND"

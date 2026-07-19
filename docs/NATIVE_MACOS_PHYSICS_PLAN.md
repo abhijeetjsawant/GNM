@@ -51,15 +51,15 @@ to justify that complexity; the conditional multi-character gate remains.
 
 Phase N1's SwiftUI source, authenticated supervisor, native job library,
 diagnostics, WKWebView, release build, and headless authenticated smoke are
-implemented.  The linker-signed native executable launches and supervises the
-real backend through `scripts/run_macos_app.sh`.  The assembled `.app` does not
-pass the launch gate on this host: Developer Mode is disabled and AMFI kills
-both ad-hoc and local Apple-Development re-signed bundles with SIGKILL/137.
-The bundle remains a failed artifact rather than a claimed success.  Viable
-paths are the retained developer-executable launcher now, or a properly
-provisioned/Developer-ID signed and notarized bundle in Phase R.  Rebuilt Swift
-test bundles are now denied by the same host policy; the last pre-policy run
-passed 11 tests, and the later source still compiles in release mode.
+implemented.  On 2026-07-20 the current release executable was copied into the
+app, ad-hoc re-signed, passed strict on-disk verification and launched normally
+on this host. Its supervised authenticated source service reported ready,
+listed 20 retained jobs, reconstructed the 67-frame Observation-v3 review and
+served a manifest-bound exact proxy PNG. `swift test -c release` passed 12 tests
+across four suites. This reverses the earlier host-specific SIGKILL/137 launch
+observation; the prior failure is not current evidence. The app is still a
+development artifact rather than a distributable release: Developer-ID signing,
+notarization, sandbox/entitlement review and the device matrix remain Phase R.
 
 Phase P1 has not started.  The Rust binding is opt-in and is deliberately not
 inserted into audio/video artifacts until shared evaluated frames, protected

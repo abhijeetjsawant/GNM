@@ -200,6 +200,11 @@ def test_real_ffmpeg_decode_has_one_rgb_frame_per_exact_pts(tmp_path: Path) -> N
     )
     probe = probe_video(video)
     assert probe.frame_count == 7
+    assert (
+        probe.sample_aspect_ratio_numerator,
+        probe.sample_aspect_ratio_denominator,
+    ) == (1, 1)
+    assert probe.clean_aperture_crop == (0, 0, 0, 0)
     exact = [
         float(Fraction(int(pts - probe.source_pts[0])) * probe.time_base)
         for pts in probe.source_pts
@@ -217,6 +222,30 @@ def test_real_ffmpeg_decode_has_one_rgb_frame_per_exact_pts(tmp_path: Path) -> N
             video,
             limits=VideoDecodeLimits(max_total_decoded_pixels=96 * 64 * 6),
         )
+
+    anamorphic = tmp_path / "anamorphic.mp4"
+    subprocess.run(
+        (
+            "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=96x64:rate=2:duration=1",
+            "-vf",
+            "setsar=4/3",
+            "-pix_fmt",
+            "yuv420p",
+            str(anamorphic),
+        ),
+        check=True,
+    )
+    anamorphic_probe = probe_video(anamorphic)
+    assert (
+        anamorphic_probe.sample_aspect_ratio_numerator,
+        anamorphic_probe.sample_aspect_ratio_denominator,
+    ) == (4, 3)
 
 
 def test_capture_command_recipe_is_independent_of_job_root(tmp_path: Path) -> None:

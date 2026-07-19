@@ -33,12 +33,14 @@ from .video_evidence import REGION_LANDMARKS
 
 PIXEL_OBSERVATION_SCHEMA_VERSION = "autoanim.pixel-observation/1.0"
 OBSERVATION_V3_SCHEMA_VERSION = "autoanim.performance-evidence.v3"
+OBSERVATION_V3_VIEW_SCHEMA_VERSION = "autoanim.observation-v3-view/1.0"
 OBSERVATION_V3_POLICY = "observation_only_pixel_diagnostics_no_motion_effect_v1"
 PIXEL_ANALYZER_VERSION = "regional-pixels-v1"
 PIXEL_DIAGNOSTIC_CONFIDENCE_CAP = 0.74
 PATCH_SIZE = 48
 THUMBNAIL_SIZE = 64
 MAX_OBSERVATION_V3_BYTES = 4 * 1024 * 1024
+MAX_OBSERVATION_V3_VIEW_FRAMES = 1_800
 MAX_PIXEL_OBSERVATION_BYTES = 64 * 1024 * 1024
 MAX_PIXEL_OBSERVATION_UNCOMPRESSED_BYTES = 256 * 1024 * 1024
 
@@ -1407,12 +1409,249 @@ def write_observation_v3_summary(
     )
 
 
+def build_observation_v3_view(
+    capture: CaptureTrack,
+    observations: PixelObservationTrack,
+    verified_summary: dict[str, Any],
+    *,
+    evidence_binding: dict[str, Any],
+    display_binding: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a path-free per-frame document for exact-time evidence review.
+
+    The sealed capture, dense pixel arrays, and reconstructable v3 summary stay
+    canonical. This derived document exposes only review diagnostics; it has no
+    animation controls and cannot make provisional pixel evidence authoritative.
+    """
+
+    observations.validate_capture(capture)
+    if capture.frame_count > MAX_OBSERVATION_V3_VIEW_FRAMES:
+        raise ValueError(
+            "Observation-v3 interactive review exceeds the frame limit"
+        )
+    source = verified_summary.get("source", {}) if isinstance(verified_summary, dict) else {}
+    algorithm = (
+        verified_summary.get("algorithm", {})
+        if isinstance(verified_summary, dict)
+        else {}
+    )
+    if (
+        not isinstance(verified_summary, dict)
+        or verified_summary.get("schemaVersion") != OBSERVATION_V3_SCHEMA_VERSION
+        or verified_summary.get("policy") != OBSERVATION_V3_POLICY
+        or verified_summary.get("consumedByRetargeting") is not False
+        or source.get("sha256") != capture.provenance.source_sha256
+        or source.get("frameCount") != capture.frame_count
+        or algorithm.get("arraysSchemaVersion") != observations.schema_version
+    ):
+        raise ValueError("Observation-v3 view source is not a verified evidence contract")
+    required_artifacts = {
+        "capture",
+        "capture_jsonl",
+        "performance_evidence",
+        "pixel_observations",
+        "observation_v3",
+        "capture_session",
+    }
+    bound_artifacts = (
+        evidence_binding.get("artifacts", {})
+        if isinstance(evidence_binding, dict)
+        else {}
+    )
+    retained_source = (
+        evidence_binding.get("retainedSource", {})
+        if isinstance(evidence_binding, dict)
+        else {}
+    )
+    if (
+        not isinstance(evidence_binding, dict)
+        or evidence_binding.get("chainVerified") is not True
+        or not _valid_sha256(evidence_binding.get("manifestSha256"))
+        or not isinstance(evidence_binding.get("sealSchema"), str)
+        or not isinstance(evidence_binding.get("sealKeyId"), str)
+        or not isinstance(bound_artifacts, dict)
+        or set(bound_artifacts) != required_artifacts
+        or any(
+            not isinstance(record, dict)
+            or not isinstance(record.get("name"), str)
+            or Path(record["name"]).name != record["name"]
+            or not _valid_sha256(record.get("sha256"))
+            or not isinstance(record.get("bytes"), int)
+            or isinstance(record.get("bytes"), bool)
+            or record["bytes"] <= 0
+            for record in bound_artifacts.values()
+        )
+        or not isinstance(retained_source, dict)
+        or retained_source.get("sha256") != capture.provenance.source_sha256
+        or retained_source.get("bytes") != capture.provenance.source_bytes
+    ):
+        raise ValueError("Observation-v3 view requires a verified sealed evidence chain")
+    display_artifact = (
+        display_binding.get("artifact", {})
+        if isinstance(display_binding, dict)
+        else {}
+    )
+    expected_generation_contract = {
+        "schema_version": "autoanim.viewer-display-binding/1.0",
+        "artifact": "viewer_media",
+        "source_frame_size": [capture.width, capture.height],
+        "proxy_frame_size": [capture.width, capture.height],
+        "display_rotation_degrees": 0,
+        "sample_aspect_ratio": [1, 1],
+        "clean_aperture_crop_ltrb": [0, 0, 0, 0],
+        "source_to_display_pixel_transform": [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        "transcode_policy": (
+            "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+        ),
+    }
+    if (
+        not isinstance(display_binding, dict)
+        or display_binding.get("clockVerified") is not True
+        or display_binding.get("frameCount") != capture.frame_count
+        or display_binding.get("frameSize") != [capture.width, capture.height]
+        or display_binding.get("displayRotationDegrees") != 0
+        or display_binding.get("sampleAspectRatio") != [1, 1]
+        or display_binding.get("cleanApertureCropLTRB") != [0, 0, 0, 0]
+        or not isinstance(display_artifact, dict)
+        or display_artifact.get("logicalName") != "viewer_media"
+        or not isinstance(display_artifact.get("name"), str)
+        or Path(display_artifact["name"]).name != display_artifact["name"]
+        or not _valid_sha256(display_artifact.get("sha256"))
+        or not isinstance(display_artifact.get("bytes"), int)
+        or isinstance(display_artifact.get("bytes"), bool)
+        or display_artifact["bytes"] <= 0
+        or display_binding.get("generationContract")
+        != expected_generation_contract
+        or display_binding.get("sourceToDisplayPixelTransform")
+        != [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    ):
+        raise ValueError("Observation-v3 display proxy is not bound to capture pixels")
+    display_timestamps = display_binding.get("frameTimestampsSeconds")
+    if (
+        not isinstance(display_timestamps, list)
+        or len(display_timestamps) != capture.frame_count
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < 0.0
+            for value in display_timestamps
+        )
+        or any(
+            float(display_timestamps[index])
+            <= float(display_timestamps[index - 1])
+            for index in range(1, len(display_timestamps))
+        )
+        or max(
+            (
+                abs(float(display_timestamps[index]) - float(timestamp))
+                for index, timestamp in enumerate(capture.timestamps_seconds)
+            ),
+            default=0.0,
+        )
+        > 0.002
+        or not isinstance(display_binding.get("timestampMaxErrorSeconds"), (int, float))
+        or isinstance(display_binding.get("timestampMaxErrorSeconds"), bool)
+        or not math.isfinite(float(display_binding["timestampMaxErrorSeconds"]))
+        or not 0.0 <= float(display_binding["timestampMaxErrorSeconds"]) <= 0.002
+    ):
+        raise ValueError("Observation-v3 display proxy frame clock is invalid")
+
+    frames: list[dict[str, Any]] = []
+    for frame_index in range(capture.frame_count):
+        regions: dict[str, Any] = {}
+        for region_name in observations.region_names:
+            record = observations.region_record(frame_index, region_name)
+            confidence = record["confidence"]
+            regions[region_name] = {
+                "qualityState": record["qualityState"],
+                "reasonCodes": record["reasonCodes"],
+                "confidence": (
+                    None
+                    if confidence is None
+                    else min(float(confidence), PIXEL_DIAGNOSTIC_CONFIDENCE_CAP)
+                ),
+                "confidenceCalibrated": False,
+                "roiBoxXYXY": record["roiBoxXYXY"],
+                "roiPixelCount": record["roiPixelCount"],
+                "clippedFraction": record["clippedFraction"],
+                "focusMetric": record["focusMetric"],
+                "focusScore": record["focusScore"],
+                "lumaMean": record["lumaMean"],
+                "shadowFraction": record["shadowFraction"],
+                "highlightFraction": record["highlightFraction"],
+                "dynamicRange": record["dynamicRange"],
+                "temporalInnovation": record["temporalInnovation"],
+                "flowConsistency": record["flowConsistency"],
+                "occlusionState": "unknown",
+                "identityContinuityState": "unknown",
+            }
+        frames.append(
+            {
+                "frameIndex": frame_index,
+                "sourcePTS": int(capture.source_pts[frame_index]),
+                "timestampSeconds": float(capture.timestamps_seconds[frame_index]),
+                "detected": bool(capture.detected[frame_index]),
+                "photometricDiscontinuityCandidate": bool(
+                    observations.photometric_discontinuity_candidate[frame_index]
+                ),
+                "cutCandidate": bool(observations.cut_candidate[frame_index]),
+                "observationEpochStart": bool(
+                    observations.observation_epoch_start[frame_index]
+                ),
+                "regions": regions,
+            }
+        )
+
+    return {
+        "schemaVersion": OBSERVATION_V3_VIEW_SCHEMA_VERSION,
+        "kind": "video_performance_evidence_view",
+        "sourceMode": "video_follow",
+        "consumedByRetargeting": False,
+        "source": {
+            "sha256": capture.provenance.source_sha256,
+            "frameCount": capture.frame_count,
+            "frameSize": [capture.width, capture.height],
+            "sourceTimeBase": [
+                capture.provenance.time_base_numerator,
+                capture.provenance.time_base_denominator,
+            ],
+        },
+        "evidenceBinding": evidence_binding,
+        "display": display_binding,
+        "observation": {
+            "schemaVersion": OBSERVATION_V3_SCHEMA_VERSION,
+            "arraysSchemaVersion": observations.schema_version,
+            "policy": OBSERVATION_V3_POLICY,
+            "analyzerVersion": observations.analyzer_version,
+            "regionOrder": list(observations.region_names),
+            "reasonCodes": list(REASON_CODES),
+            "confidenceCap": PIXEL_DIAGNOSTIC_CONFIDENCE_CAP,
+            "confidenceCalibrated": False,
+        },
+        "frames": frames,
+        "claims": {
+            "derivedFromVerifiedSealedEvidence": True,
+            "changesFinalGNMMotion": False,
+            "confidenceCalibrated": False,
+            "occlusionValidated": False,
+            "identityContinuityValidated": False,
+            "productionValidated": False,
+        },
+    }
+
+
 def load_verified_observation_v3_summary(
     path: str | Path,
     *,
     pixel_observations_path: str | Path,
     capture_artifact_path: str | Path,
     expected_capture: CaptureTrack,
+    expected_observations: PixelObservationTrack | None = None,
 ) -> dict[str, Any]:
     """Verify compact JSON and reconstruct all summaries from the dense arrays."""
 
@@ -1431,7 +1670,11 @@ def load_verified_observation_v3_summary(
         raise ValueError("Observation-v3 summary must be canonical UTF-8 JSON") from exc
     pixel_path = Path(pixel_observations_path)
     capture_path = Path(capture_artifact_path)
-    observations = load_pixel_observations(pixel_path)
+    observations = (
+        expected_observations
+        if expected_observations is not None
+        else load_pixel_observations(pixel_path)
+    )
     observations.validate_capture(expected_capture)
     expected = build_observation_v3_summary(
         expected_capture,
@@ -1448,8 +1691,10 @@ def load_verified_observation_v3_summary(
 
 __all__ = [
     "OBSERVATION_V3_SCHEMA_VERSION",
+    "OBSERVATION_V3_VIEW_SCHEMA_VERSION",
     "OBSERVATION_V3_POLICY",
     "MAX_OBSERVATION_V3_BYTES",
+    "MAX_OBSERVATION_V3_VIEW_FRAMES",
     "PIXEL_ANALYZER_VERSION",
     "PIXEL_DIAGNOSTIC_CONFIDENCE_CAP",
     "PIXEL_OBSERVATION_SCHEMA_VERSION",
@@ -1457,6 +1702,7 @@ __all__ = [
     "REASON_CODES",
     "analyze_rgb_frames",
     "analyze_video_pixels",
+    "build_observation_v3_view",
     "build_observation_v3_summary",
     "load_pixel_observations",
     "load_verified_observation_v3_summary",

@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import subprocess
@@ -6,7 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 import pytest
 
-from autoanim_gnm.api import create_app
+from autoanim_gnm.api import _review_display_geometry_compatible, create_app
 from autoanim_gnm.viewer import VIEWER_VENDOR_FILES, viewer_html
 
 
@@ -67,6 +68,13 @@ def test_viewer_resolves_only_allowlisted_glb(tmp_path: Path):
     assert core_module.headers["content-type"].startswith("text/javascript")
     assert client.get("/api/viewer/vendor/0.183.2/../../result.json").status_code == 404
     assert client.get("/api/viewer/vendor/0.182.0/three.module.js").status_code == 404
+    result_path = job_dir / "result.json"
+    unsealed = json.loads(result_path.read_text(encoding="utf-8"))
+    unsealed.pop("integrity")
+    result_path.write_text(json.dumps(unsealed), encoding="utf-8")
+    blocked = client.get(f"/api/jobs/{job_id}/viewer")
+    assert blocked.status_code == 409
+    assert blocked.json()["code"] == "INTEGRITY_UNSEALED"
 
 
 def test_viewer_rejects_jobs_without_glb(tmp_path: Path):
@@ -115,10 +123,11 @@ def test_animation_viewer_uses_allowlisted_media_clock(tmp_path: Path):
     page = TestClient(app).get(f"/api/jobs/{job_id}/viewer")
     assert page.status_code == 200
     assert f"/api/jobs/{job_id}/files/normalized.wav" in page.text
-    assert "animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration)" in page.text
-    assert "else if(media.ended)status.textContent=`Finished ${time} s · media-clock synchronized`" in page.text
+    assert "animationAction.time=Math.min(Math.max(clockTime,0),animationDuration)" in page.text
+    assert "mediaKind==='video'&&presentedMediaTime!==null?presentedMediaTime:media.currentTime" in page.text
+    assert "presentationClockState==='verified'?'presented-frame synchronized':'media-clock fallback'" in page.text
     assert "else if(media.currentTime<=.01)status.textContent='Ready · media controls drive exact 3D time'" in page.text
-    assert "else status.textContent=`Paused ${time} s · media-clock synchronized`" in page.text
+    assert "else status.textContent=`Paused ${time} s · ${clockLabel}`" in page.text
     assert "animationAction.paused=true" in page.text
     assert "mixer.setTime(media.currentTime)" not in page.text
     assert 'mediaKind="audio"' in page.text
@@ -159,13 +168,19 @@ def test_video_viewer_uses_video_element_and_source_clock(tmp_path: Path):
     assert page.status_code == 200
     assert f"/api/jobs/{job_id}/files/source-proxy.mp4" in page.text
     assert (
-        f'performanceEvidenceUrl="/api/jobs/{job_id}/files/performance-evidence.json"'
+        f'"url": "/api/jobs/{job_id}/files/performance-evidence.json"'
         in page.text
     )
+    assert '"schemaVersion": "autoanim.viewer-review-layers/1.0"' in page.text
     assert 'mediaKind="video"' in page.text
+    assert (
+        '"observation_review": "unavailable: complete sealed Observation-v3 '
+        'evidence is missing"' in page.text
+    )
     assert "document.createElement(mediaKind)" in page.text
     assert "media.playsInline=true" in page.text
-    assert "animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration)" in page.text
+    assert "animationAction.time=Math.min(Math.max(clockTime,0),animationDuration)" in page.text
+    assert "mediaKind==='video'&&presentedMediaTime!==null?presentedMediaTime:media.currentTime" in page.text
     assert "animationAction.paused=true" in page.text
     assert "mixer.setTime(media.currentTime)" not in page.text
     assert '"production_status": "blocked"' in page.text
@@ -180,22 +195,61 @@ def test_viewer_optional_evidence_lane_steps_exact_source_frames() -> None:
         performance_evidence_url=(
             "/api/jobs/01abc/files/performance-evidence.json"
         ),
+        observation_v3_url="/api/jobs/01abc/observation-v3-view",
     )
     assert (
-        'performanceEvidenceUrl="/api/jobs/01abc/files/performance-evidence.json"'
+        '"url": "/api/jobs/01abc/files/performance-evidence.json"'
         in page
     )
     assert 'id="evidence-panel"' in page
+    assert '"url": "/api/jobs/01abc/observation-v3-view"' in page
+    assert '"kind": "regional_tracker_evidence"' in page
+    assert '"kind": "regional_pixel_roi_evidence"' in page
+    assert '"kind": "display_proxy_frame_review_image"' in page
+    assert "/review-frames/{frameIndex}.png" in page
+    assert "reviewLayers.find(layer=>layer.kind==='regional_tracker_evidence')" in page
+    assert 'id="evidence-diagnostic-state"' in page
+    assert "autoanim.observation-v3-view/1.0" in page
+    assert "Observation-v3 · provisional diagnostic only · never motion authority" in page
+    assert "drawDiagnosticOverlay" in page
+    assert "region.roiBoxXYXY" in page
+    assert "staticMetrics=['clippedFraction','focusMetric','focusScore','lumaMean','shadowFraction','highlightFraction','dynamicRange']" in page
+    assert "region.roiPixelCount===(box[2]-box[0])*(box[3]-box[1])" in page
+    assert "temporalExpected=roiAvailable&&Array.isArray(previousBox)&&!frame.observationEpochStart" in page
+    assert "payload.claims?.changesFinalGNMMotion!==false" in page
+    assert "payload.source?.sha256!==performanceEvidenceSource?.sha256" in page
+    assert "frame.sourcePTS!==evidence.sourcePTS" in page
     assert 'id="previous-source-frame"' in page
     assert 'id="next-source-frame"' in page
     assert "frame.sourcePTS" in page
     assert "frame.projectTick" in page
     assert "frame.timestampSeconds.toFixed(3)" in page
-    assert "const targetTime=evidenceFrames[target].timestampSeconds" in page
-    assert "media.currentTime=targetTime" in page
-    assert "animationAction.time=Math.min(Math.max(targetTime,0),animationDuration)" in page
+    assert "frameTimestampsSeconds?.[pendingEvidenceFrameIndex]" in page
+    assert "else media.currentTime=targetTime" in page
+    assert "pendingEvidenceFrameIndex=target" in page
+    assert "waiting for browser presentation" in page
+    assert "showEvidenceFrame(target)" not in page
     assert "media.pause()" in page
-    assert "evidenceIndexAtOrBefore(media.currentTime)" in page
+    assert "requestVideoFrameCallback(presentedVideoFrameLoop)" in page
+    assert "displayExactReviewFrame" in page
+    assert "const controller=new AbortController()" in page
+    assert "if(reviewFrameAbortController===controller)reviewFrameAbortController=null" in page
+    assert "if(forcePauseAfterPresentation)return" in page
+    assert "reviewFrameAbortController?.abort();reviewFrameAbortController=null;pendingEvidenceFrameIndex=-1" in page
+    assert "staticReviewInternalSeekTime=presentedMediaTime" in page
+    assert "media.addEventListener('seeking'" in page
+    assert "reviewFrameUrlTemplate&&diagnosticsReady&&media.paused&&evidenceReady" in page
+    assert "server-decoded proxy frame verified" in page
+    assert "const result=applyPresentedMediaTime(mediaTime,true)" in page
+    assert "forcePausedSeekPresentation" in page
+    assert "media.muted=true" in page
+    assert "forcePauseAfterPresentation" in page
+    assert "cancelVideoFrameCallback(videoFrameCallbackId)" in page
+    assert "presented frame verified" in page
+    assert "retrying while diagnostics follow the presented frame" in page
+    assert "evidenceIndexForPresentedMediaTime" in page
+    assert "pendingPresentationAttempt>3" in page
+    assert "Timed out waiting for the browser" in page
     assert "const requiredEvidenceRegions=['mouth','eyes','upperFace','head']" in page
     assert "MISSING · no face observation at this source frame" in page
     assert "UNKNOWN · observed tracker values are not a labeled neutral" in page
@@ -204,9 +258,57 @@ def test_viewer_optional_evidence_lane_steps_exact_source_frames() -> None:
     assert "credentials:'same-origin'" in page
     assert "cache:'no-store'" in page
     assert "payload.consumedByRetargeting!==false" in page
-    assert "animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration)" in page
+    assert "animationAction.time=Math.min(Math.max(clockTime,0),animationDuration)" in page
     assert "mixer.setTime(media.currentTime)" not in page
     assert "cdn.jsdelivr.net" not in page
+
+
+def test_viewer_rejects_evidence_layers_from_different_jobs() -> None:
+    with pytest.raises(ValueError, match="must belong to the same job"):
+        viewer_html(
+            asset_url="/api/jobs/01abc/files/performance.glb",
+            title="Evidence review",
+            media_url="/api/jobs/01abc/files/source-proxy.mp4",
+            media_type="video/mp4",
+            performance_evidence_url=(
+                "/api/jobs/01abc/files/performance-evidence.json"
+            ),
+            observation_v3_url="/api/jobs/02xyz/observation-v3-view",
+        )
+
+
+def test_review_display_geometry_preflight_is_fail_closed() -> None:
+    capture = {"width": 480, "height": 360}
+    valid = {
+        "clock_artifact": "viewer_media",
+        "display_geometry": {
+            "schema_version": "autoanim.viewer-display-binding/1.0",
+            "artifact": "viewer_media",
+            "source_frame_size": [480, 360],
+            "proxy_frame_size": [480, 360],
+            "display_rotation_degrees": 0,
+            "sample_aspect_ratio": [1, 1],
+            "clean_aperture_crop_ltrb": [0, 0, 0, 0],
+            "source_to_display_pixel_transform": [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            "transcode_policy": (
+                "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+            ),
+        },
+    }
+    assert _review_display_geometry_compatible(valid, capture)
+    for field, value in (
+        ("sample_aspect_ratio", [4, 3]),
+        ("clean_aperture_crop_ltrb", [1, 0, 0, 0]),
+        ("display_rotation_degrees", 90),
+        ("proxy_frame_size", [360, 480]),
+    ):
+        invalid = json.loads(json.dumps(valid))
+        invalid["display_geometry"][field] = value
+        assert not _review_display_geometry_compatible(invalid, capture)
 
 
 @pytest.mark.parametrize(
@@ -229,6 +331,31 @@ def test_viewer_rejects_non_allowlisted_evidence_url(evidence_url: str) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "diagnostic_url",
+    (
+        "https://example.com/api/jobs/01abc/observation-v3-view",
+        "/api/jobs/../observation-v3-view",
+        "/api/jobs/01abc/files/observation-v3.json",
+        "/api/jobs/01abc/observation-v3-view?download=1",
+    ),
+)
+def test_viewer_rejects_non_allowlisted_observation_v3_url(
+    diagnostic_url: str,
+) -> None:
+    with pytest.raises(ValueError, match="allowlisted job review URL"):
+        viewer_html(
+            asset_url="/api/jobs/01abc/files/performance.glb",
+            title="Evidence review",
+            media_url="/api/jobs/01abc/files/source-proxy.mp4",
+            media_type="video/mp4",
+            performance_evidence_url=(
+                "/api/jobs/01abc/files/performance-evidence.json"
+            ),
+            observation_v3_url=diagnostic_url,
+        )
+
+
 def test_audio_and_static_viewer_leave_optional_evidence_lane_inactive() -> None:
     audio = viewer_html(
         asset_url="/api/jobs/01abc/files/animation.glb",
@@ -241,7 +368,8 @@ def test_audio_and_static_viewer_leave_optional_evidence_lane_inactive() -> None
         title="Static",
     )
     for page in (audio, static):
-        assert "performanceEvidenceUrl=null" in page
+        assert '"layers": []' in page
+        assert "?.url??null" in page
         assert 'id="evidence-panel"' in page
         assert "if(!performanceEvidenceUrl||!media||mediaKind!=='video')return" in page
     assert 'mediaKind="audio"' in audio

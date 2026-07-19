@@ -3,19 +3,27 @@ from __future__ import annotations
 from dataclasses import fields, replace
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import warnings
 import zipfile
 
 import cv2
+from fastapi.testclient import TestClient
 import numpy as np
 import pytest
 
 import autoanim_gnm.video_observation as video_observation_module
+import autoanim_gnm.api as api_module
+import autoanim_gnm.capture_session as capture_session_module
+from autoanim_gnm.api import create_app
+from autoanim_gnm.artifacts import sha256
+from autoanim_gnm.capture_session import write_video_capture_session
 from autoanim_gnm.errors import AutoAnimError
 from autoanim_gnm.video_capture import (
     CaptureProvenance,
     CaptureTrack,
     MEDIAPIPE_BLENDSHAPE_NAMES,
+    VideoProbe,
     serialize_capture,
 )
 from autoanim_gnm.video_evidence import (
@@ -24,9 +32,11 @@ from autoanim_gnm.video_evidence import (
 )
 from autoanim_gnm.video_observation import (
     OBSERVATION_V3_POLICY,
+    OBSERVATION_V3_VIEW_SCHEMA_VERSION,
     PIXEL_DIAGNOSTIC_CONFIDENCE_CAP,
     PixelObservationTrack,
     analyze_rgb_frames,
+    build_observation_v3_view,
     build_observation_v3_summary,
     load_pixel_observations,
     load_verified_observation_v3_summary,
@@ -149,7 +159,89 @@ def _write_bound_artifacts(
         pixel_observations_bytes=arrays_path.stat().st_size,
     )
     assert capture_jsonl_path.is_file() and evidence_path.is_file()
+    write_video_capture_session(
+        tmp_path / "capture-session.json",
+        capture,
+        observations,
+        artifact_paths={
+            "capture": capture_path,
+            "capture_jsonl": capture_jsonl_path,
+            "performance_evidence": evidence_path,
+            "pixel_observations": arrays_path,
+            "observation_v3": summary_path,
+        },
+    )
     return capture_path, capture_jsonl_path, arrays_path, summary_path
+
+
+def _review_bindings(capture: CaptureTrack) -> tuple[dict, dict]:
+    artifact_names = {
+        "capture": "capture.npz",
+        "capture_jsonl": "capture.jsonl",
+        "performance_evidence": "performance-evidence.json",
+        "pixel_observations": "pixel-observations.npz",
+        "observation_v3": "observation-v3.json",
+        "capture_session": "capture-session.json",
+    }
+    generation_contract = {
+        "schema_version": "autoanim.viewer-display-binding/1.0",
+        "artifact": "viewer_media",
+        "source_frame_size": [capture.width, capture.height],
+        "proxy_frame_size": [capture.width, capture.height],
+        "display_rotation_degrees": 0,
+        "sample_aspect_ratio": [1, 1],
+        "clean_aperture_crop_ltrb": [0, 0, 0, 0],
+        "source_to_display_pixel_transform": [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        "transcode_policy": (
+            "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+        ),
+    }
+    return (
+        {
+            "chainVerified": True,
+            "manifestSha256": "c" * 64,
+            "sealSchema": "autoanim.hmac-sha256.v1",
+            "sealKeyId": "test-key",
+            "retainedSource": {
+                "sha256": capture.provenance.source_sha256,
+                "bytes": capture.provenance.source_bytes,
+            },
+            "artifacts": {
+                logical_name: {
+                    "name": name,
+                    "sha256": "d" * 64,
+                    "bytes": 1,
+                }
+                for logical_name, name in artifact_names.items()
+            },
+        },
+        {
+            "clockVerified": True,
+            "artifact": {
+                "logicalName": "viewer_media",
+                "name": "source-proxy.mp4",
+                "sha256": "e" * 64,
+                "bytes": 1,
+            },
+            "frameCount": capture.frame_count,
+            "frameSize": [capture.width, capture.height],
+            "displayRotationDegrees": 0,
+            "frameTimestampsSeconds": capture.timestamps_seconds.tolist(),
+            "sampleAspectRatio": [1, 1],
+            "cleanApertureCropLTRB": [0, 0, 0, 0],
+            "timestampMaxErrorSeconds": 0.0,
+            "generationContract": generation_contract,
+            "sourceToDisplayPixelTransform": [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+        },
+    )
 
 
 def test_missing_is_null_and_epoch_start_does_not_claim_tracker_state() -> None:
@@ -316,6 +408,194 @@ def test_compact_summary_reconstructs_and_tampering_fails(tmp_path: Path) -> Non
         )
 
 
+def test_observation_v3_view_exposes_exact_diagnostics_without_motion_authority(
+    tmp_path: Path,
+) -> None:
+    capture = _capture()
+    observations = analyze_rgb_frames(capture, _same_frames(capture.frame_count))
+    capture_path, _, arrays_path, summary_path = _write_bound_artifacts(
+        tmp_path, capture, observations
+    )
+    summary = load_verified_observation_v3_summary(
+        summary_path,
+        pixel_observations_path=arrays_path,
+        capture_artifact_path=capture_path,
+        expected_capture=capture,
+    )
+
+    evidence_binding, display_binding = _review_bindings(capture)
+    view = build_observation_v3_view(
+        capture,
+        observations,
+        summary,
+        evidence_binding=evidence_binding,
+        display_binding=display_binding,
+    )
+
+    assert view["schemaVersion"] == OBSERVATION_V3_VIEW_SCHEMA_VERSION
+    assert view["consumedByRetargeting"] is False
+    assert view["claims"] == {
+        "derivedFromVerifiedSealedEvidence": True,
+        "changesFinalGNMMotion": False,
+        "confidenceCalibrated": False,
+        "occlusionValidated": False,
+        "identityContinuityValidated": False,
+        "productionValidated": False,
+    }
+    assert view["source"]["frameSize"] == [160, 120]
+    assert [frame["sourcePTS"] for frame in view["frames"]] == [100, 101, 102, 103]
+    assert [frame["timestampSeconds"] for frame in view["frames"]] == pytest.approx(
+        [0.0, 1.0 / 30.0, 2.0 / 30.0, 3.0 / 30.0]
+    )
+    missing_mouth = view["frames"][2]["regions"]["mouth"]
+    assert missing_mouth["qualityState"] == "missing"
+    assert missing_mouth["confidence"] is None
+    assert missing_mouth["roiBoxXYXY"] is None
+    assert missing_mouth["occlusionState"] == "unknown"
+    assert view["frames"][3]["observationEpochStart"] is True
+    assert "OBSERVATION_EPOCH_START" in view["frames"][3]["regions"]["eyes"][
+        "reasonCodes"
+    ]
+    assert "controls" not in json.dumps(view).lower()
+
+    forged = dict(summary)
+    forged["consumedByRetargeting"] = True
+    with pytest.raises(ValueError, match="not a verified"):
+        build_observation_v3_view(
+            capture,
+            observations,
+            forged,
+            evidence_binding=evidence_binding,
+            display_binding=display_binding,
+        )
+
+
+def test_api_reconstructs_observation_v3_view_from_allowlisted_sealed_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"source")
+    store = app.state.service.store
+    job_id, job_dir, _, manifest = store.start("video_performance", source, {})
+    capture = replace(
+        _capture(),
+        provenance=replace(
+            _capture().provenance,
+            source_name=source.name,
+            source_sha256=sha256(source),
+            source_bytes=source.stat().st_size,
+        ),
+    )
+    observations = analyze_rgb_frames(capture, _same_frames(capture.frame_count))
+    _write_bound_artifacts(job_dir, capture, observations)
+    (job_dir / "source-proxy.mp4").write_bytes(b"proxy")
+    monkeypatch.setattr(
+        capture_session_module,
+        "load_pixel_observations",
+        lambda path: (_ for _ in ()).throw(
+            AssertionError("API must not decompress pixel observations twice")
+        ),
+    )
+    monkeypatch.setattr(
+        api_module,
+        "probe_video",
+        lambda path: VideoProbe(
+            path=Path(path),
+            width=capture.width,
+            height=capture.height,
+            codec="h264",
+            time_base_numerator=1,
+            time_base_denominator=30,
+            source_pts=np.arange(capture.frame_count, dtype=np.int64),
+            timestamps_seconds=capture.timestamps_seconds,
+            mediapipe_timestamps_ms=capture.mediapipe_timestamps_ms,
+            display_rotation_degrees=0,
+            ffprobe_command=("ffprobe",),
+        ),
+    )
+    store.finish(
+        manifest,
+        job_dir,
+        {
+            "kind": "video_performance",
+            "status": "succeeded",
+            "capture": {
+                "frames": capture.frame_count,
+                "width": capture.width,
+                "height": capture.height,
+            },
+            "artifacts": {
+                "capture": "capture.npz",
+                "capture_jsonl": "capture.jsonl",
+                "performance_evidence": "performance-evidence.json",
+                "pixel_observations": "pixel-observations.npz",
+                "observation_v3": "observation-v3.json",
+                "capture_session": "capture-session.json",
+                "viewer_media": "source-proxy.mp4",
+            },
+            "viewer": {
+                "clock_artifact": "viewer_media",
+                "display_geometry": {
+                    "schema_version": "autoanim.viewer-display-binding/1.0",
+                    "artifact": "viewer_media",
+                    "source_frame_size": [capture.width, capture.height],
+                    "proxy_frame_size": [capture.width, capture.height],
+                    "display_rotation_degrees": 0,
+                    "sample_aspect_ratio": [1, 1],
+                    "clean_aperture_crop_ltrb": [0, 0, 0, 0],
+                    "source_to_display_pixel_transform": [
+                        [1.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0],
+                        [0.0, 0.0, 1.0],
+                    ],
+                    "transcode_policy": (
+                        "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+                    ),
+                },
+            },
+        },
+        {},
+    )
+
+    response = TestClient(app).get(f"/api/jobs/{job_id}/observation-v3-view")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    payload = response.json()
+    assert payload["schemaVersion"] == OBSERVATION_V3_VIEW_SCHEMA_VERSION
+    assert payload["frames"][2]["regions"]["mouth"]["confidence"] is None
+    assert payload["claims"]["changesFinalGNMMotion"] is False
+    assert payload["claims"]["derivedFromVerifiedSealedEvidence"] is True
+    assert payload["evidenceBinding"]["chainVerified"] is True
+    assert payload["display"]["clockVerified"] is True
+    assert str(tmp_path) not in response.text
+
+    missing = TestClient(app).get(
+        "/api/jobs/not-a-video-job/observation-v3-view"
+    )
+    assert missing.status_code == 404
+
+    result_path = job_dir / "result.json"
+    mismatched = store.read(job_id)
+    mismatched["input"] = {**mismatched["input"], "sha256": "d" * 64}
+    store._write_manifest(result_path, mismatched)
+    source_rejected = TestClient(app).get(
+        f"/api/jobs/{job_id}/observation-v3-view"
+    )
+    assert source_rejected.status_code == 409
+    assert source_rejected.json()["code"] == "INTEGRITY_FAILED"
+
+    unsealed = json.loads(result_path.read_text(encoding="utf-8"))
+    unsealed.pop("integrity")
+    result_path.write_text(json.dumps(unsealed), encoding="utf-8")
+    rejected = TestClient(app).get(f"/api/jobs/{job_id}/observation-v3-view")
+    assert rejected.status_code == 409
+    assert rejected.json()["code"] == "INTEGRITY_UNSEALED"
+
+
 def test_duplicate_json_and_npz_schema_tampering_fail_closed(tmp_path: Path) -> None:
     capture = _capture()
     observations = analyze_rgb_frames(capture, _same_frames(capture.frame_count))
@@ -337,6 +617,220 @@ def test_duplicate_json_and_npz_schema_tampering_fail_closed(tmp_path: Path) -> 
     np.savez_compressed(arrays_path, **tampered)
     with pytest.raises(AutoAnimError, match="dtype"):
         load_pixel_observations(arrays_path)
+
+
+def test_observation_v3_view_rejects_oversized_take_before_dense_decode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"source")
+    store = app.state.service.store
+    job_id, job_dir, _, manifest = store.start("video_performance", source, {})
+    artifact_names = {
+        "capture": "capture.npz",
+        "capture_jsonl": "capture.jsonl",
+        "performance_evidence": "performance-evidence.json",
+        "pixel_observations": "pixel-observations.npz",
+        "observation_v3": "observation-v3.json",
+        "capture_session": "capture-session.json",
+    }
+    for name in artifact_names.values():
+        (job_dir / name).write_bytes(b"bounded")
+    store.finish(
+        manifest,
+        job_dir,
+        {
+            "kind": "video_performance",
+            "status": "succeeded",
+            "artifacts": artifact_names,
+        },
+        {},
+    )
+    monkeypatch.setattr(
+        api_module,
+        "load_capture_npz",
+        lambda path: SimpleNamespace(frame_count=1_801),
+    )
+    monkeypatch.setattr(
+        api_module,
+        "load_pixel_observations",
+        lambda path: (_ for _ in ()).throw(
+            AssertionError("oversized view must fail before dense NPZ decode")
+        ),
+    )
+
+    response = TestClient(app).get(
+        f"/api/jobs/{job_id}/observation-v3-view"
+    )
+    assert response.status_code == 413
+    assert response.json()["code"] == "LIMIT_EXCEEDED"
+
+
+def test_interactive_review_accepts_exact_1800_frame_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"source")
+    store = app.state.service.store
+    job_id, job_dir, _, manifest = store.start("video_performance", source, {})
+    artifact_names = {
+        "glb": "performance.glb",
+        "capture": "capture.npz",
+        "capture_jsonl": "capture.jsonl",
+        "performance_evidence": "performance-evidence.json",
+        "pixel_observations": "pixel-observations.npz",
+        "observation_v3": "observation-v3.json",
+        "capture_session": "capture-session.json",
+        "viewer_media": "source-proxy.mp4",
+    }
+    for name in artifact_names.values():
+        (job_dir / name).write_bytes(b"bounded")
+    display_geometry = {
+        "schema_version": "autoanim.viewer-display-binding/1.0",
+        "artifact": "viewer_media",
+        "source_frame_size": [64, 48],
+        "proxy_frame_size": [64, 48],
+        "display_rotation_degrees": 0,
+        "sample_aspect_ratio": [1, 1],
+        "clean_aperture_crop_ltrb": [0, 0, 0, 0],
+        "source_to_display_pixel_transform": [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        "transcode_policy": (
+            "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+        ),
+    }
+    store.finish(
+        manifest,
+        job_dir,
+        {
+            "kind": "video_performance",
+            "status": "succeeded",
+            "capture": {"frames": 1_800, "width": 64, "height": 48},
+            "artifacts": artifact_names,
+            "viewer": {
+                "status": "ready",
+                "clock_artifact": "viewer_media",
+                "display_geometry": display_geometry,
+            },
+        },
+        {},
+    )
+    timestamps = np.arange(1_800, dtype=np.float64) / 30.0
+    fake_capture = SimpleNamespace(
+        frame_count=1_800,
+        width=64,
+        height=48,
+        timestamps_seconds=timestamps,
+        source_pts=np.arange(1_800, dtype=np.int64),
+        provenance=SimpleNamespace(
+            source_sha256=sha256(source),
+            source_bytes=source.stat().st_size,
+        ),
+    )
+
+    class FakeObservations:
+        def validate_capture(self, capture: object) -> None:
+            assert capture is fake_capture
+
+    class FakeDecoder:
+        def __init__(self, path: str) -> None:
+            self.index = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def set(self, prop: int, value: float) -> bool:
+            self.index = int(value)
+            return True
+
+        def read(self) -> tuple[bool, np.ndarray]:
+            return True, np.zeros((48, 64, 3), dtype=np.uint8)
+
+        def get(self, prop: int) -> float:
+            return float(self.index + 1)
+
+        def release(self) -> None:
+            return None
+
+    monkeypatch.setattr(api_module, "load_capture_npz", lambda path: fake_capture)
+    monkeypatch.setattr(
+        api_module, "load_pixel_observations", lambda path: FakeObservations()
+    )
+    monkeypatch.setattr(
+        api_module, "load_verified_capture_jsonl", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        api_module, "load_verified_performance_evidence", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        api_module,
+        "load_verified_observation_v3_summary",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        api_module,
+        "load_verified_video_capture_session",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        api_module,
+        "build_observation_v3_view",
+        lambda capture, observations, summary, **kwargs: {
+            "schemaVersion": OBSERVATION_V3_VIEW_SCHEMA_VERSION,
+            "frameCount": capture.frame_count,
+        },
+    )
+    monkeypatch.setattr(
+        api_module,
+        "probe_video",
+        lambda path: VideoProbe(
+            path=Path(path),
+            width=64,
+            height=48,
+            codec="h264",
+            time_base_numerator=1,
+            time_base_denominator=30,
+            source_pts=np.arange(1_800, dtype=np.int64),
+            timestamps_seconds=timestamps,
+            mediapipe_timestamps_ms=np.rint(timestamps * 1_000).astype(np.int64),
+            display_rotation_degrees=0,
+            ffprobe_command=("ffprobe",),
+        ),
+    )
+    monkeypatch.setattr(api_module.cv2, "VideoCapture", FakeDecoder)
+    monkeypatch.setattr(
+        app.state.service,
+        "production_readiness",
+        lambda requested_job_id: {
+            "status": "blocked",
+            "passed_required_gate_count": 0,
+            "required_gate_count": 1,
+            "failures": ["qualification required"],
+            "publishable": False,
+        },
+    )
+    client = TestClient(app)
+
+    viewer = client.get(f"/api/jobs/{job_id}/viewer")
+    assert viewer.status_code == 200
+    assert f"/api/jobs/{job_id}/observation-v3-view" in viewer.text
+    assert '"observation_review": "available"' in viewer.text
+    observation = client.get(f"/api/jobs/{job_id}/observation-v3-view")
+    assert observation.status_code == 200
+    assert observation.json()["frameCount"] == 1_800
+    last_frame = client.get(f"/api/jobs/{job_id}/review-frames/1799.png")
+    assert last_frame.status_code == 200
+    assert last_frame.headers["x-autoanim-frame-index"] == "1799"
+    rejected = client.get(f"/api/jobs/{job_id}/review-frames/1800.png")
+    assert rejected.status_code == 400
+    assert rejected.json()["code"] == "INPUT_INVALID"
 
 
 def test_pixel_observation_npz_rejects_duplicate_members(tmp_path: Path) -> None:

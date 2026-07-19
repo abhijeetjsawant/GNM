@@ -51,6 +51,7 @@ from .semantic_decoder import ExpressionDecoder
 from .serialization import write_json, write_npz
 from .video_capture import (
     MONOCULAR_SCALE_CAVEAT,
+    VideoProbe,
     capture_video,
     probe_video,
     serialize_capture,
@@ -384,26 +385,31 @@ def _proxy_video(source: Path, output: Path) -> Path:
         raise AutoAnimError("DEPENDENCY_MISSING", "ffmpeg is required for video capture")
     source_probe = probe_video(source)
     # Capture time zero is the first displayable video frame, not necessarily
-    # the container's earliest audio/data timestamp.  Output-side accurate
-    # seeking discards any leading audio and makes HTMLMediaElement.currentTime
-    # share that same zero without changing display-order frame timing.
+    # the container's earliest audio/data timestamp. Rebase video PTS instead
+    # of output-seeking: seeking exactly to a positive first PTS can discard
+    # that boundary frame. Audio before the first video frame is trimmed, while
+    # later audio retains its offset from the video origin.
     first_video_timestamp = float(
         Fraction(int(source_probe.source_pts[0])) * source_probe.time_base
     )
-    trim_start = max(first_video_timestamp, 0.0)
+    audio_trim_start = max(first_video_timestamp, 0.0)
     command = (
         "ffmpeg",
         "-y",
         "-v",
         "error",
+        "-copyts",
         "-i",
         str(source),
-        "-ss",
-        f"{trim_start:.9f}",
         "-map",
         "0:v:0",
         "-map",
         "0:a?",
+        "-vf",
+        "setpts=PTS-STARTPTS",
+        "-af",
+        "atrim=start="
+        f"{audio_trim_start:.9f},asetpts=PTS-{first_video_timestamp:.9f}/TB",
         "-c:v",
         "libx264",
         "-preset",
@@ -445,7 +451,7 @@ def _longest_missing(detected: np.ndarray) -> int:
     return longest
 
 
-def _proxy_timing_error(source: Path, proxy: Path) -> tuple[int, float, float]:
+def _proxy_timing_error(source: Path, proxy: Path) -> tuple[VideoProbe, float, float]:
     """Prove that the browser proxy retains the source display-frame clock."""
 
     source_probe = probe_video(source)
@@ -477,7 +483,7 @@ def _proxy_timing_error(source: Path, proxy: Path) -> tuple[int, float, float]:
             "Browser proxy's first video frame does not start at media time zero "
             f"({proxy_video_start * 1_000:.3f} ms)",
         )
-    return proxy_probe.frame_count, error, proxy_video_start
+    return proxy_probe, error, proxy_video_start
 
 
 def _source_motion_metrics(capture) -> dict[str, float | bool]:
@@ -1329,7 +1335,8 @@ def _run_video_pipeline_impl(
         )
     serialize_performance(output, performance)
     proxy = _proxy_video(source, output / "source-proxy.mp4")
-    proxy_frames, proxy_pts_error, proxy_video_start = _proxy_timing_error(source, proxy)
+    proxy_probe, proxy_pts_error, proxy_video_start = _proxy_timing_error(source, proxy)
+    proxy_frames = proxy_probe.frame_count
 
     warnings = [
         MONOCULAR_SCALE_CAVEAT,
@@ -1821,6 +1828,30 @@ def _run_video_pipeline_impl(
             "coordinate_system": "+Y_up_+Z_forward_meters",
             "glb_covers_full_track": glb_covers_full_track,
             "reconstruction": viewer_reconstruction,
+            "display_geometry": {
+                "schema_version": "autoanim.viewer-display-binding/1.0",
+                "artifact": "viewer_media",
+                "source_frame_size": [capture.width, capture.height],
+                "proxy_frame_size": [proxy_probe.width, proxy_probe.height],
+                "display_rotation_degrees": (
+                    proxy_probe.display_rotation_degrees
+                ),
+                "sample_aspect_ratio": [
+                    proxy_probe.sample_aspect_ratio_numerator,
+                    proxy_probe.sample_aspect_ratio_denominator,
+                ],
+                "clean_aperture_crop_ltrb": list(
+                    proxy_probe.clean_aperture_crop
+                ),
+                "source_to_display_pixel_transform": [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+                "transcode_policy": (
+                    "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+                ),
+            },
         },
         "oral_validation": {
             "schema_version": oral_control_report["schema_version"],

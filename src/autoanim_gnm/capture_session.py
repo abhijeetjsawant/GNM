@@ -283,8 +283,15 @@ def load_verified_video_capture_session(
     expected_capture: CaptureTrack,
     expected_observations: PixelObservationTrack,
     artifact_paths: Mapping[str, str | Path],
+    artifact_contracts_preverified: bool = False,
 ) -> dict[str, Any]:
-    """Reconstruct a video CaptureSession from exact source-side artifacts."""
+    """Reconstruct a video CaptureSession from exact source-side artifacts.
+
+    ``artifact_contracts_preverified`` is reserved for a caller that already
+    verified the sealed artifact ledger and every nested contract in this same
+    request. It avoids retaining a second decompressed copy of the dense pixel
+    track while still reconstructing the CaptureSession document and hashes.
+    """
 
     source = Path(path)
     size = source.stat().st_size
@@ -304,32 +311,40 @@ def load_verified_video_capture_session(
         raise ValueError("CaptureSession root must be an object")
     if set(artifact_paths) != set(_VIDEO_ARTIFACT_SCHEMAS):
         raise ValueError("Capture-session artifact set does not match the video schema")
-    loaded_capture = load_capture_npz(artifact_paths["capture"])
-    if not _dataclass_values_equal(loaded_capture, expected_capture):
-        raise ValueError("CaptureSession Capture v1 artifact differs from expected capture")
-    loaded_observations = load_pixel_observations(
-        artifact_paths["pixel_observations"]
-    )
-    if not _dataclass_values_equal(loaded_observations, expected_observations):
-        raise ValueError(
-            "CaptureSession pixel observations differ from expected observations"
+    if artifact_contracts_preverified:
+        loaded_capture = expected_capture
+        loaded_observations = expected_observations
+        loaded_observations.validate_capture(loaded_capture)
+    else:
+        loaded_capture = load_capture_npz(artifact_paths["capture"])
+        if not _dataclass_values_equal(loaded_capture, expected_capture):
+            raise ValueError(
+                "CaptureSession Capture v1 artifact differs from expected capture"
+            )
+        loaded_observations = load_pixel_observations(
+            artifact_paths["pixel_observations"]
         )
-    loaded_observations.validate_capture(loaded_capture)
-    load_verified_capture_jsonl(
-        artifact_paths["capture_jsonl"], loaded_capture
-    )
-    load_verified_performance_evidence(
-        artifact_paths["performance_evidence"],
-        expected_source_sha256=loaded_capture.provenance.source_sha256,
-        expected_frame_count=loaded_capture.frame_count,
-        expected_capture=loaded_capture,
-    )
-    load_verified_observation_v3_summary(
-        artifact_paths["observation_v3"],
-        pixel_observations_path=artifact_paths["pixel_observations"],
-        capture_artifact_path=artifact_paths["capture"],
-        expected_capture=loaded_capture,
-    )
+        if not _dataclass_values_equal(loaded_observations, expected_observations):
+            raise ValueError(
+                "CaptureSession pixel observations differ from expected observations"
+            )
+        loaded_observations.validate_capture(loaded_capture)
+        load_verified_capture_jsonl(
+            artifact_paths["capture_jsonl"], loaded_capture
+        )
+        load_verified_performance_evidence(
+            artifact_paths["performance_evidence"],
+            expected_source_sha256=loaded_capture.provenance.source_sha256,
+            expected_frame_count=loaded_capture.frame_count,
+            expected_capture=loaded_capture,
+        )
+        load_verified_observation_v3_summary(
+            artifact_paths["observation_v3"],
+            pixel_observations_path=artifact_paths["pixel_observations"],
+            capture_artifact_path=artifact_paths["capture"],
+            expected_capture=loaded_capture,
+            expected_observations=loaded_observations,
+        )
     expected = build_video_capture_session(
         loaded_capture,
         loaded_observations,

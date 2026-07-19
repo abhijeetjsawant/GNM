@@ -8,12 +8,13 @@ merely that an output looks plausible.
 
 ## Executive decision
 
-Build AutoAnim as a **local-first production service with a browser workspace,
-a terminal interface, and DCC interchange**:
+Build AutoAnim as a **local-first native macOS host with an authenticated
+WKWebView review lane, a terminal interface, and DCC interchange**:
 
-- The browser is the review/editor surface: character library, synchronized
-  source media and 3D playback, quality overlays, version selection, and job
-  provenance.
+- The implemented SwiftUI host owns the job library, service supervision and
+  diagnostics. Its authenticated WKWebView is the current portable review
+  surface for synchronized media/GLB playback and evidence; the later raw-GNM
+  correction viewport is `MTKView`, not a claim about the current app.
 - The local Python service owns biometric assets, native Audio2Face inference,
   MediaPipe tracking, GNM evaluation, deterministic compilation, signing, and
   export. Raw performer media does not need to leave the workstation.
@@ -23,6 +24,11 @@ a terminal interface, and DCC interchange**:
 - OpenUSD/UsdSkel is the proposed editable master for a future body-attached
   asset; glTF/VRM is the browser/runtime delivery form; Blender/Rigify is the
   first open artist round-trip.
+- The implemented Rust `surface_secondary_candidate` is an optional additive
+  target-relative physics candidate. CPU/Rayon passed its retained benchmark;
+  SIMD promotion failed honestly and Metal/wgpu remains conditional. Physics
+  cannot alter authoritative articulation/contact. See
+  `docs/NATIVE_MACOS_PHYSICS_PLAN.md` for its P1 integration blockers.
 
 This is a better fit than a cloud-only web app because the current learned
 audio path is an Apple-Silicon native executable, facial inputs are biometric,
@@ -580,8 +586,9 @@ The exact-timing transport is stronger than the semantic evidence:
   exposes a dedicated `tongueOut` coefficient; this makes sensor/model/schema
   capability negotiation a required ingest feature, not a reason to fabricate
   tongue motion in the current RGB lane.
-- The browser uses source media time as the GNM animation clock. Observation-v2
-  jobs now expose exact previous/next source-frame stepping, raw PTS, the 48 kHz
+- The viewer uses source media time as the GNM animation clock. Observation-v2
+  jobs now expose exact previous/next source-timed stepping rendered from the
+  sealed lossy display proxy, raw PTS, the 48 kHz
   project tick, and mouth/eyes/upper-face/head confidence with explicit
   missing/unknown state. The source video is still a small reference panel; no
   locked source/output camera, landmark overlay, confidence curves, gaze rays,
@@ -691,9 +698,15 @@ Deliver the phase in four build/review/test loops:
    below 0.75, and occlusion/identity/neutrality stay unknown. The exact source
    is re-decoded, so the contract explicitly does not claim the pixels are the
    original MediaPipe ingress buffers. Flat or insufficient flow/correlation is
-   unavailable, never numeric zero or perfect consistency. Remaining work is
-   labeled calibration, identity continuity, same-buffer Capture v2 and viewer
-   diagnostics. Test
+   unavailable, never numeric zero or perfect consistency. The derived viewer
+   document now reconstructs its fields from the sealed chain, verifies the
+   retained input and square-pixel/no-crop proxy binding, and caps interactive
+   review at 1,800 frames. The viewer records why the lane is unavailable.
+   Display-proxy frames require square pixels, no crop/rotation and an identity
+   geometry transform; PNG decode is currently globally serialized and returns
+   `BUSY` rather than queueing. Longer valid takes remain renderable but need a
+   future windowed evidence API. Remaining work is labeled calibration,
+   identity continuity and same-buffer Capture v2. Test
    variable-frame-rate, B-frame, rotation, blur, occlusion,
    multiple-face, cut and missing-frame fixtures; exact source PTS must remain
    bit-identical.
@@ -714,13 +727,20 @@ Deliver the phase in four build/review/test loops:
    neutral-face-speech, dubbed-offset and deliberate mouth-occlusion real
    fixtures, and comparison with a trained audiovisual model. High-confidence
    video controls must remain bit-identical in all of them.
-4. **Artist review viewer (foundation implemented):** the viewer now steps the
-   source and paused GLB action to the exact Observation-v2 timestamp and shows
-   PTS/tick/time, regional confidence, and missing/unknown state. Remaining:
-   synchronized side-by-side and overlay modes, locked camera, mouth/tongue
-   close-up, region/confidence/control curves, gaze rays, and jump-to-conflict
-   flags. Browser tests must compare requested PTS with the sampled GLB frame
-   and capture deterministic screenshots of flagged real frames.
+4. **Artist review viewer (foundation implemented):** the viewer shows
+   Observation-v2 tracker evidence and uncalibrated Observation-v3 pixel
+   diagnostics separately, overlays verified regional ROIs on the proxy, and
+   steps the paused GLB action with a manifest-bound server-decoded display-order
+   proxy frame. That proves proxy-frame index/hash/geometry, not retained-source
+   pixel identity.
+   Playback follows `requestVideoFrameCallback`; browsers without that callback
+   are labeled media-clock fallback rather than exact presentation. The retained
+   CREMA-D take passed forward/backward exact steps in WebKit. Remaining:
+   automated WebKit assertions, synchronized side-by-side modes, locked camera,
+   mouth/tongue close-up, region/confidence/control curves, gaze rays, and
+   jump-to-conflict flags. The production native workspace later evaluates raw
+   GNM controls in `MTKView`; this portable viewer remains the near-term WKWebView
+   review lane.
 5. **Ground-truth acceptance:** a consented calibration take with a real
    neutral segment, phone/contact annotation, known gaze targets and calibrated
    head pose, plus a separate natural acting take and occlusion stress take.
@@ -1034,7 +1054,7 @@ adapters.
 - Implemented: all-frame control and GLB structural reports for lips, tongue
   and teeth, including transfer activity, contact, proximity and reconstruction.
 - Implemented: the read-only timestamped Observation-v2 foundation specified
-  above, exact source-frame stepping and regional evidence readout in the
+  above, exact display-proxy stepping bound to source PTS and regional evidence readout in the
   interactive viewer, and a hash-bound native-audio-sample/video-PTS join with
   rational offset/drift and typed fail-closed evidence.
 - Implemented: additive pixel-derived Observation v3 and a deterministic
@@ -1117,12 +1137,22 @@ artist gates pass.
   1 dependency warning in 483.17s`. The only skip remains the duplicate opt-in
   released-Claire asset test; the mandatory retained learned routes and
   checksum-pinned CREMA-D video route ran and passed.
-- Final production motion-clock/ABI regression: `175` focused cross-pipeline
+- Revision `0ad5cb9` production motion-clock/ABI regression: `175` focused cross-pipeline
   tests passed, followed by `529 passed, 1 skipped, 1 dependency warning in
-  519.40s` on the exact final tree. The skip is the optional duplicate released-
+  519.40s` on that revision's final tree. The skip is the optional duplicate released-
   Claire asset test. Retained real audio, both v3 delivery clocks, CREMA-D video,
   audiovisual repair v2, acting/readiness, long rational clocks and native
   provenance-version assertions all ran.
+- 2026-07-20 Observation-v3 viewer/proxy hardening: `61` focused
+  video/capture/viewer tests passed, followed by `542 passed, 1 skipped, 1
+  dependency warning in 529.22s` for the complete Python tree. Positive-start
+  CFR/VFR proxy fixtures, the 1,800/1,801 interactive boundary, retained
+  CREMA-D, independent FFmpeg frame selection, multiview, tongue/oral and Rust
+  physics paths ran. Release Swift compilation passed `12` tests across four
+  suites; the reassembled ad-hoc bundle launched with a ready authenticated
+  service and served the retained Observation-v3 review. WebKit play/seek/
+  fallback cases passed manual real-engine checks but are not yet a committed
+  automated WKWebView release gate.
 - Honest release state: the implementation is a working candidate, not a
   production approval. Production remains blocked on mouth-local visual
   uncertainty or a trained multimodal model, a rights-cleared labeled A/V

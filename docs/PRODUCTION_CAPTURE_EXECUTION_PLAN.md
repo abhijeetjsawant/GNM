@@ -6,7 +6,7 @@ Date: 2026-07-19
 
 GNM revision: `3de70dfca5f3244620f44103c24b7cedc0dcb8b6`
 
-AutoAnim baseline: `f16a2656dea7266d68828ed602d14587509f8b57`
+AutoAnim baseline: `0ad5cb95ecfe932b2046b7fbdc7df4ba3b82e86c`
 
 ## Implementation ledger
 
@@ -48,13 +48,51 @@ AutoAnim baseline: `f16a2656dea7266d68828ed602d14587509f8b57`
   CaptureSession structural verification cannot approve production: its current
   unbound subject, unknown neutrality/identity and `production_validated=false`
   claims remain a separate required failure.
-- **Final verification — green.** The hardened slice passed `55` focused
-  capture/evidence/readiness/real-CREMA tests and the complete repository passed
-  `492 passed, 1 skipped, 1 dependency warning in 483.17s`. The skip is the
-  duplicate opt-in released-Claire asset test; retained learned routes and the
-  checksum-pinned real video path ran.
-- **E0 as a whole — not complete.** Frozen multiview/video evidence baselines
-  and the Observation-v3 viewer diagnostics remain before advancing to A1.
+  Interactive pixel diagnostics are deliberately narrower than capture: at
+  most 1,800 frames, with an identity-mapped H.264 display proxy, square pixels,
+  zero rotation and no clean-aperture crop. The viewer exposes the reason when
+  that lane is unavailable. Exact proxy-frame PNG decode is currently one
+  fail-fast application-wide operation; a per-job queue/cache belongs to the
+  native resource scheduler before concurrent production review.
+- **Prior E0 verification checkpoint — green.** Before the viewer slice below,
+  the hardened capture/evidence/readiness implementation passed `55` focused
+  tests and the then-complete repository passed `492 passed, 1 skipped, 1
+  dependency warning in 483.17s`. Those numbers describe that checkpoint, not
+  the current uncommitted tree. The current-tree result is recorded only after
+  the final regression below completes.
+- **E0 frozen-baseline and viewer slice — implemented and regression-green.**
+  The real checksum-pinned 67-frame CREMA-D path now freezes exact
+  source PTS, detection, 478-landmark, blendshape, facial-transform,
+  Observation-v3 confidence/reason and final GNM expression/rotation array
+  hashes. A manual two-run replay reproduced all 50 numeric capture,
+  observation and performance arrays exactly; the committed gate freezes the
+  named capture, Observation-v3 and final-motion hash groups that would expose
+  clock or retargeting drift. The calibrated synthetic multiview oracle
+  separately freezes shared identity, nuisance, held-out and fitted-landmark
+  hash groups; it remains synthetic evidence, not proof of a real person's
+  likeness.
+  A derived `autoanim.observation-v3-view/1.0` endpoint reconstructs every
+  displayed field from sealed capture/NPZ/summary artifacts. The viewer binds
+  it to the older exact-PTS performance evidence, draws regional ROIs over the
+  source video, reports tracker and pixel diagnostics separately, and labels
+  provisional pixel scores as non-authoritative. Paused steps use a bounded
+  manifest-bound PNG endpoint decoded by display-order proxy frame index;
+  these are lossy CRF-18 proxy pixels, not retained-source pixel identity.
+  Playback uses
+  `requestVideoFrameCallback` and maps its media time to the nearest verified
+  proxy timestamp. A real 67-frame CREMA-D take passed forward/backward exact
+  stepping, paused native-control seek, delayed-request/play recovery,
+  callback-unavailable fallback and responsive WebKit inspection. Positive
+  first-PTS CFR and VFR fixtures retain all frames after proxy rebasing, and the
+  1,800/1,801 interactive boundary is gated through the viewer/API/final-frame
+  paths. Final verification on 2026-07-20: `61` focused video/review tests;
+  `542 passed, 1 skipped, 1 dependency warning in 529.22s` for the complete
+  Python repository; and `12` release Swift tests across four suites. The
+  ad-hoc signed native bundle launched its supervised authenticated service,
+  reported ready, listed the retained jobs, reconstructed the 67-frame review
+  document and served exact proxy frame 16. The remaining WebKit automation
+  gap is tracked as a release-workspace test requirement, not represented as a
+  completed automated gate.
 
 ## Decision summary
 
@@ -81,6 +119,158 @@ The selected architecture has three evidence-first solves:
 The native application becomes the review and correction workspace. Portable
 GLB/Three.js remains an interchange preview; the production native viewport
 will eventually evaluate raw GNM controls and revisions directly with Metal.
+
+## 2026-07-19 swarm research synthesis
+
+Three independent repo audits covered identity/material capture, facial-video
+performance and the native review workflow. Their shared conclusion is that
+AutoAnim's strongest assets are exact clocks, immutable provenance, editable
+GNM topology and geometry-level safety. The weak evidence is upstream model
+fidelity and real qualification. The application must therefore preserve a
+preview lane and build a separately gated offline production lane rather than
+renaming the current output.
+
+### Smooth audio-driven performance
+
+More generic low-pass filtering cannot create production coarticulation. The
+current v2.3 source predicts local poses, while the post-conditioner and
+geometry projection can only remove variation. The selected production design
+is:
+
+1. Audio2Face-3D v3 as a version-pinned, separately authenticated NVIDIA-worker
+   prior. NVIDIA's published architecture adds HuBERT, diffusion and recurrent
+   sequence state, and emits face, tongue, jaw and eye controls. The current
+   ABI/clock integration is transport-ready, but no genuine v3 worker result or
+   paired perceptual qualification exists. See the
+   [Audio2Face-3D paper](https://arxiv.org/abs/2508.16401),
+   [official SDK](https://github.com/NVIDIA/Audio2Face-3D) and
+   [v3 model card](https://huggingface.co/nvidia/Audio2Face-3D-v3.0).
+2. Independently reviewed phone onset/apex/release and contact evidence rather
+   than LLM-authored phoneme timing. Phrase-level LLM acting remains an editable
+   additive upper-face/gaze/head/body proposal.
+3. A whole-utterance GNM trajectory solve around the learned prior with
+   phone-conditioned anticipation/carry-over, contact, lip ordering, anatomical
+   bounds and region-specific velocity/acceleration/jerk terms. Contact anchors
+   bypass generic smoothing.
+4. Paired blind qualification on the same identity, audio, renderer and
+   retarget. Structural smoothness cannot override intelligibility, contact,
+   event timing, oral artifacts or animator preference.
+
+Speech does not determine a single correct blink, gaze or emotional acting
+track. [EmoTalk](https://openaccess.thecvf.com/content/ICCV2023/html/Peng_EmoTalk_Speech-Driven_Emotional_Disentanglement_for_3D_Face_Animation_ICCV_2023_paper.html)
+supports separating content, emotion, identity and intensity, while
+[probabilistic speech-driven synthesis](https://openaccess.thecvf.com/content/CVPR2024/html/Yang_Probabilistic_Speech-Driven_3D_Facial_Motion_Synthesis_New_Benchmarks_Methods_and_CVPR_2024_paper.html)
+shows why the non-speech performance is one-to-many. AutoAnim therefore never
+lets a deterministic acoustic estimate masquerade as captured acting.
+
+### Person-specific geometry and appearance
+
+The product must expose capture tiers rather than one "photo to perfect head"
+button:
+
+| Tier | Defensible output | Evidence still unavailable |
+| --- | --- | --- |
+| Single photo | preview GNM initializer with visible/hidden uncertainty | metric depth, rear anatomy, measured pores |
+| Guided 5–12 view | shared-identity production candidate with calibrated cameras, scale and untouched held-out views | eye/dental modes without close-ups; scan truth unless separately captured |
+| Polarized multiview/multilight | measured diffuse/specular/normal/roughness candidate with per-texel provenance | pores beyond capture MTF; subsurface unless explicitly measured |
+| Scan/light stage | reference geometry/material tier plus artist cleanup | automatic production approval |
+
+The next solver retains the sparse 68-point path only as an initializer, then
+adds versioned 478-to-GNM correspondences, semantic masks, silhouette, dense
+features/flow, robust linear-RGB photometric residuals, per-view expression and
+lighting nuisance, covariance and fixed-camera held-out evaluation. Head modes
+`0:170` are solved from face/head evidence; eyeball and teeth modes remain zero
+without their own captures. A separately versioned neutral corrective and
+tangent-space detail preserve identity outside GNM's low-frequency PCA span.
+
+Learned single-image systems are useful priors and research comparators, not a
+commercial dependency choice: public DECA and MICA releases carry
+non-commercial/model-data constraints. The [NoW metrical benchmark](https://now.is.tue.mpg.de/metricalevaluation.html)
+shows why learned priors help while still leaving measurable millimetre-scale
+error. [FLAME 2023 Open licensing](https://flame.is.tue.mpg.de/modellicense.html)
+is materially different from older model releases, so every provider must bind
+its exact model and asset license. A commercially permissive geometric option
+is [COLMAP](https://colmap.github.io/license.html), with each optional dependency
+reviewed separately.
+
+For physical skin, RGB baking remains `captured_appearance`, not albedo.
+[PolFace](https://dazinovic.github.io/polface/) demonstrates a practical
+two-polarization smartphone route to high-resolution diffuse, specular and
+normal maps; light-stage work such as
+[Digital Emily](https://vgl.ict.usc.edu/Research/DigitalEmily/) supports the
+same cross/parallel-polarization separation. AutoAnim will tile 4K/8K masters,
+preserve measured/inferred/inpainted/generic texel labels and qualify pores by
+physical sampling/frequency evidence, never by filename dimensions.
+
+### Video-follow performance
+
+MediaPipe remains the responsive Mac preview/fallback, not the production
+truth. Its blendshape model is designed for front-facing mobile-AR conditions
+and its own [model card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Blendshape%20V2.pdf)
+warns about lighting, motion, overlap and jitter. Exact transport of those
+coefficients proves reproducibility, not agreement with the performer.
+
+The selected production path introduces a provider-neutral visual performance
+track with exact PTS, identity/camera/expression/jaw/eye estimates, dense
+landmarks or mesh samples, regional covariance, reprojection/flow residuals,
+occlusion and shot/identity epochs. An offline provider may use commercially
+cleared equivalents of research systems such as
+[SMIRK](https://github.com/georgeretsi/smirk),
+[MICA](https://github.com/Zielon/MICA) or the
+[metrical tracker](https://github.com/Zielon/metrical-tracker), but the ABI is
+the stable product boundary; public research weights are not assumed shippable.
+
+Fusion happens in screen/mesh geometry, never by averaging unrelated model
+coefficient spaces. High-confidence video owns visible head, gaze, asymmetry,
+upper face, lip contour and contact. Audio supplies an uncertain lower-face
+prior and hidden tongue candidate only where visual evidence is weak. A
+content-sync estimator separately detects dubbed/shifted audio; container-clock
+agreement is not lip-sync evidence. Ordinary 24–30 fps video can support subtle
+expression candidates, while a microexpression claim requires high-frame-rate,
+short-exposure capture and FACS onset/apex/offset truth.
+
+### Native review product
+
+The near-term production workspace keeps the existing Three.js renderer inside
+the authenticated WKWebView and builds native SwiftUI workflow, comparison,
+evidence, review and export around it. An immediate Metal rewrite would recreate
+glTF loading, materials, animation and camera behavior before fixing the larger
+artist-workflow gap. Three's
+[GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html) already covers the
+required glTF material extensions; a later
+[MTKView](https://developer.apple.com/documentation/metalkit/mtkview) raw-GNM
+viewport remains appropriate once the review contract passes.
+
+The production workspace will add source/3D/compare panes, reconstruction overlays,
+held-out multiview filmstrips, texture confidence/provenance/material channels,
+audio/video timelines, warning bookmarks, exact frame/phone navigation,
+baseline-versus-revision A/B, scoped immutable reviews and hash-bound export
+packages. Phase N2 native/JavaScript messages will use a bounded versioned bridge through
+[WKUserContentController](https://developer.apple.com/documentation/webkit/wkusercontentcontroller).
+Machine readiness and human approval remain independent; any artifact hash
+change invalidates the corresponding review.
+
+### Execution order and stop/go rules
+
+After E0 closes, work proceeds in four parallel evidence tracks with one shared
+release review:
+
+1. **A1/A2:** reviewed phone-event qualification, then the event-aware GNM
+   trajectory optimizer. Do not call audio production-quality before paired
+   perceptual gates pass.
+2. **I1/I2:** dense correspondences and a calibrated real same-subject fixture,
+   then joint identity/camera/silhouette/photometric fitting. Do not begin
+   generative hero skin as a substitute for measured likeness.
+3. **V2:** VisualTrack provider ABI, geometry-domain bidirectional sequence
+   solve and content-sync evidence. Observation-v3 remains diagnostic-only
+   until calibrated regional confidence and authority invariants pass.
+4. **N2/U1:** native review-bundle/bridge, reconstruction and performance A/B,
+   scoped reviews and export. Keep the WKWebView renderer until exact-clock,
+   context-recovery, accessibility and job-switch resource gates pass.
+
+Each track keeps the strict build → independent review → synthetic and real
+tests → fix → complete regression loop. No phase advances on a metric whose
+ground truth is produced by the same tracker that drives the output.
 
 ## Current measured baseline
 
@@ -289,6 +479,14 @@ The current Three.js viewer remains a portable GLB inspector. Native production
 review moves to raw GNM evaluation in `MTKView` so morph compression does not
 hide or introduce control errors.
 
+The implemented Rust `surface_secondary_candidate` remains a separately gated,
+additive target-relative physics layer. Its CPU/Rayon benchmark passed, while
+the SIMD promotion gate did not and no Metal/wgpu backend is claimed. Phase P1
+must first bind shared evaluated frames, protect lips/jaw/teeth/tongue contact,
+and retain reports; physics may never become lipsync or acting authority. The
+execution evidence and blockers are maintained in
+`docs/NATIVE_MACOS_PHYSICS_PLAN.md`.
+
 ## Phased implementation and gates
 
 Every phase uses the same strict loop: build, code/claim review, focused tests,
@@ -402,9 +600,11 @@ Gate:
 
 ### Phase V1 - Observation v3 and viewer diagnostics
 
-Status: pixel-evidence/CaptureSession foundation implemented; calibrated
-classification, same-buffer detector ingress, adversarial real capture set and
-viewer timeline/overlay remain.
+Status: pixel-evidence/CaptureSession foundation and exact sealed display-proxy
+frame plus source-timed ROI overlay are implemented. The proxy is lossy and is
+not represented as source-pixel identity. The confidence timeline, calibrated
+classification, same-buffer detector ingress and adversarial real capture set
+remain.
 
 Re-read pixels and emit regional crop resolution, blur/exposure, flow
 consistency, landmark innovation, cut candidates, observation epochs and reason
@@ -416,7 +616,7 @@ Gate:
 - existing PTS and retarget arrays are byte-identical;
 - an occluded/blurred mouth cannot reduce a clear brow's confidence;
 - no labeled bad region enters the provisional strong tier >=0.75;
-- exact source-frame stepping and viewer readouts pass;
+- exact display-proxy frame stepping bound to source PTS and viewer readouts pass;
 - retained CREMA-D and adversarial synthetic videos pass.
 
 ### Phase V2 - regional fusion and direct temporal tracking

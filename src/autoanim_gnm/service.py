@@ -614,6 +614,7 @@ class ApplicationService:
                     pixel_observations_path=video_paths["pixel_observations"],
                     capture_artifact_path=video_paths["capture"],
                     expected_capture=capture_track,
+                    expected_observations=pixel_observations,
                 )
                 observation_v3_artifacts_verified = source_input_verified
                 capture_session = load_verified_video_capture_session(

@@ -3,18 +3,33 @@
 from __future__ import annotations
 
 import hashlib
+from fractions import Fraction
 from pathlib import Path
 import re
 import secrets
 import tempfile
 import threading
 
+import cv2
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .errors import AutoAnimError
 from .artifacts import sha256
+from .capture_session import load_verified_video_capture_session
 from .service import ApplicationService
+from .video_capture import (
+    load_capture_npz,
+    load_verified_capture_jsonl,
+    probe_video,
+)
+from .video_evidence import load_verified_performance_evidence
+from .video_observation import (
+    MAX_OBSERVATION_V3_VIEW_FRAMES,
+    build_observation_v3_view,
+    load_pixel_observations,
+    load_verified_observation_v3_summary,
+)
 from .viewer import VIEWER_THREE_VERSION, VIEWER_VENDOR_FILES, viewer_html
 
 
@@ -65,6 +80,51 @@ STATUS_BY_CODE = {
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "testserver"})
 _HEX_TOKEN = re.compile(r"[0-9a-fA-F]+\Z")
+_IDENTITY_PIXEL_TRANSFORM = [
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0],
+]
+
+
+def _review_display_geometry_compatible(
+    viewer_contract: object,
+    capture_summary: object,
+) -> bool:
+    """Return whether a job can safely expose display-proxy ROI review."""
+
+    if not isinstance(viewer_contract, dict) or not isinstance(
+        capture_summary, dict
+    ):
+        return False
+    width = capture_summary.get("width")
+    height = capture_summary.get("height")
+    if (
+        not isinstance(width, int)
+        or isinstance(width, bool)
+        or width <= 0
+        or not isinstance(height, int)
+        or isinstance(height, bool)
+        or height <= 0
+    ):
+        return False
+    return (
+        viewer_contract.get("clock_artifact") == "viewer_media"
+        and viewer_contract.get("display_geometry")
+        == {
+            "schema_version": "autoanim.viewer-display-binding/1.0",
+            "artifact": "viewer_media",
+            "source_frame_size": [width, height],
+            "proxy_frame_size": [width, height],
+            "display_rotation_degrees": 0,
+            "sample_aspect_ratio": [1, 1],
+            "clean_aperture_crop_ltrb": [0, 0, 0, 0],
+            "source_to_display_pixel_transform": _IDENTITY_PIXEL_TRANSFORM,
+            "transcode_policy": (
+                "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+            ),
+        }
+    )
 
 
 def _error_response(error: AutoAnimError) -> JSONResponse:
@@ -212,6 +272,7 @@ def create_app(
         character_root=character_root,
     )
     operation_lock = threading.Lock()
+    review_decode_lock = threading.Lock()
     app.state.service = service
 
     if session_digest is not None:
@@ -727,7 +788,7 @@ def create_app(
     def artifact(job_id: str, name: str):
         try:
             path = service.store.artifact(job_id, name)
-            manifest = service.store.read(job_id)
+            manifest = service.store.require_sealed(job_id)
             media_type = next(
                 (
                     entry.get("media_type")
@@ -742,10 +803,359 @@ def create_app(
         except AutoAnimError as exc:
             return _error_response(exc)
 
+    @app.get("/api/jobs/{job_id}/observation-v3-view")
+    def observation_v3_view(job_id: str):
+        """Reconstruct a bounded viewer document from sealed video evidence."""
+
+        try:
+            manifest = service.store.require_sealed(job_id)
+            if (
+                manifest.get("kind") != "video_performance"
+                or manifest.get("status") != "succeeded"
+            ):
+                raise FileNotFoundError(job_id)
+            artifacts = manifest.get("artifacts", {})
+            if not isinstance(artifacts, dict):
+                raise ValueError("Sealed artifact ledger is invalid")
+
+            def artifact_path(logical_name: str) -> Path:
+                entry = artifacts.get(logical_name)
+                if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+                    raise FileNotFoundError(logical_name)
+                return service.store.artifact(job_id, entry["name"])
+
+            chain_names = (
+                "capture",
+                "capture_jsonl",
+                "performance_evidence",
+                "pixel_observations",
+                "observation_v3",
+                "capture_session",
+            )
+            paths = {name: artifact_path(name) for name in chain_names}
+            capture_path = paths["capture"]
+            pixels_path = paths["pixel_observations"]
+            summary_path = paths["observation_v3"]
+            capture = load_capture_npz(capture_path)
+            if capture.frame_count > MAX_OBSERVATION_V3_VIEW_FRAMES:
+                raise AutoAnimError(
+                    "LIMIT_EXCEEDED",
+                    "Interactive Observation-v3 review is limited to "
+                    f"{MAX_OBSERVATION_V3_VIEW_FRAMES} frames",
+                )
+            observations = load_pixel_observations(pixels_path)
+            input_ledger = manifest.get("input")
+            retained_inputs = [
+                path
+                for path in service.store.job_dir(job_id).glob("input.*")
+                if path.is_file()
+            ]
+            if (
+                not isinstance(input_ledger, dict)
+                or len(retained_inputs) != 1
+                or retained_inputs[0].stat().st_size != input_ledger.get("bytes")
+                or sha256(retained_inputs[0]) != input_ledger.get("sha256")
+                or capture.provenance.source_sha256 != input_ledger.get("sha256")
+                or capture.provenance.source_bytes != input_ledger.get("bytes")
+            ):
+                raise ValueError("Capture source does not match the sealed retained input")
+            observations.validate_capture(capture)
+            load_verified_capture_jsonl(paths["capture_jsonl"], capture)
+            load_verified_performance_evidence(
+                paths["performance_evidence"],
+                expected_source_sha256=capture.provenance.source_sha256,
+                expected_frame_count=capture.frame_count,
+                expected_capture=capture,
+            )
+            summary = load_verified_observation_v3_summary(
+                summary_path,
+                pixel_observations_path=pixels_path,
+                capture_artifact_path=capture_path,
+                expected_capture=capture,
+                expected_observations=observations,
+            )
+            load_verified_video_capture_session(
+                paths["capture_session"],
+                expected_capture=capture,
+                expected_observations=observations,
+                artifact_paths={
+                    name: paths[name]
+                    for name in (
+                        "capture",
+                        "capture_jsonl",
+                        "performance_evidence",
+                        "pixel_observations",
+                        "observation_v3",
+                    )
+                },
+                artifact_contracts_preverified=True,
+            )
+            viewer_contract = manifest.get("viewer")
+            capture_summary = manifest.get("capture")
+            if not _review_display_geometry_compatible(
+                viewer_contract, capture_summary
+            ):
+                raise ValueError("Viewer display geometry is not review-safe")
+            clock_key = (
+                viewer_contract.get("clock_artifact")
+                if isinstance(viewer_contract, dict)
+                else None
+            )
+            if not isinstance(clock_key, str):
+                raise ValueError("Viewer clock artifact is not declared")
+            display_path = artifact_path(clock_key)
+            display_probe = probe_video(display_path)
+            timestamp_error = max(
+                (
+                    abs(float(left) - float(right))
+                    for left, right in zip(
+                        capture.timestamps_seconds,
+                        display_probe.timestamps_seconds,
+                        strict=True,
+                    )
+                ),
+                default=0.0,
+            )
+            display_start = float(
+                Fraction(int(display_probe.source_pts[0]))
+                * display_probe.time_base
+            )
+            display_geometry = viewer_contract.get("display_geometry")
+            expected_display_geometry = {
+                "schema_version": "autoanim.viewer-display-binding/1.0",
+                "artifact": clock_key,
+                "source_frame_size": [capture.width, capture.height],
+                "proxy_frame_size": [
+                    display_probe.width,
+                    display_probe.height,
+                ],
+                "display_rotation_degrees": (
+                    display_probe.display_rotation_degrees
+                ),
+                "sample_aspect_ratio": [
+                    display_probe.sample_aspect_ratio_numerator,
+                    display_probe.sample_aspect_ratio_denominator,
+                ],
+                "clean_aperture_crop_ltrb": list(
+                    display_probe.clean_aperture_crop
+                ),
+                "source_to_display_pixel_transform": _IDENTITY_PIXEL_TRANSFORM,
+                "transcode_policy": (
+                    "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+                ),
+            }
+            if (
+                display_geometry != expected_display_geometry
+                or display_probe.frame_count != capture.frame_count
+                or [display_probe.width, display_probe.height]
+                != [capture.width, capture.height]
+                or display_probe.display_rotation_degrees != 0
+                or display_probe.sample_aspect_ratio_numerator
+                != display_probe.sample_aspect_ratio_denominator
+                or display_probe.clean_aperture_crop != (0, 0, 0, 0)
+                or timestamp_error > 0.002
+                or abs(display_start) > 0.002
+            ):
+                raise ValueError("Viewer proxy pixels or presentation clock differ from capture")
+            integrity = manifest.get("integrity", {})
+            evidence_binding = {
+                "chainVerified": True,
+                "manifestSha256": sha256(
+                    service.store.job_dir(job_id) / "result.json"
+                ),
+                "sealSchema": integrity.get("schema"),
+                "sealKeyId": integrity.get("key_id"),
+                "retainedSource": {
+                    "sha256": input_ledger["sha256"],
+                    "bytes": input_ledger["bytes"],
+                },
+                "artifacts": {
+                    name: {
+                        "name": artifacts[name]["name"],
+                        "sha256": artifacts[name]["sha256"],
+                        "bytes": artifacts[name]["bytes"],
+                    }
+                    for name in chain_names
+                },
+            }
+            display_entry = artifacts[clock_key]
+            display_binding = {
+                "clockVerified": True,
+                "artifact": {
+                    "logicalName": clock_key,
+                    "name": display_entry["name"],
+                    "sha256": display_entry["sha256"],
+                    "bytes": display_entry["bytes"],
+                },
+                "frameCount": display_probe.frame_count,
+                "frameSize": [display_probe.width, display_probe.height],
+                "displayRotationDegrees": display_probe.display_rotation_degrees,
+                "timestampMaxErrorSeconds": timestamp_error,
+                "frameTimestampsSeconds": [
+                    float(value) for value in display_probe.timestamps_seconds
+                ],
+                "mediaStartSeconds": display_start,
+                "sampleAspectRatio": [
+                    display_probe.sample_aspect_ratio_numerator,
+                    display_probe.sample_aspect_ratio_denominator,
+                ],
+                "cleanApertureCropLTRB": list(
+                    display_probe.clean_aperture_crop
+                ),
+                "coordinateSpace": "display_oriented_rgb_pixels",
+                "sourceToDisplayPixelTransform": _IDENTITY_PIXEL_TRANSFORM,
+                "generationContract": expected_display_geometry,
+            }
+            return JSONResponse(
+                build_observation_v3_view(
+                    capture,
+                    observations,
+                    summary,
+                    evidence_binding=evidence_binding,
+                    display_binding=display_binding,
+                ),
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
+        except FileNotFoundError:
+            return _error_response(
+                AutoAnimError(
+                    "ARTIFACT_NOT_FOUND",
+                    "This job has no complete Observation-v3 review evidence",
+                )
+            )
+        except ValueError as exc:
+            return _error_response(
+                AutoAnimError(
+                    "INTEGRITY_FAILED",
+                    f"Observation-v3 review evidence did not verify: {exc}",
+                )
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.get("/api/jobs/{job_id}/review-frames/{frame_index}.png")
+    def review_frame(job_id: str, frame_index: int):
+        """Decode one manifest-bound proxy frame for deterministic paused review.
+
+        Observation-v3 verification is deliberately a separate route and client
+        prerequisite. This endpoint binds only the returned pixels to the sealed
+        ``viewer_media`` artifact so unrelated diagnostic corruption cannot make
+        otherwise valid source pixels unavailable.
+        """
+
+        if not review_decode_lock.acquire(blocking=False):
+            return _error_response(
+                AutoAnimError(
+                    "BUSY",
+                    "Another exact review frame is being decoded",
+                    retryable=True,
+                )
+            )
+        try:
+            manifest = service.store.require_sealed(job_id)
+            if (
+                manifest.get("kind") != "video_performance"
+                or manifest.get("status") != "succeeded"
+            ):
+                raise FileNotFoundError(job_id)
+            capture_summary = manifest.get("capture")
+            frame_count = (
+                capture_summary.get("frames")
+                if isinstance(capture_summary, dict)
+                else None
+            )
+            if (
+                not isinstance(frame_count, int)
+                or frame_count <= 0
+                or frame_count > MAX_OBSERVATION_V3_VIEW_FRAMES
+                or frame_index < 0
+                or frame_index >= frame_count
+            ):
+                raise AutoAnimError(
+                    "INPUT_INVALID",
+                    "Review frame index is outside the interactive take",
+                )
+            viewer_contract = manifest.get("viewer")
+            if not _review_display_geometry_compatible(
+                viewer_contract, capture_summary
+            ):
+                raise ValueError("Viewer display geometry is not review-safe")
+            display_geometry = viewer_contract["display_geometry"]
+            artifacts = manifest.get("artifacts", {})
+            display_entry = (
+                artifacts.get("viewer_media")
+                if isinstance(artifacts, dict)
+                else None
+            )
+            if not isinstance(display_entry, dict) or not isinstance(
+                display_entry.get("name"), str
+            ):
+                raise FileNotFoundError("viewer_media")
+            display_path = service.store.artifact(
+                job_id, display_entry["name"]
+            )
+            decoder = cv2.VideoCapture(str(display_path))
+            try:
+                if not decoder.isOpened() or not decoder.set(
+                    cv2.CAP_PROP_POS_FRAMES, frame_index
+                ):
+                    raise ValueError("Viewer proxy frame seek failed")
+                ok, frame = decoder.read()
+                decoded_index = int(round(decoder.get(cv2.CAP_PROP_POS_FRAMES))) - 1
+            finally:
+                decoder.release()
+            expected_size = display_geometry.get("proxy_frame_size")
+            if (
+                not ok
+                or decoded_index != frame_index
+                or frame is None
+                or frame.ndim != 3
+                or frame.shape[2] != 3
+                or not isinstance(expected_size, list)
+                or expected_size != [frame.shape[1], frame.shape[0]]
+            ):
+                raise ValueError("Viewer proxy returned the wrong review frame")
+            encoded_ok, encoded = cv2.imencode(
+                ".png", frame, [cv2.IMWRITE_PNG_COMPRESSION, 3]
+            )
+            if not encoded_ok or encoded.nbytes <= 0 or encoded.nbytes > 64 * 1024 * 1024:
+                raise ValueError("Review frame PNG is outside the accepted bounds")
+            return Response(
+                content=encoded.tobytes(),
+                media_type="image/png",
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                    "X-AutoAnim-Frame-Index": str(frame_index),
+                    "X-AutoAnim-Proxy-SHA256": display_entry["sha256"],
+                },
+            )
+        except FileNotFoundError:
+            return _error_response(
+                AutoAnimError(
+                    "ARTIFACT_NOT_FOUND",
+                    "Exact review frame source is unavailable",
+                )
+            )
+        except ValueError as exc:
+            return _error_response(
+                AutoAnimError(
+                    "INTEGRITY_FAILED",
+                    f"Exact review frame did not verify: {exc}",
+                )
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+        finally:
+            review_decode_lock.release()
+
     @app.get("/api/jobs/{job_id}/viewer", response_class=HTMLResponse)
     def viewer(job_id: str):
         try:
-            manifest = service.store.read(job_id)
+            manifest = service.store.require_sealed(job_id)
             artifacts = manifest.get("artifacts", {})
             glb = artifacts.get("textured_glb") or artifacts.get("glb")
             if not isinstance(glb, dict) or not isinstance(glb.get("name"), str):
@@ -756,6 +1166,8 @@ def create_app(
             media_url = None
             media_type = None
             performance_evidence_url = None
+            observation_v3_url = None
+            observation_review_status = None
             viewer_contract = manifest.get("viewer", {})
             clock_key = viewer_contract.get("clock_artifact")
             if isinstance(clock_key, str):
@@ -770,6 +1182,9 @@ def create_app(
                         else None
                     )
             if manifest.get("kind") == "video_performance":
+                observation_review_status = (
+                    "unavailable: complete sealed Observation-v3 evidence is missing"
+                )
                 evidence = artifacts.get("performance_evidence")
                 if isinstance(evidence, dict) and isinstance(evidence.get("name"), str):
                     evidence_name = evidence["name"]
@@ -777,6 +1192,55 @@ def create_app(
                     performance_evidence_url = (
                         f"/api/jobs/{job_id}/files/{evidence_name}"
                     )
+                observation_entries = tuple(
+                    artifacts.get(name)
+                    for name in (
+                        "capture",
+                        "capture_jsonl",
+                        "performance_evidence",
+                        "pixel_observations",
+                        "observation_v3",
+                        "capture_session",
+                        "viewer_media",
+                    )
+                )
+                capture_summary = manifest.get("capture", {})
+                entries_complete = all(
+                    isinstance(entry, dict) and isinstance(entry.get("name"), str)
+                    for entry in observation_entries
+                )
+                frame_count = (
+                    capture_summary.get("frames")
+                    if isinstance(capture_summary, dict)
+                    else None
+                )
+                geometry_compatible = _review_display_geometry_compatible(
+                    viewer_contract, capture_summary
+                )
+                if entries_complete and isinstance(frame_count, int) and (
+                    frame_count > MAX_OBSERVATION_V3_VIEW_FRAMES
+                ):
+                    observation_review_status = (
+                        "unavailable: take exceeds the "
+                        f"{MAX_OBSERVATION_V3_VIEW_FRAMES}-frame interactive limit"
+                    )
+                elif entries_complete and not geometry_compatible:
+                    observation_review_status = (
+                        "unavailable: display proxy is not identity-mapped "
+                        "square-pixel video"
+                    )
+                elif (
+                    entries_complete
+                    and isinstance(frame_count, int)
+                    and 0 < frame_count <= MAX_OBSERVATION_V3_VIEW_FRAMES
+                    and geometry_compatible
+                ):
+                    for entry in observation_entries:
+                        service.store.artifact(job_id, entry["name"])
+                    observation_v3_url = (
+                        f"/api/jobs/{job_id}/observation-v3-view"
+                    )
+                    observation_review_status = "available"
             model_document = manifest.get("model")
             character_document = (
                 model_document.get("character")
@@ -800,6 +1264,8 @@ def create_app(
                 if isinstance(character_document, dict)
                 else {}
             )
+            if observation_review_status is not None:
+                viewer_metadata["observation_review"] = observation_review_status
             if manifest.get("kind") in {"audio_animation", "video_performance"}:
                 readiness = service.production_readiness(job_id)
                 viewer_metadata.update(
@@ -858,6 +1324,7 @@ def create_app(
                     media_url=media_url,
                     media_type=media_type,
                     performance_evidence_url=performance_evidence_url,
+                    observation_v3_url=observation_v3_url,
                     metadata=viewer_metadata or None,
                 ),
                 headers={

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pytest
 
@@ -19,6 +21,19 @@ from autoanim_gnm.multiview import (
     project_points,
 )
 from autoanim_gnm.rig import ControlRig
+
+
+CALIBRATED_SYNTHETIC_BASELINE_SHA256 = {
+    "identity": "8415a7ebb4a1856b81fb754f54101f2fcc545dcd012996ac49a3c301d07a5aff",
+    "identity_consistency": "8e418fb12345f1b488ebb839ab33f8931cae6d3b85aa82327d0cf7114b21c1c2",
+    "leave_one_out_nme": "dac6490bb1f63a832349179e52e10ae287196373cb3dcbae0492a9a36abcb33b",
+    "fitted_landmarks": "e00e66728250364246d4ce06f21747b97c4d21dc70f6bf7b72055712a43ffc7c",
+    "nuisance": "c0bb4343a82ba862151e7e7b4e6ba26c3e11d0624360601c90c916adaae64529",
+}
+
+
+def _array_sha256(value: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(value).tobytes()).hexdigest()
 
 
 @pytest.fixture(scope="module")
@@ -376,6 +391,21 @@ def test_deterministic_output(
         first.fitted_landmarks, second.fitted_landmarks, strict=True
     ):
         np.testing.assert_array_equal(first_points, second_points)
+    assert _array_sha256(first.identity) == CALIBRATED_SYNTHETIC_BASELINE_SHA256[
+        "identity"
+    ]
+    assert _array_sha256(first.report.identity_consistency_matrix) == (
+        CALIBRATED_SYNTHETIC_BASELINE_SHA256["identity_consistency"]
+    )
+    assert _array_sha256(first.report.leave_one_out_nme) == (
+        CALIBRATED_SYNTHETIC_BASELINE_SHA256["leave_one_out_nme"]
+    )
+    assert _array_sha256(np.stack(first.fitted_landmarks)) == (
+        CALIBRATED_SYNTHETIC_BASELINE_SHA256["fitted_landmarks"]
+    )
+    assert _array_sha256(np.stack(first.nuisance)) == (
+        CALIBRATED_SYNTHETIC_BASELINE_SHA256["nuisance"]
+    )
 
 
 @pytest.mark.parametrize(

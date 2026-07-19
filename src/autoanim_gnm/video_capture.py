@@ -176,6 +176,9 @@ class VideoProbe:
     mediapipe_timestamps_ms: np.ndarray
     display_rotation_degrees: int
     ffprobe_command: tuple[str, ...]
+    sample_aspect_ratio_numerator: int = 1
+    sample_aspect_ratio_denominator: int = 1
+    clean_aperture_crop: tuple[int, int, int, int] = (0, 0, 0, 0)
 
     def __post_init__(self) -> None:
         pts = _readonly_array(self.source_pts, np.int64)
@@ -189,6 +192,13 @@ class VideoProbe:
             raise ValueError("Video probe has invalid dimensions or no frames")
         if self.time_base_numerator <= 0 or self.time_base_denominator <= 0:
             raise ValueError("Video time base must be positive")
+        if (
+            self.sample_aspect_ratio_numerator <= 0
+            or self.sample_aspect_ratio_denominator <= 0
+            or len(self.clean_aperture_crop) != 4
+            or any(value < 0 for value in self.clean_aperture_crop)
+        ):
+            raise ValueError("Video display geometry metadata is invalid")
         if timestamps.shape != (count,) or timestamps_ms.shape != (count,):
             raise ValueError("Video timing arrays have inconsistent lengths")
         if count > 1 and (
@@ -644,7 +654,9 @@ def probe_video(
         "-select_streams",
         "v:0",
         "-show_entries",
-        "stream=width,height,time_base,codec_name:stream_side_data=rotation:frame=best_effort_timestamp",
+        "stream=width,height,time_base,codec_name,sample_aspect_ratio:"
+        "stream_side_data=rotation:frame=best_effort_timestamp,crop_top,"
+        "crop_bottom,crop_left,crop_right",
         "-show_streams",
         "-show_frames",
         "-of",
@@ -679,6 +691,33 @@ def probe_video(
         pts = np.asarray([int(frame["best_effort_timestamp"]) for frame in frames], dtype=np.int64)
     except (KeyError, TypeError, ValueError) as exc:
         raise AutoAnimError("MEDIA_INVALID", "Video is missing exact frame PTS or dimensions") from exc
+    raw_sample_aspect_ratio = str(
+        stream.get("sample_aspect_ratio") or "1:1"
+    )
+    try:
+        sample_aspect_ratio = _parse_fraction(
+            raw_sample_aspect_ratio.replace(":", "/"),
+            field="sample_aspect_ratio",
+        )
+    except AutoAnimError:
+        if raw_sample_aspect_ratio.upper() not in {"N/A", "UNKNOWN"}:
+            raise
+        sample_aspect_ratio = Fraction(1, 1)
+    frame_crops = {
+        (
+            int(frame.get("crop_left", 0)),
+            int(frame.get("crop_top", 0)),
+            int(frame.get("crop_right", 0)),
+            int(frame.get("crop_bottom", 0)),
+        )
+        for frame in frames
+    }
+    if len(frame_crops) != 1:
+        raise AutoAnimError(
+            "MEDIA_INVALID",
+            "Per-frame clean-aperture cropping changes across the video",
+        )
+    clean_aperture_crop = next(iter(frame_crops))
     rotation = 0
     for item in stream.get("side_data_list", []):
         if "rotation" in item:
@@ -726,6 +765,9 @@ def probe_video(
         mediapipe_timestamps_ms=timestamps_ms,
         display_rotation_degrees=rotation,
         ffprobe_command=command,
+        sample_aspect_ratio_numerator=sample_aspect_ratio.numerator,
+        sample_aspect_ratio_denominator=sample_aspect_ratio.denominator,
+        clean_aperture_crop=clean_aperture_crop,
     )
 
 
@@ -852,6 +894,16 @@ def capture_video(
         raise AutoAnimError("INPUT_INVALID", "MediaPipe confidence thresholds must lie in [0,1]")
     model = validate_model(model_path).resolve()
     probe = probe_video(video_path, ffprobe_bin=ffprobe_bin, limits=limits)
+    if (
+        probe.sample_aspect_ratio_numerator
+        != probe.sample_aspect_ratio_denominator
+        or probe.clean_aperture_crop != (0, 0, 0, 0)
+    ):
+        raise AutoAnimError(
+            "MEDIA_INVALID",
+            "Video capture requires square pixels and no clean-aperture crop; "
+            "normalize the source before facial tracking",
+        )
     count = probe.frame_count
     landmarks = np.full((count, LANDMARK_COUNT, 3), np.nan, dtype=np.float32)
     visibility = np.full((count, LANDMARK_COUNT), np.nan, dtype=np.float32)
