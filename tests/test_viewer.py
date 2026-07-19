@@ -1,9 +1,13 @@
+import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 from autoanim_gnm.api import create_app
-from autoanim_gnm.viewer import VIEWER_VENDOR_FILES
+from autoanim_gnm.viewer import VIEWER_VENDOR_FILES, viewer_html
 
 
 def _viewer_bundle(tmp_path: Path) -> Path:
@@ -116,6 +120,8 @@ def test_animation_viewer_uses_allowlisted_media_clock(tmp_path: Path):
     assert "mixer.setTime(media.currentTime)" not in page.text
     assert 'mediaKind="audio"' in page.text
     assert "animationAction.setLoop(THREE.LoopOnce,1)" in page.text
+    assert '"production_status": "blocked"' in page.text
+    assert '"release_blockers":' in page.text
 
 
 def test_video_viewer_uses_video_element_and_source_clock(tmp_path: Path):
@@ -130,6 +136,7 @@ def test_video_viewer_uses_video_element_and_source_clock(tmp_path: Path):
     job_id, job_dir, _, manifest = store.start("video_performance", source, {})
     (job_dir / "performance.glb").write_bytes(b"glTF\x02\0\0\0")
     (job_dir / "source-proxy.mp4").write_bytes(b"video")
+    (job_dir / "performance-evidence.json").write_text("{}", encoding="utf-8")
     store.finish(
         manifest,
         job_dir,
@@ -139,6 +146,7 @@ def test_video_viewer_uses_video_element_and_source_clock(tmp_path: Path):
             "artifacts": {
                 "glb": "performance.glb",
                 "viewer_media": "source-proxy.mp4",
+                "performance_evidence": "performance-evidence.json",
             },
         },
         {},
@@ -147,12 +155,118 @@ def test_video_viewer_uses_video_element_and_source_clock(tmp_path: Path):
     page = TestClient(app).get(f"/api/jobs/{job_id}/viewer")
     assert page.status_code == 200
     assert f"/api/jobs/{job_id}/files/source-proxy.mp4" in page.text
+    assert (
+        f'performanceEvidenceUrl="/api/jobs/{job_id}/files/performance-evidence.json"'
+        in page.text
+    )
     assert 'mediaKind="video"' in page.text
     assert "document.createElement(mediaKind)" in page.text
     assert "media.playsInline=true" in page.text
     assert "animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration)" in page.text
     assert "animationAction.paused=true" in page.text
     assert "mixer.setTime(media.currentTime)" not in page.text
+    assert '"production_status": "blocked"' in page.text
+
+
+def test_viewer_optional_evidence_lane_steps_exact_source_frames() -> None:
+    page = viewer_html(
+        asset_url="/api/jobs/01abc/files/performance.glb",
+        title="Evidence review",
+        media_url="/api/jobs/01abc/files/source-proxy.mp4",
+        media_type="video/mp4",
+        performance_evidence_url=(
+            "/api/jobs/01abc/files/performance-evidence.json"
+        ),
+    )
+    assert (
+        'performanceEvidenceUrl="/api/jobs/01abc/files/performance-evidence.json"'
+        in page
+    )
+    assert 'id="evidence-panel"' in page
+    assert 'id="previous-source-frame"' in page
+    assert 'id="next-source-frame"' in page
+    assert "frame.sourcePTS" in page
+    assert "frame.projectTick" in page
+    assert "frame.timestampSeconds.toFixed(3)" in page
+    assert "const targetTime=evidenceFrames[target].timestampSeconds" in page
+    assert "media.currentTime=targetTime" in page
+    assert "animationAction.time=Math.min(Math.max(targetTime,0),animationDuration)" in page
+    assert "media.pause()" in page
+    assert "evidenceIndexAtOrBefore(media.currentTime)" in page
+    assert "const requiredEvidenceRegions=['mouth','eyes','upperFace','head']" in page
+    assert "MISSING · no face observation at this source frame" in page
+    assert "UNKNOWN · observed tracker values are not a labeled neutral" in page
+    assert "region.confidence===null?'—'" in page
+    assert "parsed.origin!==window.location.origin" in page
+    assert "credentials:'same-origin'" in page
+    assert "cache:'no-store'" in page
+    assert "payload.consumedByRetargeting!==false" in page
+    assert "animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration)" in page
+    assert "mixer.setTime(media.currentTime)" not in page
+    assert "cdn.jsdelivr.net" not in page
+
+
+@pytest.mark.parametrize(
+    "evidence_url",
+    (
+        "https://example.com/performance-evidence.json",
+        "/api/jobs/../files/performance-evidence.json",
+        "/api/jobs/01abc/files/other.json",
+        "/api/jobs/01abc/files/performance-evidence.json?download=1",
+    ),
+)
+def test_viewer_rejects_non_allowlisted_evidence_url(evidence_url: str) -> None:
+    with pytest.raises(ValueError, match="allowlisted job artifact URL"):
+        viewer_html(
+            asset_url="/api/jobs/01abc/files/performance.glb",
+            title="Evidence review",
+            media_url="/api/jobs/01abc/files/source-proxy.mp4",
+            media_type="video/mp4",
+            performance_evidence_url=evidence_url,
+        )
+
+
+def test_audio_and_static_viewer_leave_optional_evidence_lane_inactive() -> None:
+    audio = viewer_html(
+        asset_url="/api/jobs/01abc/files/animation.glb",
+        title="Audio",
+        media_url="/api/jobs/01abc/files/normalized.wav",
+        media_type="audio/wav",
+    )
+    static = viewer_html(
+        asset_url="/api/jobs/01abc/files/fitted.glb",
+        title="Static",
+    )
+    for page in (audio, static):
+        assert "performanceEvidenceUrl=null" in page
+        assert 'id="evidence-panel"' in page
+        assert "if(!performanceEvidenceUrl||!media||mediaKind!=='video')return" in page
+    assert 'mediaKind="audio"' in audio
+    assert "mediaUrl=null" in static
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js unavailable")
+def test_viewer_generated_module_has_valid_javascript_syntax(tmp_path: Path) -> None:
+    page = viewer_html(
+        asset_url="/api/jobs/01abc/files/performance.glb",
+        title="Evidence review",
+        media_url="/api/jobs/01abc/files/source-proxy.mp4",
+        media_type="video/mp4",
+        performance_evidence_url=(
+            "/api/jobs/01abc/files/performance-evidence.json"
+        ),
+    )
+    match = re.search(r'<script type="module">(.*?)</script>', page, re.DOTALL)
+    assert match is not None
+    module = tmp_path / "viewer.mjs"
+    module.write_text(match.group(1), encoding="utf-8")
+    result = subprocess.run(
+        (shutil.which("node") or "node", "--check", str(module)),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_missing_viewer_bundle_fails_closed(tmp_path: Path):

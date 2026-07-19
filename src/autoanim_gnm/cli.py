@@ -10,7 +10,15 @@ import sys
 from .api import create_app
 from .artifacts import sha256
 from .errors import AutoAnimError
+from .gnm_adapter import GNMAdapter
+from .lipsync_qualification import (
+    LipsyncQualificationError,
+    evaluate_controls_qualification,
+    load_identity_artifact,
+)
 from .materials import MaterialValidationError, validate_material_package
+from .rig import ControlRig
+from .semantic_decoder import ExpressionDecoder
 from .serialization import write_json
 from .service import ApplicationService, default_model_path
 from .viewer import default_viewer_vendor_root
@@ -103,6 +111,21 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("personal", "production", "commercial", "research"),
         default="production",
     )
+    qualify = subparsers.add_parser("qualify-lipsync")
+    qualify.add_argument("profile", type=Path)
+    qualify.add_argument("--controls", type=Path, required=True)
+    qualify.add_argument("--source-audio", type=Path, required=True)
+    qualify.add_argument("--character-manifest", type=Path, required=True)
+    qualify.add_argument("--identity-artifact", type=Path, required=True)
+    qualify.add_argument(
+        "--evidence",
+        action="append",
+        default=[],
+        metavar="ARTIFACT_ID=PATH",
+        help="Repeat for every exact annotation/prototype provenance artifact",
+    )
+    qualify.add_argument("--out", type=Path, required=True)
+    qualify.add_argument("--artifacts", type=Path, default=Path("artifacts/jobs"))
     character = subparsers.add_parser("character")
     character.add_argument("--artifacts", type=Path, default=Path("artifacts/jobs"))
     character_actions = character.add_subparsers(dest="character_command", required=True)
@@ -270,6 +293,39 @@ def main(argv: list[str] | None = None) -> int:
                 character_revision_id=args.character_revision,
                 usage_scope=args.usage_scope,
             )
+        elif args.command == "qualify-lipsync":
+            evidence: dict[str, Path] = {}
+            for value in args.evidence:
+                artifact_id, separator, supplied_path = value.partition("=")
+                if (
+                    not separator
+                    or not artifact_id
+                    or not supplied_path
+                    or artifact_id in evidence
+                ):
+                    raise LipsyncQualificationError(
+                        "INVALID_PROVENANCE",
+                        "Every --evidence must be one unique ARTIFACT_ID=PATH",
+                        field="evidence",
+                    )
+                evidence[artifact_id] = Path(supplied_path)
+            identity = load_identity_artifact(args.identity_artifact)
+            adapter = GNMAdapter()
+            decoder = ExpressionDecoder(
+                Path(__file__).resolve().parents[2]
+                / "gnm/shape/data/semantic_sampler/expression_decoder_model.h5"
+            )
+            report = evaluate_controls_qualification(
+                args.profile,
+                controls_path=args.controls,
+                source_audio_path=args.source_audio,
+                character_manifest_path=args.character_manifest,
+                identity_artifact_path=args.identity_artifact,
+                provenance_artifacts=evidence,
+                rig=ControlRig(adapter, decoder, identity=identity),
+            )
+            result = service.store.signer.sign(report.as_dict())
+            write_json(args.out, result)
         elif args.command == "character":
             if args.character_command == "list":
                 result = {"characters": service.characters.list()}
@@ -419,6 +475,16 @@ def main(argv: list[str] | None = None) -> int:
     except AutoAnimError as exc:
         print(json.dumps(exc.as_dict(), indent=2, sort_keys=True), file=sys.stderr)
         return 3 if exc.code == "DEPENDENCY_MISSING" else (1 if exc.code == "INTERNAL_ERROR" else 2)
+    except LipsyncQualificationError as exc:
+        print(
+            json.dumps(
+                {"code": exc.code, "message": str(exc), "field": exc.field},
+                indent=2,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 2
     except MaterialValidationError as exc:
         print(
             json.dumps(

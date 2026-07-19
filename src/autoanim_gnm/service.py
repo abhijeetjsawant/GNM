@@ -32,12 +32,14 @@ from .body import (
     attachment_contract,
     compile_body_track,
 )
+from .production_readiness import evaluate_production_readiness
 from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .image import validate_model
 from .image_pipeline import run_image_pipeline
 from .multiview_pipeline import run_multiview_pipeline
 from .video_pipeline import run_video_pipeline
+from .video_evidence import load_verified_performance_evidence
 from .viewer import default_viewer_vendor_root, viewer_vendor_health
 from .serialization import write_json, write_npz
 
@@ -317,6 +319,134 @@ class ApplicationService:
             error = AutoAnimError("INTERNAL_ERROR", str(exc))
             self.store.fail(manifest, job_dir, error.as_dict(), versions)
             raise error from exc
+
+    def production_readiness(
+        self,
+        performance_job_id: str,
+        *,
+        direction_job_id: str | None = None,
+        require_acting: bool = False,
+        require_body: bool = False,
+        require_pbr: bool = True,
+    ) -> dict[str, Any]:
+        """Consolidate release evidence without mutating or approving a job."""
+
+        try:
+            performance = self.store.read(performance_job_id)
+        except FileNotFoundError as exc:
+            raise AutoAnimError("JOB_NOT_FOUND", "Performance job was not found") from exc
+
+        performance_manifest_verified = self.store.signer.verify(performance)
+        source_input_verified = False
+        input_ledger = performance.get("input")
+        retained_inputs = list(self.store.job_dir(performance_job_id).glob("input.*"))
+        if isinstance(input_ledger, dict) and len(retained_inputs) == 1:
+            retained_input = retained_inputs[0]
+            source_input_verified = bool(
+                retained_input.is_file()
+                and retained_input.stat().st_size == input_ledger.get("bytes")
+                and sha256(retained_input) == input_ledger.get("sha256")
+            )
+        delivery_artifact_verified = False
+        artifact_ledger = performance.get("artifacts")
+        glb_ledger = (
+            artifact_ledger.get("glb") if isinstance(artifact_ledger, dict) else None
+        )
+        if isinstance(glb_ledger, dict) and isinstance(glb_ledger.get("name"), str):
+            try:
+                self.store.artifact(performance_job_id, glb_ledger["name"])
+                delivery_artifact_verified = True
+            except FileNotFoundError:
+                pass
+        performance_evidence_artifact_verified = False
+        evidence_ledger = (
+            artifact_ledger.get("performance_evidence")
+            if isinstance(artifact_ledger, dict)
+            else None
+        )
+        if isinstance(evidence_ledger, dict) and isinstance(
+            evidence_ledger.get("name"), str
+        ):
+            try:
+                evidence_path = self.store.artifact(
+                    performance_job_id, evidence_ledger["name"]
+                )
+                input_sha256 = (
+                    input_ledger.get("sha256") if isinstance(input_ledger, dict) else None
+                )
+                capture = performance.get("capture")
+                capture_frames = (
+                    capture.get("frames") if isinstance(capture, dict) else None
+                )
+                if isinstance(input_sha256, str) and isinstance(capture_frames, int):
+                    load_verified_performance_evidence(
+                        evidence_path,
+                        expected_source_sha256=input_sha256,
+                        expected_frame_count=capture_frames,
+                    )
+                    performance_evidence_artifact_verified = True
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+
+        direction = None
+        direction_manifest_verified = False
+        if direction_job_id is not None and direction_job_id.strip():
+            try:
+                direction = self.store.read(direction_job_id.strip())
+                direction_manifest_verified = self.store.signer.verify(direction)
+            except FileNotFoundError as exc:
+                raise AutoAnimError("JOB_NOT_FOUND", "Acting-direction job was not found") from exc
+
+        character_revision: dict[str, Any] | None = None
+        character_resolution_error: str | None = None
+        model = performance.get("model")
+        character_ref = (
+            model.get("character") if isinstance(model, dict) else None
+        )
+        if isinstance(character_ref, dict):
+            character_id = character_ref.get("character_id")
+            revision_id = character_ref.get("revision_id")
+            configuration = performance.get("configuration")
+            usage_scope = (
+                configuration.get("usage_scope", "production")
+                if isinstance(configuration, dict)
+                else "production"
+            )
+            if isinstance(character_id, str) and isinstance(revision_id, str):
+                try:
+                    resolved = self.characters.resolve(
+                        character_id,
+                        revision_id,
+                        usage_scope=(
+                            usage_scope if isinstance(usage_scope, str) else "production"
+                        ),
+                    )
+                    character_revision = dict(resolved.manifest)
+                    character_revision["_manifest_sha256"] = resolved.manifest_sha256
+                    character_revision["_runtime_material_sha256s"] = dict(
+                        resolved.runtime_material_sha256s
+                    )
+                except (AutoAnimError, FileNotFoundError) as exc:
+                    character_resolution_error = (
+                        exc.code if isinstance(exc, AutoAnimError) else "CHARACTER_NOT_FOUND"
+                    )
+
+        return evaluate_production_readiness(
+            performance,
+            performance_manifest_verified=performance_manifest_verified,
+            source_input_verified=source_input_verified,
+            delivery_artifact_verified=delivery_artifact_verified,
+            performance_evidence_artifact_verified=(
+                performance_evidence_artifact_verified
+            ),
+            character_revision=character_revision,
+            character_resolution_error=character_resolution_error,
+            direction=direction,
+            direction_manifest_verified=direction_manifest_verified,
+            require_acting=require_acting,
+            require_body=require_body,
+            require_pbr=require_pbr,
+        )
 
     def promote_character(
         self,

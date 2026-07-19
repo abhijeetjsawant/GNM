@@ -42,6 +42,24 @@ def _gradient_image(*, exposure: float = 1.0, bias: float = 0.0) -> np.ndarray:
     return np.clip(image * exposure + bias, 0.0, 1.0)
 
 
+def _decode_srgb_fixture(value: np.ndarray) -> np.ndarray:
+    encoded = np.asarray(value, dtype=np.float64)
+    return np.where(
+        encoded <= 0.04045,
+        encoded / 12.92,
+        ((encoded + 0.055) / 1.055) ** 2.4,
+    )
+
+
+def _encode_srgb_fixture(value: np.ndarray) -> np.ndarray:
+    linear = np.clip(np.asarray(value, dtype=np.float64), 0.0, 1.0)
+    return np.where(
+        linear <= 0.0031308,
+        linear * 12.92,
+        1.055 * linear ** (1.0 / 2.4) - 0.055,
+    )
+
+
 def test_triangle_corner_uvs_preserve_gradient_and_checker() -> None:
     vertices, triangles, triangle_uvs = _plane()
     result = bake_multiview_texture(
@@ -68,6 +86,85 @@ def test_triangle_corner_uvs_preserve_gradient_and_checker() -> None:
         np.abs(result.rgba[..., 2][interiors] / 255.0 - expected_checker[interiors])
     ) <= 1.0 / 255.0
     assert result.metrics["observed_fraction"] == pytest.approx(1.0)
+
+
+def test_linear_srgb_blend_avoids_gamma_darkening_and_preserves_audit_maps() -> None:
+    vertices, triangles, triangle_uvs = _plane()
+    black = np.zeros((65, 65, 3), dtype=np.uint8)
+    white = np.full((65, 65, 3), 255, dtype=np.uint8)
+    # Deliberately prevent exposure harmonization: this isolates compositing.
+    linear_blend = bake_multiview_texture(
+        vertices,
+        triangles,
+        triangle_uvs,
+        [black, white],
+        [_camera(), _camera()],
+        texture_size=17,
+        minimum_color_overlap=1000,
+        inpaint=False,
+    )
+    control = bake_multiview_texture(
+        vertices,
+        triangles,
+        triangle_uvs,
+        [np.full_like(black, 128), np.full_like(black, 128)],
+        [_camera(), _camera()],
+        texture_size=17,
+        minimum_color_overlap=1000,
+        inpaint=False,
+    )
+
+    # 50% linear light encodes to sRGB 187.5, not nonlinear byte average 127.5.
+    assert np.all(linear_blend.rgba[..., :3] == 188)
+    assert np.all(control.rgba[..., :3] == 128)
+    for name in (
+        "confidence",
+        "source_view",
+        "observed",
+        "mirrored",
+        "inpainted",
+        "generic",
+        "atlas_mask",
+        "triangle_index",
+        "overlap_count",
+    ):
+        assert np.array_equal(getattr(linear_blend, name), getattr(control, name))
+
+
+def test_srgb_is_decoded_and_encoded_exactly_once_for_uint8_and_float() -> None:
+    vertices, triangles, triangle_uvs = _plane()
+    encoded = np.full((65, 65, 3), 128, dtype=np.uint8)
+    integer_result = bake_multiview_texture(
+        vertices,
+        triangles,
+        triangle_uvs,
+        [encoded],
+        [_camera()],
+        texture_size=17,
+        inpaint=False,
+    )
+    float_result = bake_multiview_texture(
+        vertices,
+        triangles,
+        triangle_uvs,
+        [encoded.astype(np.float64) / 255.0],
+        [_camera()],
+        texture_size=17,
+        inpaint=False,
+    )
+
+    assert np.all(integer_result.rgba[..., :3] == 128)
+    assert np.array_equal(integer_result.rgba, float_result.rgba)
+    assert integer_result.metrics["color_management_version"] == (
+        "autoanim.linear_srgb.v1"
+    )
+    assert integer_result.metrics["input_color_encoding"] == "iec61966-2-1_srgb"
+    assert integer_result.metrics["working_color_space"] == "linear_srgb"
+    assert integer_result.metrics["resampling_color_space"] == "linear_srgb"
+    assert integer_result.metrics["harmonization_color_space"] == "linear_srgb"
+    assert integer_result.metrics["blending_color_space"] == "linear_srgb"
+    assert integer_result.metrics["output_color_encoding"] == "iec61966-2-1_srgb"
+    assert integer_result.metrics["output_transfer_application_count"] == 1
 
 
 def test_occluded_texels_and_backfaces_are_rejected() -> None:
@@ -198,7 +295,8 @@ def test_multiple_masked_views_increase_direct_coverage() -> None:
 def test_overlap_harmonization_recovers_exposure_and_is_deterministic() -> None:
     vertices, triangles, triangle_uvs = _plane()
     reference = _gradient_image()
-    dark = _gradient_image(exposure=0.6, bias=0.1)
+    reference_linear = _decode_srgb_fixture(reference)
+    dark = _encode_srgb_fixture(reference_linear * 0.6 + 0.1)
     arguments = dict(
         vertices=vertices,
         triangles=triangles,

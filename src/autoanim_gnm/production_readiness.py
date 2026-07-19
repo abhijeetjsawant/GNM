@@ -1,0 +1,414 @@
+"""Fail-closed release evidence for one character performance take.
+
+This module deliberately does not turn plausible proxy metrics into production
+approval.  It normalizes the evidence already written by reconstruction,
+audio, video, oral, acting, and export stages into one machine-readable gate.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+SCHEMA_VERSION = "autoanim.production-readiness/1.0"
+_PERFORMANCE_KINDS = frozenset({"audio_animation", "video_performance"})
+_PBR_RUNTIME_MAPS = frozenset(
+    {"base_color", "normal", "roughness", "specular_color"}
+)
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _zero_count(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value == 0
+    )
+
+
+def _string_list(value: Any) -> list[str]:
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
+def _gate(
+    *,
+    passed: bool,
+    summary: str,
+    evidence: dict[str, Any],
+    remediation: str,
+    required: bool = True,
+) -> dict[str, Any]:
+    return {
+        "required": required,
+        "passed": bool(passed),
+        "summary": summary,
+        "evidence": evidence,
+        "remediation": remediation,
+    }
+
+
+def evaluate_production_readiness(
+    performance: dict[str, Any],
+    *,
+    performance_manifest_verified: bool = False,
+    source_input_verified: bool = False,
+    delivery_artifact_verified: bool = False,
+    performance_evidence_artifact_verified: bool = False,
+    character_revision: dict[str, Any] | None = None,
+    character_resolution_error: str | None = None,
+    direction: dict[str, Any] | None = None,
+    direction_manifest_verified: bool = False,
+    require_acting: bool = False,
+    require_body: bool = False,
+    require_pbr: bool = True,
+) -> dict[str, Any]:
+    """Return one release contract without mutating or approving any asset."""
+
+    kind = performance.get("kind")
+    status = performance.get("status")
+    model = _mapping(performance.get("model"))
+    character_ref = _mapping(model.get("character"))
+    revision = _mapping(character_revision)
+    appearance = _mapping(revision.get("appearance"))
+    oral = _mapping(performance.get("oral_validation"))
+    viewer = _mapping(performance.get("viewer"))
+    artifacts = _mapping(performance.get("artifacts"))
+
+    expected_character = character_ref.get("character_id")
+    expected_revision = character_ref.get("revision_id")
+    expected_manifest_hash = character_ref.get("revision_manifest_sha256")
+    expected_identity_hash = character_ref.get("identity_sha256")
+    resolved_identity_hash = _mapping(revision.get("gnm")).get("identity_sha256")
+    exact_character = bool(
+        expected_character
+        and expected_revision
+        and revision.get("character_id") == expected_character
+        and revision.get("revision_id") == expected_revision
+        and isinstance(expected_manifest_hash, str)
+        and revision.get("_manifest_sha256") == expected_manifest_hash
+        and isinstance(expected_identity_hash, str)
+        and resolved_identity_hash == expected_identity_hash
+        and character_resolution_error is None
+    )
+
+    gates: dict[str, dict[str, Any]] = {}
+    gates["terminal_take"] = _gate(
+        passed=status == "succeeded" and kind in _PERFORMANCE_KINDS,
+        summary="The source is a successful immutable performance take.",
+        evidence={"job_id": performance.get("job_id"), "kind": kind, "status": status},
+        remediation="Run a successful Audio or Video performance job.",
+    )
+    gates["provenance_integrity"] = _gate(
+        passed=performance_manifest_verified and source_input_verified,
+        summary="The signed take manifest and retained source bytes match their ledger.",
+        evidence={
+            "performance_manifest_verified": performance_manifest_verified,
+            "source_input_verified": source_input_verified,
+        },
+        remediation=(
+            "Use a sealed job whose retained input still matches its recorded byte count and "
+            "SHA-256 digest."
+        ),
+    )
+    gates["character_revision"] = _gate(
+        passed=exact_character,
+        summary="The take resolves to one exact rights-cleared character revision.",
+        evidence={
+            "character_id": expected_character,
+            "revision_id": expected_revision,
+            "revision_manifest_sha256": expected_manifest_hash,
+            "identity_sha256": expected_identity_hash,
+            "resolution_error": character_resolution_error,
+        },
+        remediation=(
+            "Select a saved, unexpired, unrevoked character revision whose consent grants "
+            "the take's intended use."
+        ),
+    )
+    gates["identity"] = _gate(
+        passed=exact_character
+        and bool(_mapping(revision.get("source")).get("fit_production_validated"))
+        and bool(revision.get("production_validated")),
+        summary="Identity likeness and hidden geometry passed independent validation.",
+        evidence={
+            "fit_production_validated": _mapping(revision.get("source")).get(
+                "fit_production_validated", False
+            ),
+            "revision_production_validated": revision.get(
+                "production_validated", False
+            ),
+        },
+        remediation=(
+            "Validate the character against held-out calibrated views or an independent scan, "
+            "then record artist/subject approval on a new immutable revision."
+        ),
+    )
+
+    expected_runtime_map_hashes = _mapping(
+        character_ref.get("runtime_material_sha256s")
+    )
+    resolved_runtime_map_hashes = _mapping(
+        revision.get("_runtime_material_sha256s")
+    )
+    runtime_maps = set(expected_runtime_map_hashes)
+    appearance_passed = bool(
+        exact_character
+        and appearance.get("production_validated")
+        and appearance.get("pore_claim_gate_passed")
+        and appearance.get("relightable_claim_gate_passed")
+        and _PBR_RUNTIME_MAPS.issubset(runtime_maps)
+        and expected_runtime_map_hashes == resolved_runtime_map_hashes
+        and model.get("character_pbr_runtime_applied_to_glb")
+    )
+    gates["appearance"] = _gate(
+        passed=appearance_passed,
+        summary="The exact character has complete validated PBR appearance evidence.",
+        evidence={
+            "required_runtime_maps": sorted(_PBR_RUNTIME_MAPS),
+            "runtime_maps": sorted(runtime_maps),
+            "runtime_map_hashes_match_revision": (
+                expected_runtime_map_hashes == resolved_runtime_map_hashes
+            ),
+            "pbr_applied_to_glb": model.get(
+                "character_pbr_runtime_applied_to_glb", False
+            ),
+            "pore_claim_gate_passed": appearance.get("pore_claim_gate_passed", False),
+            "relightable_claim_gate_passed": appearance.get(
+                "relightable_claim_gate_passed", False
+            ),
+            "production_validated": appearance.get("production_validated", False),
+        },
+        remediation=(
+            "Attach measured base-color, normal, roughness, and specular maps and pass held-out "
+            "pore-frequency and unseen-light validation."
+        ),
+        required=require_pbr,
+    )
+
+    oral_passed = bool(
+        oral.get("all_control_frames_evaluated")
+        and oral.get("viewer_structural_reconstruction_validated")
+        and oral.get("production_validated")
+        and _zero_count(oral.get("tongue_teeth_collision_risk_frames"))
+        and _zero_count(oral.get("lip_order_inversion_risk_frames"))
+    )
+    gates["oral_animation"] = _gate(
+        passed=oral_passed,
+        summary="Every exported frame passed lips, teeth, tongue, and perceptual approval.",
+        evidence={
+            "all_control_frames_evaluated": oral.get(
+                "all_control_frames_evaluated", False
+            ),
+            "viewer_structural_reconstruction_validated": oral.get(
+                "viewer_structural_reconstruction_validated", False
+            ),
+            "tongue_control_active_frames": oral.get(
+                "tongue_control_active_frames", 0
+            ),
+            "tongue_teeth_collision_risk_frames": oral.get(
+                "tongue_teeth_collision_risk_frames", 0
+            ),
+            "lip_order_inversion_risk_frames": oral.get(
+                "lip_order_inversion_risk_frames", 0
+            ),
+            "production_validated": oral.get("production_validated", False),
+        },
+        remediation=(
+            "Resolve every structural risk and approve tongue visibility, surface collision, "
+            "phone timing, mouth aperture, and perceptual speech quality on real footage."
+        ),
+    )
+
+    if kind == "audio_animation":
+        analysis = _mapping(performance.get("analysis"))
+        quality_gate = _mapping(_mapping(performance.get("quality")).get("production_gate"))
+        animation = _mapping(performance.get("animation"))
+        performance_passed = bool(
+            analysis.get("motion_backend") == "learned_a2f"
+            and quality_gate.get("passed")
+            and animation.get("production_validated")
+        )
+        performance_evidence = {
+            "motion_backend": analysis.get("motion_backend"),
+            "independent_quality_gate_passed": quality_gate.get("passed", False),
+            "quality_failures": _string_list(quality_gate.get("failures")),
+            "animation_production_validated": animation.get(
+                "production_validated", False
+            ),
+        }
+        performance_remediation = (
+            "Use the learned backend, score independent phone/contact annotations and target "
+            "prototypes, then record human perceptual approval for this retarget profile."
+        )
+    elif kind == "video_performance":
+        capture = _mapping(performance.get("capture"))
+        retarget = _mapping(performance.get("retargeting"))
+        metrics = _mapping(performance.get("metrics"))
+        performance_passed = bool(
+            capture.get("production_validated")
+            and retarget.get("subject_calibrated")
+            and retarget.get("neutral_baseline_validated")
+            and capture.get("performance_evidence_schema_version")
+            == "autoanim.performance-evidence.v2"
+            and capture.get("performance_evidence_policy")
+            == "observation_only_no_motion_effect"
+            and performance_evidence_artifact_verified
+        )
+        performance_evidence = {
+            "capture_production_validated": capture.get(
+                "production_validated", False
+            ),
+            "subject_calibrated": retarget.get("subject_calibrated", False),
+            "neutral_baseline_validated": retarget.get(
+                "neutral_baseline_validated", False
+            ),
+            "performance_evidence_schema_version": capture.get(
+                "performance_evidence_schema_version"
+            ),
+            "performance_evidence_artifact_verified": (
+                performance_evidence_artifact_verified
+            ),
+            "face_presence_fraction": metrics.get("face_presence_fraction"),
+            "expression_motion_correlation": metrics.get(
+                "final_expression_motion_correlation"
+            ),
+            "negative_baseline_residual_clipped_fraction": metrics.get(
+                "negative_baseline_residual_clipped_fraction"
+            ),
+        }
+        performance_remediation = (
+            "Capture a labeled subject-neutral calibration and validate expression, "
+            "microexpression, gaze, head, mouth, and timing against held-out visual ground truth."
+        )
+    else:
+        performance_passed = False
+        performance_evidence = {"kind": kind}
+        performance_remediation = "Use a supported Audio or Video performance job."
+    gates["performance"] = _gate(
+        passed=performance_passed,
+        summary="The driving performance passed source-specific production validation.",
+        evidence=performance_evidence,
+        remediation=performance_remediation,
+    )
+
+    viewer_passed = bool(
+        viewer.get("status") == "ready"
+        and viewer.get("glb_covers_full_track")
+        and isinstance(artifacts.get("glb"), dict)
+        and delivery_artifact_verified
+    )
+    gates["delivery"] = _gate(
+        passed=viewer_passed,
+        summary="The sealed interactive export covers the complete source-clocked take.",
+        evidence={
+            "viewer_status": viewer.get("status"),
+            "glb_covers_full_track": viewer.get("glb_covers_full_track", False),
+            "glb_artifact_present": isinstance(artifacts.get("glb"), dict),
+            "glb_artifact_verified": delivery_artifact_verified,
+        },
+        remediation="Re-export a complete animated GLB and pass structural reconstruction checks.",
+    )
+
+    direction_document = _mapping(direction)
+    direction_source = _mapping(direction_document.get("source"))
+    direction_contract = _mapping(direction_document.get("direction"))
+    direction_linked = bool(
+        direction_document.get("status") == "succeeded"
+        and direction_document.get("kind") == "acting_direction"
+        and direction_source.get("job_id") == performance.get("job_id")
+        and direction_manifest_verified
+    )
+    acting_passed = bool(
+        direction_linked
+        and direction_contract.get("approval_status") == "approved"
+        and direction_contract.get("production_validated")
+    )
+    gates["acting"] = _gate(
+        passed=acting_passed,
+        summary="A linked acting plan was artist-approved after deterministic compilation.",
+        evidence={
+            "direction_job_id": direction_document.get("job_id"),
+            "source_job_id": direction_source.get("job_id"),
+            "approval_status": direction_contract.get(
+                "approval_status",
+                direction_contract.get("body_preview_approval_status"),
+            ),
+            "production_validated": direction_contract.get(
+                "production_validated", False
+            ),
+        },
+        remediation=(
+            "Generate or attach the acting proposal, edit it, compile it, and record explicit "
+            "artist approval; an LLM proposal alone is never approval."
+        ),
+        required=require_acting,
+    )
+
+    body = _mapping(revision.get("body"))
+    body_passed = bool(
+        exact_character
+        and body.get("status") == "attached"
+        and body.get("head_attachment_validated")
+        and direction_linked
+        and direction_contract.get("body_preview_approval_status") == "approved"
+        and direction_contract.get("production_validated")
+    )
+    gates["body"] = _gate(
+        passed=body_passed,
+        summary="A skinned body, head attachment, contacts, and acting motion were approved.",
+        evidence={
+            "character_body_status": body.get("status", "not_attached"),
+            "head_attachment_validated": body.get(
+                "head_attachment_validated", False
+            ),
+            "body_motion_approval_status": direction_contract.get(
+                "body_preview_approval_status"
+            ),
+        },
+        remediation=(
+            "Attach a production body rig, solve body/hands/feet, validate the GNM neck seam "
+            "and contacts, then approve the compiled motion."
+        ),
+        required=require_body,
+    )
+
+    failures = [
+        name
+        for name, gate in gates.items()
+        if gate["required"] and not gate["passed"]
+    ]
+    advisories = [
+        name
+        for name, gate in gates.items()
+        if not gate["required"] and not gate["passed"]
+    ]
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "performance_job_id": performance.get("job_id"),
+        "performance_kind": kind,
+        "requirements": {
+            "pbr": require_pbr,
+            "acting": require_acting,
+            "body": require_body,
+        },
+        "status": "ready" if not failures else "blocked",
+        "publishable": not failures,
+        "failures": failures,
+        "advisories": advisories,
+        "passed_required_gate_count": sum(
+            1 for gate in gates.values() if gate["required"] and gate["passed"]
+        ),
+        "required_gate_count": sum(1 for gate in gates.values() if gate["required"]),
+        "gates": gates,
+        "claim": (
+            "All required release evidence is present."
+            if not failures
+            else "Reviewable output only; missing evidence blocks production publication."
+        ),
+    }
+
+
+__all__ = ["SCHEMA_VERSION", "evaluate_production_readiness"]

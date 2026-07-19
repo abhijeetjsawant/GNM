@@ -19,6 +19,16 @@ when converting this representation to glTF's top-left texture coordinates.
 This module is CPU-only and intentionally contains no GNM-specific imports.  It
 can therefore be tested with small synthetic meshes and reused by the image
 pipeline without loading a model.
+
+Color-management contract
+-------------------------
+Integer and floating-point RGB inputs are both interpreted as IEC 61966-2-1
+sRGB-encoded values.  They are decoded to linear-sRGB before resampling,
+exposure harmonization, blending, mirroring, or inpainting.  Generic fallback
+colors follow the same contract.  The completed linear atlas is encoded to
+sRGB exactly once when the uint8 ``rgba`` result is created.  Confidence,
+visibility, source selection, and provenance never depend on that transfer
+function.
 """
 
 from __future__ import annotations
@@ -28,6 +38,11 @@ from typing import Mapping, Sequence
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
+
+
+COLOR_MANAGEMENT_VERSION = "autoanim.linear_srgb.v1"
+SRGB_ENCODING = "iec61966-2-1_srgb"
+LINEAR_SRGB_WORKING_SPACE = "linear_srgb"
 
 
 @dataclass(frozen=True)
@@ -60,7 +75,7 @@ class TextureBakeResult:
     overlap_count: np.ndarray
     color_gain: np.ndarray
     color_bias: np.ndarray
-    metrics: Mapping[str, float | int]
+    metrics: Mapping[str, float | int | str]
 
 
 def _cross2(left: np.ndarray, right: np.ndarray) -> np.ndarray:
@@ -108,6 +123,8 @@ def _pixel_grid_for_triangle(
 
 
 def _as_rgb(image: np.ndarray, index: int) -> np.ndarray:
+    """Validates an sRGB-encoded image and returns linear-sRGB float64."""
+
     value = np.asarray(image)
     if value.ndim != 3 or value.shape[2] != 3:
         raise ValueError(f"images[{index}] must have shape [height,width,3]")
@@ -125,7 +142,29 @@ def _as_rgb(image: np.ndarray, index: int) -> np.ndarray:
             raise ValueError(f"images[{index}] float values must be finite and in [0,1]")
     else:
         raise ValueError(f"images[{index}] has an unsupported dtype")
-    return result
+    return _srgb_to_linear(result)
+
+
+def _srgb_to_linear(value: np.ndarray) -> np.ndarray:
+    """Decodes IEC 61966-2-1 sRGB values into linear-sRGB."""
+
+    encoded = np.asarray(value, dtype=np.float64)
+    return np.where(
+        encoded <= 0.04045,
+        encoded / 12.92,
+        np.power((encoded + 0.055) / 1.055, 2.4),
+    )
+
+
+def _linear_to_srgb(value: np.ndarray) -> np.ndarray:
+    """Encodes bounded linear-sRGB values with the IEC 61966-2-1 transfer."""
+
+    linear = np.clip(np.asarray(value, dtype=np.float64), 0.0, 1.0)
+    return np.where(
+        linear <= 0.0031308,
+        linear * 12.92,
+        1.055 * np.power(linear, 1.0 / 2.4) - 0.055,
+    )
 
 
 def _as_camera(camera: PerspectiveCamera, index: int) -> PerspectiveCamera:
@@ -533,17 +572,21 @@ def bake_multiview_texture(
       triangles: Vertex indices, shape ``[T,3]``.
       triangle_uvs: Independent UV coordinate for every triangle corner,
         shape ``[T,3,2]``.  This preserves GNM UV seams.
-      images: Calibrated RGB images (uint8 [0,255] or float [0,1]).
+      images: Calibrated IEC 61966-2-1 sRGB-encoded images (uint8 [0,255]
+        or float [0,1]).  Both representations are decoded to linear-sRGB
+        before sampling, harmonization, and blending.
       cameras: One pinhole camera per image.
       masks: Optional per-view face/skin masks.  Pixels outside a mask are never
         baked; callers should use these to reject hair, hands, and occluders.
       confidences: Optional scalar or per-pixel measurement confidences.
       texture_size: Integer square size or ``(height, width)``.
-      generic_color: Explicit fallback RGB used where no evidence/fill exists.
+      generic_color: Explicit sRGB-encoded fallback RGB used where no
+        evidence/fill exists.
       generic_vertex_colors: Optional uint8 per-vertex anatomical fallback,
-        shape ``[V,3]``.  Values are barycentrically interpolated in atlas
-        space and take precedence over ``generic_color``.  They remain labeled
-        ``generic`` in the provenance maps.
+        shape ``[V,3]``.  Values are decoded from sRGB and barycentrically
+        interpolated in linear-sRGB atlas space, and take precedence over
+        ``generic_color``.  They remain labeled ``generic`` in the provenance
+        maps.
       mirror_fill: Fill a missing texel from its horizontally mirrored atlas
         location only when that location was directly observed.
       inpaint: Propagate nearest observed/mirrored color into *small* holes in
@@ -615,7 +658,9 @@ def bake_multiview_texture(
             raise ValueError("generic_vertex_colors must contain integer RGB values")
         if np.min(generic_vertices) < 0 or np.max(generic_vertices) > 255:
             raise ValueError("generic_vertex_colors values must be in [0,255]")
-        generic_vertices = generic_vertices.astype(np.float64) / 255.0
+        generic_vertices = _srgb_to_linear(
+            generic_vertices.astype(np.float64) / 255.0
+        )
     if maximum_inpaint_distance < 0.0 or not np.isfinite(maximum_inpaint_distance):
         raise ValueError("maximum_inpaint_distance must be finite and non-negative")
     if minimum_color_overlap < 1:
@@ -816,8 +861,13 @@ def bake_multiview_texture(
     )
     total_weight = np.sum(sample_weights, axis=0)
     observed = total_weight > 0.0
+    # From this point through fill, ``color`` remains linear-sRGB.  Encoding it
+    # earlier would make weighted blends and spatial interpolation operate on
+    # nonlinear display values.
     color = np.empty((texture_height, texture_width, 3), dtype=np.float64)
-    color[:] = np.asarray(generic_color, dtype=np.float64) / 255.0
+    color[:] = _srgb_to_linear(
+        np.asarray(generic_color, dtype=np.float64) / 255.0
+    )
     if generic_vertices is not None and np.any(atlas_mask):
         generic_triangles = triangle_array[triangle_map[atlas_mask]]
         generic_barycentrics = barycentric_map[atlas_mask]
@@ -875,12 +925,22 @@ def bake_multiview_texture(
     if not np.all(provenance_sum == 1):  # pragma: no cover - defensive invariant
         raise RuntimeError("texture provenance maps are not exhaustive and exclusive")
 
+    # This is the sole linear-to-sRGB conversion in the bake.  ``rgba`` is an
+    # ordinary sRGB PNG payload; audit/weight maps retain their old semantics.
     rgba = np.empty((texture_height, texture_width, 4), dtype=np.uint8)
-    rgba[..., :3] = np.rint(np.clip(color, 0.0, 1.0) * 255.0).astype(np.uint8)
+    rgba[..., :3] = np.rint(_linear_to_srgb(color) * 255.0).astype(np.uint8)
     rgba[..., 3] = 255
     atlas_count = int(np.count_nonzero(atlas_mask))
     denominator = max(atlas_count, 1)
-    metrics: dict[str, float | int] = {
+    metrics: dict[str, float | int | str] = {
+        "color_management_version": COLOR_MANAGEMENT_VERSION,
+        "input_color_encoding": SRGB_ENCODING,
+        "working_color_space": LINEAR_SRGB_WORKING_SPACE,
+        "resampling_color_space": LINEAR_SRGB_WORKING_SPACE,
+        "harmonization_color_space": LINEAR_SRGB_WORKING_SPACE,
+        "blending_color_space": LINEAR_SRGB_WORKING_SPACE,
+        "output_color_encoding": SRGB_ENCODING,
+        "output_transfer_application_count": 1,
         "texture_width": texture_width,
         "texture_height": texture_height,
         "view_count": view_count,

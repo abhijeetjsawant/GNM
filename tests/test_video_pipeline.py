@@ -26,6 +26,10 @@ from autoanim_gnm.video_pipeline import (
     _export_static_performance_glb,
     _final_output_retention_metrics,
 )
+from autoanim_gnm.video_evidence import (
+    PERFORMANCE_EVIDENCE_SCHEMA_VERSION,
+    build_performance_evidence,
+)
 from autoanim_gnm.video_retarget import retarget_capture
 
 
@@ -95,6 +99,21 @@ def test_retained_crema_capture_neutral_audit_and_final_geometry_retention() -> 
     assert hashlib.sha256(source.read_bytes()).hexdigest() == CREMA_D_ANGRY_SHA256
     capture = load_capture_npz(RETAINED_CREMA_JOB / "capture.npz")
     assert capture.provenance.source_sha256 == CREMA_D_ANGRY_SHA256
+    evidence = build_performance_evidence(capture)
+    assert evidence["schemaVersion"] == PERFORMANCE_EVIDENCE_SCHEMA_VERSION
+    assert [frame["sourcePTS"] for frame in evidence["frames"]] == (
+        capture.source_pts.tolist()
+    )
+    assert np.all(np.diff([frame["projectTick"] for frame in evidence["frames"]]) > 0)
+    assert evidence["summary"]["observedFrames"] == capture.frame_count
+    assert evidence["summary"]["missingFrames"] == 0
+    for region in ("mouth", "eyes", "upperFace", "head"):
+        assert evidence["summary"]["regions"][region]["geometryOnlyFrames"] == (
+            capture.frame_count
+        )
+    assert all(
+        frame["neutralityState"] == "unknown" for frame in evidence["frames"]
+    )
     adapter = GNMAdapter()
     retargeter = CalibratedRetargeter.from_directory(A2F_ASSETS, adapter=adapter)
     rig = ControlRig(
@@ -189,6 +208,12 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert result["capture"]["capture_quality_source"].endswith(
         "otherwise_in_frame_fraction"
     )
+    assert result["capture"]["performance_evidence_schema_version"] == (
+        PERFORMANCE_EVIDENCE_SCHEMA_VERSION
+    )
+    assert result["capture"]["performance_evidence_policy"] == (
+        "observation_only_no_motion_effect"
+    )
     assert result["capture"]["production_validated"] is False
     assert result["retargeting"]["backend"] == (
         "geometry_calibrated_dense_contact_aperture_v3"
@@ -245,6 +270,25 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert result["artifacts"]["viewer_media"]["media_type"] == "video/mp4"
     assert result["artifacts"]["oral_validation"]["media_type"] == "application/json"
     assert result["artifacts"]["oral_glb_validation"]["media_type"] == "application/json"
+    assert result["artifacts"]["performance_evidence"]["media_type"] == (
+        "application/json"
+    )
+
+    evidence_report = json.loads(
+        (job_dir / "performance-evidence.json").read_text(encoding="utf-8")
+    )
+    assert evidence_report["schemaVersion"] == PERFORMANCE_EVIDENCE_SCHEMA_VERSION
+    assert evidence_report["policy"] == "observation_only_no_motion_effect"
+    assert evidence_report["source"]["frameCount"] == 67
+    assert evidence_report["summary"]["observedFrames"] == 67
+    assert evidence_report["summary"]["missingFrames"] == 0
+    assert [frame["sourcePTS"] for frame in evidence_report["frames"]] == (
+        probe_video(CREMA_D_ANGRY).source_pts.tolist()
+    )
+    assert all(
+        frame["neutralityState"] == "unknown"
+        for frame in evidence_report["frames"]
+    )
 
     oral_report = json.loads((job_dir / "oral-validation.json").read_text(encoding="utf-8"))
     assert oral_report["source"]["evaluation_mode"] == "provided_complete_gnm_frames"

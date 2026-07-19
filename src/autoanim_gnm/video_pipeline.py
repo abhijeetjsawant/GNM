@@ -31,6 +31,10 @@ from .video_capture import (
     probe_video,
     serialize_capture,
 )
+from .video_evidence import (
+    PERFORMANCE_EVIDENCE_SCHEMA_VERSION,
+    write_performance_evidence,
+)
 from .video_retarget import (
     FAST_CONTACT_CONTROLS,
     NEUTRAL_CALIBRATION_CAVEAT,
@@ -540,6 +544,7 @@ def run_video_pipeline(
     if detected_count == 0:
         raise AutoAnimError("FACE_NOT_FOUND", "No face was detected in the video")
     serialize_capture(output, capture)
+    write_performance_evidence(output / "performance-evidence.json", capture)
 
     adapter = GNMAdapter()
     identity_value = (
@@ -854,6 +859,10 @@ def run_video_pipeline(
             "capture_quality_source": (
                 "landmark_visibility_when_available_otherwise_in_frame_fraction"
             ),
+            "performance_evidence_schema_version": (
+                PERFORMANCE_EVIDENCE_SCHEMA_VERSION
+            ),
+            "performance_evidence_policy": "observation_only_no_motion_effect",
             "production_validated": False,
         },
         "retargeting": {
@@ -978,6 +987,7 @@ def run_video_pipeline(
         "artifacts": {
             "capture": "capture.npz",
             "capture_jsonl": "capture.jsonl",
+            "performance_evidence": "performance-evidence.json",
             "controls": "performance.npz",
             "controls_jsonl": "performance.jsonl",
             "glb": "performance.glb",

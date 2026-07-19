@@ -475,6 +475,15 @@ def test_calibrated_pipeline_writes_matrix_provenance_and_held_out_report(
     assert result["capture"]["held_out"]["passed"]
     assert result["fit"]["calibrated_geometry_gate_passed"]
     assert result["fit"]["production_validated"] is False
+    assert result["texture"]["color_management_version"] == (
+        "autoanim.linear_srgb.v1"
+    )
+    assert result["texture"]["input_color_encoding"] == "iec61966-2-1_srgb"
+    assert result["texture"]["working_color_space"] == "linear_srgb"
+    assert result["texture"]["harmonization_color_space"] == "linear_srgb"
+    assert result["texture"]["blending_color_space"] == "linear_srgb"
+    assert result["texture"]["output_color_encoding"] == "iec61966-2-1_srgb"
+    assert result["texture"]["output_transfer_application_count"] == 1
     assert (output / "capture-calibration.json").is_file()
     assert (output / "gnm-camera-registration.json").is_file()
     with np.load(output / "fit.npz", allow_pickle=False) as values:

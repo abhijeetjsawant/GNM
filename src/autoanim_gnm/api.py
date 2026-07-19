@@ -287,6 +287,25 @@ def create_app(
     def jobs(limit: int = 20):
         return {"jobs": service.store.list_recent(limit=max(1, min(limit, 50)))}
 
+    @app.get("/api/jobs/{job_id}/production-readiness")
+    def production_readiness(
+        job_id: str,
+        direction_job_id: str | None = None,
+        require_acting: bool = False,
+        require_body: bool = False,
+        require_pbr: bool = True,
+    ):
+        try:
+            return service.production_readiness(
+                job_id,
+                direction_job_id=direction_job_id,
+                require_acting=require_acting,
+                require_body=require_body,
+                require_pbr=require_pbr,
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
     @app.post("/api/direction", status_code=201)
     def direction(
         source_job_id: str = Form(...),
@@ -560,6 +579,7 @@ def create_app(
             service.store.artifact(job_id, name)
             media_url = None
             media_type = None
+            performance_evidence_url = None
             viewer_contract = manifest.get("viewer", {})
             clock_key = viewer_contract.get("clock_artifact")
             if isinstance(clock_key, str):
@@ -573,6 +593,14 @@ def create_app(
                         if isinstance(clock.get("media_type"), str)
                         else None
                     )
+            if manifest.get("kind") == "video_performance":
+                evidence = artifacts.get("performance_evidence")
+                if isinstance(evidence, dict) and isinstance(evidence.get("name"), str):
+                    evidence_name = evidence["name"]
+                    service.store.artifact(job_id, evidence_name)
+                    performance_evidence_url = (
+                        f"/api/jobs/{job_id}/files/{evidence_name}"
+                    )
             model_document = manifest.get("model")
             character_document = (
                 model_document.get("character")
@@ -584,6 +612,33 @@ def create_app(
                 if isinstance(character_document, dict)
                 else None
             )
+            viewer_metadata = (
+                {
+                    "character_revision": character_document.get("revision_id"),
+                    "runtime_maps": (
+                        sorted(runtime_hashes)
+                        if isinstance(runtime_hashes, dict)
+                        else []
+                    ),
+                }
+                if isinstance(character_document, dict)
+                else {}
+            )
+            if manifest.get("kind") in {"audio_animation", "video_performance"}:
+                readiness = service.production_readiness(job_id)
+                viewer_metadata.update(
+                    {
+                        "production_status": readiness["status"],
+                        "release_gates": (
+                            f"{readiness['passed_required_gate_count']}/"
+                            f"{readiness['required_gate_count']}"
+                        ),
+                        "release_blockers": readiness["failures"],
+                        "production_validated": readiness["publishable"],
+                    }
+                )
+            elif viewer_metadata:
+                viewer_metadata["production_validated"] = False
             return HTMLResponse(
                 viewer_html(
                     asset_url=f"/api/jobs/{job_id}/files/{name}",
@@ -594,21 +649,8 @@ def create_app(
                     ),
                     media_url=media_url,
                     media_type=media_type,
-                    metadata=(
-                        {
-                            "character_revision": character_document.get(
-                                "revision_id"
-                            ),
-                            "runtime_maps": (
-                                sorted(runtime_hashes)
-                                if isinstance(runtime_hashes, dict)
-                                else []
-                            ),
-                            "production_validated": False,
-                        }
-                        if isinstance(character_document, dict)
-                        else None
-                    ),
+                    performance_evidence_url=performance_evidence_url,
+                    metadata=viewer_metadata or None,
                 ),
                 headers={
                     "Content-Security-Policy": (
@@ -650,7 +692,7 @@ UI_HTML = r"""<!doctype html>
     button{background:var(--accent);color:#10130a;border:0;font-weight:800;margin-top:18px;cursor:pointer}button:disabled{opacity:.45;cursor:wait}
     .status{margin-top:18px;min-height:24px;color:var(--muted)}.error{color:var(--danger)}.result{display:none;margin-top:18px;border-top:1px solid var(--line);padding-top:18px}
     video,.result img{display:block;width:100%;max-height:520px;object-fit:contain;background:#050607;border-radius:12px}.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.links a{color:var(--accent);border:1px solid var(--line);border-radius:8px;padding:7px 10px;text-decoration:none}
-    pre{overflow:auto;max-height:260px;background:#090b0d;padding:12px;border-radius:10px;font-size:11px}.note{margin-top:22px;color:var(--muted);border-left:3px solid var(--accent);padding-left:12px}.quality{margin:0 0 12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0d1114}.quality strong{color:var(--accent)}.quality small{display:block;color:var(--muted);margin-top:5px}.timeline-wrap{margin-top:12px;padding:10px;background:#090b0d;border:1px solid var(--line);border-radius:10px}.timeline-wrap canvas{display:block;width:100%;height:112px}.timeline-readout{color:var(--muted);font-size:11px;margin-top:5px}.recent{margin-top:28px}.recent-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.recent-head button,.inline-action{width:auto;margin:0;padding:8px 12px}.recent-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.recent-job{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:12px;background:#0d1114}.recent-job small{display:block;color:var(--muted)}.recent-job a{color:var(--accent);white-space:nowrap}.job-actions{display:flex;gap:8px;align-items:center}.empty{color:var(--muted)}.library{margin-bottom:28px}.library-layout{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(0,1.2fr);gap:18px}.character-list{display:grid;gap:10px}.character-row{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0d1114}.character-row small{display:block;color:var(--muted)}.character-row a{color:var(--accent)}
+    pre{overflow:auto;max-height:260px;background:#090b0d;padding:12px;border-radius:10px;font-size:11px}.note{margin-top:22px;color:var(--muted);border-left:3px solid var(--accent);padding-left:12px}.quality{margin:0 0 12px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0d1114}.quality strong{color:var(--accent)}.quality.blocked{border-color:#6a3d3d}.quality.blocked strong{color:var(--danger)}.quality small{display:block;color:var(--muted);margin-top:5px}.timeline-wrap{margin-top:12px;padding:10px;background:#090b0d;border:1px solid var(--line);border-radius:10px}.timeline-wrap canvas{display:block;width:100%;height:112px}.timeline-readout{color:var(--muted);font-size:11px;margin-top:5px}.recent{margin-top:28px}.recent-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.recent-head button,.inline-action{width:auto;margin:0;padding:8px 12px}.recent-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.recent-job{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:12px;background:#0d1114}.recent-job small{display:block;color:var(--muted)}.recent-job a{color:var(--accent);white-space:nowrap}.job-actions{display:flex;gap:8px;align-items:center}.empty{color:var(--muted)}.library{margin-bottom:28px}.library-layout{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(0,1.2fr);gap:18px}.character-list{display:grid;gap:10px}.character-row{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0d1114}.character-row small{display:block;color:var(--muted)}.character-row a{color:var(--accent)}
     .workspace{margin-bottom:28px;border-color:#65772d;background:linear-gradient(125deg,#172014,#11171b)}.workspace-grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(170px,.55fr) minmax(220px,1fr);gap:18px;align-items:end}.workspace label{margin-top:0}.workspace-state{padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#0d1114;color:var(--muted);min-height:48px}.workspace-state strong{display:block;color:var(--text);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.workspace-state span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     @media(max-width:760px){header{display:block}header p{margin-top:20px}.grid,.recent-list,.library-layout,.workspace-grid{grid-template-columns:1fr}}
   </style>
@@ -767,6 +809,14 @@ const recentList=document.querySelector('#recent-list');async function refreshJo
  if(actions.childElementCount)row.append(actions);recentList.append(row)
 }}catch(error){recentList.innerHTML='<p class="empty">Recent jobs unavailable.</p>'}}
 document.querySelector('#refresh-jobs').addEventListener('click',refreshJobs);refreshJobs();
+async function appendProductionReadiness(data,result){
+ if(data.kind!=='audio_animation'&&data.kind!=='video_performance')return;
+ const response=await fetch(`/api/jobs/${data.job_id}/production-readiness`),report=await response.json();
+ if(!response.ok)return;
+ const q=document.createElement('div');q.className=`quality ${report.publishable?'':'blocked'}`;
+ const title=document.createElement('strong');title.textContent=report.publishable?'Production release evidence complete':`Production blocked · ${report.failures.length} required gate${report.failures.length===1?'':'s'}`;q.append(title);
+ const detail=document.createElement('small');const failed=report.failures.map(name=>name.replaceAll('_',' ')).join(', ');detail.textContent=`${report.passed_required_gate_count}/${report.required_gate_count} required gates pass${failed?` · missing: ${failed}`:''}. ${report.claim}`;q.append(detail);result.append(q)
+}
 for(const [formId,endpoint] of [['audio-form','/api/audio'],['image-form','/api/image'],['multiview-form','/api/multiview'],['video-form','/api/video'],['direction-form','/api/direction']]){
  const form=document.getElementById(formId),status=form.querySelector('.status'),result=form.querySelector('.result'),button=form.querySelector('button');
  form.addEventListener('submit',async event=>{event.preventDefault();button.disabled=true;status.className='status';status.textContent='Processing locally…';result.style.display='none';
@@ -776,6 +826,7 @@ for(const [formId,endpoint] of [['audio-form','/api/audio'],['image-form','/api/
 		   if(data.kind==='video_performance'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent=data.retargeting.geometry_calibrated?'Video performance · geometry calibrated':'Video performance · semantic fallback';q.append(title);const contact=data.metrics.final_contact_geometry_attained_fraction;const contactText=contact===null?'no scored closure':`${(100*contact).toFixed(1)}% contact attained`;const aperture=data.metrics.final_lip_aperture_open_p95_ratio;const apertureText=aperture===null?'aperture n/a':`aperture amplitude ${(100*aperture).toFixed(1)}%`;const detail=document.createElement('small');detail.textContent=`Face presence ${(100*data.metrics.face_presence_fraction).toFixed(1)}% · ${contactText} · ${apertureText} · expression timing ${data.metrics.final_expression_motion_correlation===null?'n/a':data.metrics.final_expression_motion_correlation.toFixed(3)} · baseline loss ${(100*data.metrics.negative_baseline_residual_clipped_fraction).toFixed(1)}% · proxy timing error ${data.metrics.proxy_pts_max_error_ms.toFixed(2)} ms. Video mode follows visual mouth/expression/head/gaze, not its audio; occluded tongue is not inferred. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);setActivePerformance(data.job_id,data.kind)}
    if(data.kind==='multiview_reconstruction'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent='Shared identity · provenance-aware texture';q.append(title);const detail=document.createElement('small');const holdout=data.capture.held_out?.evaluated?` · held-out NME ${data.capture.held_out.aggregate_nme.toFixed(4)} (${data.capture.held_out.passed?'pass':'fail'})`:'';detail.textContent=`Fit NME ${data.fit.nme.toFixed(4)}${holdout} · direct texture ${(100*data.texture.observed_fraction).toFixed(1)}% · ${data.capture.accepted_view_indices.length}/${data.capture.view_count} views accepted. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);document.querySelector('#character-job').value=data.job_id}
    if(data.kind==='acting_direction'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent=`Acting proposal + unapproved body preview · ${data.direction.beat_count} beat${data.direction.beat_count===1?'':'s'}`;q.append(title);const detail=document.createElement('small');detail.textContent=`${data.direction.summary} · evidence ${data.source.motion_evidence}. Lipsync overrides are disabled; approve/edit and recompile before publish. ${data.warnings.join(' ')}`;q.append(detail);result.append(q)}
+   await appendProductionReadiness(data,result);
    let video=null;const media=data.artifacts.preview||data.artifacts.viewer_media||data.artifacts.overlay||data.artifacts.mesh_preview;if(media){const url=artifactUrl(data.job_id,media.name);if(media.media_type==='video/mp4'){video=document.createElement('video');video.controls=true;video.playsInline=true;video.src=url;result.append(video)}else{const image=document.createElement('img');image.src=url;image.alt='Result preview';result.append(image)}}
    if(video&&data.artifacts.timeline){const wrap=document.createElement('div');wrap.className='timeline-wrap';const canvas=document.createElement('canvas');canvas.width=800;canvas.height=112;const readout=document.createElement('div');readout.className='timeline-readout';wrap.append(canvas,readout);result.append(wrap);fetch(artifactUrl(data.job_id,data.artifacts.timeline.name)).then(r=>r.json()).then(t=>{const ctx=canvas.getContext('2d'),n=t.timestamps.length,ap=t.mouth_aperture||[],en=t.energy||[],amin=Math.min(...ap),ar=Math.max(...ap)-amin||1;function curve(values,color,norm){ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();values.forEach((v,i)=>{const x=i/(n-1)*canvas.width,y=canvas.height-8-norm(v)*(canvas.height-16);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#090b0d';ctx.fillRect(0,0,canvas.width,canvas.height);curve(en,'#6fb9ff',v=>v);curve(ap,'#d8ff63',v=>(v-amin)/ar);const duration=t.timestamps[n-1]||video.duration||1,x=Math.min(1,video.currentTime/duration)*canvas.width;ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,canvas.height);ctx.stroke();const cue=(data.analysis.cues||[]).find(c=>video.currentTime>=c.start&&video.currentTime<c.end);readout.textContent=`${video.currentTime.toFixed(2)} s · cue ${cue?cue.value:'X'} · green aperture · blue energy`}video.addEventListener('timeupdate',draw);video.addEventListener('seeked',draw);draw()}).catch(()=>{readout.textContent='Timeline unavailable'})}
    const links=document.createElement('div');links.className='links';if(data.artifacts.glb||data.artifacts.textured_glb){const view=document.createElement('a');view.href=`/api/jobs/${data.job_id}/viewer`;view.textContent='Open interactive 3D';view.target='_blank';links.append(view)}for(const [key,item] of Object.entries(data.artifacts)){const a=document.createElement('a');a.href=artifactUrl(data.job_id,item.name);a.textContent=key;a.download=item.name;links.append(a)}result.append(links);const pre=document.createElement('pre');pre.textContent=JSON.stringify(data,null,2);result.append(pre);result.style.display='block';refreshJobs();
