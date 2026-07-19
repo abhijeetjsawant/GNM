@@ -88,6 +88,7 @@ def test_real_gnm_animation_exports_standard_morph_track(tmp_path: Path):
     ] == len(frames) * exported.rank
     mapping = np.load(exported.mapping_path)
     assert mapping["morph_weights"].shape == (len(frames), exported.rank)
+    assert int(mapping["oral_corrective_targets"]) == exported.oral_corrective_targets
     loaded = trimesh.load(output, force="scene", process=False)
     geometry = next(iter(loaded.geometry.values()))
     assert geometry.vertices.shape == (18_437, 3)

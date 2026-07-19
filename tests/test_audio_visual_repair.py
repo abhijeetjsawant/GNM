@@ -532,6 +532,11 @@ def test_real_video_and_audio_drive_one_pts_bound_gnm_performance(
     assert result["oral_validation"]["tongue_visible_validated"] is False
     assert result["oral_validation"]["tongue_control_active_frames"] > 0
     assert result["oral_validation"]["tongue_teeth_collision_risk_frames"] == 0
+    assert result["viewer"]["status"] == "ready"
+    assert result["viewer"]["mode"] == "animation"
+    assert result["viewer"]["glb_covers_full_track"] is True
+    assert result["viewer"]["reconstruction"]["oral_corrective_targets"] > 0
+    assert result["oral_validation"]["viewer_structural_reconstruction_validated"] is True
     assert not any("ORAL_TONGUE_SOURCE_UNAVAILABLE" in item for item in result["warnings"])
     assert any("ORAL_TONGUE_AUDIO_INFERRED_UNVALIDATED" in item for item in result["warnings"])
     for name in (

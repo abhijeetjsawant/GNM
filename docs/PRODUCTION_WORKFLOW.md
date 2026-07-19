@@ -996,9 +996,14 @@ artist gates pass.
   Rhubarb, the explicitly resolved Claire MLX bundle, dense GNM retarget,
   audiovisual repair, final oral/tongue validation and animated GLB export;
   `1 passed in 22.75s`. The exact post-review rerun, including the original
-  timing-artifact gate, passed in `23.06s`.
+  timing-artifact gate, passed in `23.06s`. A fresh app job then exposed that
+  the first combined tongue track exceeded the viewer's 32-target compression
+  gate and correctly fell back to static. The exporter now retains bounded
+  sparse oral corrective targets when a sub-SVD-threshold residual would
+  otherwise flip contact/lip ordering; the same take exports a full animated
+  rank-20 GLB and passes all-frame structural oral reconstruction.
 - Full post-review regression: `418 passed, 1 skipped, 1 dependency warning in
-  375.12s`. The single skip is the duplicate opt-in released-Claire asset test;
+  382.79s`. The single skip is the duplicate opt-in released-Claire asset test;
   the checksum-pinned real learned video/audio route above ran and passed.
 - Honest release state: the implementation is a working candidate, not a
   production approval. Production remains blocked on mouth-local visual

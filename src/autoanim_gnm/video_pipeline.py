@@ -84,6 +84,7 @@ VIDEO_TRACKING_CAVEAT = (
     "TrueDepth or synchronized multiview capture is the higher-accuracy tier."
 )
 MAX_INTERACTIVE_FRAMES = 1_800
+MAX_INTERACTIVE_MORPH_TARGETS = 64
 MAX_PROXY_PTS_ERROR_SECONDS = 0.002
 MAX_AUTHORED_APERTURE_SOURCE_STEP_INTEROCULAR = 0.08
 
@@ -1321,6 +1322,7 @@ def _run_video_pipeline_impl(
                 adapter,
                 frames,
                 performance.timestamps_seconds,
+                max_targets=MAX_INTERACTIVE_MORPH_TARGETS,
                 mapping_path=output / "performance-glb-mapping.npz",
                 texture_path=texture_path,
                 triangle_uvs=texture_triangle_uvs,
@@ -1332,6 +1334,7 @@ def _run_video_pipeline_impl(
                 viewer_mode = "static"
             viewer_reconstruction = {
                 "expression_pose_rank": exported.rank,
+                "oral_corrective_targets": exported.oral_corrective_targets,
                 "validation_scope": "all_frames",
                 "mesh_p95_mm": exported.mesh_p95_mm,
                 "mesh_max_mm": exported.mesh_max_mm,

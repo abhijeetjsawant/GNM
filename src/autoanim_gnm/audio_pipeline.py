@@ -1196,6 +1196,7 @@ def run_audio_pipeline(
         viewer_status = "ready" if viewer_export.rank else "static_only"
         viewer_reconstruction = {
             "expression_pose_rank": viewer_export.rank,
+            "oral_corrective_targets": viewer_export.oral_corrective_targets,
             "validation_scope": "all_frames",
             "mesh_p95_mm": viewer_export.mesh_p95_mm,
             "mesh_max_mm": viewer_export.mesh_max_mm,

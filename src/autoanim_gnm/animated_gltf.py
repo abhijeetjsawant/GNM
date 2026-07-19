@@ -47,6 +47,7 @@ class LowRankVertexAnimation:
     mesh_max_m: float
     landmark_p95_m: float
     landmark_max_m: float
+    oral_corrective_targets: int = 0
 
     @property
     def rank(self) -> int:
@@ -65,6 +66,7 @@ class AnimatedGLBExport:
     mesh_max_mm: float
     landmark_p95_mm: float
     landmark_max_mm: float
+    oral_corrective_targets: int
 
 
 def _landmarks(
@@ -214,6 +216,7 @@ def factor_vertex_animation(
 
     reconstruction = np.zeros_like(flattened)
     final_metrics: dict[str, float | int] = {}
+    best_oral_corrective: LowRankVertexAnimation | None = None
     for rank in range(1, available + 1):
         reconstruction += np.outer(track_weights[:, rank - 1], right[rank - 1])
         reconstructed_frames = (
@@ -279,6 +282,120 @@ def factor_vertex_animation(
             oral_semantics_passed = (
                 contact_changes == 0 and introduced_order_risks == 0
             )
+            failed_semantic_frames = (
+                (predicted_contact != observed_contact)
+                | (predicted_order_risk & ~observed_order_risk)
+            )
+            corrective_count = int(np.count_nonzero(failed_semantic_frames))
+            # A numerically tiny oral displacement can sit below the global
+            # SVD threshold while still crossing a signed lip-order/contact
+            # boundary. If the geometry tolerances already pass, retain one
+            # exact sparse residual target per affected sampled frame. This is
+            # fail-closed and bounded by the caller's target cap; it does not
+            # relax or relabel the oral semantic gate.
+            geometry_passed = bool(
+                mesh_p95 <= mesh_p95_limit_m
+                and mesh_max <= mesh_max_limit_m
+                and landmark_p95 <= landmark_p95_limit_m
+                and landmark_max <= landmark_max_limit_m
+            )
+            if (
+                geometry_passed
+                and not oral_semantics_passed
+                and corrective_count > 0
+                and rank + corrective_count <= max_targets
+            ):
+                failed_indices = np.flatnonzero(failed_semantic_frames)
+                svd_morph = (
+                    right[:rank].reshape(rank, values.shape[1], 3)
+                    / coordinate_scale[None, :, :]
+                ).astype(np.float32)
+                svd_weights = track_weights[:, :rank].astype(np.float32)
+                svd_frames = base + np.einsum(
+                    "fk,kvj->fvj", svd_weights, svd_morph
+                )
+                residual_morph = np.asarray(
+                    values[failed_indices] - svd_frames[failed_indices],
+                    dtype=np.float32,
+                )
+                residual_weights = np.zeros(
+                    (len(values), corrective_count), dtype=np.float32
+                )
+                residual_weights[
+                    failed_indices, np.arange(corrective_count)
+                ] = 1.0
+                candidate_morph = np.concatenate(
+                    (svd_morph, residual_morph), axis=0
+                )
+                candidate_weights = np.concatenate(
+                    (svd_weights, residual_weights), axis=1
+                )
+                candidate_frames = base + np.einsum(
+                    "fk,kvj->fvj", candidate_weights, candidate_morph
+                )
+                candidate_vertex_error = np.linalg.norm(
+                    candidate_frames - values, axis=2
+                )
+                candidate_mesh_p95 = float(
+                    np.percentile(candidate_vertex_error, 95)
+                )
+                candidate_mesh_max = float(
+                    np.max(candidate_vertex_error, initial=0.0)
+                )
+                candidate_landmarks = _landmarks(
+                    candidate_frames, landmark_indices, landmark_weights
+                )
+                if candidate_landmarks is None:
+                    raise AssertionError(
+                        "oral corrective landmark evaluation unexpectedly failed"
+                    )
+                candidate_landmark_error = np.linalg.norm(
+                    candidate_landmarks - observed_landmarks, axis=2
+                )
+                candidate_landmark_p95 = float(
+                    np.percentile(candidate_landmark_error, 95)
+                )
+                candidate_landmark_max = float(
+                    np.max(candidate_landmark_error, initial=0.0)
+                )
+                candidate_semantic_landmarks = _landmarks(
+                    candidate_frames, landmark_indices, semantic_weights
+                )
+                if candidate_semantic_landmarks is None:
+                    raise AssertionError(
+                        "oral corrective semantic evaluation unexpectedly failed"
+                    )
+                _, candidate_contact, candidate_order_risk = classify_lip_landmarks(
+                    candidate_semantic_landmarks,
+                    contact_gap_interocular=lip_contact_gap_interocular,
+                    order_tolerance_interocular=(
+                        lip_order_inversion_tolerance_interocular
+                    ),
+                )
+                candidate_passed = bool(
+                    candidate_mesh_p95 <= mesh_p95_limit_m
+                    and candidate_mesh_max <= mesh_max_limit_m
+                    and candidate_landmark_p95 <= landmark_p95_limit_m
+                    and candidate_landmark_max <= landmark_max_limit_m
+                    and np.array_equal(candidate_contact, observed_contact)
+                    and not np.any(candidate_order_risk & ~observed_order_risk)
+                )
+                if candidate_passed:
+                    corrective = LowRankVertexAnimation(
+                        base_vertices=base,
+                        morph_positions=candidate_morph,
+                        weights=candidate_weights,
+                        mesh_p95_m=candidate_mesh_p95,
+                        mesh_max_m=candidate_mesh_max,
+                        landmark_p95_m=candidate_landmark_p95,
+                        landmark_max_m=candidate_landmark_max,
+                        oral_corrective_targets=corrective_count,
+                    )
+                    if (
+                        best_oral_corrective is None
+                        or corrective.rank < best_oral_corrective.rank
+                    ):
+                        best_oral_corrective = corrective
         if (
             mesh_p95 <= mesh_p95_limit_m
             and mesh_max <= mesh_max_limit_m
@@ -286,7 +403,7 @@ def factor_vertex_animation(
             and landmark_max <= landmark_max_limit_m
             and oral_semantics_passed
         ):
-            return LowRankVertexAnimation(
+            direct = LowRankVertexAnimation(
                 base_vertices=base,
                 morph_positions=(
                     right[:rank].reshape(rank, values.shape[1], 3)
@@ -298,6 +415,14 @@ def factor_vertex_animation(
                 landmark_p95_m=landmark_p95,
                 landmark_max_m=landmark_max,
             )
+            return (
+                best_oral_corrective
+                if best_oral_corrective is not None
+                and best_oral_corrective.rank <= direct.rank
+                else direct
+            )
+    if best_oral_corrective is not None:
+        return best_oral_corrective
     raise AnimationCompressionError(
         f"Animation needs more than {max_targets} morph targets to pass reconstruction "
         "and oral-semantic gates",
@@ -804,6 +929,7 @@ def export_animated_gnm_glb(
                 "coordinate_system": "+Y_up_+Z_forward_meters",
                 "reconstruction": {
                     "rank": factor.rank,
+                    "oral_corrective_targets": factor.oral_corrective_targets,
                     "mesh_p95_mm": factor.mesh_p95_m * 1000.0,
                     "mesh_max_mm": factor.mesh_max_m * 1000.0,
                     "landmark_p95_mm": factor.landmark_p95_m * 1000.0,
@@ -855,6 +981,9 @@ def export_animated_gnm_glb(
         gltf_uvs_upper_left=gltf_uvs,
         timestamps=times,
         morph_weights=factor.weights,
+        oral_corrective_targets=np.asarray(
+            factor.oral_corrective_targets, dtype=np.int32
+        ),
     )
     return AnimatedGLBExport(
         path=output,
@@ -867,4 +996,5 @@ def export_animated_gnm_glb(
         mesh_max_mm=factor.mesh_max_m * 1000.0,
         landmark_p95_mm=factor.landmark_p95_m * 1000.0,
         landmark_max_mm=factor.landmark_max_m * 1000.0,
+        oral_corrective_targets=factor.oral_corrective_targets,
     )
