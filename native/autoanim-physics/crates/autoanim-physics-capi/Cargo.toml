@@ -1,0 +1,13 @@
+[package]
+name = "autoanim-physics-capi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+autoanim-physics-core.workspace = true
+serde_json.workspace = true

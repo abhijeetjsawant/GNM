@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shlex
+import sys
 
 import numpy as np
 import pytest
@@ -88,7 +90,13 @@ if '--version' in sys.argv:
     raise SystemExit(0)
 print({envelope!r})
 """
-    path.write_text(body, encoding="utf-8")
+    payload = path.with_name(f"{path.name}.py")
+    payload.write_text(body, encoding="utf-8")
+    path.write_text(
+        "#!/bin/bash\n"
+        f"exec {shlex.quote(sys.executable)} {shlex.quote(str(payload))} \"$@\"\n",
+        encoding="utf-8",
+    )
     path.chmod(0o755)
     return path
 

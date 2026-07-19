@@ -254,6 +254,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument(
+        "--session-token",
+        help="Protect every HTTP route with a 256-bit native session token",
+    )
     serve.add_argument("--artifacts", type=Path, default=Path("artifacts/jobs"))
     return parser
 
@@ -507,6 +511,7 @@ def main(argv: list[str] | None = None) -> int:
                     a2f_offline=args.a2f_offline,
                     viewer_vendor_root=args.viewer_vendor,
                     character_root=args.characters,
+                    session_token=args.session_token,
                 ),
                 host=args.host,
                 port=args.port,

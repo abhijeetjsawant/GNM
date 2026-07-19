@@ -60,6 +60,17 @@ RHUBARB_SOURCE_DIR=$(dirname "$RHUBARB_SOURCE")
 # entire release bundle (especially res/sphinx), not just the binary.
 cp -R "$RHUBARB_SOURCE_DIR"/. "$CACHE_DIR/rhubarb/"
 chmod +x "$CACHE_DIR/rhubarb/rhubarb"
+if [[ "$SYSTEM_NAME" == "Darwin" ]]; then
+  command -v codesign >/dev/null 2>&1 || {
+    echo "codesign is required to qualify the cached Rhubarb executable on macOS." >&2
+    exit 1
+  }
+  # The upstream 1.14 macOS archive is unsigned. Verify the published archive
+  # hash first, then apply a local ad-hoc signature so AMFI does not stall or
+  # SIGKILL this cached third-party executable when Developer Mode is disabled.
+  codesign --force --sign - --timestamp=none "$CACHE_DIR/rhubarb/rhubarb"
+  codesign --verify --strict "$CACHE_DIR/rhubarb/rhubarb"
+fi
 if [[ ! -f "$CACHE_DIR/rhubarb/res/sphinx/cmudict-en-us.dict" ]]; then
   echo "The Rhubarb resource bundle is incomplete." >&2
   exit 1

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
+import re
+import secrets
 import tempfile
 import threading
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .errors import AutoAnimError
@@ -16,6 +19,8 @@ from .viewer import VIEWER_THREE_VERSION, VIEWER_VENDOR_FILES, viewer_html
 
 
 STATUS_BY_CODE = {
+    "SESSION_UNAUTHORIZED": 401,
+    "HOST_INVALID": 400,
     "INPUT_INVALID": 400,
     "MEDIA_INVALID": 400,
     "AUDIO_SILENT": 400,
@@ -56,9 +61,103 @@ STATUS_BY_CODE = {
     "INTERNAL_ERROR": 500,
 }
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "testserver"})
+_HEX_TOKEN = re.compile(r"[0-9a-fA-F]+\Z")
+
 
 def _error_response(error: AutoAnimError) -> JSONResponse:
     return JSONResponse(status_code=STATUS_BY_CODE.get(error.code, 500), content=error.as_dict())
+
+
+def _session_token_digest(session_token: str) -> bytes:
+    """Validate a transport token and return a fixed-length comparison value."""
+    if not isinstance(session_token, str):
+        raise AutoAnimError("INPUT_INVALID", "Session token must be text")
+    try:
+        encoded = session_token.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise AutoAnimError("INPUT_INVALID", "Session token must be valid UTF-8") from exc
+    if not encoded or len(encoded) > 4096:
+        raise AutoAnimError(
+            "INPUT_INVALID", "Session token must encode between 32 and 4096 bytes"
+        )
+    # A hex-looking token encodes four bits per character, so it must contain
+    # at least 64 characters. Other opaque tokens must contain at least 32 bytes.
+    if _HEX_TOKEN.fullmatch(session_token):
+        if len(session_token) % 2 or len(session_token) < 64:
+            raise AutoAnimError(
+                "INPUT_INVALID", "Hex session token must encode at least 256 bits"
+            )
+    elif len(encoded) < 32:
+        raise AutoAnimError(
+            "INPUT_INVALID", "Session token must contain at least 32 random bytes"
+        )
+    return hashlib.sha256(encoded).digest()
+
+
+def _parse_host_header(value: str) -> tuple[str, int | None] | None:
+    """Parse the narrow Host grammar accepted by the native loopback server."""
+    if not value or value != value.strip() or any(char.isspace() for char in value):
+        return None
+    if value.startswith("["):
+        closing = value.find("]")
+        if closing < 0:
+            return None
+        hostname = value[1:closing].lower()
+        remainder = value[closing + 1 :]
+        if remainder:
+            port_text = remainder[1:]
+            if (
+                not remainder.startswith(":")
+                or not port_text.isdigit()
+                or len(port_text) > 5
+            ):
+                return None
+            port = int(port_text)
+        else:
+            port = None
+    else:
+        if "[" in value or "]" in value or value.count(":") > 1:
+            return None
+        if ":" in value:
+            hostname, separator, port_text = value.rpartition(":")
+            if (
+                not separator
+                or not hostname
+                or not port_text.isdigit()
+                or len(port_text) > 5
+            ):
+                return None
+            port = int(port_text)
+        else:
+            hostname = value
+            port = None
+        hostname = hostname.lower()
+    if hostname not in _LOOPBACK_HOSTS or (port is not None and not 1 <= port <= 65535):
+        return None
+    return hostname, port
+
+
+def _host_matches_bound_port(request: Request) -> bool:
+    raw_hosts = [
+        value.decode("latin-1")
+        for name, value in request.scope.get("headers", ())
+        if name.lower() == b"host"
+    ]
+    if len(raw_hosts) != 1:
+        return False
+    parsed = _parse_host_header(raw_hosts[0])
+    if parsed is None:
+        return False
+    _, presented_port = parsed
+    server = request.scope.get("server")
+    if not server or len(server) < 2 or not isinstance(server[1], int):
+        return False
+    bound_port = server[1]
+    if presented_port is not None:
+        return presented_port == bound_port
+    default_port = 443 if request.url.scheme == "https" else 80
+    return bound_port == default_port
 
 
 def _retain_upload(upload: UploadFile, *, max_bytes: int = 100 * 1024 * 1024) -> Path:
@@ -94,7 +193,11 @@ def create_app(
     a2f_offline: bool = False,
     viewer_vendor_root: str | Path | None = None,
     character_root: str | Path | None = None,
+    session_token: str | None = None,
 ) -> FastAPI:
+    session_digest = (
+        _session_token_digest(session_token) if session_token is not None else None
+    )
     app = FastAPI(title="AutoAnim GNM", version="0.1.0")
     service = ApplicationService(
         artifact_root,
@@ -108,6 +211,47 @@ def create_app(
     )
     operation_lock = threading.Lock()
     app.state.service = service
+
+    if session_digest is not None:
+
+        @app.middleware("http")
+        async def require_native_session(request: Request, call_next):
+            if not _host_matches_bound_port(request):
+                return _error_response(
+                    AutoAnimError(
+                        "HOST_INVALID",
+                        "Host must match the bound loopback server and port",
+                    )
+                )
+
+            header_values = [
+                value.decode("latin-1")
+                for name, value in request.scope.get("headers", ())
+                if name.lower() == b"x-autoanim-token"
+            ]
+            candidates: list[str] = []
+            if len(header_values) == 1:
+                candidates.append(header_values[0])
+            cookie_token = request.cookies.get("autoanim_session")
+            if cookie_token is not None:
+                candidates.append(cookie_token)
+            authenticated = any(
+                secrets.compare_digest(
+                    hashlib.sha256(candidate.encode("utf-8")).digest(), session_digest
+                )
+                for candidate in candidates
+                if len(candidate.encode("utf-8")) <= 4096
+            )
+            if not authenticated:
+                response = _error_response(
+                    AutoAnimError(
+                        "SESSION_UNAUTHORIZED",
+                        "A valid native session credential is required",
+                    )
+                )
+                response.headers["Cache-Control"] = "no-store"
+                return response
+            return await call_next(request)
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:

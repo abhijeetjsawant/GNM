@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shlex
+import sys
 
 import numpy as np
 import pytest
@@ -110,7 +112,8 @@ def test_parser_rejects_malformed_or_wrong_identity_stream(payload: str, match: 
 
 def test_runner_resolver_and_invocation_contract(tmp_path: Path) -> None:
     runner = tmp_path / "fake-a2f-runner"
-    runner.write_text(
+    payload = tmp_path / "fake-a2f-runner.py"
+    payload.write_text(
         """#!/usr/bin/env python3
 import json, pathlib, sys
 args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
@@ -119,7 +122,12 @@ assert args["--emotion-strength"] == "0.4"
 layout = {"skinCount": 140, "tongueCount": 10, "jawCount": 15, "eyeCount": 4}
 frame = {"timeSeconds": 0.0, "coefficients": [0.0] * 169, "layout": layout}
 pathlib.Path(args["--output"]).write_text(json.dumps(frame) + "\\n")
-""",
+        """,
+        encoding="utf-8",
+    )
+    runner.write_text(
+        "#!/bin/bash\n"
+        f"exec {shlex.quote(sys.executable)} {shlex.quote(str(payload))} \"$@\"\n",
         encoding="utf-8",
     )
     runner.chmod(0o755)

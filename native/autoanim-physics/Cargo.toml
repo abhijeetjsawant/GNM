@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "crates/autoanim-physics-core",
+    "crates/autoanim-physics-capi",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.88"
+
+[workspace.dependencies]
+autoanim-physics-core = { path = "crates/autoanim-physics-core" }
+bytemuck = "1.24.0"
+criterion = "0.8.2"
+rayon = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+thiserror = "2.0.17"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
