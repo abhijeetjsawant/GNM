@@ -27,11 +27,11 @@ from .artifacts import sha256
 
 
 CONTROL_SCHEMA_VERSION = "autoanim.sequence-control-schema/1.0"
-V3_REQUEST_SCHEMA_VERSION = "autoanim.a2f-v3-worker-request/1.0"
-V3_RESPONSE_SCHEMA_VERSION = "autoanim.a2f-v3-worker-response/1.0"
+V3_REQUEST_SCHEMA_VERSION = "autoanim.a2f-v3-worker-request/1.1"
+V3_RESPONSE_SCHEMA_VERSION = "autoanim.a2f-v3-worker-response/1.1"
 QUALITY_A2F_V3_SEQUENCE_CANDIDATE = "a2f_v3_sequence_candidate_unqualified"
 QUALITY_A2F_V2_3_FRAMEWISE_PREVIEW = "a2f_v2_3_framewise_preview"
-ZERO_STATE_SHA256 = "0" * 64
+EXECUTION_CHAIN_ROOT_SHA256 = "0" * 64
 
 # The public model release and its internal network revision are different
 # identifiers in NVIDIA's own v3 package.  Keep both names so provenance never
@@ -41,10 +41,15 @@ A2F_V3_NETWORK_VERSION = "3.2"
 A2F_V3_IDENTITY = "Claire"
 A2F_V3_IDENTITY_INDEX = 0
 A2F_V3_SAMPLE_RATE_HZ = 16_000
-A2F_V3_OUTPUT_FPS = 30
+A2F_V3_OUTPUT_FPS = 60
 A2F_V3_INFERENCE_WINDOW_SAMPLES = 16_000
 A2F_V3_RETAINED_STEP_SAMPLES = 8_000
 A2F_V3_RETAINED_FRAMES_PER_STEP = 30
+A2F_V3_GENERATED_FRAMES_PER_INFERENCE = 60
+A2F_V3_DISCARDED_LEFT_FRAMES = 15
+A2F_V3_DISCARDED_RIGHT_FRAMES = 15
+A2F_V3_PADDING_LEFT_SAMPLES = 16_000
+A2F_V3_TARGET_OFFSET_SAMPLES = 4_000
 A2F_V3_MODEL_REVISION = "b74132732fd9a9d29b237bec193ded64c9745e91"
 A2F_V3_SDK_REVISION = "1ca0f02535ed774f5dbcd724a31cd486368dc783"
 
@@ -132,8 +137,16 @@ class SequenceChunkPlan:
     audio_start_sample: int
     audio_sample_count: int
     audio_overlap_previous_samples: int
+    audio_padding_left_samples: int
+    audio_padding_right_samples: int
+    source_intersection_start_sample: int
+    source_intersection_sample_count: int
+    generated_frame_count: int
+    discarded_left_frame_count: int
+    discarded_right_frame_count: int
     output_start_frame: int
     output_frame_count: int
+    output_target_samples: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,10 +168,18 @@ class SequenceChunkProvenance:
     audio_start_sample: int
     audio_sample_count: int
     audio_overlap_previous_samples: int
+    audio_padding_left_samples: int
+    audio_padding_right_samples: int
+    source_intersection_start_sample: int
+    source_intersection_sample_count: int
+    generated_frame_count: int
+    discarded_left_frame_count: int
+    discarded_right_frame_count: int
     output_start_frame: int
     output_frame_count: int
-    state_in_sha256: str
-    state_out_sha256: str
+    output_target_samples: tuple[int, ...]
+    execution_chain_in_sha256: str
+    execution_chain_out_sha256: str
     chunk_payload_sha256: str
 
 
@@ -269,27 +290,86 @@ class SequenceProviderTrack:
                 value, len(timestamps), width, f"track.{name}"
             )
             object.__setattr__(self, name, matrix)
-        if len(timestamps) < 2 or np.any(np.diff(timestamps) <= 0.0):
+        if len(timestamps) < 1 or np.any(np.diff(timestamps) <= 0.0):
             raise SequenceProviderError(
-                "TIMESTAMP_MISMATCH", "Sequence timestamps must increase strictly"
+                "TIMESTAMP_MISMATCH",
+                "Sequence timestamps must contain at least one strictly ordered frame",
             )
         if not self.chunks:
             raise SequenceProviderError(
                 "CHUNK_MISMATCH", "Sequence track must retain chunk provenance"
             )
+        if self.quality_label == QUALITY_A2F_V3_SEQUENCE_CANDIDATE:
+            expected_plans = build_official_v3_inference_plan(
+                AudioSampleClock(
+                    artifact_sha256=self.source_audio_sha256,
+                    pcm_s16le_sha256=self.source_audio_sha256,
+                    sample_rate_hz=self.audio_sample_rate_hz,
+                    sample_count=self.audio_sample_count,
+                    channel_count=1,
+                    sample_width_bytes=2,
+                ),
+                self.output_timebase,
+            )
+            if len(self.chunks) != len(expected_plans):
+                raise SequenceProviderError(
+                    "CHUNK_MISMATCH",
+                    "Track inference count differs from the official v3 schedule",
+                )
+            expected_chain_in = EXECUTION_CHAIN_ROOT_SHA256
+            plan_fields = tuple(SequenceChunkPlan.__dataclass_fields__)
+            for chunk, plan in zip(self.chunks, expected_plans, strict=True):
+                if chunk.execution_chain_in_sha256 != expected_chain_in or any(
+                    getattr(chunk, field) != getattr(plan, field)
+                    for field in plan_fields
+                ):
+                    raise SequenceProviderError(
+                        "CHUNK_MISMATCH",
+                        "Track inference/execution-chain provenance differs from the "
+                        "official v3 schedule",
+                    )
+                for value, field in (
+                    (
+                        chunk.execution_chain_in_sha256,
+                        "track.chunk.execution_chain_in_sha256",
+                    ),
+                    (
+                        chunk.execution_chain_out_sha256,
+                        "track.chunk.execution_chain_out_sha256",
+                    ),
+                    (chunk.chunk_payload_sha256, "track.chunk.chunk_payload_sha256"),
+                ):
+                    _expect_sha(value, field)
+                expected_chain_in = chunk.execution_chain_out_sha256
+            return
+
+        # v2.3 previews are framewise tracks carried in generic overlapping
+        # transport chunks, not diffusion inference executions. Preserve their
+        # original continuity contract while still binding every ABI 1.1
+        # provenance field to a deterministic no-padding/no-discard meaning.
         next_frame = 0
         prior_audio_end = 0
-        expected_state_in = ZERO_STATE_SHA256
+        expected_chain_in = EXECUTION_CHAIN_ROOT_SHA256
         for index, chunk in enumerate(self.chunks):
             audio_end = chunk.audio_start_sample + chunk.audio_sample_count
             expected_overlap = (
                 0 if index == 0 else prior_audio_end - chunk.audio_start_sample
             )
+            expected_target_samples = tuple(
+                frame
+                * self.audio_sample_rate_hz
+                * self.output_timebase.fps_denominator
+                // self.output_timebase.fps_numerator
+                for frame in range(
+                    chunk.output_start_frame,
+                    chunk.output_start_frame + chunk.output_frame_count,
+                )
+            )
             if (
                 chunk.chunk_index != index
                 or chunk.output_start_frame != next_frame
                 or chunk.output_frame_count <= 0
-                or chunk.state_in_sha256 != expected_state_in
+                or chunk.execution_chain_in_sha256 != expected_chain_in
                 or chunk.audio_start_sample < 0
                 or chunk.audio_sample_count <= 0
                 or audio_end > self.audio_sample_count
@@ -297,22 +377,41 @@ class SequenceProviderTrack:
                 or (index > 0 and expected_overlap <= 0)
                 or (index > 0 and audio_end <= prior_audio_end)
                 or chunk.audio_overlap_previous_samples != expected_overlap
+                or chunk.audio_padding_left_samples != 0
+                or chunk.audio_padding_right_samples != 0
+                or chunk.source_intersection_start_sample
+                != chunk.audio_start_sample
+                or chunk.source_intersection_sample_count
+                != chunk.audio_sample_count
+                or chunk.generated_frame_count != chunk.output_frame_count
+                or chunk.discarded_left_frame_count != 0
+                or chunk.discarded_right_frame_count != 0
+                or chunk.output_target_samples != expected_target_samples
             ):
                 raise SequenceProviderError(
-                    "CHUNK_MISMATCH", "Track chunk/state provenance is discontinuous"
+                    "CHUNK_MISMATCH",
+                    "v2.3 preview chunk, sample-clock, or execution-chain provenance "
+                    "is discontinuous",
                 )
             for value, field in (
-                (chunk.state_in_sha256, "track.chunk.state_in_sha256"),
-                (chunk.state_out_sha256, "track.chunk.state_out_sha256"),
+                (
+                    chunk.execution_chain_in_sha256,
+                    "track.chunk.execution_chain_in_sha256",
+                ),
+                (
+                    chunk.execution_chain_out_sha256,
+                    "track.chunk.execution_chain_out_sha256",
+                ),
                 (chunk.chunk_payload_sha256, "track.chunk.chunk_payload_sha256"),
             ):
                 _expect_sha(value, field)
             next_frame += chunk.output_frame_count
             prior_audio_end = audio_end
-            expected_state_in = chunk.state_out_sha256
+            expected_chain_in = chunk.execution_chain_out_sha256
         if next_frame != len(timestamps) or prior_audio_end != self.audio_sample_count:
             raise SequenceProviderError(
-                "DURATION_MISMATCH", "Track chunks do not cover all output frames"
+                "DURATION_MISMATCH",
+                "v2.3 preview chunks must cover the complete audio and output track",
             )
 
 
@@ -439,34 +538,34 @@ def seal_v3_worker_response_document(document: Mapping[str, Any]) -> dict[str, A
 def sequence_chunk_payload_sha256(chunk: Mapping[str, Any]) -> str:
     payload = deepcopy(dict(chunk))
     payload.pop("chunk_payload_sha256", None)
-    payload.pop("state_out_sha256", None)
+    payload.pop("execution_chain_out_sha256", None)
     return hashlib.sha256(_canonical_json(payload)).hexdigest()
 
 
-def sequence_state_out_sha256(
+def sequence_execution_chain_out_sha256(
     *,
     request_sha256: str,
     chunk_index: int,
-    state_in_sha256: str,
+    execution_chain_in_sha256: str,
     chunk_payload_sha256: str,
 ) -> str:
     for value, field in (
         (request_sha256, "request_sha256"),
-        (state_in_sha256, "state_in_sha256"),
+        (execution_chain_in_sha256, "execution_chain_in_sha256"),
         (chunk_payload_sha256, "chunk_payload_sha256"),
     ):
         _expect_sha(value, field)
     if isinstance(chunk_index, bool) or not isinstance(chunk_index, int) or chunk_index < 0:
         raise SequenceProviderError(
-            "INVALID_STATE", "chunk_index must be a nonnegative integer"
+            "INVALID_CHAIN", "chunk_index must be a nonnegative integer"
         )
     return hashlib.sha256(
         _canonical_json(
             {
-                "domain": "autoanim.sequence-state-provenance/1.0",
+                "domain": "autoanim.sequence-execution-chain/1.0",
                 "request_sha256": request_sha256,
                 "chunk_index": chunk_index,
-                "state_in_sha256": state_in_sha256,
+                "execution_chain_in_sha256": execution_chain_in_sha256,
                 "chunk_payload_sha256": chunk_payload_sha256,
             }
         )
@@ -574,6 +673,14 @@ def _expect_integer(value: Any, field: str, *, minimum: int = 0) -> int:
     return value
 
 
+def _expect_signed_integer(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SequenceProviderError(
+            "INVALID_ENVELOPE", f"{field} must be an integer", field=field
+        )
+    return value
+
+
 def _expect_number(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise SequenceProviderError(
@@ -610,6 +717,8 @@ def _readonly_numeric_matrix(value: Any, rows: int, columns: int, field: str) ->
         raise SequenceProviderError(
             "INVALID_CONTROLS", f"{field} must be numeric", field=field
         ) from exc
+    if rows == 0 and array.shape == (0,):
+        array = np.empty((0, columns), dtype=np.float64)
     if array.shape != (rows, columns) or not np.isfinite(array).all():
         raise SequenceProviderError(
             "INVALID_CONTROLS",
@@ -729,6 +838,102 @@ def inspect_bound_pcm_audio(path: str | Path) -> AudioSampleClock:
     )
 
 
+def build_official_v3_inference_plan(
+    audio: AudioSampleClock,
+    timebase: SequenceOutputTimebase,
+) -> tuple[SequenceChunkPlan, ...]:
+    """Reproduce the pinned SDK diffusion window and retained-frame schedule.
+
+    NVIDIA starts one second before the source, advances one half-second per
+    recurrent inference, and reports only center frames whose target sample is
+    inside the real audio.  Boundary executions can therefore emit zero or a
+    partial 30-frame retained block while still changing recurrent state.
+    """
+
+    expected_frames = (
+        audio.sample_count * A2F_V3_OUTPUT_FPS
+        + A2F_V3_SAMPLE_RATE_HZ
+        - 1
+    ) // A2F_V3_SAMPLE_RATE_HZ
+    if (
+        audio.sample_rate_hz != A2F_V3_SAMPLE_RATE_HZ
+        or audio.sample_count <= 0
+        or audio.channel_count != 1
+        or audio.sample_width_bytes != 2
+        or timebase.units != "seconds"
+        or timebase.timestamp_origin_seconds != 0.0
+        or timebase.fps_numerator != A2F_V3_OUTPUT_FPS
+        or timebase.fps_denominator != 1
+        or timebase.frame_count != expected_frames
+    ):
+        raise SequenceProviderError(
+            "MODEL_CLOCK_MISMATCH",
+            "Official v3 inference planning requires mono 16-kHz PCM16 audio "
+            "and its exact zero-origin 60-Hz duration",
+        )
+    plans: list[SequenceChunkPlan] = []
+    next_output_frame = 0
+    chunk_index = 0
+    while next_output_frame < timebase.frame_count or chunk_index == 0:
+        window_start = (
+            -A2F_V3_PADDING_LEFT_SAMPLES
+            + chunk_index * A2F_V3_RETAINED_STEP_SAMPLES
+        )
+        window_end = window_start + A2F_V3_INFERENCE_WINDOW_SAMPLES
+        source_start = max(0, window_start)
+        source_end = min(audio.sample_count, window_end)
+        source_count = max(0, source_end - source_start)
+        output_target_samples: list[int] = []
+        first_model_frame = chunk_index * A2F_V3_RETAINED_FRAMES_PER_STEP
+        for frame_offset in range(A2F_V3_RETAINED_FRAMES_PER_STEP):
+            frame_window_start = (
+                (first_model_frame + frame_offset)
+                * A2F_V3_RETAINED_STEP_SAMPLES
+                // A2F_V3_RETAINED_FRAMES_PER_STEP
+                - A2F_V3_PADDING_LEFT_SAMPLES
+            )
+            target_sample = frame_window_start + A2F_V3_TARGET_OFFSET_SAMPLES
+            if 0 <= target_sample < audio.sample_count:
+                output_target_samples.append(target_sample)
+        emitted = len(output_target_samples)
+        plans.append(
+            SequenceChunkPlan(
+                chunk_index=chunk_index,
+                audio_start_sample=window_start,
+                audio_sample_count=A2F_V3_INFERENCE_WINDOW_SAMPLES,
+                audio_overlap_previous_samples=(
+                    0
+                    if chunk_index == 0
+                    else A2F_V3_INFERENCE_WINDOW_SAMPLES
+                    - A2F_V3_RETAINED_STEP_SAMPLES
+                ),
+                audio_padding_left_samples=max(0, -window_start),
+                audio_padding_right_samples=max(0, window_end - audio.sample_count),
+                source_intersection_start_sample=source_start,
+                source_intersection_sample_count=source_count,
+                generated_frame_count=A2F_V3_GENERATED_FRAMES_PER_INFERENCE,
+                discarded_left_frame_count=A2F_V3_DISCARDED_LEFT_FRAMES,
+                discarded_right_frame_count=A2F_V3_DISCARDED_RIGHT_FRAMES,
+                output_start_frame=next_output_frame,
+                output_frame_count=emitted,
+                output_target_samples=tuple(output_target_samples),
+            )
+        )
+        next_output_frame += emitted
+        chunk_index += 1
+        if chunk_index > timebase.frame_count + 4:
+            raise SequenceProviderError(
+                "CHUNK_PLAN_INVALID",
+                "Official v3 inference planning did not cover the output track",
+            )
+    if next_output_frame != timebase.frame_count:
+        raise SequenceProviderError(
+            "CHUNK_PLAN_INVALID",
+            "Official v3 inference plan does not match the requested output duration",
+        )
+    return tuple(plans)
+
+
 def _verify_bound_file(path: str | Path, expected: str, field: str) -> None:
     artifact = Path(path)
     if not artifact.is_file():
@@ -814,7 +1019,7 @@ def _parse_timebase(value: Any, audio: AudioSampleClock) -> SequenceOutputTimeba
     units = _expect_string(source["units"], f"{field}.units")
     numerator = _expect_integer(source["fps_numerator"], f"{field}.fps_numerator", minimum=1)
     denominator = _expect_integer(source["fps_denominator"], f"{field}.fps_denominator", minimum=1)
-    frame_count = _expect_integer(source["frame_count"], f"{field}.frame_count", minimum=2)
+    frame_count = _expect_integer(source["frame_count"], f"{field}.frame_count", minimum=1)
     origin = _expect_number(source["timestamp_origin_seconds"], f"{field}.timestamp_origin_seconds")
     fps = numerator / denominator
     expected_frames = (
@@ -843,8 +1048,6 @@ def _parse_chunk_plan(
     if not items:
         raise SequenceProviderError("CHUNK_PLAN_INVALID", "At least one sequence chunk is required")
     chunks: list[SequenceChunkPlan] = []
-    prior_audio_end = 0
-    next_output_frame = 0
     for index, item in enumerate(items):
         field = f"chunks.{index}"
         source = _expect_object(
@@ -855,13 +1058,21 @@ def _parse_chunk_plan(
                 "audio_start_sample",
                 "audio_sample_count",
                 "audio_overlap_previous_samples",
+                "audio_padding_left_samples",
+                "audio_padding_right_samples",
+                "source_intersection_start_sample",
+                "source_intersection_sample_count",
+                "generated_frame_count",
+                "discarded_left_frame_count",
+                "discarded_right_frame_count",
                 "output_start_frame",
                 "output_frame_count",
+                "output_target_samples",
             ),
         )
         chunk = SequenceChunkPlan(
             chunk_index=_expect_integer(source["chunk_index"], f"{field}.chunk_index"),
-            audio_start_sample=_expect_integer(
+            audio_start_sample=_expect_signed_integer(
                 source["audio_start_sample"], f"{field}.audio_start_sample"
             ),
             audio_sample_count=_expect_integer(
@@ -871,36 +1082,58 @@ def _parse_chunk_plan(
                 source["audio_overlap_previous_samples"],
                 f"{field}.audio_overlap_previous_samples",
             ),
+            audio_padding_left_samples=_expect_integer(
+                source["audio_padding_left_samples"],
+                f"{field}.audio_padding_left_samples",
+            ),
+            audio_padding_right_samples=_expect_integer(
+                source["audio_padding_right_samples"],
+                f"{field}.audio_padding_right_samples",
+            ),
+            source_intersection_start_sample=_expect_integer(
+                source["source_intersection_start_sample"],
+                f"{field}.source_intersection_start_sample",
+            ),
+            source_intersection_sample_count=_expect_integer(
+                source["source_intersection_sample_count"],
+                f"{field}.source_intersection_sample_count",
+            ),
+            generated_frame_count=_expect_integer(
+                source["generated_frame_count"],
+                f"{field}.generated_frame_count",
+                minimum=1,
+            ),
+            discarded_left_frame_count=_expect_integer(
+                source["discarded_left_frame_count"],
+                f"{field}.discarded_left_frame_count",
+            ),
+            discarded_right_frame_count=_expect_integer(
+                source["discarded_right_frame_count"],
+                f"{field}.discarded_right_frame_count",
+            ),
             output_start_frame=_expect_integer(
                 source["output_start_frame"], f"{field}.output_start_frame"
             ),
             output_frame_count=_expect_integer(
-                source["output_frame_count"], f"{field}.output_frame_count", minimum=1
+                source["output_frame_count"], f"{field}.output_frame_count"
+            ),
+            output_target_samples=tuple(
+                _expect_integer(value, f"{field}.output_target_samples.{target_index}")
+                for target_index, value in enumerate(
+                    _expect_list(
+                        source["output_target_samples"],
+                        f"{field}.output_target_samples",
+                    )
+                )
             ),
         )
-        audio_end = chunk.audio_start_sample + chunk.audio_sample_count
-        expected_overlap = 0 if index == 0 else prior_audio_end - chunk.audio_start_sample
-        if (
-            chunk.chunk_index != index
-            or chunk.output_start_frame != next_output_frame
-            or audio_end > audio.sample_count
-            or (index == 0 and chunk.audio_start_sample != 0)
-            or (index > 0 and expected_overlap <= 0)
-            or (index > 0 and audio_end <= prior_audio_end)
-            or chunk.audio_overlap_previous_samples != expected_overlap
-        ):
-            raise SequenceProviderError(
-                "CHUNK_PLAN_INVALID",
-                "Chunk indices, output coverage, audio coverage, or overlap provenance differ",
-                field=field,
-            )
         chunks.append(chunk)
-        prior_audio_end = audio_end
-        next_output_frame += chunk.output_frame_count
-    if prior_audio_end != audio.sample_count or next_output_frame != timebase.frame_count:
+    expected = build_official_v3_inference_plan(audio, timebase)
+    if tuple(chunks) != expected:
         raise SequenceProviderError(
             "CHUNK_PLAN_INVALID",
-            "Chunks must cover the complete bound audio and output frame sequence",
+            "Inference chunks must exactly match the pinned v3 signed-window, "
+            "padding, and retained-frame schedule",
         )
     return tuple(chunks)
 
@@ -951,6 +1184,15 @@ def validate_v3_worker_request(
     )
     control_names = parse_sequence_control_schema(blendshape_schema_path)
     timebase = _parse_timebase(root["output_timebase"], actual_audio)
+    if (
+        timebase.fps_numerator != A2F_V3_OUTPUT_FPS
+        or timebase.fps_denominator != 1
+    ):
+        raise SequenceProviderError(
+            "MODEL_CLOCK_MISMATCH",
+            "Audio2Face v3 diffusion worker output must use its model-native 60-fps clock",
+            field="output_timebase",
+        )
     chunks = _parse_chunk_plan(root["chunks"], actual_audio, timebase)
     return V3WorkerRequest(
         provider_id=provider_id,
@@ -978,7 +1220,7 @@ def _parse_response_chunk(
     *,
     plan: SequenceChunkPlan,
     request: V3WorkerRequest,
-    expected_state_in: str,
+    expected_chain_in: str,
 ) -> tuple[SequenceChunkProvenance, np.ndarray, dict[str, np.ndarray]]:
     field = f"chunks.{plan.chunk_index}"
     source = _expect_object(
@@ -989,10 +1231,18 @@ def _parse_response_chunk(
             "audio_start_sample",
             "audio_sample_count",
             "audio_overlap_previous_samples",
+            "audio_padding_left_samples",
+            "audio_padding_right_samples",
+            "source_intersection_start_sample",
+            "source_intersection_sample_count",
+            "generated_frame_count",
+            "discarded_left_frame_count",
+            "discarded_right_frame_count",
             "output_start_frame",
             "output_frame_count",
-            "state_in_sha256",
-            "state_out_sha256",
+            "output_target_samples",
+            "execution_chain_in_sha256",
+            "execution_chain_out_sha256",
             "timestamps_seconds",
             "controls",
             "chunk_payload_sha256",
@@ -1003,20 +1253,46 @@ def _parse_response_chunk(
         "audio_start_sample",
         "audio_sample_count",
         "audio_overlap_previous_samples",
+        "audio_padding_left_samples",
+        "audio_padding_right_samples",
+        "source_intersection_start_sample",
+        "source_intersection_sample_count",
+        "generated_frame_count",
+        "discarded_left_frame_count",
+        "discarded_right_frame_count",
         "output_start_frame",
         "output_frame_count",
+        "output_target_samples",
     )
     for name in plan_fields:
-        actual = _expect_integer(source[name], f"{field}.{name}")
+        if name == "audio_start_sample":
+            actual: Any = _expect_signed_integer(source[name], f"{field}.{name}")
+        elif name == "output_target_samples":
+            actual = tuple(
+                _expect_integer(value, f"{field}.{name}.{target_index}")
+                for target_index, value in enumerate(
+                    _expect_list(source[name], f"{field}.{name}")
+                )
+            )
+        else:
+            actual = _expect_integer(source[name], f"{field}.{name}")
         if actual != getattr(plan, name):
             raise SequenceProviderError(
                 "CHUNK_MISMATCH", f"Response {field}.{name} differs from request", field=field
             )
-    state_in = _expect_sha(source["state_in_sha256"], f"{field}.state_in_sha256")
-    state_out = _expect_sha(source["state_out_sha256"], f"{field}.state_out_sha256")
-    if state_in != expected_state_in:
+    chain_in = _expect_sha(
+        source["execution_chain_in_sha256"],
+        f"{field}.execution_chain_in_sha256",
+    )
+    chain_out = _expect_sha(
+        source["execution_chain_out_sha256"],
+        f"{field}.execution_chain_out_sha256",
+    )
+    if chain_in != expected_chain_in:
         raise SequenceProviderError(
-            "STATE_CHAIN_MISMATCH", "Sequence state input does not continue the prior chunk", field=field
+            "EXECUTION_CHAIN_MISMATCH",
+            "Sequence execution chain does not continue the prior chunk",
+            field=field,
         )
     timestamps = _readonly_numeric_vector(source["timestamps_seconds"], f"{field}.timestamps_seconds")
     if len(timestamps) != plan.output_frame_count:
@@ -1049,20 +1325,22 @@ def _parse_response_chunk(
         raise SequenceProviderError(
             "CHUNK_HASH_MISMATCH", "Sequence chunk payload hash differs", field=field
         )
-    expected_state_out = sequence_state_out_sha256(
+    expected_chain_out = sequence_execution_chain_out_sha256(
         request_sha256=request.request_sha256,
         chunk_index=plan.chunk_index,
-        state_in_sha256=state_in,
+        execution_chain_in_sha256=chain_in,
         chunk_payload_sha256=declared_chunk_hash,
     )
-    if state_out != expected_state_out:
+    if chain_out != expected_chain_out:
         raise SequenceProviderError(
-            "STATE_CHAIN_MISMATCH", "Sequence state output provenance hash differs", field=field
+            "EXECUTION_CHAIN_MISMATCH",
+            "Sequence execution-chain output hash differs",
+            field=field,
         )
     provenance = SequenceChunkProvenance(
         **{name: getattr(plan, name) for name in plan_fields},
-        state_in_sha256=state_in,
-        state_out_sha256=state_out,
+        execution_chain_in_sha256=chain_in,
+        execution_chain_out_sha256=chain_out,
         chunk_payload_sha256=declared_chunk_hash,
     )
     return provenance, timestamps, matrices
@@ -1134,19 +1412,19 @@ def validate_v3_worker_response(
         "jaw": [],
         "eye": [],
     }
-    expected_state_in = ZERO_STATE_SHA256
+    expected_chain_in = EXECUTION_CHAIN_ROOT_SHA256
     for plan, value in zip(request.chunks, chunk_values, strict=True):
         chunk, timestamps, matrices = _parse_response_chunk(
             value,
             plan=plan,
             request=request,
-            expected_state_in=expected_state_in,
+            expected_chain_in=expected_chain_in,
         )
         provenance.append(chunk)
         timestamp_parts.append(timestamps)
         for group, matrix in matrices.items():
             control_parts[group].append(matrix)
-        expected_state_in = chunk.state_out_sha256
+        expected_chain_in = chunk.execution_chain_out_sha256
     timestamps = np.concatenate(timestamp_parts)
     if len(timestamps) != request.output_timebase.frame_count:
         raise SequenceProviderError(
@@ -1228,7 +1506,7 @@ def validate_official_v3_sequence_track(
     ):
         raise SequenceProviderError(
             "OFFICIAL_PROFILE_MISMATCH",
-            "Sequence provider, public version, sample clock, or 30-fps clock differs",
+            "Sequence provider, public version, sample clock, or 60-fps clock differs",
         )
 
     skin_names = tuple(str(value) for value in skin_pose_names)

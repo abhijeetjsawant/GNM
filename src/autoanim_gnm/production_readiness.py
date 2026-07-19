@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from .audio_visual_repair import (
+    AUDIO_VISUAL_REPAIR_POLICY,
+    AUDIO_VISUAL_REPAIR_SCHEMA_VERSION,
+)
+
 
 SCHEMA_VERSION = "autoanim.production-readiness/1.1"
 _PERFORMANCE_KINDS = frozenset({"audio_animation", "video_performance"})
@@ -381,10 +386,9 @@ def evaluate_production_readiness(
     repair_passed = bool(
         not repair_enabled
         or (
-            repair.get("schemaVersion") == "autoanim.audio-visual-repair.v1"
+            repair.get("schemaVersion") == AUDIO_VISUAL_REPAIR_SCHEMA_VERSION
             and repair_status in {"repaired", "exact_noop"}
-            and repair.get("policy")
-            == "video_authoritative_conservative_audio_repair_v1"
+            and repair.get("policy") == AUDIO_VISUAL_REPAIR_POLICY
             and repair_locks.get("upperFaceExact")
             and repair_locks.get("pupilExact")
             and repair_locks.get("headPoseAndTranslationExact")

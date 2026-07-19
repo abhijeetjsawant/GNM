@@ -119,6 +119,27 @@ def test_correct_track_passes_and_reports_geometry_timing(performance: Synthetic
     assert report.metrics["timing_error_median_frames"] == pytest.approx(0.0)
 
 
+def test_mouth_speed_gate_is_timebase_normalized_between_30_and_60_fps() -> None:
+    neutral = _neutral_face()
+    track = np.repeat(neutral[None], 3, axis=0)
+    track[1:, 48:68, 0] += 0.03
+    activity = np.ones(3, dtype=np.float64)
+
+    at_30 = evaluate_lipsync_quality(track, neutral, activity, fps=30.0)
+    at_60 = evaluate_lipsync_quality(track, neutral, activity, fps=60.0)
+
+    assert at_30.metrics["mouth_speed_max_interocular_per_second"] == pytest.approx(
+        0.9
+    )
+    assert at_60.metrics["mouth_speed_max_interocular_per_second"] == pytest.approx(
+        1.8
+    )
+    assert at_30.production_gate.checks["mouth_step"]
+    assert at_60.production_gate.checks["mouth_step"]
+    assert at_30.production_gate.checks["mouth_speed"]
+    assert not at_60.production_gate.checks["mouth_speed"]
+
+
 @pytest.mark.parametrize("shift", (-4, -2, 2, 4))
 def test_independent_events_reject_shifted_tracks(
     performance: SyntheticPerformance,

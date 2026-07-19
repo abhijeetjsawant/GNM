@@ -367,8 +367,8 @@ def test_service_acting_context_retains_mixed_video_audio_repair_authority(
             "retargeting": {
                 "neutral_baseline_method": "labeled_reference",
                 "audio_visual_repair": {
-                    "schemaVersion": "autoanim.audio-visual-repair.v1",
-                    "policy": "video_authoritative_conservative_audio_repair_v1",
+                    "schemaVersion": "autoanim.audio-visual-repair.v2",
+                    "policy": "video_authoritative_conservative_audio_repair_v2",
                     "status": "repaired",
                     "bindings": {"sourcePtsSha256": "pts"},
                     "sourceAuthority": {"upperFace": "video_locked"},

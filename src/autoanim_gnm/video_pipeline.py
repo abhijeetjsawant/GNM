@@ -98,7 +98,8 @@ VIDEO_TRACKING_CAVEAT = (
 MAX_INTERACTIVE_FRAMES = 1_800
 MAX_INTERACTIVE_MORPH_TARGETS = 64
 MAX_PROXY_PTS_ERROR_SECONDS = 0.002
-MAX_AUTHORED_APERTURE_SOURCE_STEP_INTEROCULAR = 0.08
+MAX_AUTHORED_APERTURE_SOURCE_SPEED_INTEROCULAR_PER_SECOND = 1.1985
+MAX_AUTHORED_APERTURE_SOURCE_STEP_INTEROCULAR = 0.03995
 
 
 def _array_sha256(value: np.ndarray) -> str:
@@ -116,6 +117,56 @@ def _file_sha256(path: str | Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _rapid_source_mouth_motion(
+    local_mouth: np.ndarray,
+    timestamps_seconds: np.ndarray,
+    *,
+    maximum_speed_interocular_per_second: float = (
+        MAX_AUTHORED_APERTURE_SOURCE_SPEED_INTEROCULAR_PER_SECOND
+    ),
+    maximum_step_interocular: float = MAX_AUTHORED_APERTURE_SOURCE_STEP_INTEROCULAR,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return frame vetoes and speeds on an exact, potentially variable PTS clock."""
+
+    mouth = np.asarray(local_mouth, dtype=np.float64)
+    timestamps = np.asarray(timestamps_seconds, dtype=np.float64)
+    if (
+        mouth.ndim != 3
+        or mouth.shape[0] != len(timestamps)
+        or mouth.shape[1:] != (20, 3)
+        or not np.isfinite(mouth).all()
+        or not np.isfinite(timestamps).all()
+        or (len(timestamps) > 1 and np.any(np.diff(timestamps) <= 0.0))
+        or not np.isfinite(maximum_speed_interocular_per_second)
+        or maximum_speed_interocular_per_second <= 0.0
+        or not np.isfinite(maximum_step_interocular)
+        or maximum_step_interocular <= 0.0
+    ):
+        raise AutoAnimError(
+            "INTERNAL_ERROR",
+            "Source mouth motion requires finite 20-point geometry and increasing PTS",
+        )
+    frame_speed = np.zeros(len(timestamps), dtype=np.float32)
+    frame_step = np.zeros(len(timestamps), dtype=np.float32)
+    if len(timestamps) > 1:
+        edge_step = np.max(
+            np.linalg.norm(np.diff(mouth, axis=0), axis=2), axis=1
+        ).astype(np.float32)
+        edge_speed = (edge_step / np.diff(timestamps)).astype(np.float32)
+        frame_speed[1:] = np.maximum(frame_speed[1:], edge_speed)
+        frame_speed[:-1] = np.maximum(frame_speed[:-1], edge_speed)
+        frame_step[1:] = np.maximum(frame_step[1:], edge_step)
+        frame_step[:-1] = np.maximum(frame_step[:-1], edge_step)
+    return (
+        np.asarray(
+            (frame_speed > maximum_speed_interocular_per_second)
+            | (frame_step > maximum_step_interocular),
+            dtype=bool,
+        ),
+        frame_speed,
+    )
 
 
 def _directory_sha256(path: str | Path) -> tuple[str, int]:
@@ -168,17 +219,13 @@ def _apply_video_mouth_aperture_edit(
     local_mouth = np.stack(
         [_face_local_mouth(rig, frame) for frame in performance.expression]
     )
-    source_step = np.zeros(performance.frame_count, dtype=np.float32)
-    if performance.frame_count > 1:
-        edge_step = np.max(
-            np.linalg.norm(np.diff(local_mouth, axis=0), axis=2),
-            axis=1,
-        ).astype(np.float32)
-        source_step[1:] = np.maximum(source_step[1:], edge_step)
-        source_step[:-1] = np.maximum(source_step[:-1], edge_step)
-    rapid_source_motion = np.asarray(
-        source_step > MAX_AUTHORED_APERTURE_SOURCE_STEP_INTEROCULAR,
-        dtype=bool,
+    rapid_source_motion, source_speed = _rapid_source_mouth_motion(
+        local_mouth,
+        performance.timestamps_seconds,
+        maximum_speed_interocular_per_second=(
+            config.maximum_final_mouth_speed_interocular_per_second
+        ),
+        maximum_step_interocular=config.maximum_final_mouth_step_interocular,
     )
     eligible &= ~rapid_source_motion
     labels = tuple("contact" if value else "none" for value in contact_anchor)
@@ -213,7 +260,7 @@ def _apply_video_mouth_aperture_edit(
         timestamps_seconds=performance.timestamps_seconds,
         eligible_frames=eligible,
         rapid_source_motion=rapid_source_motion,
-        source_mouth_step_interocular=source_step,
+        source_mouth_speed_interocular_per_second=source_speed,
         protected_contact=correction.protected_contact,
         correction_applied=correction.correction_applied,
         target_attained=correction.target_attained,
@@ -270,8 +317,14 @@ def _apply_video_mouth_aperture_edit(
                 "rapid_source_motion_veto_frames": int(
                     np.count_nonzero(rapid_source_motion)
                 ),
-                "rapid_source_motion_threshold_interocular": (
-                    MAX_AUTHORED_APERTURE_SOURCE_STEP_INTEROCULAR
+                "rapid_source_motion_threshold_interocular_per_second": (
+                    config.maximum_final_mouth_speed_interocular_per_second
+                ),
+                "rapid_source_motion_absolute_step_threshold_interocular": (
+                    config.maximum_final_mouth_step_interocular
+                ),
+                "rapid_source_motion_max_interocular_per_second": float(
+                    np.max(source_speed, initial=0.0)
                 ),
                 "corrected_frames": corrected_count,
                 "final_continuity_limited_frames": int(
@@ -282,6 +335,9 @@ def _apply_video_mouth_aperture_edit(
                 ),
                 "final_continuity_limit_interocular": (
                     correction.final_continuity_limit_interocular
+                ),
+                "final_continuity_speed_interocular_per_second": (
+                    correction.final_continuity_speed_interocular_per_second
                 ),
                 "target_attained_fraction": target_attainment,
                 "maximum_tongue_mesh_tail_interocular": float(
@@ -749,6 +805,29 @@ def _final_output_retention_metrics(capture, performance, adapter: GNMAdapter) -
             else 0.0
         ),
     }
+
+
+def _mouth_aperture_edit_meets_production_gate(
+    retention: Mapping[str, float | int | None],
+    target_attainment: float | None,
+) -> bool:
+    """Keep the authored-edit release gate shared by runtime and fixtures."""
+
+    aperture_ratio = retention.get("final_lip_aperture_open_p95_ratio")
+    aperture_correlation = retention.get(
+        "final_lip_aperture_source_output_correlation"
+    )
+    aperture_slope = retention.get("final_lip_aperture_affine_slope")
+    return bool(
+        aperture_ratio is not None
+        and 0.90 <= float(aperture_ratio) <= 1.10
+        and aperture_correlation is not None
+        and float(aperture_correlation) >= 0.95
+        and aperture_slope is not None
+        and 0.90 <= float(aperture_slope) <= 1.10
+        and target_attainment is not None
+        and target_attainment >= 0.95
+    )
 
 
 def _export_static_performance_glb(
@@ -1502,24 +1581,12 @@ def _run_video_pipeline_impl(
             "subject-calibrated jaw solve is required."
         )
     if mouth_aperture_gain != 1.0:
-        aperture_correlation = final_output_retention.get(
-            "final_lip_aperture_source_output_correlation"
-        )
-        aperture_slope = final_output_retention.get(
-            "final_lip_aperture_affine_slope"
-        )
         edit_attainment = mouth_aperture_target_attainment(
             mouth_aperture_edit
         )
-        if (
-            aperture_ratio is None
-            or not 0.90 <= float(aperture_ratio) <= 1.10
-            or aperture_correlation is None
-            or float(aperture_correlation) < 0.95
-            or aperture_slope is None
-            or not 0.90 <= float(aperture_slope) <= 1.10
-            or edit_attainment is None
-            or edit_attainment < 0.95
+        if not _mouth_aperture_edit_meets_production_gate(
+            final_output_retention,
+            edit_attainment,
         ):
             warnings.append(
                 "MOUTH_APERTURE_EDIT_PRODUCTION_GATE_FAILED: the authored revision did not "

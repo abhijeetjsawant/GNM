@@ -382,6 +382,33 @@ animation approval.
    3/3 inferred contacts; deliberately infeasible anchors remain rejected and
    reported rather than weakening the continuity contract.
 
+## Production motion-clock and sequence-ABI audit — 2026-07-19
+
+- Audio2Face v3 request/response ABI `1.1` now reproduces the pinned SDK's
+  signed one-second diffusion windows, 8000-sample stride, zero-output warm-up,
+  60 generated frames, 15/15 discarded margins, 0–30 emitted center frames and
+  exact integer target-sample ticks. The application preserves 60 Hz source
+  controls and makes 30/60 fps delivery an explicit resampling choice.
+- Fallback, learned, authored aperture and audiovisual repair motion now enforce
+  both an absolute IOD step ceiling and a per-second speed ceiling from exact
+  edge timestamps. Contact-repair horizons scale in physical time; 12/24/30/60
+  fps and variable-PTS regressions prevent cadence-dependent limits.
+- Lipsync qualification schema `1.1` binds both `0.04 IOD` absolute step and
+  `1.20 IOD/s` speed gates. Float64 native clocks are emitted going forward;
+  exact legacy float32 rational clocks remain verifiable past 64 seconds without
+  admitting arbitrary timestamp drift.
+- Audiovisual repair schema/policy `v2`, mouth-aperture schema `v3`, animation
+  compiler versions `13`/`4`, and timeline version `12` prevent old and new
+  motion semantics from sharing public provenance identifiers.
+- Focused cross-pipeline verification passed `175` tests in `325.19s`. The
+  final exact-tree regression passed `529`, skipped one optional duplicate
+  Claire-asset test, and retained one Starlette/httpx deprecation warning in
+  `519.40s`.
+- The pinned CREMA-D authored aperture edit improves open-mouth p95 from
+  `0.88527` to `0.88997`, but remains below the frozen `0.90` production gate.
+  It is explicitly review-only; the software does not weaken the gate or alter
+  rapid source-authoritative frames to manufacture a pass.
+
 ## Known limitations and viable upgrades
 
 - **Lipsync accuracy:** Audio2Face is now the preferred motion generator and

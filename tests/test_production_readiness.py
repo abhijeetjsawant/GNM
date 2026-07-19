@@ -385,8 +385,8 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
                 "subject_calibrated": True,
                 "neutral_baseline_validated": True,
                 "audio_visual_repair": {
-                    "schemaVersion": "autoanim.audio-visual-repair.v1",
-                    "policy": "video_authoritative_conservative_audio_repair_v1",
+                    "schemaVersion": "autoanim.audio-visual-repair.v2",
+                    "policy": "video_authoritative_conservative_audio_repair_v2",
                     "status": "repaired",
                     "locks": {
                         "upperFaceExact": True,

@@ -66,8 +66,9 @@ The skin and tongue solvers reconstruct Claire geometry and solve bounded named 
 
 The learned expressions are linearly interpolated to the export clock, centered
 by acoustically quiet frames, composed with an emotion delta, contact-corrected,
-and passed through a mouth-step guard. Compiler v9 measures the guard in the
-production evaluator's exact face-local geometry, then repairs any continuity-
+and passed through absolute-step and time-normalized mouth-speed guards.
+Compiler v13 measures both in the production evaluator's exact face-local
+geometry, then repairs any continuity-
 lost contact by holding the proven seal frame and redistributing only a bounded
 four-frame approach/release neighborhood. It is still an emergency local
 projection rather than the windowed jaw/lip/tongue trajectory solve proposed
@@ -247,6 +248,42 @@ audio + optional transcript + optional scene/director controls
 Normalize to the exact model format and report input quality before inference. Reject or flag clipping, severe SNR, incorrect channel layouts, long dropouts, and unsupported language/voice styles. Preserve original audio and transformation provenance.
 
 Use Audio2Face v3 diffusion at 60 fps for the quality tier. NVIDIA's current documentation attributes higher quality, better emotion and nonverbal behavior, and less averaging to the diffusion variants; the v2.3 regressors remain 30 fps and better characterized. v3 is a new runtime integration, not a model swap inside the existing Swift/MLX runner. Keep v2.3 as a lower-memory fallback until parity, latency, and licensing tests pass.
+
+The worker contract now encodes that rate explicitly. The control-name schema
+remains `autoanim.sequence-control-schema/1.0`, while the request and response
+wire schemas are `autoanim.a2f-v3-worker-request/1.1` and
+`autoanim.a2f-v3-worker-response/1.1`. ABI 1.1 fixes a prior
+misinterpretation in which the 30 retained frames per diffusion inference step
+were labeled as 30 fps. NVIDIA's SDK derives 60 fps from 60 generated frames per
+one-second buffer, discards the two 15-frame margins, and advances the next
+window by 0.5 seconds. AutoAnim therefore requires a 60 Hz v3 source track and
+keeps delivery rate separate: the application can render at 30 or 60 fps by
+timestamped resampling without corrupting source duration.
+
+ABI 1.1 also replaces the former arbitrary overlapping transport chunks with
+the pinned SDK execution schedule. Each record binds the signed one-second
+window, source intersection, zero padding, generated/discarded counts, emitted
+0–30-frame range, exact integer callback target samples, and
+`execution_chain_in_sha256`/`execution_chain_out_sha256` hashes. The chain
+proves envelope order, not the contents or continuity of NVIDIA's private GRU
+tensors. The zero-output warm-up call is retained because it participates in
+the official recurrent schedule even though the envelope cannot prove private
+state continuity. Downstream timestamps are canonical `frame_index / 60`; the
+original alternating 266/267-sample callback ticks remain separately bound for
+provenance.
+
+The ABI accepts one emitted frame because transport and archival provenance
+must not discard a valid short SDK result. That does not make one pose an
+animation trajectory. The application-level v3 animation import requires at
+least two source frames and fails with `DURATION_TOO_SHORT` before producing
+partial retarget, viewer, or delivery artifacts. Archive the valid envelope or
+provide longer audio when this boundary is reached.
+
+Delivery resampling is time-aligned, not motion-identical. The 60 Hz controls
+remain the canonical source; 30 and 60 fps delivery sample that source over the
+same audio duration. A successful duration check or equal per-second continuity
+limit does not prove equal per-frame controls, preservation of all 60 Hz detail,
+or production-quality motion at either delivery rate.
 
 When a transcript is available, prefer the supplied script over ASR. Produce word/phone intervals and posterior confidence at 10-20 ms resolution with a language-appropriate aligner. Montreal Forced Aligner supports context-dependent triphones and speaker adaptation. Alignment is a contact prior and diagnostic layer; it must not quantize the continuous learned motion into nine viseme cards. Evaluation annotations must be made independently of the production aligner to avoid circular scoring.
 

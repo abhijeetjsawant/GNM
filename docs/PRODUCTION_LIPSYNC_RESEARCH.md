@@ -34,12 +34,12 @@ The preserved P/B/M closures are not the source of the global rigidity. They are
 | GNM clock | `animation.py:1113-1129` linearly interpolates every GNM and affect channel onto the export clock. | Linear interpolation preserves duration and removes sampling gaps; it does not add biomechanical in-betweens. |
 | Emotion | `audio_pipeline.py:713-773` runs a second, constant-label emotional v2.3 pass and subtracts neutral motion. `rig.py:119-139` retains the full upper-face delta but limits emotional lower-face motion during speech. | The content/affect separation is architecturally sound, but the source condition and envelope remain broad. They do not model phrase-specific acting, spontaneous upper-face variation, or identity-specific speaking style. |
 | Contact | `audio_pipeline.py:177-278` derives closure evidence, quarantines an inverted `mouthClose` retarget row, and `animation.py:1130-1145` requires agreement with the closed-mouth cue. `animation.py:1187-1262` applies contact before the step limit and restores a seal lost by that limit. | Keep this. It is a sparse intelligibility constraint, not the cause of full-track stiffness. It still needs independent phone/contact truth before it can be called production-accurate. |
-| Quality | `lipsync_quality.py:204-365` gates mouth step, stationary motion, return to neutral, false silence motion, target contrast, and apex timing, and correctly refuses self-authored annotations. | It detects several bad tracks, but does not yet score phone-context transition shape, approach/release timing, closure duration, speech-mesh perceptual alignment, or human preference. |
+| Quality | `lipsync_quality.py:204-365` gates both the absolute `0.04`-IOD mouth step and `1.20` IOD/s mouth speed, stationary motion, return to neutral, false silence motion, target contrast, and apex timing, and correctly refuses self-authored annotations. | It detects several bad tracks, but does not yet score phone-context transition shape, approach/release timing, closure duration, speech-mesh perceptual alignment, or human preference. |
 | Oral geometry | `oral_validation.py:1-11` explicitly limits its claims to lip/tongue/teeth geometry and structural proxies. | Passing oral validation proves finite, reconstructable geometry; it does not prove phoneme correctness, natural coarticulation, or believable acting. |
 
 ### What the present tests establish—and what they do not
 
-The real LibriSpeech learned test requires less than 1% stationary lower-face motion, a quality-space mouth step no greater than 0.04 interocular units, at least 99% source contact-peak retention, and articulation-range/rank retention (`tests/test_phase2_audio.py:726-800`). Separate contact tests prove that correction happens before continuity limiting, that non-P/B/M cues do not create seals, and that a lost reachable anchor is restored by moving its approach rather than opening the contact (`tests/test_phase2_audio.py:455-641`). The quality scorer also rejects synthetic time shifts, heavy smoothing, static/open mouths, cue permutation, and emotion-only silence motion (`tests/test_lipsync_quality.py`).
+The real LibriSpeech learned test requires less than 1% stationary lower-face motion, a quality-space mouth step no greater than 0.04 interocular units and speed no greater than 1.20 IOD/s, at least 99% source contact-peak retention, and articulation-range/rank retention (`tests/test_phase2_audio.py:726-800`). Separate contact tests prove that correction happens before continuity limiting, that non-P/B/M cues do not create seals, and that a lost reachable anchor is restored by moving its approach rather than opening the contact (`tests/test_phase2_audio.py:455-641`). The quality scorer also rejects synthetic time shifts, heavy smoothing, static/open mouths, cue permutation, and emotion-only silence motion (`tests/test_lipsync_quality.py`).
 
 Those are meaningful correctness tests, but they cannot support a production perceptual claim. The retained real clips have no independently authored phone/contact tier, no reference 3D facial performance, no identity-matched speaking-style target, and no blinded human ratings. Consequently `production_validated` is correctly false. The present noncontact jerk ratio also deliberately excludes contact-critical controls, and no formal gate covers event-local transition jerk or closure hold duration. A smoother-looking test number can therefore coexist with a rigid-looking performance.
 
@@ -49,8 +49,9 @@ A later production-correction pass adds an explicitly authored neutral-relative
 mouth-aperture solve rather than increasing jaw/mouth coefficients globally.
 It hard-vetoes contact evidence, changes only GNM lower-face modes `200:350`,
 measures PCA leakage onto the tongue mesh, prevents new lip-order inversion and
-locally attenuates only edit deltas that would cross the exact face-local 0.04
-step gate. On the retained eight-second learned clip, gain `1.08` changes
+locally attenuates only edit deltas that would cross either the exact face-local
+`0.03995`-IOD absolute step ceiling or the `1.1985` IOD/s per-edge limit computed
+from exact timestamp deltas. On the retained eight-second learned clip, gain `1.08` changes
 146/240 frames; two are locally continuity-limited, 98.63% reach the full
 target, and the maximum final step is `0.03995`. Tongue controls and isolated
 tongue geometry remain active on 238 frames, the maximum aperture-edit PCA
@@ -73,7 +74,7 @@ now aggregate control-track and reconstructed-viewer risk instead of hiding a
 viewer-only defect.
 
 The first stop/go evidence foundation is now implemented separately from
-animation generation. `autoanim.lipsync-qualification/1.0` binds one existing
+animation generation. `autoanim.lipsync-qualification/1.1` binds one existing
 controls track to the exact source audio, character manifest, identity
 artifact and evaluated identity array, runtime GNM/decoder rig, rational
 timebase, manually independent annotation artifact, and artist-approved
@@ -119,17 +120,55 @@ This is more implementable and higher leverage than training a new GNM model imm
 The NVIDIA worker is a real dependency, not an implementation detail to hide. The official v3 model card lists NVIDIA-accelerated Windows/Linux deployment; the current Apple-Silicon MLX runner only implements Claire v2.3. A local-only product can keep v2.3 as `preview` quality, but it cannot honestly claim that post-filter tuning reproduces v3 sequence generation.
 
 The source boundary for that worker is now implemented, without pretending the
-worker exists locally. `autoanim.sequence-control-schema/1.0` and the sealed v3
-request/response validators bind the exact mono-16-kHz PCM sample clock,
-model/runtime/identity/control-schema hashes, rational output clock, overlapping
-chunk plan, named finite skin/tongue/jaw/eye arrays, and a zero-rooted cascading
-state-provenance chain. The generic immutable track preserves the rational
-timebase and uses the explicit quality labels
+worker exists locally. The control vocabulary remains
+`autoanim.sequence-control-schema/1.0`; the wire envelopes are explicitly
+`autoanim.a2f-v3-worker-request/1.1` and
+`autoanim.a2f-v3-worker-response/1.1`. Those sealed validators bind the exact
+mono-16-kHz PCM sample clock, model/runtime/identity/control-schema hashes, the
+model-native 60 Hz output clock, inference plan, named finite
+skin/tongue/jaw/eye arrays, and a zero-rooted cascading execution-order
+provenance chain. Version 1.1 corrects an earlier contract bug
+that mislabeled the 30 retained frames in each half-second diffusion step as a
+30 fps stream. The official SDK computes 60 frames from a one-second window,
+discards 15 on each side, retains 30, and advances by half a second. Legacy
+30 Hz v3 envelopes now fail closed; a 60 Hz source may still be resampled onto
+an explicitly chosen 30 or 60 fps delivery clock. The generic immutable track
+preserves the rational timebase and uses the explicit quality labels
 `a2f_v3_sequence_candidate_unqualified` and
 `a2f_v2_3_framewise_preview`, so a framewise v2.3 result cannot be relabeled as
 v3. Content hashes are not authentication signatures; deployment still needs
 an authenticated transport and worker identity. Local preflight on this
 Darwin/arm64 machine fails closed with `NVIDIA_V3_EXTERNAL_WORKER_REQUIRED`.
+
+The 1.1 chunk records are SDK inference records rather than arbitrary transport
+partitions. Validation reconstructs the exact signed one-second windows from a
+`-16000`-sample start, 8000-sample stride, left/right zero padding, source
+intersection, 60 generated frames, 15/15 discarded margins, and 0–30 emitted
+center frames. The fields are named `execution_chain_in_sha256` and
+`execution_chain_out_sha256`, not state hashes. The execution-order hash chain
+includes the zero-output warm-up inference and the final padded partial
+inference. It binds ordering and payload integrity; it does not hash or prove
+the SDK's private GRU tensor state. Exact integer callback target samples are
+retained as evidence; `timestamps_seconds`
+is deliberately canonicalized to `output_frame_index / 60` for downstream
+interpolation. This prevents the SDK's alternating 266/267-sample timestamp
+quantization from being mistaken for clock drift while preserving the original
+sample ticks for audit.
+
+ABI validity is intentionally broader than application importability. A sealed
+one-frame response is valid transport and archive evidence, including its
+zero-output warm-up execution and execution-order chain. The animation
+application nevertheless rejects a v3 source track with fewer than two emitted
+frames using `DURATION_TOO_SHORT`, before writing partial animation artifacts.
+Retarget interpolation and motion-quality checks require a trajectory, not one
+pose. Preserve a valid one-frame envelope for audit or supply longer audio; do
+not relabel the packet as corrupt merely because it cannot become an animation.
+
+The 60 Hz envelope is the canonical source-motion clock. A 30 or 60 fps
+application delivery compiles timestamp-aligned samples over the same audio
+duration; it does not make the two frame arrays identical, prove that 30 fps
+preserves every high-frequency articulation detail, or replace the exact SDK
+target-sample ticks retained in the inference records.
 
 ### Build milestone A — freeze real evidence before changing motion
 
@@ -144,7 +183,8 @@ Stop/go: do not alter the default motion path until the independent tiers, proto
 
 1. **Implemented contract:** define monotonically timed named skin, tongue,
    jaw, and eye controls; exact model/runtime/identity/schema and audio bindings;
-   rational inference clock; chunk overlap and state provenance. Keep v2.3 and
+   rational inference clock; signed inference-window/padding and execution-order
+   provenance. Keep v2.3 and
    v3 as separately labeled implementations. Per-frame emotion conditioning is
    still an upstream worker capability and is not fabricated by the contract.
 2. Deploy the exact official v3 model/runtime in a pinned container on an NVIDIA worker. Test offline full-sequence inference first, then the documented streaming mode (one-second windows, central 0.5-second segments, preserved GRU state).
@@ -167,7 +207,7 @@ Run v2.3 and v3 on the same frozen real inputs, identity, retarget, contact syst
 | Closure preservation | Candidate minimum inner-lip gap at independently annotated P/B/M contacts must be no worse than v2.3 plus 0.001 interocular units; approach/release smoothing may move neighboring frames, never the accepted seal frame. |
 | Phone identity | Existing target-contrast median >= 0.80 and p10 >= 0.60 on artist-approved GNM prototypes. Include F/V and rounded/open contrasts rather than scoring only closure. |
 | Coarticulation | Lip DDTW/LDTW on phone start-to-release windows must be lower than v2.3 on the held-out set with a paired-bootstrap 95% confidence interval entirely below zero. Report anticipatory onset, apex, release, event-local velocity/acceleration/jerk, and closure duration. |
-| Motion hygiene | Mouth step max <= 0.04 interocular units; active-speech stationary fraction <= 0.12; neutral return <= 2 frames; false-silence motion p95 <= 0.10 of reference amplitude. Event-local jerk must not improve by flattening target contrast or contact recall. |
+| Motion hygiene | Mouth step max <= 0.04 interocular units and mouth speed max <= 1.20 IOD/s; active-speech stationary fraction <= 0.12; neutral return <= 2 frames; false-silence motion p95 <= 0.10 of reference amplitude. Event-local jerk must not improve by flattening target contrast or contact recall. |
 | Speech/performance coupling | Speech/lip intensity correlation must improve over v2.3 on the held-out set. If a validated speech-mesh embedding is adopted, perceptual lip readability must also improve under paired bootstrap. Do not train and evaluate that metric on the same identities. |
 | Expression | On at least 20 clips containing neutral-to-emotion or emotion-to-emotion phrase changes, independent raters must identify intended broad valence/arousal above the frozen baseline without a statistically significant loss in phone timing or contrast. Lower-face emotional energy during high speech activity must remain bounded by the existing regional composition rule. |
 | Human perception | At least 12 blinded raters, at least 20 paired clips, randomized side/order. Candidate naturalness preference >= 60%, and the 95% confidence interval must exclude 50%. Collect separate 1-5 ratings for lip-sync, transition naturalness, expression appropriateness, and oral artifacts; median lip-sync and transition-naturalness ratings must each be >= 4. |
@@ -258,7 +298,7 @@ audio understanding / learned motion
 
 ### NVIDIA Audio2Face-3D
 
-[NVIDIA's Audio2Face-3D paper](https://arxiv.org/abs/2508.16401) describes a production-oriented system trained from multi-camera 4D capture, with separate skin, tongue, jaw, and eye outputs, real-time inference, blendshape solving, and optional Audio2Emotion. Its v2.3 regression model consumes approximately 0.52 seconds of audio for a frame; v3 uses a one-second context and diffusion to emit a 30-frame block. NVIDIA reports direct mesh, joint, and blendshape workflows and time-keyed emotion control.
+[NVIDIA's Audio2Face-3D paper](https://arxiv.org/abs/2508.16401) describes a production-oriented system trained from multi-camera 4D capture, with separate skin, tongue, jaw, and eye outputs, real-time inference, blendshape solving, and optional Audio2Emotion. Its v2.3 regression model consumes approximately 0.52 seconds of audio for a frame; v3 uses a one-second context and diffusion to emit a 30-frame retained block every 0.5 seconds, yielding a 60 fps source stream. NVIDIA reports direct mesh, joint, and blendshape workflows and time-keyed emotion control.
 
 The [official repository](https://github.com/NVIDIA/Audio2Face-3D) publishes the SDK under MIT, the training framework under Apache-2.0, and v2.3/v3 model weights under the NVIDIA Open Model License. The official CUDA SDK currently requires Windows or Linux, CUDA 12.8+, TensorRT 10.13+, and an NVIDIA GPU, so it cannot run natively in this macOS application.
 

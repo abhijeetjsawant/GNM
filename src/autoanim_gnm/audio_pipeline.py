@@ -95,6 +95,32 @@ V3_SEQUENCE_BACKEND = (
     "unverified-external-controls-claimed-a2f-v3.0-network-3.2+"
     "claire-profile+gnm-dense-calibrated-candidate"
 )
+
+_A2F_V3_MINIMUM_ANIMATION_FRAMES = 2
+
+
+def _require_v3_animation_frame_count(frame_count: int) -> None:
+    """Separate the wire-format minimum from the animation-product minimum.
+
+    The v3 ABI deliberately accepts a one-frame response so a worker can
+    preserve every official SDK callback, including sub-window captures.
+    Retargeting, temporal interpolation, and the production quality gates all
+    require a trajectory, so the application rejects those archival packets
+    before any partial animation artifacts are written.
+    """
+
+    if not isinstance(frame_count, int) or isinstance(frame_count, bool):
+        raise SequenceProviderError(
+            "DURATION_TOO_SHORT",
+            "Audio2Face v3 animation frame count must be an integer",
+        )
+    if frame_count < _A2F_V3_MINIMUM_ANIMATION_FRAMES:
+        raise SequenceProviderError(
+            "DURATION_TOO_SHORT",
+            "Audio2Face v3 animation import requires at least two source frames",
+        )
+
+
 V3_SEQUENCE_CAVEAT = (
     "Audio2Face v3 sequence controls were imported through an external-worker envelope "
     "and remain an unqualified candidate. The importer does not prove that v3 inference "
@@ -102,6 +128,9 @@ V3_SEQUENCE_CAVEAT = (
     "state. Jaw matrices are retained but not applied until an SDK convention parity fixture passes."
 )
 LEARNED_CONDITIONER = "detail-preserving-articulation-v4-contact-anchored-quality-space"
+AUDIO_TIMELINE_VERSION = 12
+EXTERNAL_FACE_COMPILER_VERSION = 13
+FALLBACK_FACE_COMPILER_VERSION = 4
 _CONTACT_CRITICAL_CONTROLS = frozenset(
     ("mouthClose", "mouthPressLeft", "mouthPressRight", "mouthRollLower", "mouthRollUpper")
 )
@@ -226,6 +255,9 @@ def _apply_audio_mouth_aperture_edit(
                 ),
                 "final_continuity_limit_interocular": (
                     correction.final_continuity_limit_interocular
+                ),
+                "final_continuity_speed_interocular_per_second": (
+                    correction.final_continuity_speed_interocular_per_second
                 ),
                 "target_attained_fraction": target_attainment,
                 "maximum_tongue_mesh_tail_interocular": float(
@@ -580,6 +612,12 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
     iod = float(np.linalg.norm(compact[0, 36] - compact[0, 45]))
     mouth = compact[:, 48:68]
     if len(mouth) > 1:
+        edge_seconds = np.diff(np.asarray(track.timestamps, dtype=np.float64))
+        if not np.isfinite(edge_seconds).all() or np.any(edge_seconds <= 0.0):
+            raise AutoAnimError(
+                "INTERNAL_ERROR",
+                "Audio control timestamps must increase for temporal metrics",
+            )
         face_local_mouth = np.stack(
             [_face_local_mouth(rig, frame) for frame in track.expression]
         )
@@ -591,11 +629,13 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
             np.max(np.linalg.norm(np.diff(mouth, axis=0), axis=2), axis=1)
             / max(iod, 1e-8)
         )
+        mouth_speed = step / edge_seconds
         lower_velocity = np.linalg.norm(np.diff(track.expression[:, 200:382], axis=0), axis=1)
         stationary = lower_velocity <= 1e-7
     else:
         step = np.zeros(0, dtype=np.float32)
         raw_step = np.zeros(0, dtype=np.float32)
+        mouth_speed = np.zeros(0, dtype=np.float64)
         lower_velocity = np.zeros(0, dtype=np.float32)
         stationary = np.zeros(0, dtype=bool)
     acceleration = np.diff(lower_velocity) if len(lower_velocity) > 1 else np.zeros(0, dtype=np.float32)
@@ -631,6 +671,12 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
     return {
         "mouth_step_max_interocular": float(np.max(step, initial=0.0)),
         "mouth_step_p95_interocular": float(np.percentile(step, 95)) if len(step) else 0.0,
+        "mouth_speed_max_interocular_per_second": float(
+            np.max(mouth_speed, initial=0.0)
+        ),
+        "mouth_speed_p95_interocular_per_second": (
+            float(np.percentile(mouth_speed, 95)) if len(mouth_speed) else 0.0
+        ),
         "mouth_step_raw_landmark_max_interocular": float(
             np.max(raw_step, initial=0.0)
         ),
@@ -780,10 +826,10 @@ def run_audio_pipeline(
                 "INPUT_INVALID",
                 "Explicit a2f-v3 import requires: " + ", ".join(missing_v3),
             )
-        if fps != 30:
+        if fps not in {30, 60}:
             raise AutoAnimError(
                 "INPUT_INVALID",
-                "Audio2Face v3 sequence import preserves the official 30-fps clock",
+                "Audio2Face v3 delivery FPS must be 30 or 60",
             )
         if emotion != "auto":
             raise AutoAnimError(
@@ -881,6 +927,7 @@ def run_audio_pipeline(
                 a2f_v3_response_path,  # type: ignore[arg-type]
                 request=request,
             )
+            _require_v3_animation_frame_count(len(sequence_track.timestamps))
             official_profile = load_official_v3_claire_profile(
                 a2f_v3_profile_dir  # type: ignore[arg-type]
             )
@@ -890,7 +937,7 @@ def run_audio_pipeline(
                 adapter=adapter,
                 cache_path=output_dir / "retarget_calibration_a2f_v3_claire.npz",
             )
-            source_timestamps = np.asarray(sequence_track.timestamps, dtype=np.float32)
+            source_timestamps = np.asarray(sequence_track.timestamps, dtype=np.float64)
             source_activity = np.interp(
                 source_timestamps.astype(np.float64),
                 prosody.timestamps.astype(np.float64),
@@ -937,6 +984,8 @@ def run_audio_pipeline(
             conditioning = {
                 **quarantine_metrics,
                 "sequence_frames": float(len(source_timestamps)),
+                "sequence_source_fps": float(sequence_track.output_timebase.fps),
+                "delivery_fps": float(fps),
                 "sequence_skin_control_count": float(len(sequence_track.control_names.skin)),
                 "sequence_tongue_control_count": float(
                     len(sequence_track.control_names.tongue)
@@ -1035,11 +1084,19 @@ def run_audio_pipeline(
             OSError,
             ValueError,
         ) as exc:
-            raise AutoAnimError(
-                "DEPENDENCY_MISSING"
+            error_code = (
+                exc.code
+                if isinstance(exc, SequenceProviderError)
+                else "DEPENDENCY_MISSING"
                 if isinstance(exc, OSError)
-                else "INPUT_INVALID",
+                else "INPUT_INVALID"
+            )
+            raise AutoAnimError(
+                error_code,
                 f"Audio2Face v3 sequence import failed: {exc}",
+                details=(
+                    {"field": exc.field} if isinstance(exc, SequenceProviderError) else {}
+                ),
             ) from exc
     elif backend in {"auto", "learned"}:
         try:
@@ -1391,7 +1448,7 @@ def run_audio_pipeline(
     write_json(
         output_dir / "timeline.json",
         {
-            "version": 11,
+            "version": AUDIO_TIMELINE_VERSION,
             "motion_backend": motion_backend,
             "retargeter": retargeter_name,
             "retarget_calibration_hash": retarget_calibration_hash,
@@ -1833,7 +1890,11 @@ def run_audio_pipeline(
             "fps": track.fps,
             "frames": len(track.expression),
             "expression_shape": list(track.expression.shape),
-            "compiler_version": 12 if has_external_face_controls else 3,
+            "compiler_version": (
+                EXTERNAL_FACE_COMPILER_VERSION
+                if has_external_face_controls
+                else FALLBACK_FACE_COMPILER_VERSION
+            ),
             "production_validated": False,
         },
         "viewer": {

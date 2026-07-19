@@ -17,6 +17,7 @@ from autoanim_gnm.lipsync_quality import QualityThresholds
 from autoanim_gnm.lipsync_qualification import (
     PROFILE_SCHEMA,
     LipsyncQualificationError,
+    _load_controls,
     evaluate_controls_qualification,
     identity_array_sha256,
     landmarks_sha256,
@@ -359,6 +360,7 @@ def test_profile_requires_complete_approved_prototypes_and_in_range_events(
     ("field", "value"),
     (
         ("mouth_step_max_interocular", 0.5),
+        ("mouth_speed_max_interocular_per_second", 5.0),
         ("speech_active_stationary_fraction", 1.0),
         ("target_contrast_median", 0.0),
         ("timing_error_p95_frames", 20.0),
@@ -497,6 +499,38 @@ def test_evaluator_rejects_missing_arrays_nonfinite_controls_and_clock_mismatch(
     with pytest.raises(LipsyncQualificationError) as caught:
         _evaluate(case, rig, controls_path=wrong_clock)
     assert caught.value.code == "TIMEBASE_MISMATCH"
+
+
+@pytest.mark.parametrize("fps", (30, 60))
+def test_native_float32_rational_clock_remains_exact_beyond_64_seconds(
+    tmp_path: Path,
+    rig: ControlRig,
+    fps: int,
+) -> None:
+    case = _case(tmp_path, rig)
+    frame_count = 66 * fps
+    profile_document = deepcopy(case.profile)
+    profile_document["timebase"]["fps_numerator"] = fps  # type: ignore[index]
+    profile_document["timebase"]["frame_count"] = frame_count  # type: ignore[index]
+    profile_path = write_json(
+        tmp_path / f"qualification-{fps}.json",
+        _reseal(profile_document),
+    )
+    profile = parse_qualification_profile(profile_path)
+    expression = np.repeat(case.expression[:1], frame_count, axis=0)
+    activity = np.zeros(frame_count, dtype=np.float32)
+    timestamps = np.arange(frame_count, dtype=np.float32) / np.float32(fps)
+    controls_path = _write_controls(
+        tmp_path / f"long-controls-{fps}.npz",
+        expression,
+        activity,
+        fps=fps,
+        timestamps=timestamps,
+    )
+
+    _, loaded_timestamps, _ = _load_controls(controls_path, profile, rig)
+
+    np.testing.assert_array_equal(loaded_timestamps, timestamps.astype(np.float64))
 
     unexpected_member = tmp_path / "unexpected-member.npz"
     unexpected_member.write_bytes(case.controls_path.read_bytes())

@@ -23,7 +23,7 @@ from .errors import AutoAnimError
 from .rig import ControlRig
 
 
-SCHEMA_VERSION = "autoanim.gnm.mouth-aperture-correction.v2"
+SCHEMA_VERSION = "autoanim.gnm.mouth-aperture-correction.v3"
 LOWER_FACE_SLICE = slice(200, 350)
 TONGUE_SLICE = slice(350, 382)
 _INNER_LIP_PAIRS = ((61, 67), (62, 66), (63, 65))
@@ -48,6 +48,7 @@ class MouthApertureConfig:
     maximum_added_aperture_interocular: float = 0.06
     maximum_correction_velocity_interocular_per_second: float = 0.36
     maximum_final_mouth_step_interocular: float = 0.03995
+    maximum_final_mouth_speed_interocular_per_second: float = 1.1985
     maximum_coefficient_delta: float = 0.90
     maximum_lower_face_coefficient: float = 3.0
     maximum_nonmouth_displacement_interocular: float = 0.0010
@@ -106,6 +107,7 @@ class MouthApertureCorrectionResult:
     target_attained: np.ndarray
     final_continuity_scale: np.ndarray
     final_continuity_limit_interocular: float
+    final_continuity_speed_interocular_per_second: float
     reports: tuple[MouthApertureFrameReport, ...]
     identity_sha256: str
     input_sha256: str
@@ -233,6 +235,7 @@ def _validate_config(config: MouthApertureConfig) -> None:
         "maximum_added_aperture_interocular",
         "maximum_correction_velocity_interocular_per_second",
         "maximum_final_mouth_step_interocular",
+        "maximum_final_mouth_speed_interocular_per_second",
         "maximum_coefficient_delta",
         "maximum_lower_face_coefficient",
         "maximum_nonmouth_displacement_interocular",
@@ -674,8 +677,10 @@ def _limit_final_mouth_steps(
     rig: ControlRig,
     baseline: np.ndarray,
     corrected: np.ndarray,
+    timestamps_seconds: np.ndarray,
     *,
-    maximum_ratio: float,
+    maximum_step_interocular: float,
+    maximum_speed_interocular_per_second: float,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """Locally attenuate only the authored delta until every edge is safe.
 
@@ -688,22 +693,42 @@ def _limit_final_mouth_steps(
     """
 
     frame_count = len(corrected)
+    timestamps = np.asarray(timestamps_seconds, dtype=np.float64)
+    if (
+        timestamps.shape != (frame_count,)
+        or not np.isfinite(timestamps).all()
+        or (frame_count > 1 and np.any(np.diff(timestamps) <= 0.0))
+        or not np.isfinite(maximum_step_interocular)
+        or maximum_step_interocular <= 0.0
+        or not np.isfinite(maximum_speed_interocular_per_second)
+        or maximum_speed_interocular_per_second <= 0.0
+    ):
+        raise _invalid("Final mouth continuity clock or speed is invalid")
     scale = np.asarray(
         np.max(np.abs(corrected - baseline), axis=1) > 0.0,
         dtype=np.float64,
     )
-    baseline_maximum = max(
-        (
+    baseline_steps = np.asarray(
+        [
             _mouth_step_quality_ratio(rig, baseline[index - 1], baseline[index])
             for index in range(1, frame_count)
-        ),
-        default=0.0,
+        ],
+        dtype=np.float64,
     )
     # Audio compiler output is already below the configured production cap.
     # Source-video motion can legitimately exceed it because its cadence is
     # owned by exact capture PTS. In that case the edit is constrained not to
     # worsen the retained source maximum instead of silently smoothing capture.
-    effective_maximum = max(maximum_ratio, baseline_maximum)
+    requested_limits = (
+        np.minimum(
+            maximum_step_interocular,
+            maximum_speed_interocular_per_second * np.diff(timestamps),
+        )
+        if frame_count > 1
+        else np.empty(0, dtype=np.float64)
+    )
+    effective_limits = np.maximum(requested_limits, baseline_steps)
+    effective_maximum = float(np.max(effective_limits, initial=0.0))
     if frame_count < 2 or not np.any(scale):
         return corrected.copy(), scale.astype(np.float32), effective_maximum
 
@@ -723,12 +748,48 @@ def _limit_final_mouth_steps(
             frame(index, right_scale),
         )
 
+    edit_weight = np.linalg.norm(
+        corrected[:, LOWER_FACE_SLICE] - baseline[:, LOWER_FACE_SLICE],
+        axis=1,
+    ).astype(np.float64)
+
+    def largest_safe_scale(
+        index: int,
+        edge_limit: float,
+        *,
+        left: float,
+        right: float,
+        vary_left: bool,
+    ) -> tuple[float, float] | None:
+        """Retain one endpoint exactly when the other alone can make the edge safe."""
+
+        maximum = left if vary_left else right
+        fixed_left = 0.0 if vary_left else left
+        fixed_right = right if vary_left else 0.0
+        if edge(index, fixed_left, fixed_right) > edge_limit + 1.0e-8:
+            return None
+        lower = 0.0
+        upper = maximum
+        for _ in range(24):
+            middle = 0.5 * (lower + upper)
+            candidate_left = middle if vary_left else left
+            candidate_right = right if vary_left else middle
+            if edge(index, candidate_left, candidate_right) <= edge_limit:
+                lower = middle
+            else:
+                upper = middle
+        retained = lower * 0.999999
+        return (retained, right) if vary_left else (left, retained)
+
     for _ in range(12):
         changed = False
         for order in (range(1, frame_count), range(frame_count - 1, 0, -1)):
             for index in order:
-                if edge(index, scale[index - 1], scale[index]) <= effective_maximum + 1.0e-8:
+                edge_limit = float(effective_limits[index - 1])
+                if edge(index, scale[index - 1], scale[index]) <= edge_limit + 1.0e-8:
                     continue
+                current_left = float(scale[index - 1])
+                current_right = float(scale[index])
                 lower = 0.0
                 upper = 1.0
                 for _ in range(24):
@@ -739,14 +800,43 @@ def _limit_final_mouth_steps(
                             scale[index - 1] * middle,
                             scale[index] * middle,
                         )
-                        <= effective_maximum
+                        <= edge_limit
                     ):
                         lower = middle
                     else:
                         upper = middle
                 reduction = lower * 0.999999
-                scale[index - 1] *= reduction
-                scale[index] *= reduction
+                candidates = [
+                    (current_left * reduction, current_right * reduction),
+                ]
+                left_only = largest_safe_scale(
+                    index,
+                    edge_limit,
+                    left=current_left,
+                    right=current_right,
+                    vary_left=True,
+                )
+                right_only = largest_safe_scale(
+                    index,
+                    edge_limit,
+                    left=current_left,
+                    right=current_right,
+                    vary_left=False,
+                )
+                if left_only is not None:
+                    candidates.append(left_only)
+                if right_only is not None:
+                    candidates.append(right_only)
+                retained_left, retained_right = max(
+                    candidates,
+                    key=lambda item: (
+                        edit_weight[index - 1] * item[0]
+                        + edit_weight[index] * item[1],
+                        item[0] + item[1],
+                    ),
+                )
+                scale[index - 1] = retained_left
+                scale[index] = retained_right
                 changed = True
         if not changed:
             break
@@ -757,17 +847,18 @@ def _limit_final_mouth_steps(
         + scale[:, None].astype(np.float32)
         * (corrected[:, LOWER_FACE_SLICE] - baseline[:, LOWER_FACE_SLICE])
     )
-    final_maximum = max(
-        (
+    final_steps = np.asarray(
+        [
             _mouth_step_quality_ratio(rig, output[index - 1], output[index])
             for index in range(1, frame_count)
-        ),
-        default=0.0,
+        ],
+        dtype=np.float64,
     )
-    if final_maximum > effective_maximum + 1.0e-7:
+    excess = final_steps - effective_limits
+    if np.any(excess > 1.0e-7):
         raise _invalid(
             "Mouth correction could not satisfy final continuity",
-            actual=final_maximum,
+            actual=float(np.max(final_steps, initial=0.0)),
             maximum=effective_maximum,
         )
     return output.astype(np.float32), scale.astype(np.float32), effective_maximum
@@ -1035,7 +1126,11 @@ def correct_mouth_aperture(
         rig,
         expression_array,
         preliminary_output,
-        maximum_ratio=config.maximum_final_mouth_step_interocular,
+        timestamps_array,
+        maximum_step_interocular=config.maximum_final_mouth_step_interocular,
+        maximum_speed_interocular_per_second=(
+            config.maximum_final_mouth_speed_interocular_per_second
+        ),
     )
     output_meshes = []
     revised_reports: list[MouthApertureFrameReport] = []
@@ -1184,6 +1279,9 @@ def correct_mouth_aperture(
         target_attained=_readonly(attained),
         final_continuity_scale=_readonly(final_continuity_scale),
         final_continuity_limit_interocular=float(final_continuity_limit),
+        final_continuity_speed_interocular_per_second=float(
+            config.maximum_final_mouth_speed_interocular_per_second
+        ),
         reports=tuple(reports),
         identity_sha256=_array_digest(identity_array),
         input_sha256=input_digest,

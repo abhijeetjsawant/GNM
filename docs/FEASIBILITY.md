@@ -87,7 +87,8 @@ Geometry gates:
 - rounded/puckered cues narrow the mouth relative to wide-open cues;
 - L visibly moves tongue vertices;
 - silence returns to near-neutral within 150 ms;
-- frame-to-frame mouth landmark motion has no discontinuity above 4% of interocular distance at 30 fps.
+- mouth landmark motion remains below both the absolute 4% interocular safety
+  bound and the 1.20-interocular-units/s cadence-independent gate.
 
 Real-input gates for a production claim:
 

@@ -196,6 +196,20 @@ def test_video_authority_and_audio_repair_are_explicitly_partitioned(
         revised.expression[1, 200:350], performance.expression[1, 200:350]
     )
     assert result.report["schemaVersion"] == AUDIO_VISUAL_REPAIR_SCHEMA_VERSION
+    assert result.report["config"] == {
+        "minimumTrustedVisualQuality": 0.65,
+        "minimumSpeechActivity": 0.05,
+        "visualContactProtectionConfidence": 0.50,
+        "audioContactConflictConfidence": 0.35,
+        "visuallyOpenGapInterocular": 0.055,
+        "maximumIntroducedMouthSpeedInterocularPerSecond": 1.80,
+        "absoluteMaximumIntroducedMouthStepInterocular": 0.060,
+        "maximumIntroducedTongueCoefficientStep": 0.80,
+        "taperFrames": 0,
+    }
+    assert result.report["clockJoin"]["mouthContinuityClock"] == (
+        "exact_captured_performance_timestamp_delta_seconds"
+    )
     assert result.report["metrics"]["audioVisualContactConflictFrames"] >= 1
     assert result.report["locks"] == {
         "upperFaceExact": True,
@@ -412,7 +426,9 @@ def test_geometry_limiter_reduces_only_the_weak_repair_run() -> None:
             output_expression=candidate,
             lower_weight=weights,
             lower_eligible=weights > 0.0,
-            maximum_step=0.02,
+            timestamps_seconds=np.arange(5, dtype=np.float64) * 0.1,
+            maximum_speed_interocular_per_second=0.20,
+            absolute_maximum_step_interocular=1.0,
         )
     )
     assert limited_runs == 1
@@ -420,6 +436,93 @@ def test_geometry_limiter_reduces_only_the_weak_repair_run() -> None:
     assert np.max(final_steps, initial=0.0) <= 0.020011
     np.testing.assert_array_equal(baseline_steps, np.zeros(4, dtype=np.float32))
     np.testing.assert_array_equal(output[[0, 1, 3, 4]], base[[0, 1, 3, 4]])
+
+
+def test_geometry_limiter_has_30_60_fps_speed_parity() -> None:
+    adapter = GNMAdapter()
+    rig = ControlRig(
+        adapter,
+        ExpressionDecoder("gnm/shape/data/semantic_sampler/expression_decoder_model.h5"),
+    )
+    maximum_speed = 0.60
+    observed_speeds: dict[int, float] = {}
+
+    for fps in (30, 60):
+        base = np.zeros((5, 383), dtype=np.float32)
+        audio = base.copy()
+        audio[2, 200:350] = np.float32(3.0) * rig.viseme("A")[200:350]
+        weights = np.asarray([0.0, 0.0, 1.0, 0.0, 0.0], dtype=np.float32)
+        candidate = base.copy()
+        candidate[2, 200:350] = audio[2, 200:350]
+        timestamps = np.arange(5, dtype=np.float64) / fps
+
+        _, _, limited_runs, _, final_steps = _limit_introduced_mouth_steps(
+            rig=rig,
+            base_expression=base,
+            audio_expression=audio,
+            output_expression=candidate,
+            lower_weight=weights,
+            lower_eligible=weights > 0.0,
+            timestamps_seconds=timestamps,
+            maximum_speed_interocular_per_second=maximum_speed,
+            absolute_maximum_step_interocular=1.0,
+        )
+        observed_speeds[fps] = float(np.max(final_steps / np.diff(timestamps)))
+
+        assert limited_runs == 1
+        assert maximum_speed - 1.0e-4 <= observed_speeds[fps] <= maximum_speed + 1.0e-4
+
+    assert observed_speeds[30] == pytest.approx(observed_speeds[60], abs=1.0e-4)
+
+
+def test_geometry_limiter_uses_each_variable_pts_edge_and_absolute_safety_bound() -> None:
+    adapter = GNMAdapter()
+    rig = ControlRig(
+        adapter,
+        ExpressionDecoder("gnm/shape/data/semantic_sampler/expression_decoder_model.h5"),
+    )
+    base = np.zeros((5, 383), dtype=np.float32)
+    audio = base.copy()
+    audio[-1, 200:350] = np.float32(3.0) * rig.viseme("A")[200:350]
+    weights = np.asarray([0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    candidate = base.copy()
+    candidate[-1, 200:350] = audio[-1, 200:350]
+    timestamps = np.asarray([0.0, 0.017, 0.061, 0.094, 0.160], dtype=np.float64)
+    maximum_speed = 0.60
+
+    _, _, limited_runs, baseline_steps, final_steps = _limit_introduced_mouth_steps(
+        rig=rig,
+        base_expression=base,
+        audio_expression=audio,
+        output_expression=candidate,
+        lower_weight=weights,
+        lower_eligible=weights > 0.0,
+        timestamps_seconds=timestamps,
+        maximum_speed_interocular_per_second=maximum_speed,
+        absolute_maximum_step_interocular=1.0,
+    )
+    edge_limits = maximum_speed * np.diff(timestamps)
+    assert limited_runs == 1
+    np.testing.assert_array_equal(baseline_steps, np.zeros(4, dtype=np.float32))
+    assert np.all(final_steps <= edge_limits + 1.0e-6)
+    assert final_steps[-1] / np.diff(timestamps)[-1] == pytest.approx(
+        maximum_speed,
+        abs=1.0e-4,
+    )
+
+    _, _, _, _, absolute_limited_steps = _limit_introduced_mouth_steps(
+        rig=rig,
+        base_expression=base,
+        audio_expression=audio,
+        output_expression=candidate,
+        lower_weight=weights,
+        lower_eligible=weights > 0.0,
+        timestamps_seconds=timestamps,
+        maximum_speed_interocular_per_second=maximum_speed,
+        absolute_maximum_step_interocular=0.020,
+    )
+    assert absolute_limited_steps[-1] <= 0.020001
+    assert absolute_limited_steps[-1] == pytest.approx(0.020, abs=1.0e-5)
 
 
 def test_repair_fails_closed_for_fallback_audio_and_timing_tamper(

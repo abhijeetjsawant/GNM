@@ -15,6 +15,7 @@ from autoanim_gnm.animation import (
     _default_prosody,
     _mouth_gap_interocular,
     _mouth_lip_order_minimum_interocular,
+    _mouth_step_quality_ratio,
     _repair_lip_order_inversion,
     calibrate_lip_contact,
     compose_animation,
@@ -29,8 +30,11 @@ from autoanim_gnm.audio import (
 )
 from autoanim_gnm.audio_pipeline import (
     AUDIO_CAVEAT,
+    AUDIO_TIMELINE_VERSION,
     EMOTION_CAVEAT,
+    EXTERNAL_FACE_COMPILER_VERSION,
     FALLBACK_CAVEAT,
+    FALLBACK_FACE_COMPILER_VERSION,
     LIP_CONTACT_CAVEAT,
     _condition_learned_controls,
     _apply_audio_mouth_aperture_edit,
@@ -187,6 +191,104 @@ def test_temporal_compiler_is_deterministic_and_rejects_empty_cues(rig: ControlR
     np.testing.assert_array_equal(first.rotations, second.rotations)
     with pytest.raises(AutoAnimError, match="mouth cue"):
         compose_animation([], 1.0, 30, rig, "neutral")
+
+
+def test_fallback_lower_face_speed_limit_has_30_60_time_parity(
+    rig: ControlRig,
+) -> None:
+    duration = 1.4
+    cues = [
+        MouthCue(0.0, 0.20, "X"),
+        MouthCue(0.20, 0.45, "H"),
+        MouthCue(0.45, 0.65, "A"),
+        MouthCue(0.65, 0.90, "F"),
+        MouthCue(0.90, 1.20, "D"),
+        MouthCue(1.20, duration, "X"),
+    ]
+    maximum_speeds: dict[int, float] = {}
+    peak_aperture_times: dict[int, float] = {}
+
+    for fps in (30, 60):
+        track = compose_animation(
+            cues,
+            duration,
+            fps,
+            rig,
+            "neutral",
+            head_motion=False,
+        )
+        speeds = np.asarray(
+            [
+                _mouth_step_quality_ratio(rig, left, right) * fps
+                for left, right in zip(
+                    track.expression[:-1],
+                    track.expression[1:],
+                    strict=True,
+                )
+            ]
+        )
+        apertures = np.asarray(
+            [_mouth_gap_interocular(rig, frame) for frame in track.expression]
+        )
+        maximum_speeds[fps] = float(np.max(speeds))
+        peak_aperture_times[fps] = float(track.timestamps[int(np.argmax(apertures))])
+
+        assert np.count_nonzero(track.mouth_speed_limited) > 0
+        assert 1.09 <= maximum_speeds[fps] <= 1.09501
+
+    assert maximum_speeds[30] == pytest.approx(maximum_speeds[60], abs=1.0e-4)
+    assert peak_aperture_times[30] == pytest.approx(
+        peak_aperture_times[60],
+        abs=1.0 / 30.0,
+    )
+
+
+@pytest.mark.parametrize("fps", (12, 24))
+def test_supported_low_fps_composers_satisfy_step_and_speed_gates(
+    rig: ControlRig,
+    fps: int,
+) -> None:
+    duration = 1.5
+    cues = [
+        MouthCue(0.0, 0.20, "X"),
+        MouthCue(0.20, 0.65, "H"),
+        MouthCue(0.65, 1.20, "D"),
+        MouthCue(1.20, duration, "X"),
+    ]
+    delivery_timestamps = np.arange(int(duration * fps), dtype=np.float64) / fps
+    prosody = _default_prosody(cues, delivery_timestamps)
+    fallback = compose_animation(
+        cues,
+        duration,
+        fps,
+        rig,
+        "neutral",
+        prosody,
+        head_motion=False,
+    )
+    source_timestamps = np.arange(90, dtype=np.float64) / 60.0
+    source = np.zeros((90, rig.adapter.expression_dim), dtype=np.float32)
+    source[20:70] = np.float32(0.80) * rig.viseme("D")
+    learned = compose_learned_animation(
+        source,
+        source_timestamps,
+        cues,
+        duration,
+        fps,
+        rig,
+        prosody,
+        head_motion=False,
+    )
+
+    for track in (fallback, learned):
+        quality = evaluate_lipsync_quality(
+            np.stack([rig.compact_landmarks(frame) for frame in track.expression]),
+            rig.compact_landmarks(np.zeros(383, dtype=np.float32)),
+            track.speech_activity,
+            fps=fps,
+        )
+        assert quality.production_gate.checks["mouth_step"]
+        assert quality.production_gate.checks["mouth_speed"]
 
 
 def test_audio_mouth_aperture_edit_is_audited_contact_safe_revision(
@@ -567,6 +669,172 @@ def test_learned_composer_preserves_fast_articulation_and_adds_secondary_motion(
     np.testing.assert_allclose(track.rotations[[0, -1]], 0.0, atol=1e-7)
 
 
+def test_learned_composer_keeps_60hz_source_detail_only_when_delivery_can_represent_it(
+    rig: ControlRig,
+) -> None:
+    duration = 1.0
+    source_timestamps = np.arange(60, dtype=np.float64) / 60.0
+    source = np.zeros((60, 383), dtype=np.float32)
+    source[1::2, 100] = 0.02
+    baseline = np.zeros_like(source)
+    cues = [MouthCue(0.0, duration, "D")]
+
+    differences: dict[int, np.ndarray] = {}
+    for delivery_fps in (30, 60):
+        delivery_timestamps = (
+            np.arange(delivery_fps, dtype=np.float32) / delivery_fps
+        )
+        prosody = _default_prosody(cues, delivery_timestamps)
+        patterned = compose_learned_animation(
+            source,
+            source_timestamps,
+            cues,
+            duration,
+            delivery_fps,
+            rig,
+            prosody,
+            head_motion=False,
+        )
+        neutral = compose_learned_animation(
+            baseline,
+            source_timestamps,
+            cues,
+            duration,
+            delivery_fps,
+            rig,
+            prosody,
+            head_motion=False,
+        )
+        differences[delivery_fps] = patterned.expression - neutral.expression
+
+    assert np.max(np.abs(differences[30][:, 100])) < 1.0e-5
+    assert np.max(differences[60][1::2, 100]) > 0.019
+    assert np.max(np.abs(differences[60][::2, 100])) < 1.0e-5
+
+
+def test_learned_lower_face_limiter_has_30_60_time_parity(
+    rig: ControlRig,
+) -> None:
+    duration = 1.5
+    source_timestamps = np.arange(90, dtype=np.float64) / 60.0
+    source = np.zeros((90, rig.adapter.expression_dim), dtype=np.float32)
+    source[24:66] = np.float32(0.70) * rig.viseme("D")
+    cues = [MouthCue(0.0, duration, "D")]
+    maximum_speeds: dict[int, float] = {}
+    limited_durations: dict[int, float] = {}
+    peak_aperture_times: dict[int, float] = {}
+
+    for fps in (30, 60):
+        delivery_timestamps = np.arange(int(duration * fps), dtype=np.float32) / fps
+        track = compose_learned_animation(
+            source,
+            source_timestamps,
+            cues,
+            duration,
+            fps,
+            rig,
+            _default_prosody(cues, delivery_timestamps),
+            head_motion=False,
+        )
+        speeds = np.asarray(
+            [
+                _mouth_step_quality_ratio(rig, left, right) * fps
+                for left, right in zip(
+                    track.expression[:-1],
+                    track.expression[1:],
+                    strict=True,
+                )
+            ]
+        )
+        apertures = np.asarray(
+            [_mouth_gap_interocular(rig, frame) for frame in track.expression]
+        )
+        maximum_speeds[fps] = float(np.max(speeds))
+        limited_durations[fps] = float(np.count_nonzero(track.mouth_speed_limited) / fps)
+        peak_aperture_times[fps] = float(track.timestamps[int(np.argmax(apertures))])
+
+        assert np.count_nonzero(track.mouth_speed_limited) > 0
+        assert 1.165 <= maximum_speeds[fps] <= 1.17001
+
+    assert maximum_speeds[30] == pytest.approx(maximum_speeds[60], abs=1.0e-4)
+    assert limited_durations[30] == pytest.approx(limited_durations[60], abs=1.0 / 60.0)
+    assert peak_aperture_times[30] == pytest.approx(
+        peak_aperture_times[60],
+        abs=1.0 / 60.0,
+    )
+
+
+def test_contact_attainment_and_restoration_have_30_60_time_parity(
+    rig: ControlRig,
+) -> None:
+    duration = 2.0
+    source_timestamps = np.arange(120, dtype=np.float64) / 60.0
+    source = np.zeros((120, rig.adapter.expression_dim), dtype=np.float32)
+    source[(source_timestamps >= 0.20) & (source_timestamps < 1.0)] = (
+        np.float32(0.28) * rig.viseme("D")
+    )
+    confidence = np.zeros(120, dtype=np.float32)
+    confidence[60] = 1.0
+    cues = [
+        MouthCue(0.0, 0.20, "X"),
+        MouthCue(0.20, 0.90, "D"),
+        MouthCue(0.90, 1.08, "A"),
+        MouthCue(1.08, 1.80, "D"),
+        MouthCue(1.80, duration, "X"),
+    ]
+    calibration = calibrate_lip_contact(rig)
+    event_times: dict[int, tuple[float, float]] = {}
+    pre_anchor_limited_frames: dict[int, int] = {}
+
+    for fps in (30, 60):
+        delivery_timestamps = np.arange(int(duration * fps), dtype=np.float32) / fps
+        track = compose_learned_animation(
+            source,
+            source_timestamps,
+            cues,
+            duration,
+            fps,
+            rig,
+            _default_prosody(cues, delivery_timestamps),
+            source_lip_contact_confidence=confidence,
+            lip_contact_calibration=calibration,
+            head_motion=False,
+        )
+        anchor = fps
+        assert track.contact_correction_applied[anchor]
+        assert track.lip_contact_attained[anchor]
+        assert track.contact_continuity_restored[anchor]
+        assert track.contact_corrected[anchor]
+        np.testing.assert_array_equal(
+            np.flatnonzero(track.contact_continuity_restored),
+            np.asarray((anchor,)),
+        )
+        event_times[fps] = (
+            float(track.timestamps[np.flatnonzero(track.lip_contact_attained)[0]]),
+            float(track.timestamps[np.flatnonzero(track.contact_continuity_restored)[0]]),
+        )
+        pre_anchor_limited_frames[fps] = int(
+            np.count_nonzero(track.mouth_speed_limited[anchor - 8 : anchor])
+        )
+        speeds = np.asarray(
+            [
+                _mouth_step_quality_ratio(rig, left, right) * fps
+                for left, right in zip(
+                    track.expression[:-1],
+                    track.expression[1:],
+                    strict=True,
+                )
+            ]
+        )
+        assert np.max(speeds) <= 1.17001
+
+    # The 60 Hz solve needs more than the legacy four-frame horizon before the
+    # anchor, while representing the same physical approach as the 30 Hz solve.
+    assert pre_anchor_limited_frames[60] >= 5
+    assert event_times[30] == pytest.approx((1.0, 1.0), abs=1.0e-7)
+    assert event_times[60] == pytest.approx(event_times[30], abs=1.0e-7)
+
+
 def test_quality_speech_activity_adds_hangover_without_erasing_long_silence() -> None:
     activity = np.zeros(40, dtype=np.float32)
     activity[8:15] = 1.0
@@ -831,6 +1099,7 @@ def test_real_librispeech_end_to_end(tmp_path: Path) -> None:
     assert result["status"] == "succeeded"
     assert result["analysis"]["backend"] == "procedural-v2+rhubarb-1.14.0"
     assert result["analysis"]["motion_backend"] == "procedural_fallback"
+    assert result["animation"]["compiler_version"] == FALLBACK_FACE_COMPILER_VERSION
     assert not result["animation"]["production_validated"]
     assert result["analysis"]["emotion"] == "neutral"
     assert not result["analysis"]["emotion_validated"]
@@ -984,6 +1253,8 @@ def test_real_librispeech_learned_end_to_end(tmp_path: Path) -> None:
         assert controls["contact_continuity_restored"].shape == (240,)
         assert controls["contact_corrected"].shape == (240,)
     timeline = json.loads((tmp_path / "timeline.json").read_text(encoding="utf-8"))
+    assert timeline["version"] == AUDIO_TIMELINE_VERSION
+    assert result["animation"]["compiler_version"] == EXTERNAL_FACE_COMPILER_VERSION
     assert timeline["motion_backend"] == "learned_a2f"
     assert len(timeline["mouth_aperture"]) == 240
     av = probe_av(tmp_path / "preview.mp4")

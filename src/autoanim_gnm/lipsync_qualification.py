@@ -37,8 +37,8 @@ from .lipsync_quality import (
 from .rig import ControlRig
 
 
-PROFILE_SCHEMA = "autoanim.lipsync-qualification/1.0"
-REPORT_SCHEMA = "autoanim.lipsync-qualification-report/1.0"
+PROFILE_SCHEMA = "autoanim.lipsync-qualification/1.1"
+REPORT_SCHEMA = "autoanim.lipsync-qualification-report/1.1"
 _MAX_PROFILE_BYTES = 8 * 1024 * 1024
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ARTIFACT_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -47,6 +47,7 @@ _ALLOWED_ANNOTATION_METHODS = frozenset(
 )
 _QUALITY_THRESHOLD_FIELDS = (
     "mouth_step_max_interocular",
+    "mouth_speed_max_interocular_per_second",
     "speech_active_stationary_fraction",
     "neutral_return_frames",
     "false_silence_motion_ratio_p95",
@@ -815,6 +816,7 @@ def _parse_evaluator(value: Any) -> QualificationEvaluator:
     )
     if (
         thresholds.mouth_step_max_interocular <= 0.0
+        or thresholds.mouth_speed_max_interocular_per_second <= 0.0
         or thresholds.neutral_return_frames < 0
         or thresholds.timing_error_median_frames < 0.0
         or thresholds.timing_error_p95_frames < thresholds.timing_error_median_frames
@@ -823,6 +825,8 @@ def _parse_evaluator(value: Any) -> QualificationEvaluator:
         or thresholds.target_contrast_p10 > thresholds.target_contrast_median
         or thresholds.mouth_step_max_interocular
         > production_floor.mouth_step_max_interocular
+        or thresholds.mouth_speed_max_interocular_per_second
+        > production_floor.mouth_speed_max_interocular_per_second
         or thresholds.speech_active_stationary_fraction
         > production_floor.speech_active_stationary_fraction
         or thresholds.neutral_return_frames > production_floor.neutral_return_frames
@@ -1089,14 +1093,24 @@ def _load_controls(
         profile.timebase.timestamp_origin_seconds
         + np.arange(frame_count, dtype=np.float64) / profile.timebase.fps
     )
+    # Retained native controls before the float64 clock migration store the
+    # exact rational timeline rounded to float32. Compare against that exact
+    # encoding instead of a fixed seconds tolerance that eventually rejects
+    # valid long clips—or widening the tolerance enough to admit clock drift.
+    encoded_expected_timestamps = (
+        expected_timestamps.astype(np.float32).astype(np.float64)
+        if timestamps.dtype.kind == "f" and timestamps.dtype.itemsize == 4
+        else expected_timestamps
+    )
     if (
         timestamps.shape != (frame_count,)
         or timestamps.dtype.kind not in "fiu"
         or timestamps.dtype.itemsize > 8
+        or (timestamps.dtype.kind == "f" and timestamps.dtype.itemsize < 4)
         or not np.isfinite(timestamps).all()
         or np.any(np.diff(timestamps.astype(np.float64)) <= 0.0)
-        or not np.allclose(
-            timestamps.astype(np.float64), expected_timestamps, rtol=0.0, atol=2e-6
+        or not np.array_equal(
+            timestamps.astype(np.float64), encoded_expected_timestamps
         )
     ):
         raise LipsyncQualificationError(

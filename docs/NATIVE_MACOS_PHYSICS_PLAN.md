@@ -288,7 +288,8 @@ Gate:
 - protected-vertex drift exactly zero;
 - target-relative displacement ≤0.75 mm initial cap;
 - no new lip-order or tongue/teeth-risk frames;
-- final mouth-step ≤0.03995 interocular;
+- final mouth-step ≤0.03995 interocular and mouth speed ≤1.1985 IOD/s on each
+  exact delivery-clock edge;
 - GLB remains ready and within p95 0.10 mm/max 0.50 mm reconstruction gates;
 - full frame count and media duration unchanged.
 

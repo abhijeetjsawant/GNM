@@ -113,12 +113,12 @@ def test_authored_opening_is_locally_reduced_at_the_final_quality_step_limit(
     )
     track = _track(rig, expression)
     track["timestamps_seconds"] = np.arange(3, dtype=np.float64) * 0.1
-    maximum = 0.035
+    maximum_speed = 0.35
     result = _call(
         track,
         config=MouthApertureConfig(
             gain=2.0,
-            maximum_final_mouth_step_interocular=maximum,
+            maximum_final_mouth_speed_interocular_per_second=maximum_speed,
         ),
     )
 
@@ -130,7 +130,89 @@ def test_authored_opening_is_locally_reduced_at_the_final_quality_step_limit(
     assert max(
         _mouth_step_quality_ratio(rig, result.expression[index - 1], result.expression[index])
         for index in range(1, len(expression))
-    ) <= maximum + 1.0e-7
+    ) <= maximum_speed * 0.1 + 1.0e-7
+    assert result.final_continuity_limit_interocular == pytest.approx(
+        maximum_speed * 0.1
+    )
+    assert result.final_continuity_speed_interocular_per_second == maximum_speed
+
+
+def test_authored_mouth_aperture_speed_has_30_60_time_parity(
+    rig: ControlRig,
+) -> None:
+    duration = 0.5
+    maximum_speed = 0.06
+    config = MouthApertureConfig(
+        gain=2.0,
+        maximum_correction_velocity_interocular_per_second=10.0,
+        maximum_final_mouth_speed_interocular_per_second=maximum_speed,
+    )
+    observed_speeds: dict[int, float] = {}
+
+    for fps in (30, 60):
+        timestamps = np.arange(int(duration * fps), dtype=np.float64) / fps
+        expression = np.stack(
+            [
+                np.float32(0.10 + 0.50 * timestamp) * rig.viseme("B")
+                for timestamp in timestamps
+            ]
+        ).astype(np.float32)
+        track = _track(rig, expression)
+        track["timestamps_seconds"] = timestamps
+        result = _call(track, config=config)
+        speeds = np.asarray(
+            [
+                _mouth_step_quality_ratio(rig, left, right) * fps
+                for left, right in zip(
+                    result.expression[:-1],
+                    result.expression[1:],
+                    strict=True,
+                )
+            ]
+        )
+        observed_speeds[fps] = float(np.max(speeds))
+
+        assert np.count_nonzero(result.final_continuity_scale < 1.0 - 1.0e-6) > 0
+        assert maximum_speed - 1.0e-4 <= observed_speeds[fps] <= maximum_speed + 1.0e-5
+        assert result.final_continuity_limit_interocular == pytest.approx(
+            maximum_speed / fps,
+            abs=1.0e-12,
+        )
+        assert result.final_continuity_speed_interocular_per_second == maximum_speed
+
+    assert observed_speeds[30] == pytest.approx(observed_speeds[60], abs=1.0e-4)
+
+
+@pytest.mark.parametrize("fps", (12, 24))
+def test_authored_aperture_retains_absolute_step_safety_below_30fps(
+    rig: ControlRig,
+    fps: int,
+) -> None:
+    expression = np.stack(
+        (
+            np.zeros(rig.adapter.expression_dim, dtype=np.float32),
+            _mild_open(rig, 0.40),
+            np.zeros(rig.adapter.expression_dim, dtype=np.float32),
+        )
+    )
+    track = _track(rig, expression)
+    track["timestamps_seconds"] = np.arange(3, dtype=np.float64) / fps
+    config = MouthApertureConfig(gain=2.0)
+
+    result = _call(track, config=config)
+
+    maximum_step = max(
+        _mouth_step_quality_ratio(
+            rig,
+            result.expression[index - 1],
+            result.expression[index],
+        )
+        for index in range(1, len(expression))
+    )
+    assert maximum_step <= config.maximum_final_mouth_step_interocular + 1.0e-7
+    assert result.final_continuity_limit_interocular == pytest.approx(
+        config.maximum_final_mouth_step_interocular
+    )
 
 
 def test_hard_limits_are_enforced_and_every_active_limit_is_reported(rig: ControlRig) -> None:

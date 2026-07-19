@@ -31,6 +31,8 @@ from autoanim_gnm.video_pipeline import (
     _apply_video_mouth_aperture_edit,
     _export_static_performance_glb,
     _final_output_retention_metrics,
+    _mouth_aperture_edit_meets_production_gate,
+    _rapid_source_mouth_motion,
 )
 from autoanim_gnm.video_evidence import (
     PERFORMANCE_EVIDENCE_SCHEMA_VERSION,
@@ -60,6 +62,52 @@ RETAINED_CREMA_JOB = Path(
         "artifacts/jobs/01kxtx72xy7z1hbmv747hgjzdc",
     )
 )
+
+
+@pytest.mark.parametrize(
+    "timestamps",
+    (
+        np.arange(10, dtype=np.float64) / 30.0,
+        np.arange(20, dtype=np.float64) / 60.0,
+        np.asarray((0.0, 0.011, 0.043, 0.091, 0.167, 0.280), dtype=np.float64),
+    ),
+)
+def test_authored_aperture_source_veto_uses_physical_speed_on_exact_pts(
+    timestamps: np.ndarray,
+) -> None:
+    mouth = np.zeros((len(timestamps), 20, 3), dtype=np.float64)
+    mouth[:, :, 0] = 2.5 * timestamps[:, None]
+
+    rapid, frame_speed = _rapid_source_mouth_motion(
+        mouth,
+        timestamps,
+        maximum_speed_interocular_per_second=2.4,
+        maximum_step_interocular=1.0,
+    )
+
+    np.testing.assert_array_equal(rapid, np.ones(len(timestamps), dtype=bool))
+    np.testing.assert_allclose(frame_speed, 2.5, rtol=0.0, atol=2.0e-6)
+
+    mouth[:, :, 0] = 2.3 * timestamps[:, None]
+    rapid, frame_speed = _rapid_source_mouth_motion(
+        mouth,
+        timestamps,
+        maximum_speed_interocular_per_second=2.4,
+        maximum_step_interocular=1.0,
+    )
+    assert not rapid.any()
+    np.testing.assert_allclose(frame_speed, 2.3, rtol=0.0, atol=2.0e-6)
+
+
+def test_authored_aperture_source_veto_keeps_absolute_gap_safety() -> None:
+    timestamps = np.asarray((0.0, 0.1), dtype=np.float64)
+    mouth = np.zeros((2, 20, 3), dtype=np.float64)
+    mouth[1, :, 0] = 0.05
+
+    rapid, frame_speed = _rapid_source_mouth_motion(mouth, timestamps)
+
+    np.testing.assert_array_equal(rapid, np.ones(2, dtype=bool))
+    np.testing.assert_allclose(frame_speed, 0.5, rtol=0.0, atol=1.0e-7)
 
 
 def test_long_track_static_viewer_preserves_character_uv_layout(tmp_path: Path) -> None:
@@ -244,7 +292,10 @@ def test_retained_crema_capture_neutral_audit_and_final_geometry_retention(
     np.testing.assert_array_equal(edited.timestamps_seconds, performance.timestamps_seconds)
     edited_metrics = _final_output_retention_metrics(capture, edited, adapter)
     assert edited_metrics["final_lip_aperture_source_output_correlation"] >= 0.95
-    assert 0.90 <= edited_metrics["final_lip_aperture_open_p95_ratio"] <= 1.10
+    assert edited_metrics["final_lip_aperture_open_p95_ratio"] >= (
+        metrics["final_lip_aperture_open_p95_ratio"] + 0.004
+    )
+    assert edited_metrics["final_lip_aperture_open_p95_ratio"] < 0.90
     assert 0.90 <= edited_metrics["final_lip_aperture_affine_slope"] <= 1.10
     payload = json.loads((edit_dir / "mouth-aperture-edit.json").read_text())
     assert payload["timeline"]["source_pts"] == capture.source_pts.tolist()
@@ -253,6 +304,10 @@ def test_retained_crema_capture_neutral_audit_and_final_geometry_retention(
     assert payload["summary"]["introduced_lip_order_risk_frames"] == 0
     assert payload["summary"]["rapid_source_motion_veto_frames"] >= 2
     assert payload["summary"]["target_attained_fraction"] >= 0.95
+    assert not _mouth_aperture_edit_meets_production_gate(
+        edited_metrics,
+        payload["summary"]["target_attained_fraction"],
+    )
 
 
 @pytest.mark.skipif(

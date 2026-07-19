@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +24,8 @@ from autoanim_gnm.sequence_provider import (
     SequenceOutputTimebase,
     SequenceProviderError,
     SequenceProviderTrack,
-    ZERO_STATE_SHA256,
+    EXECUTION_CHAIN_ROOT_SHA256,
+    build_official_v3_inference_plan,
     validate_official_v3_sequence_track,
 )
 
@@ -47,7 +48,7 @@ SKIN_NAMES = (
 
 
 def _track() -> SequenceProviderTrack:
-    frames = 60
+    frames = 120
     tongue = np.zeros((frames, 16), dtype=np.float32)
     tongue[:, 0] = 1.75
     tongue[:, 4] = 2.50
@@ -58,6 +59,21 @@ def _track() -> SequenceProviderTrack:
         OFFICIAL_V3_ASSET_SHA256["model_data_Claire.npz"],
         "4" * 64,
     )
+    audio_clock = AudioSampleClock("5" * 64, "5" * 64, 16_000, 32_000, 1, 2)
+    output_timebase = SequenceOutputTimebase("seconds", 60, 1, frames, 0.0)
+    chain_in = EXECUTION_CHAIN_ROOT_SHA256
+    provenance: list[SequenceChunkProvenance] = []
+    for plan in build_official_v3_inference_plan(audio_clock, output_timebase):
+        chain_out = "6" * 64
+        provenance.append(
+            SequenceChunkProvenance(
+                **asdict(plan),
+                execution_chain_in_sha256=chain_in,
+                execution_chain_out_sha256=chain_out,
+                chunk_payload_sha256="7" * 64,
+            )
+        )
+        chain_in = chain_out
     return SequenceProviderTrack(
         provider_id="nvidia.audio2face-3d",
         model_version="3.0",
@@ -66,8 +82,8 @@ def _track() -> SequenceProviderTrack:
         source_audio_sha256="5" * 64,
         audio_sample_rate_hz=16_000,
         audio_sample_count=32_000,
-        output_timebase=SequenceOutputTimebase("seconds", 30, 1, frames, 0.0),
-        timestamps=np.arange(frames, dtype=np.float64) / 30.0,
+        output_timebase=output_timebase,
+        timestamps=np.arange(frames, dtype=np.float64) / 60.0,
         control_names=SequenceControlNames(
             SKIN_NAMES,
             OFFICIAL_V3_TONGUE_CONTROL_NAMES,
@@ -78,12 +94,7 @@ def _track() -> SequenceProviderTrack:
         tongue=tongue,
         jaw=np.zeros((frames, 16), dtype=np.float32),
         eye=np.zeros((frames, 4), dtype=np.float32),
-        chunks=(
-            SequenceChunkProvenance(
-                0, 0, 32_000, 0, 0, frames,
-                ZERO_STATE_SHA256, "6" * 64, "7" * 64,
-            ),
-        ),
+        chunks=tuple(provenance),
         request_sha256="8" * 64,
         response_sha256="9" * 64,
     )

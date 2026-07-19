@@ -33,7 +33,7 @@ class TimingAnnotation:
 
 @dataclass(frozen=True, slots=True)
 class QualityThresholds:
-    """Conservative gates for a 30 fps review track.
+    """Conservative per-frame and time-normalized review gates.
 
     Timing thresholds are expressed in frames to keep the result legible to
     animators.  The evaluator converts annotations from seconds using the
@@ -41,6 +41,7 @@ class QualityThresholds:
     """
 
     mouth_step_max_interocular: float = 0.04
+    mouth_speed_max_interocular_per_second: float = 1.20
     speech_active_stationary_fraction: float = 0.12
     neutral_return_frames: int = 2
     false_silence_motion_ratio_p95: float = 0.10
@@ -296,8 +297,10 @@ def evaluate_lipsync_quality(
         fps,
         timing_search_frames,
     )
+    limits = thresholds or QualityThresholds()
     metrics: dict[str, float | int | None] = {
         "mouth_step_max_interocular": float(np.max(step)),
+        "mouth_speed_max_interocular_per_second": float(np.max(step) * fps),
         "mouth_step_p95_interocular": float(np.percentile(step, 95)),
         "speech_active_stationary_fraction": stationary_fraction,
         "neutral_return_frames": neutral_return,
@@ -305,7 +308,6 @@ def evaluate_lipsync_quality(
         **annotation_metrics,
     }
 
-    limits = thresholds or QualityThresholds()
     independent = bool(annotation_list) and bool(annotations_are_independent)
     complete_events = int(metrics["scored_event_count"] or 0) == len(annotation_list)
 
@@ -320,7 +322,14 @@ def evaluate_lipsync_quality(
         "minimum_event_count": len(annotation_list) >= limits.minimum_independent_events,
         "all_events_have_prototypes": bool(annotation_list) and complete_events,
         "speech_present": bool(np.any(active)),
-        "mouth_step": at_most(metrics["mouth_step_max_interocular"], limits.mouth_step_max_interocular),
+        "mouth_step": at_most(
+            metrics["mouth_step_max_interocular"],
+            limits.mouth_step_max_interocular,
+        ),
+        "mouth_speed": at_most(
+            metrics["mouth_speed_max_interocular_per_second"],
+            limits.mouth_speed_max_interocular_per_second,
+        ),
         "speech_active_motion": at_most(
             metrics["speech_active_stationary_fraction"], limits.speech_active_stationary_fraction
         ),
@@ -341,7 +350,12 @@ def evaluate_lipsync_quality(
     }
     failures = tuple(name for name, passed in checks.items() if not passed)
 
-    step_score = min(1.0, limits.mouth_step_max_interocular / max(float(np.max(step)), 1e-8))
+    step_score = min(
+        1.0,
+        limits.mouth_step_max_interocular / max(float(np.max(step)), 1e-8),
+        limits.mouth_speed_max_interocular_per_second
+        / max(float(np.max(step) * fps), 1e-8),
+    )
     dynamics_score = 0.0 if stationary_fraction is None else 1.0 - stationary_fraction
     neutral_score = 0.0 if neutral_return is None else max(
         0.0, 1.0 - max(0, neutral_return - limits.neutral_return_frames) / 6.0

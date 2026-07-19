@@ -356,6 +356,18 @@ mouth steps are constrained without smoothing the whole take, and an inverted
 inner-lip pose is minimally projected toward the character neutral while
 preserving tongue and upper-face coefficients.
 
+Video-authored aperture uses exact captured PTS. Frames touching source mouth
+motion above either `1.1985 IOD/s` or the absolute `0.03995 IOD` edge ceiling
+are source-authoritative vetoes, rather than attempting an edit that the final
+continuity contract would later erase. Safe eligible frames must attain their
+bounded targets; inherited faster video motion is retained but never worsened.
+On the pinned CREMA-D take this safe edit improves the open-mouth p95 ratio
+from `0.88527` to `0.88997`, with `0.98849` correlation, `0.90385` slope and
+full attainment on all 25 safe eligible frames. It still misses the frozen
+`0.90` amplitude minimum, so the application emits
+`MOUTH_APERTURE_EDIT_PRODUCTION_GATE_FAILED` and keeps that revision
+review-only instead of weakening the gate or altering rapid source motion.
+
 On the retained real learned-audio clip, a requested `1.08` aperture gain
 changed 132/211 frames. Twenty-eight local frames were continuity-limited,
 83.3% of changed frames reached the full requested geometry target, the final
@@ -375,14 +387,46 @@ v3 inference. It validates the exact PCM clock and request/response hashes, the
 official v3.0 model release and its distinct internal network revision 3.2,
 the immutable Claire identity/solver
 asset hashes, exact 52 skin/16 tongue/16 jaw-matrix/4 eye ordering, and the
-published post-solver ranges. It never falls back when explicitly selected.
+published post-solver ranges. The control schema remains
+`autoanim.sequence-control-schema/1.0`; the worker wire schemas are
+`autoanim.a2f-v3-worker-request/1.1` and
+`autoanim.a2f-v3-worker-response/1.1`. ABI 1.0 request/response documents are
+rejected rather than silently reinterpreted. The v3 worker ABI is version 1.1
+and requires the official 60 Hz diffusion source clock; it rejects the former
+invalid 30 Hz interpretation while permitting an explicit 30 or 60 fps
+application delivery clock. It never falls back when explicitly selected.
+
+The same ABI records the official recurrent inference schedule: signed one-second
+windows beginning at sample `-16000`, an 8000-sample stride, exact source
+intersection and zero padding, 60 generated frames, the 15/15 discarded
+margins, 0–30 emitted frames, exact SDK target-sample ticks, and the
+`execution_chain_in_sha256`/`execution_chain_out_sha256` execution-order hash
+chain. This includes the zero-output warm-up and final padded partial execution;
+the earlier overlap-and-extension abstraction could not represent either
+boundary.
 The Mac still does not run v3 inference: the official SDK requires Linux or
 Windows, NVIDIA CUDA 12.8–<13 and TensorRT 10.13–<11. Response hashes provide
-integrity but not worker authentication, and the current response state chain
-is content provenance rather than proof that the SDK maintained GRU state.
+integrity but not worker authentication, and the current response execution
+chain is content/order provenance rather than proof that the SDK maintained GRU
+state or a digest of its private tensors.
 Those facts remain explicit candidate blockers. The current local v2.3 path
 remains useful as an offline candidate and regression oracle, not the production
 claim.
+
+Wire acceptance and application acceptance are separate. ABI 1.1 permits a
+one-frame v3 response so a valid short worker execution can be transported,
+hashed, and archived without fabrication. The animation workflow requires at
+least two source frames for interpolation and trajectory checks; it raises
+`DURATION_TOO_SHORT` before writing partial animation artifacts when that
+minimum is not met. The original request, response, and bound audio remain
+valid archive evidence and should not be rewritten to satisfy the application.
+
+The worker's 60 Hz controls are the canonical source-motion track. Selecting
+30 or 60 fps delivery samples that track by timestamp over the same audio
+duration. This is not a claim of byte-identical or frame-identical motion: 30
+fps omits intermediate source samples and can hide high-frequency detail. Exact
+integer SDK target-sample ticks remain inference provenance, while canonical
+`frame_index / 60` source timestamps drive application interpolation.
 
 The v3 retarget is a separate calibration. NVIDIA's v3 Claire skin geometry has
 24,002 vertices rather than the v2.3 Claire rig's 61,520, so reusing the old
@@ -926,7 +970,8 @@ adapters.
   authentication, real recurrent-state attestation and an NVIDIA-produced
   qualification take remain open. The existing v2.3 runtime remains explicitly
   preview.
-- Gate: real fallback contact attainment `>=0.75`, mouth step `<=0.040`; video
+- Gate: real fallback contact attainment `>=0.75`, mouth step `<=0.040` and
+  mouth speed `<=1.20 IOD/s`; video
   aperture correlation `>=0.90`, p95 ratio `0.85–1.15`, exact PTS/contact.
 
 ### Phase 3 — safe acting direction (implemented proposal layer)
@@ -1051,14 +1096,19 @@ artist gates pass.
 - Audio2Face v3 import slice: the official immutable v3 network and Claire
   interpretation assets were hash-verified locally; the separate real v3 rig
   calibration built a 52×383 skin and 16×383 tongue map. A real 4.104125-second
-  audio take with 124 range-correct post-solver frames then traversed the
-  sealed request/response importer, GNM retarget/contact pass, oral validator
-  and animated GLB exporter. Viewer status was ready, maximum mouth step was
-  `0.03899974` interocular, and both lip-order and tongue/teeth risk counts were
-  zero. The fixture motion originated from a retained real v2.3 take transformed
-  into v3's published post-solver ranges, so this proves the v3 transport and
-  retarget boundary—not v3 inference quality. Focused v3/import/calibration/
-  readiness/app tests passed `48` tests after the integration review.
+  audio take transformed and temporally interpolated into 247 range-correct
+  60 Hz post-solver fixture frames then traversed the sealed request/response
+  importer, GNM retarget/contact pass, oral validator and animated GLB exporter
+  at both 30 and 60 fps delivery. Viewer status was ready; maximum mouth step
+  was `0.03899996` at 30 fps and `0.01949998` at 60 fps, consistent with the same
+  1.17-interocular-units/s limit after time-aligned sampling. This does not mean
+  the two delivery frame arrays are identical or that 30 fps retains every 60 Hz
+  motion detail. Both lip-order and tongue/teeth risk counts
+  were zero. The fixture motion originated from a retained real v2.3 take transformed
+  into v3's published post-solver ranges and resampled for transport testing,
+  so this proves the v3 clock/transport/resampling and retarget boundary—not v3
+  inference quality. The final focused audio/ABI review passed `75` tests after
+  the 60 Hz ABI correction.
 - Pre-Observation-v3 full regression: `431 passed, 1 skipped, 1 dependency
   warning in 407.96s`. The only skip is the duplicate opt-in v2 released-Claire
   asset test; the retained learned v2 route and the real-audio v3-profile import
@@ -1067,6 +1117,12 @@ artist gates pass.
   1 dependency warning in 483.17s`. The only skip remains the duplicate opt-in
   released-Claire asset test; the mandatory retained learned routes and
   checksum-pinned CREMA-D video route ran and passed.
+- Final production motion-clock/ABI regression: `175` focused cross-pipeline
+  tests passed, followed by `529 passed, 1 skipped, 1 dependency warning in
+  519.40s` on the exact final tree. The skip is the optional duplicate released-
+  Claire asset test. Retained real audio, both v3 delivery clocks, CREMA-D video,
+  audiovisual repair v2, acting/readiness, long rational clocks and native
+  provenance-version assertions all ran.
 - Honest release state: the implementation is a working candidate, not a
   production approval. Production remains blocked on mouth-local visual
   uncertainty or a trained multimodal model, a rights-cleared labeled A/V

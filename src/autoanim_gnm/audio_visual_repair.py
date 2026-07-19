@@ -29,8 +29,8 @@ from .video_retarget import GNMPerformanceTrack
 from .video_retarget import _rig_lip_gap_interocular
 
 
-AUDIO_VISUAL_REPAIR_SCHEMA_VERSION = "autoanim.audio-visual-repair.v1"
-AUDIO_VISUAL_REPAIR_POLICY = "video_authoritative_conservative_audio_repair_v1"
+AUDIO_VISUAL_REPAIR_SCHEMA_VERSION = "autoanim.audio-visual-repair.v2"
+AUDIO_VISUAL_REPAIR_POLICY = "video_authoritative_conservative_audio_repair_v2"
 LOWER_FACE_SLICE = slice(200, 350)
 TONGUE_SLICE = slice(350, 382)
 PUPIL_SLICE = slice(382, 383)
@@ -43,7 +43,8 @@ class AudioVisualRepairConfig:
     visual_contact_protection_confidence: float = 0.50
     audio_contact_conflict_confidence: float = 0.35
     visually_open_gap_interocular: float = 0.055
-    maximum_introduced_mouth_step_interocular: float = 0.060
+    maximum_introduced_mouth_speed_interocular_per_second: float = 1.80
+    absolute_maximum_introduced_mouth_step_interocular: float = 0.060
     maximum_introduced_tongue_coefficient_step: float = 0.80
     taper_frames: int = 2
 
@@ -62,10 +63,21 @@ class AudioVisualRepairConfig:
         ):
             raise ValueError("Audio-visual repair open-mouth threshold must be positive")
         if (
-            not np.isfinite(self.maximum_introduced_mouth_step_interocular)
-            or self.maximum_introduced_mouth_step_interocular <= 0.0
+            not np.isfinite(
+                self.maximum_introduced_mouth_speed_interocular_per_second
+            )
+            or self.maximum_introduced_mouth_speed_interocular_per_second <= 0.0
         ):
-            raise ValueError("Audio-visual repair mouth-step threshold must be positive")
+            raise ValueError("Audio-visual repair mouth-speed threshold must be positive")
+        if (
+            not np.isfinite(
+                self.absolute_maximum_introduced_mouth_step_interocular
+            )
+            or self.absolute_maximum_introduced_mouth_step_interocular <= 0.0
+        ):
+            raise ValueError(
+                "Audio-visual repair absolute mouth-step threshold must be positive"
+            )
         if (
             not np.isfinite(self.maximum_introduced_tongue_coefficient_step)
             or self.maximum_introduced_tongue_coefficient_step <= 0.0
@@ -333,17 +345,39 @@ def _limit_introduced_mouth_steps(
     output_expression: np.ndarray,
     lower_weight: np.ndarray,
     lower_eligible: np.ndarray,
-    maximum_step: float,
+    timestamps_seconds: np.ndarray,
+    maximum_speed_interocular_per_second: float,
+    absolute_maximum_step_interocular: float,
 ) -> tuple[np.ndarray, np.ndarray, int, np.ndarray, np.ndarray]:
-    """Reduce repair weights until no new boundary jump is introduced.
+    """Reduce repair weights until no new time-normalized jump is introduced.
 
     Existing fast video motion remains allowed. Trusted video frames are never
     modified; if a repair cannot meet the edge contract its run converges to a
-    no-op instead of smoothing the source performance.
+    no-op instead of smoothing the source performance. Each edge derives its
+    spatial allowance from the exact captured timestamps. The absolute bound
+    prevents a missing/delayed frame from authorizing an arbitrarily large
+    repair jump.
     """
 
+    timestamps = np.asarray(timestamps_seconds, dtype=np.float64)
+    frame_count = len(base_expression)
+    if (
+        timestamps.shape != (frame_count,)
+        or not np.isfinite(timestamps).all()
+        or (frame_count > 1 and np.any(np.diff(timestamps) <= 0.0))
+        or not np.isfinite(maximum_speed_interocular_per_second)
+        or maximum_speed_interocular_per_second <= 0.0
+        or not np.isfinite(absolute_maximum_step_interocular)
+        or absolute_maximum_step_interocular <= 0.0
+    ):
+        raise ValueError("Audio-visual mouth continuity clock or limit is invalid")
     base_steps = _mouth_edge_steps(rig, base_expression)
-    allowed = np.maximum(base_steps, np.float32(maximum_step)) + np.float32(1.0e-5)
+    edge_seconds = np.diff(timestamps)
+    introduced_limits = np.minimum(
+        maximum_speed_interocular_per_second * edge_seconds,
+        absolute_maximum_step_interocular,
+    )
+    allowed = np.maximum(base_steps.astype(np.float64), introduced_limits)
     output = np.asarray(output_expression, dtype=np.float32).copy()
     weights = np.asarray(lower_weight, dtype=np.float32).copy()
     selected = np.asarray(lower_eligible, dtype=bool)
@@ -367,7 +401,10 @@ def _limit_introduced_mouth_steps(
             return value
 
         current = _mouth_edge_steps(rig, output)
-        if np.all(current[edge_start:edge_stop] <= allowed[edge_start:edge_stop]):
+        if np.all(
+            current[edge_start:edge_stop]
+            <= allowed[edge_start:edge_stop] + 1.0e-7
+        ):
             continue
         limited_runs += 1
         lower = 0.0
@@ -376,14 +413,17 @@ def _limit_introduced_mouth_steps(
             middle = 0.5 * (lower + upper)
             trial = candidate(middle)
             steps = _mouth_edge_steps(rig, trial)
-            if np.all(steps[edge_start:edge_stop] <= allowed[edge_start:edge_stop]):
+            if np.all(
+                steps[edge_start:edge_stop]
+                <= allowed[edge_start:edge_stop] + 1.0e-7
+            ):
                 lower = middle
             else:
                 upper = middle
         output = candidate(lower)
         weights[start:stop] *= np.float32(lower)
     final_steps = _mouth_edge_steps(rig, output)
-    if np.any(final_steps > allowed):
+    if np.any(final_steps > allowed + 1.0e-6):
         raise AutoAnimError(
             "INTERNAL_ERROR",
             "Audio-visual repair introduced a mouth step beyond the video/quality bound",
@@ -661,8 +701,28 @@ def apply_audio_visual_repair(
             output_expression=output_expression,
             lower_weight=lower_weight,
             lower_eligible=lower_eligible,
-            maximum_step=config.maximum_introduced_mouth_step_interocular,
+            timestamps_seconds=performance.timestamps_seconds,
+            maximum_speed_interocular_per_second=(
+                config.maximum_introduced_mouth_speed_interocular_per_second
+            ),
+            absolute_maximum_step_interocular=(
+                config.absolute_maximum_introduced_mouth_step_interocular
+            ),
         )
+
+    mouth_edge_seconds = np.diff(performance.timestamps_seconds)
+    baseline_mouth_speeds = np.divide(
+        base_mouth_steps,
+        mouth_edge_seconds,
+        out=np.zeros_like(mouth_edge_seconds, dtype=np.float64),
+        where=mouth_edge_seconds > 0.0,
+    )
+    final_mouth_speeds = np.divide(
+        final_mouth_steps,
+        mouth_edge_seconds,
+        out=np.zeros_like(mouth_edge_seconds, dtype=np.float64),
+        where=mouth_edge_seconds > 0.0,
+    )
 
     lower_changed = np.any(
         np.abs(
@@ -779,8 +839,11 @@ def apply_audio_visual_repair(
             ),
             "audioContactConflictConfidence": config.audio_contact_conflict_confidence,
             "visuallyOpenGapInterocular": config.visually_open_gap_interocular,
-            "maximumIntroducedMouthStepInterocular": (
-                config.maximum_introduced_mouth_step_interocular
+            "maximumIntroducedMouthSpeedInterocularPerSecond": (
+                config.maximum_introduced_mouth_speed_interocular_per_second
+            ),
+            "absoluteMaximumIntroducedMouthStepInterocular": (
+                config.absolute_maximum_introduced_mouth_step_interocular
             ),
             "maximumIntroducedTongueCoefficientStep": (
                 config.maximum_introduced_tongue_coefficient_step
@@ -807,6 +870,9 @@ def apply_audio_visual_repair(
             "videoFrames": performance.frame_count,
             "mapping": "exact_video_display_start_minus_decoded_audio_start_no_time_warp",
             "controlSupport": "frame_samples_with_final_sample_valid_for_one_control_cadence",
+            "mouthContinuityClock": (
+                "exact_captured_performance_timestamp_delta_seconds"
+            ),
         },
         "sourceAuthority": {
             "headPose": "video_locked",
@@ -837,6 +903,16 @@ def apply_audio_visual_repair(
             ),
             "finalMouthStepMaxInterocular": (
                 float(np.max(final_mouth_steps, initial=0.0)) if rig is not None else None
+            ),
+            "baselineMouthSpeedMaxInterocularPerSecond": (
+                float(np.max(baseline_mouth_speeds, initial=0.0))
+                if rig is not None
+                else None
+            ),
+            "finalMouthSpeedMaxInterocularPerSecond": (
+                float(np.max(final_mouth_speeds, initial=0.0))
+                if rig is not None
+                else None
             ),
             "maximumLowerFaceAudioWeight": float(np.max(lower_weight, initial=0.0)),
             "baselineTongueCoefficientStepMax": float(
@@ -931,6 +1007,9 @@ def apply_audio_visual_repair(
             output_expression=revised.expression,
             baseline_mouth_step_interocular=base_mouth_steps,
             final_mouth_step_interocular=final_mouth_steps,
+            mouth_edge_duration_seconds=mouth_edge_seconds,
+            baseline_mouth_speed_interocular_per_second=baseline_mouth_speeds,
+            final_mouth_speed_interocular_per_second=final_mouth_speeds,
             baseline_tongue_coefficient_step=baseline_tongue_step,
             final_tongue_coefficient_step=final_tongue_step,
         )

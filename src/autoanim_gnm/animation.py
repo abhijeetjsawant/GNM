@@ -917,7 +917,7 @@ def compose_animation(
     frame_count = int(math.ceil(duration * fps))
     if frame_count <= 0:
         raise AutoAnimError("INPUT_INVALID", "Animation duration is too short")
-    timestamps = np.arange(frame_count, dtype=np.float32) / np.float32(fps)
+    timestamps = np.arange(frame_count, dtype=np.float64) / float(fps)
     if not cues:
         raise AutoAnimError("CUE_INVALID", "At least one normalized mouth cue is required")
     prosody = prosody or _default_prosody(cues, timestamps)
@@ -993,7 +993,9 @@ def compose_animation(
         )
     # Leave margin for the difference between the face-local projection metric
     # and the raw-landmark export gate while contact anchors are redistributed.
-    speed_limit = 0.0365
+    # The absolute step bound remains active below 30 fps; the speed bound
+    # prevents higher delivery rates from silently permitting faster motion.
+    speed_limit = min(0.0365, 1.095 / float(fps))
     mouth_speed_limited = np.zeros(frame_count, dtype=bool)
     for frame in range(1, frame_count):
         expression[frame], mouth_speed_limited[frame] = _limit_mouth_step_quality_space(
@@ -1023,7 +1025,7 @@ def compose_animation(
         hard_contact_anchors=prelimit_contact_attained,
         restore_needed=prelimit_contact_attained & ~baseline_contact_attained,
         maximum_ratio=speed_limit,
-        horizon_frames=8,
+        horizon_frames=max(1, int(math.ceil(8.0 * float(fps) / 30.0))),
     )
     mouth_speed_limited = (
         np.max(np.abs(expression - desired_expression), axis=1) > np.float32(1.0e-7)
@@ -1089,8 +1091,9 @@ def compose_learned_animation(
 ) -> AnimationTrack:
     """Compile continuous learned controls onto the exact export clock.
 
-    Audio2Face emits a model-native 30 fps clock whose final timestamp is not
-    necessarily ``duration - 1/fps``. We interpolate by the supplied times,
+    Learned providers emit timestamped source clocks (30 fps for Audio2Face
+    v2.3 and 60 fps for v3 diffusion) whose final timestamp is not necessarily
+    ``duration - 1/fps``. We interpolate by the supplied times,
     remove the actor-specific rest bias from acoustically quiet frames, and
     apply only a perceptual emergency step limit. No Rhubarb pose is mixed
     into the learned mouth; its weights remain diagnostic timeline metadata.
@@ -1181,7 +1184,7 @@ def compose_learned_animation(
     frame_count = int(math.ceil(duration * fps))
     if frame_count <= 0:
         raise AutoAnimError("INPUT_INVALID", "Animation duration is too short")
-    timestamps = np.arange(frame_count, dtype=np.float32) / np.float32(fps)
+    timestamps = np.arange(frame_count, dtype=np.float64) / float(fps)
     _validate_prosody(prosody, timestamps)
 
     source_activity = np.interp(
@@ -1290,10 +1293,12 @@ def compose_learned_animation(
             <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
         )
     # This is an emergency guard, not the primary temporal model. Enforce it
-    # in the same face-local geometry used by the production gate. The 0.039
-    # cap leaves a small margin for the viewer morph-target reconstruction,
-    # whose quantization can add roughly 1e-4 interocular displacement.
-    speed_limit = 0.039
+    # in the same face-local geometry used by the production gate. The
+    # 1.17-interocular-units/s cap is the former 0.039 limit at 30 fps, expressed
+    # in time so a 60 fps delivery cannot silently double permitted speed. The
+    # absolute 0.039 safety bound still applies below 30 fps. Together they
+    # leave a small margin for viewer morph-target reconstruction error.
+    speed_limit = min(0.039, 1.17 / float(fps))
     mouth_speed_limited = np.zeros(frame_count, dtype=bool)
     for frame in range(1, frame_count):
         expression[frame], limited = _limit_mouth_step_quality_space(
@@ -1330,6 +1335,7 @@ def compose_learned_animation(
         hard_contact_anchors=prelimit_contact_attained,
         restore_needed=restore_needed,
         maximum_ratio=speed_limit,
+        horizon_frames=max(1, int(math.ceil(4.0 * float(fps) / 30.0))),
     )
     # A successful repair deliberately returns the contact frame to its desired
     # pose and moves the approach/release instead. Report the frames that still
