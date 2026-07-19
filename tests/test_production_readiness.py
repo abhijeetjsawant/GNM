@@ -99,6 +99,29 @@ def test_complete_release_evidence_can_pass_every_required_gate() -> None:
     assert all(gate["passed"] for gate in report["gates"].values())
 
 
+def test_unverified_external_sequence_controls_cannot_enter_production_allowlist() -> None:
+    performance, character, _ = _approved_fixture()
+    performance["analysis"] = {
+        "motion_backend": "unverified_external_sequence_controls_candidate",
+        "sequence_import": {
+            "production_qualified": True,
+            "worker_authentication_verified": True,
+            "sdk_recurrent_state_verified": True,
+        },
+    }
+
+    report = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        character_revision=character,
+    )
+
+    assert report["gates"]["performance"]["passed"] is False
+    assert report["publishable"] is False
+
+
 def test_plausible_audio_take_remains_blocked_without_independent_evidence() -> None:
     performance, _, _ = _approved_fixture()
     performance["model"]["character"] = None

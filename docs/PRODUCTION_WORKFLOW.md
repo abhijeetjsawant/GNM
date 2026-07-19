@@ -367,11 +367,31 @@ surface-collision, visibility or perceptual approval.
 
 The next audio backend is not another smoothing layer. It is an external,
 GPU-capable Audio2Face v3 sequence worker behind the already versioned sequence
-contract; the Mac service remains the evidence/retarget/orchestration host. The
-worker must bind model, runtime, PCM, character identity, retarget calibration,
-chunk overlap/state and output timebase hashes. The current local v2.3 path
+contract; the Mac service remains the evidence/retarget/orchestration host. An
+explicit `audio --backend a2f-v3` import path is now wired through the same GNM
+contact, oral-validation and animated-viewer pipeline. It treats the payload as
+**unverified external controls with a claimed v3 profile**, not as established
+v3 inference. It validates the exact PCM clock and request/response hashes, the
+official v3.0 model release and its distinct internal network revision 3.2,
+the immutable Claire identity/solver
+asset hashes, exact 52 skin/16 tongue/16 jaw-matrix/4 eye ordering, and the
+published post-solver ranges. It never falls back when explicitly selected.
+The Mac still does not run v3 inference: the official SDK requires Linux or
+Windows, NVIDIA CUDA 12.8–<13 and TensorRT 10.13–<11. Response hashes provide
+integrity but not worker authentication, and the current response state chain
+is content provenance rather than proof that the SDK maintained GRU state.
+Those facts remain explicit candidate blockers. The current local v2.3 path
 remains useful as an offline candidate and regression oracle, not the production
 claim.
+
+The v3 retarget is a separate calibration. NVIDIA's v3 Claire skin geometry has
+24,002 vertices rather than the v2.3 Claire rig's 61,520, so reusing the old
+calibration would be geometrically invalid. The importer builds and binds a
+separate 52×383 skin plus 16×383 tongue mapping from the public v3 rig assets.
+It also preserves NVIDIA's post-solver tongue amplitudes—valid controls include
+values up to 2×/3× and a `tongueDown` offset of 0.2—instead of silently clipping
+them to `[0,1]`. Jaw matrices are retained but not applied until an official SDK
+matrix-convention parity fixture is available.
 
 Qualification freezes at least 40 rights-cleared utterances from at least ten
 speakers, with independent phone intervals and visible P/B/M, F/V, rounded-vowel
@@ -883,9 +903,12 @@ adapters.
   rescore a retained controls track. The v1 scope is apex pose plus motion
   hygiene; sequence start/release and perceptual validation remain false.
 - Validate a source-agnostic Audio2Face v3 sequence-worker contract with exact
-  model/runtime/identity/schema/audio hashes, rational output timebase,
-  overlapping chunks and state provenance. No v3 inference or network path is
-  installed on this Mac; the existing v2.3 runtime remains explicitly preview.
+  model/runtime/identity/schema/audio hashes and rational output timebase, then
+  import an exact official-profile response through a v3-specific dense GNM
+  calibration. No v3 inference runtime is installed on this Mac; worker
+  authentication, real recurrent-state attestation and an NVIDIA-produced
+  qualification take remain open. The existing v2.3 runtime remains explicitly
+  preview.
 - Gate: real fallback contact attainment `>=0.75`, mouth step `<=0.040`; video
   aperture correlation `>=0.90`, p95 ratio `0.85–1.15`, exact PTS/contact.
 
@@ -1005,6 +1028,21 @@ artist gates pass.
 - Full post-review regression: `418 passed, 1 skipped, 1 dependency warning in
   382.79s`. The single skip is the duplicate opt-in released-Claire asset test;
   the checksum-pinned real learned video/audio route above ran and passed.
+- Audio2Face v3 import slice: the official immutable v3 network and Claire
+  interpretation assets were hash-verified locally; the separate real v3 rig
+  calibration built a 52×383 skin and 16×383 tongue map. A real 4.104125-second
+  audio take with 124 range-correct post-solver frames then traversed the
+  sealed request/response importer, GNM retarget/contact pass, oral validator
+  and animated GLB exporter. Viewer status was ready, maximum mouth step was
+  `0.03899974` interocular, and both lip-order and tongue/teeth risk counts were
+  zero. The fixture motion originated from a retained real v2.3 take transformed
+  into v3's published post-solver ranges, so this proves the v3 transport and
+  retarget boundary—not v3 inference quality. Focused v3/import/calibration/
+  readiness/app tests passed `48` tests after the integration review.
+- Current full post-review regression: `431 passed, 1 skipped, 1 dependency
+  warning in 407.96s`. The only skip is the duplicate opt-in v2 released-Claire
+  asset test; the retained learned v2 route and the real-audio v3-profile import
+  boundary both ran in this suite.
 - Honest release state: the implementation is a working candidate, not a
   production approval. Production remains blocked on mouth-local visual
   uncertainty or a trained multimodal model, a rights-cleared labeled A/V

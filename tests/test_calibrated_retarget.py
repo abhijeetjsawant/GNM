@@ -1,19 +1,33 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
 from autoanim_gnm.a2f import ARKitGNMRetargeter
+import autoanim_gnm.calibrated_retarget as calibrated_retarget_module
 from autoanim_gnm.calibrated_retarget import (
+    CLAIRE_V3_ASSET_MANIFEST_FILENAME,
+    CLAIRE_V3_ASSET_MANIFEST_SCHEMA,
+    CLAIRE_V3_HF_REVISION,
+    CLAIRE_V3_MODEL_ID,
+    CLAIRE_V3_SKIN_ACTIVE,
+    CLAIRE_V3_SKIN_POSE_NAMES,
+    CLAIRE_V3_TONGUE_MULTIPLIERS,
+    CLAIRE_V3_TONGUE_OFFSETS,
+    CLAIRE_V3_TONGUE_POSE_NAMES,
     CalibratedRetargetError,
     CalibratedRetargeter,
     CalibrationCacheMismatch,
     CalibrationConfig,
+    ClaireV3BlendshapeGeometry,
     DenseRetargetCalibration,
+    PostSolverControlRanges,
     RegionSpec,
     SourceRigGeometry,
     build_dense_calibration,
@@ -21,6 +35,145 @@ from autoanim_gnm.calibrated_retarget import (
 
 
 REAL_ASSET_DIRECTORY = Path(".cache/autoanim_gnm/a2f-claire")
+REAL_V3_PROFILE_DIRECTORY = Path(".cache/autoanim_gnm/a2f-v3-claire-profile")
+
+
+def _write_json(path: Path, value: object) -> None:
+    path.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
+
+
+def _write_synthetic_v3_assets(root: Path) -> None:
+    """Write tiny topology, but the exact pinned Claire v3 control schema."""
+
+    root.mkdir(parents=True)
+    skin_x = np.linspace(-1.0, 1.0, 24)
+    skin_neutral = np.column_stack(
+        (skin_x, 0.4 * skin_x**2 + 0.1 * skin_x, np.sin(skin_x))
+    ).astype(np.float32)
+    tongue_x = np.linspace(-0.5, 0.5, 20)
+    tongue_neutral = np.column_stack(
+        (tongue_x, 0.2 * tongue_x**2, np.cos(tongue_x))
+    ).astype(np.float32)
+    rng = np.random.default_rng(20260719)
+    skin_payload: dict[str, np.ndarray] = {
+        "neutral": skin_neutral,
+        "poseNames": np.asarray(("neutral", *CLAIRE_V3_SKIN_POSE_NAMES), dtype="S19"),
+        "frontalMask": np.arange(20, dtype=np.int32),
+        "rig_version": np.asarray(b"v3.6"),
+    }
+    for name in CLAIRE_V3_SKIN_POSE_NAMES:
+        skin_payload[name] = rng.normal(0.0, 0.01, skin_neutral.shape).astype(np.float32)
+    np.savez(root / "bs_skin_Claire.npz", **skin_payload)
+
+    tongue_payload: dict[str, np.ndarray] = {
+        "neutral": tongue_neutral,
+        "poseNames": np.asarray(
+            ("neutral", *CLAIRE_V3_TONGUE_POSE_NAMES), dtype="S15"
+        ),
+        "rig_version": np.asarray(b"v1.0"),
+    }
+    for name in CLAIRE_V3_TONGUE_POSE_NAMES:
+        tongue_payload[name] = rng.normal(0.0, 0.01, tongue_neutral.shape).astype(
+            np.float32
+        )
+    np.savez(root / "bs_tongue_Claire.npz", **tongue_payload)
+
+    np.savez(
+        root / "model_data_Claire.npz",
+        neutral_jaw=np.zeros((5, 3), dtype=np.float32),
+        neutral_skin=skin_neutral,
+        neutral_tongue=tongue_neutral,
+        lip_open_pose_delta=np.zeros_like(skin_neutral),
+        eye_close_pose_delta=np.zeros_like(skin_neutral),
+        saccade_rot_matrix=np.zeros((5_000, 2), dtype=np.float32),
+    )
+    _write_json(
+        root / "network_info.json",
+        {
+            "id": {
+                "type": "diffusion",
+                "actor": "multi",
+                "version": "3.2",
+                "output": "geometry",
+            },
+            "params": {
+                "identities": ["Claire", "James", "Mark"],
+                "skin_size": int(skin_neutral.size),
+                "tongue_size": int(tongue_neutral.size),
+                "jaw_size": 15,
+                "eyes_size": 4,
+                "num_diffusion_steps": 2,
+                "num_gru_layers": 2,
+                "gru_latent_dim": 256,
+                "num_frames_left_truncate": 15,
+                "num_frames_right_truncate": 15,
+                "num_frames_center": 30,
+            },
+            "audio_params": {
+                "buffer_len": 16_000,
+                "padding_left": 16_000,
+                "padding_right": 16_000,
+                "samplerate": 16_000,
+            },
+        },
+    )
+    _write_json(
+        root / "model.json",
+        {
+            "networkInfoPath": "network_info.json",
+            "networkPath": "network.trt",
+            "modelConfigPaths": [
+                "model_config_Claire.json",
+                "model_config_James.json",
+                "model_config_Mark.json",
+            ],
+            "modelDataPaths": [
+                "model_data_Claire.npz",
+                "model_data_James.npz",
+                "model_data_Mark.npz",
+            ],
+            "blendshapePaths": [
+                {
+                    part: {
+                        "config": f"bs_{part}_config_{identity}.json",
+                        "data": f"bs_{part}_{identity}.npz",
+                    }
+                    for part in ("skin", "tongue")
+                }
+                for identity in ("Claire", "James", "Mark")
+            ],
+        },
+    )
+    _write_json(
+        root / "bs_skin_config_Claire.json",
+        {
+            "blendshape_params": {
+                "numPoses": len(CLAIRE_V3_SKIN_POSE_NAMES),
+                "bsSolveActivePoses": list(CLAIRE_V3_SKIN_ACTIVE),
+                "bsWeightMultipliers": [1.0] * len(CLAIRE_V3_SKIN_POSE_NAMES),
+                "bsWeightOffsets": [0.0] * len(CLAIRE_V3_SKIN_POSE_NAMES),
+            }
+        },
+    )
+    _write_json(
+        root / "bs_tongue_config_Claire.json",
+        {
+            "blendshape_params": {
+                "numPoses": len(CLAIRE_V3_TONGUE_POSE_NAMES),
+                "bsSolveActivePoses": [1] * len(CLAIRE_V3_TONGUE_POSE_NAMES),
+                "bsWeightMultipliers": list(CLAIRE_V3_TONGUE_MULTIPLIERS),
+                "bsWeightOffsets": list(CLAIRE_V3_TONGUE_OFFSETS),
+            }
+        },
+    )
+    _write_json(
+        root / CLAIRE_V3_ASSET_MANIFEST_FILENAME,
+        {
+            "schema_version": CLAIRE_V3_ASSET_MANIFEST_SCHEMA,
+            "model_id": CLAIRE_V3_MODEL_ID,
+            "revision": CLAIRE_V3_HF_REVISION,
+        },
+    )
 
 
 @pytest.fixture(scope="module")
@@ -150,6 +303,226 @@ def test_synthetic_runtime_retarget_is_finite_bounded_and_validated(
         retargeter.retarget({"notAControl": 1.0}, strict=True)
     with pytest.raises(CalibratedRetargetError, match="Expected skin weights"):
         retargeter.retarget_sequence(np.zeros((2, 3)), ("leftControl",))
+
+
+def test_post_solver_retarget_preserves_valid_above_one_tongue_amplitudes(
+    synthetic_calibration,
+) -> None:
+    calibration, _, _ = synthetic_calibration
+    ranges = PostSolverControlRanges(
+        skin_pose_names=calibration.skin_pose_names,
+        skin_minimum=np.zeros(3),
+        skin_maximum=np.ones(3),
+        tongue_pose_names=calibration.tongue_pose_names,
+        tongue_minimum=np.asarray([0.0, 0.2]),
+        tongue_maximum=np.asarray([2.0, 1.2]),
+    )
+    retargeter = CalibratedRetargeter(
+        calibration, post_solver_ranges=ranges
+    )
+    result = retargeter.retarget_post_solver_sequence(
+        np.zeros((1, 3), dtype=np.float32),
+        calibration.skin_pose_names,
+        tongue_weights=np.asarray([[0.2, 1.5]], dtype=np.float32),
+        tongue_pose_names=("tongueDown", "tongueUp"),
+    )
+    expected_unbounded = (
+        1.5 * calibration.tongue_matrix[calibration.tongue_pose_names.index("tongueUp")]
+        + 0.2
+        * calibration.tongue_matrix[calibration.tongue_pose_names.index("tongueDown")]
+    )
+    np.testing.assert_allclose(result[0], retargeter._bound(expected_unbounded), atol=1e-7)
+
+    legacy = retargeter.retarget(
+        {}, {"tongueUp": 1.5, "tongueDown": 0.2}
+    )
+    assert not np.allclose(result[0], legacy)
+    with pytest.raises(CalibratedRetargetError, match="outside"):
+        retargeter.retarget_post_solver_sequence(
+            np.zeros((1, 3)),
+            calibration.skin_pose_names,
+            tongue_weights=np.asarray([[0.2, 2.01]]),
+            tongue_pose_names=("tongueDown", "tongueUp"),
+        )
+    with pytest.raises(CalibratedRetargetError, match="outside"):
+        retargeter.retarget_post_solver_sequence(
+            np.zeros((1, 3)),
+            calibration.skin_pose_names,
+            tongue_weights=np.asarray([[0.0, 0.5]]),
+            tongue_pose_names=("tongueDown", "tongueUp"),
+        )
+    with pytest.raises(CalibratedRetargetError, match="schema mismatch"):
+        retargeter.retarget_post_solver_sequence(
+            np.zeros((1, 2)),
+            calibration.skin_pose_names[:2],
+            tongue_weights=np.asarray([[0.2, 0.5]]),
+            tongue_pose_names=("tongueDown", "tongueUp"),
+        )
+    with pytest.raises(CalibratedRetargetError, match="non-finite"):
+        retargeter.retarget_post_solver_sequence(
+            np.asarray([[np.nan, 0.0, 0.0]]),
+            calibration.skin_pose_names,
+            tongue_weights=np.asarray([[0.2, 0.5]]),
+            tongue_pose_names=("tongueDown", "tongueUp"),
+        )
+
+
+def test_from_v3_directory_wires_separate_assets_cache_and_ranges(
+    synthetic_calibration,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calibration, _, _ = synthetic_calibration
+    ranges = PostSolverControlRanges(
+        skin_pose_names=calibration.skin_pose_names,
+        skin_minimum=np.zeros(3),
+        skin_maximum=np.ones(3),
+        tongue_pose_names=calibration.tongue_pose_names,
+        tongue_minimum=np.zeros(2),
+        tongue_maximum=np.asarray([2.0, 1.2]),
+    )
+    neutral = np.column_stack(
+        (np.linspace(-1.0, 1.0, 20), np.linspace(0.0, 0.5, 20) ** 2, np.ones(20))
+    )
+    skin = SourceRigGeometry(
+        neutral,
+        np.zeros((3, 20, 3)),
+        calibration.skin_pose_names,
+        np.arange(16),
+    )
+    tongue = SourceRigGeometry(
+        neutral,
+        np.zeros((2, 20, 3)),
+        calibration.tongue_pose_names,
+    )
+    assets = SimpleNamespace(
+        root=tmp_path,
+        source_fingerprint="1" * 64,
+        skin=skin,
+        tongue=tongue,
+        control_ranges=ranges,
+    )
+    monkeypatch.setattr(
+        ClaireV3BlendshapeGeometry,
+        "load",
+        classmethod(lambda cls, directory, expected_revision: assets),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_build(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return calibration
+
+    monkeypatch.setattr(calibrated_retarget_module, "build_dense_calibration", fake_build)
+    target = np.zeros((20, 3), dtype=np.float32)
+    basis = np.zeros((383, 20, 3), dtype=np.float32)
+
+    class FakeAdapter:
+        expression_dim = 383
+        model = SimpleNamespace(
+            version="test",
+            variant="test",
+            template_vertex_positions=target,
+            expression_basis=basis,
+            expression_names=tuple(f"expression-{index}" for index in range(383)),
+        )
+
+        @staticmethod
+        def vertex_group(name: str) -> np.ndarray:
+            return np.ones(20, dtype=np.float32)
+
+    result = CalibratedRetargeter.from_v3_directory(
+        tmp_path,
+        adapter=FakeAdapter(),
+        cache_path=tmp_path / "separate-v3-cache.npz",
+        force_rebuild=True,
+    )
+    assert result.post_solver_ranges is ranges
+    assert captured["args"][0] is skin
+    assert captured["kwargs"]["tongue_source"] is tongue
+    assert captured["kwargs"]["source_fingerprint"] == "1" * 64
+    assert (tmp_path / "separate-v3-cache.npz").is_file()
+
+
+def test_synthetic_v3_loader_pins_schema_geometry_and_solver_ranges(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "v3-profile"
+    _write_synthetic_v3_assets(root)
+    assets = ClaireV3BlendshapeGeometry.load(root)
+
+    assert assets.revision == CLAIRE_V3_HF_REVISION
+    assert assets.network_version == "3.2"
+    assert assets.identity == "Claire"
+    assert assets.identity_index == 0
+    assert assets.skin.pose_names == CLAIRE_V3_SKIN_POSE_NAMES
+    assert assets.tongue.pose_names == CLAIRE_V3_TONGUE_POSE_NAMES
+    assert len(assets.source_fingerprint) == 64
+    ranges = assets.control_ranges
+    assert ranges.skin_maximum[CLAIRE_V3_SKIN_POSE_NAMES.index("eyeLookDownLeft")] == 0.0
+    assert ranges.tongue_maximum[CLAIRE_V3_TONGUE_POSE_NAMES.index("tongueTipUp")] == 2.0
+    assert ranges.tongue_maximum[CLAIRE_V3_TONGUE_POSE_NAMES.index("tongueRollUp")] == 3.0
+    assert ranges.tongue_maximum[CLAIRE_V3_TONGUE_POSE_NAMES.index("tongueUp")] == 2.0
+    tongue_down = CLAIRE_V3_TONGUE_POSE_NAMES.index("tongueDown")
+    assert ranges.tongue_minimum[tongue_down] == pytest.approx(0.2)
+    assert ranges.tongue_maximum[tongue_down] == pytest.approx(1.2)
+
+    manifest_path = root / CLAIRE_V3_ASSET_MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["revision"] = "not-the-pinned-revision"
+    _write_json(manifest_path, manifest)
+    with pytest.raises(CalibrationCacheMismatch, match="revision"):
+        ClaireV3BlendshapeGeometry.load(root)
+
+
+def test_synthetic_v3_loader_rejects_modified_post_solver_contract(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "v3-profile"
+    _write_synthetic_v3_assets(root)
+    config_path = root / "bs_tongue_config_Claire.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["blendshape_params"]["bsWeightMultipliers"][0] = 1.0
+    _write_json(config_path, config)
+    with pytest.raises(CalibrationCacheMismatch, match="pinned release"):
+        ClaireV3BlendshapeGeometry.load(root)
+
+
+def test_official_v3_claire_profile_calibrates_and_reloads_when_available(
+    tmp_path: Path,
+) -> None:
+    if not REAL_V3_PROFILE_DIRECTORY.is_dir():
+        pytest.skip("official pinned Claire v3 profile is not available")
+    assets = ClaireV3BlendshapeGeometry.load(REAL_V3_PROFILE_DIRECTORY)
+    assert assets.skin.neutral.shape == (24_002, 3)
+    assert assets.tongue.neutral.shape == (5_602, 3)
+    assert assets.control_ranges.tongue_maximum.max() == 3.0
+    cache = tmp_path / "official-v3-calibration.npz"
+    built = CalibratedRetargeter.from_v3_directory(
+        REAL_V3_PROFILE_DIRECTORY,
+        cache_path=cache,
+        force_rebuild=True,
+    )
+    loaded = CalibratedRetargeter.from_v3_directory(
+        REAL_V3_PROFILE_DIRECTORY,
+        cache_path=cache,
+    )
+    assert built.calibration.skin_matrix.shape == (52, 383)
+    assert built.calibration.tongue_matrix.shape == (16, 383)
+    assert loaded.calibration.calibration_hash == built.calibration.calibration_hash
+    tongue = np.zeros((1, 16), dtype=np.float32)
+    tongue[0, 0] = 1.75
+    tongue[0, 4] = 2.5
+    tongue[0, 9] = 0.2
+    controls = loaded.retarget_post_solver_sequence(
+        np.zeros((1, 52), dtype=np.float32),
+        assets.skin.pose_names,
+        tongue_weights=tongue,
+        tongue_pose_names=assets.tongue.pose_names,
+    )
+    assert controls.shape == (1, 383)
+    assert np.isfinite(controls).all()
 
 
 def test_calibration_cache_is_deterministic_pickle_free_and_hash_checked(

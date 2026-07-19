@@ -74,7 +74,22 @@ def build_parser() -> argparse.ArgumentParser:
     audio.add_argument("--mouth-aperture-gain", type=float, default=1.0)
     audio.add_argument("--mouth-aperture-author")
     audio.add_argument("--mouth-aperture-reason")
-    audio.add_argument("--backend", choices=("auto", "learned", "fallback"), default="auto")
+    audio.add_argument(
+        "--backend",
+        choices=("auto", "learned", "fallback", "a2f-v3"),
+        default="auto",
+    )
+    audio.add_argument("--v3-request", type=Path)
+    audio.add_argument("--v3-response", type=Path)
+    audio.add_argument("--v3-model", type=Path)
+    audio.add_argument("--v3-runtime", type=Path)
+    audio.add_argument("--v3-identity", type=Path)
+    audio.add_argument("--v3-schema", type=Path)
+    audio.add_argument(
+        "--v3-profile",
+        type=Path,
+        help="Pinned public Claire v3 interpretation bundle (small rig/config assets)",
+    )
     audio.add_argument("--dialog")
     audio.add_argument("--character", help="Saved character ID to apply")
     audio.add_argument("--character-revision", help="Exact saved character revision ID")
@@ -281,6 +296,13 @@ def main(argv: list[str] | None = None) -> int:
                 character_id=args.character,
                 character_revision_id=args.character_revision,
                 usage_scope=args.usage_scope,
+                a2f_v3_request_path=args.v3_request,
+                a2f_v3_response_path=args.v3_response,
+                a2f_v3_model_path=args.v3_model,
+                a2f_v3_runtime_path=args.v3_runtime,
+                a2f_v3_identity_path=args.v3_identity,
+                a2f_v3_schema_path=args.v3_schema,
+                a2f_v3_profile_dir=args.v3_profile,
             )
         elif args.command == "image":
             result = service.image(

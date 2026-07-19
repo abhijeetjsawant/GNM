@@ -44,6 +44,117 @@ CALIBRATION_FORMAT_VERSION = 1
 CALIBRATION_ALGORITHM = "claire-arkit-to-gnm-dense-v1"
 EXPECTED_GNM_EXPRESSION_DIM = 383
 
+# Audio2Face-3D v3 does not embed its Hugging Face revision in the runtime
+# files.  The loader below pins provenance through exact published hashes, an
+# immutable Hugging Face snapshot directory, or the small manifest below.
+CLAIRE_V3_MODEL_ID = "nvidia/Audio2Face-3D-v3.0"
+CLAIRE_V3_HF_REVISION = "b74132732fd9a9d29b237bec193ded64c9745e91"
+CLAIRE_V3_NETWORK_VERSION = "3.2"
+CLAIRE_V3_SKIN_RIG_VERSION = "v3.6"
+CLAIRE_V3_TONGUE_RIG_VERSION = "v1.0"
+CLAIRE_V3_ASSET_MANIFEST_SCHEMA = "autoanim.a2f-v3-assets/1.0"
+CLAIRE_V3_ASSET_MANIFEST_FILENAME = "autoanim-a2f-v3-assets.json"
+
+# Exact files published at CLAIRE_V3_HF_REVISION.  This permits a deliberately
+# minimal Claire-only runtime profile (without model.json or the 2.4 GB TRT
+# engine) to retain cryptographically verifiable provenance.
+CLAIRE_V3_PROFILE_SHA256: dict[str, str] = {
+    "network_info.json": "5524cdbe96a6bc89c78f06f32ae959e2302c50c663f407cb2b392c0ecac5975d",
+    "model_data_Claire.npz": "4f05331263fa609321335e55c20922f4d6709d33160d368c3b537f019429ea4f",
+    "bs_skin_Claire.npz": "bcb1fde2c7384fe9ec3cf9932b0fdeeda01fe4a1e42bba3817bba14e7f1716d3",
+    "bs_tongue_Claire.npz": "812f10c34edb6ab6f36aedfe1d59a79d8190a5a8ee0a6071382f6bae9e3413b6",
+    "bs_skin_config_Claire.json": "e2b508c5d17f1fb01c3a5b0292072d09e66e8c55bc23fcbe0c9aee8f8eae1713",
+    "bs_tongue_config_Claire.json": "ace4b0b6b9be280f96a66568bd13ac4ea1fddf9c690464ab450fe339d9752e98",
+}
+
+CLAIRE_V3_SKIN_POSE_NAMES: tuple[str, ...] = (
+    "eyeBlinkLeft",
+    "eyeLookDownLeft",
+    "eyeLookInLeft",
+    "eyeLookOutLeft",
+    "eyeLookUpLeft",
+    "eyeSquintLeft",
+    "eyeWideLeft",
+    "eyeBlinkRight",
+    "eyeLookDownRight",
+    "eyeLookInRight",
+    "eyeLookOutRight",
+    "eyeLookUpRight",
+    "eyeSquintRight",
+    "eyeWideRight",
+    "jawForward",
+    "jawLeft",
+    "jawRight",
+    "jawOpen",
+    "mouthClose",
+    "mouthFunnel",
+    "mouthPucker",
+    "mouthLeft",
+    "mouthRight",
+    "mouthSmileLeft",
+    "mouthSmileRight",
+    "mouthFrownLeft",
+    "mouthFrownRight",
+    "mouthDimpleLeft",
+    "mouthDimpleRight",
+    "mouthStretchLeft",
+    "mouthStretchRight",
+    "mouthRollLower",
+    "mouthRollUpper",
+    "mouthShrugLower",
+    "mouthShrugUpper",
+    "mouthPressLeft",
+    "mouthPressRight",
+    "mouthLowerDownLeft",
+    "mouthLowerDownRight",
+    "mouthUpperUpLeft",
+    "mouthUpperUpRight",
+    "browDownLeft",
+    "browDownRight",
+    "browInnerUp",
+    "browOuterUpLeft",
+    "browOuterUpRight",
+    "cheekPuff",
+    "cheekSquintLeft",
+    "cheekSquintRight",
+    "noseSneerLeft",
+    "noseSneerRight",
+    "tongueOut",
+)
+
+CLAIRE_V3_TONGUE_POSE_NAMES: tuple[str, ...] = (
+    "tongueTipUp",
+    "tongueTipDown",
+    "tongueTipLeft",
+    "tongueTipRight",
+    "tongueRollUp",
+    "tongueRollDown",
+    "tongueRollLeft",
+    "tongueRollRight",
+    "tongueUp",
+    "tongueDown",
+    "tongueLeft",
+    "tongueRight",
+    "tongueIn",
+    "tongueStretch",
+    "tongueWide",
+    "tongueNarrow",
+)
+
+CLAIRE_V3_SKIN_ACTIVE: tuple[int, ...] = (
+    1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1,
+    1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
+)
+CLAIRE_V3_TONGUE_MULTIPLIERS: tuple[float, ...] = (
+    2.0, 1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0,
+    2.0, 1.0, 1.0, 1.0, 1.0, 2.0, 1.0, 1.0,
+)
+CLAIRE_V3_TONGUE_OFFSETS: tuple[float, ...] = (
+    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+)
+
 
 class CalibratedRetargetError(ValueError):
     """Raised when calibration inputs, a cache, or runtime weights are invalid."""
@@ -198,6 +309,504 @@ class SourceRigGeometry:
             pose_names=names,
             alignment_indices=None if indices is None else indices.copy(),
         )
+
+
+@dataclass(frozen=True)
+class PostSolverControlRanges:
+    """Allowed values after Audio2Face's multiplier/offset postprocessor.
+
+    These are deliberately separate from the legacy normalized-weight API.
+    Claire v3 has valid tongue outputs above one, so silently applying a
+    generic ``[0, 1]`` clamp destroys the published rig's intended motion.
+    """
+
+    skin_pose_names: tuple[str, ...]
+    skin_minimum: np.ndarray
+    skin_maximum: np.ndarray
+    tongue_pose_names: tuple[str, ...]
+    tongue_minimum: np.ndarray
+    tongue_maximum: np.ndarray
+
+    def __post_init__(self) -> None:
+        for prefix in ("skin", "tongue"):
+            names = tuple(str(name) for name in getattr(self, f"{prefix}_pose_names"))
+            minimum = np.asarray(getattr(self, f"{prefix}_minimum"), dtype=np.float32)
+            maximum = np.asarray(getattr(self, f"{prefix}_maximum"), dtype=np.float32)
+            if len(set(names)) != len(names) or any(not name for name in names):
+                raise CalibratedRetargetError(
+                    f"Post-solver {prefix} pose names must be non-empty and unique"
+                )
+            if minimum.shape != (len(names),) or maximum.shape != (len(names),):
+                raise CalibratedRetargetError(
+                    f"Post-solver {prefix} ranges must match {len(names)} pose names"
+                )
+            if not np.isfinite(minimum).all() or not np.isfinite(maximum).all():
+                raise CalibratedRetargetError(
+                    f"Post-solver {prefix} ranges must be finite"
+                )
+            if np.any(minimum > maximum):
+                raise CalibratedRetargetError(
+                    f"Post-solver {prefix} minimum exceeds maximum"
+                )
+            minimum = minimum.copy()
+            maximum = maximum.copy()
+            minimum.setflags(write=False)
+            maximum.setflags(write=False)
+            object.__setattr__(self, f"{prefix}_pose_names", names)
+            object.__setattr__(self, f"{prefix}_minimum", minimum)
+            object.__setattr__(self, f"{prefix}_maximum", maximum)
+
+
+@dataclass(frozen=True)
+class ClaireV3BlendshapeGeometry:
+    """Validated, revision-pinned Claire geometry from Audio2Face-3D v3."""
+
+    root: Path
+    revision: str
+    network_version: str
+    identity: str
+    identity_index: int
+    skin: SourceRigGeometry
+    tongue: SourceRigGeometry
+    control_ranges: PostSolverControlRanges
+    source_fingerprint: str
+
+    @classmethod
+    def load(
+        cls,
+        directory: str | Path,
+        *,
+        expected_revision: str = CLAIRE_V3_HF_REVISION,
+    ) -> ClaireV3BlendshapeGeometry:
+        """Load Claire v3 assets only when their immutable revision is known.
+
+        ``snapshot_download(..., revision=CLAIRE_V3_HF_REVISION)`` directories
+        and exact official Claire-only profile files are recognized directly.
+        Synthetic or transformed assets must include
+        :data:`CLAIRE_V3_ASSET_MANIFEST_FILENAME` with the model id, schema,
+        and exact revision.
+        """
+
+        root = Path(directory).expanduser().resolve()
+        if expected_revision != CLAIRE_V3_HF_REVISION:
+            raise CalibrationCacheMismatch(
+                f"Unsupported Claire v3 revision {expected_revision!r}; this loader is "
+                f"pinned to {CLAIRE_V3_HF_REVISION}"
+            )
+        if not root.is_dir():
+            raise CalibratedRetargetError(
+                f"Claire v3 asset directory does not exist: {root}"
+            )
+        manifest = root / CLAIRE_V3_ASSET_MANIFEST_FILENAME
+        fingerprint_files = list(CLAIRE_V3_PROFILE_SHA256)
+        if manifest.is_file():
+            provenance = _read_json(manifest, "Claire v3 provenance manifest")
+            expected_manifest = {
+                "schema_version": CLAIRE_V3_ASSET_MANIFEST_SCHEMA,
+                "model_id": CLAIRE_V3_MODEL_ID,
+                "revision": expected_revision,
+            }
+            for key, expected in expected_manifest.items():
+                if provenance.get(key) != expected:
+                    raise CalibrationCacheMismatch(
+                        f"Claire v3 manifest {key!r} must be {expected!r}, "
+                        f"got {provenance.get(key)!r}"
+                    )
+            fingerprint_files.insert(0, CLAIRE_V3_ASSET_MANIFEST_FILENAME)
+        elif not (root.name == expected_revision and root.parent.name == "snapshots"):
+            for name, expected_digest in CLAIRE_V3_PROFILE_SHA256.items():
+                path = root / name
+                if not path.is_file():
+                    raise CalibrationCacheMismatch(
+                        "Claire v3 assets have no verifiable revision; use the exact "
+                        f"Hugging Face snapshot {expected_revision}, add "
+                        f"{CLAIRE_V3_ASSET_MANIFEST_FILENAME}, or retain the complete "
+                        "official Claire profile"
+                    )
+                try:
+                    actual_digest = sha256(path.read_bytes()).hexdigest()
+                except OSError as exc:
+                    raise CalibratedRetargetError(
+                        f"Could not hash Claire v3 profile asset {path}: {exc}"
+                    ) from exc
+                if actual_digest != expected_digest:
+                    raise CalibrationCacheMismatch(
+                        f"Claire v3 profile asset {name} does not match pinned revision "
+                        f"{expected_revision}"
+                    )
+
+        network = _read_json(root / "network_info.json", "Claire v3 network info")
+        _validate_claire_v3_network(network)
+        model_path = root / "model.json"
+        if model_path.is_file():
+            _validate_claire_v3_model(
+                _read_json(model_path, "Claire v3 model manifest")
+            )
+            fingerprint_files.append("model.json")
+
+        skin = _load_claire_v3_blendshapes(
+            root / "bs_skin_Claire.npz",
+            "skin",
+            CLAIRE_V3_SKIN_POSE_NAMES,
+            CLAIRE_V3_SKIN_RIG_VERSION,
+            require_frontal_mask=True,
+        )
+        tongue = _load_claire_v3_blendshapes(
+            root / "bs_tongue_Claire.npz",
+            "tongue",
+            CLAIRE_V3_TONGUE_POSE_NAMES,
+            CLAIRE_V3_TONGUE_RIG_VERSION,
+            require_frontal_mask=False,
+        )
+        _validate_claire_v3_model_data(root / "model_data_Claire.npz", skin, tongue)
+
+        params = network["params"]
+        if int(params["skin_size"]) != skin.neutral.size:
+            raise CalibrationCacheMismatch(
+                "Claire v3 skin_size does not match bs_skin_Claire geometry"
+            )
+        if int(params["tongue_size"]) != tongue.neutral.size:
+            raise CalibrationCacheMismatch(
+                "Claire v3 tongue_size does not match bs_tongue_Claire geometry"
+            )
+        skin_minimum, skin_maximum = _load_solver_control_ranges(
+            root / "bs_skin_config_Claire.json", skin.pose_names, "skin"
+        )
+        tongue_minimum, tongue_maximum = _load_solver_control_ranges(
+            root / "bs_tongue_config_Claire.json", tongue.pose_names, "tongue"
+        )
+        ranges = PostSolverControlRanges(
+            skin_pose_names=skin.pose_names,
+            skin_minimum=skin_minimum,
+            skin_maximum=skin_maximum,
+            tongue_pose_names=tongue.pose_names,
+            tongue_minimum=tongue_minimum,
+            tongue_maximum=tongue_maximum,
+        )
+        return cls(
+            root=root,
+            revision=expected_revision,
+            network_version=CLAIRE_V3_NETWORK_VERSION,
+            identity="Claire",
+            identity_index=0,
+            skin=skin,
+            tongue=tongue,
+            control_ranges=ranges,
+            source_fingerprint=_file_set_fingerprint(root, fingerprint_files),
+        )
+
+
+def _read_json(path: Path, label: str) -> dict[str, Any]:
+    if not path.is_file():
+        raise CalibratedRetargetError(f"{label} is missing: {path}")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CalibratedRetargetError(f"Could not read {label} {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise CalibratedRetargetError(f"{label} must contain a JSON object")
+    return value
+
+
+def _validate_claire_v3_network(network: Mapping[str, Any]) -> None:
+    identity = network.get("id")
+    params = network.get("params")
+    audio = network.get("audio_params")
+    if not isinstance(identity, Mapping) or not isinstance(params, Mapping) or not isinstance(
+        audio, Mapping
+    ):
+        raise CalibrationCacheMismatch("Claire v3 network metadata is incomplete")
+    expected_identity = {
+        "type": "diffusion",
+        "actor": "multi",
+        "version": CLAIRE_V3_NETWORK_VERSION,
+        "output": "geometry",
+    }
+    for key, expected in expected_identity.items():
+        if identity.get(key) != expected:
+            raise CalibrationCacheMismatch(
+                f"Claire v3 network id.{key} must be {expected!r}, got {identity.get(key)!r}"
+            )
+    expected_params: dict[str, Any] = {
+        "identities": ["Claire", "James", "Mark"],
+        "jaw_size": 15,
+        "eyes_size": 4,
+        "num_diffusion_steps": 2,
+        "num_gru_layers": 2,
+        "gru_latent_dim": 256,
+        "num_frames_left_truncate": 15,
+        "num_frames_right_truncate": 15,
+        "num_frames_center": 30,
+    }
+    for key, expected in expected_params.items():
+        if params.get(key) != expected:
+            raise CalibrationCacheMismatch(
+                f"Claire v3 network params.{key} must be {expected!r}, got {params.get(key)!r}"
+            )
+    for key in ("skin_size", "tongue_size"):
+        value = params.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise CalibrationCacheMismatch(
+                f"Claire v3 network params.{key} must be a positive integer"
+            )
+    for key in ("buffer_len", "padding_left", "padding_right", "samplerate"):
+        if audio.get(key) != 16_000:
+            raise CalibrationCacheMismatch(
+                f"Claire v3 audio_params.{key} must be 16000, got {audio.get(key)!r}"
+            )
+
+
+def _validate_claire_v3_model(model: Mapping[str, Any]) -> None:
+    expected_scalar = {
+        "networkInfoPath": "network_info.json",
+        "networkPath": "network.trt",
+    }
+    for key, expected in expected_scalar.items():
+        if model.get(key) != expected:
+            raise CalibrationCacheMismatch(
+                f"Claire v3 model {key} must be {expected!r}, got {model.get(key)!r}"
+            )
+    if model.get("modelConfigPaths") != [
+        "model_config_Claire.json",
+        "model_config_James.json",
+        "model_config_Mark.json",
+    ] or model.get("modelDataPaths") != [
+        "model_data_Claire.npz",
+        "model_data_James.npz",
+        "model_data_Mark.npz",
+    ]:
+        raise CalibrationCacheMismatch("Claire v3 model identity paths do not match v3.0")
+    expected_blendshapes = []
+    for identity in ("Claire", "James", "Mark"):
+        expected_blendshapes.append(
+            {
+                "skin": {
+                    "config": f"bs_skin_config_{identity}.json",
+                    "data": f"bs_skin_{identity}.npz",
+                },
+                "tongue": {
+                    "config": f"bs_tongue_config_{identity}.json",
+                    "data": f"bs_tongue_{identity}.npz",
+                },
+            }
+        )
+    if model.get("blendshapePaths") != expected_blendshapes:
+        raise CalibrationCacheMismatch(
+            "Claire v3 model blendshape paths do not match the pinned release"
+        )
+
+
+def _npz_text(values: np.ndarray, label: str) -> tuple[str, ...]:
+    array = np.asarray(values)
+    if array.ndim != 1:
+        raise CalibrationCacheMismatch(f"{label} must be a one-dimensional string array")
+    output: list[str] = []
+    for value in array.tolist():
+        if isinstance(value, bytes):
+            try:
+                value = value.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise CalibrationCacheMismatch(f"{label} is not valid UTF-8") from exc
+        if not isinstance(value, str) or not value:
+            raise CalibrationCacheMismatch(f"{label} contains an invalid name")
+        output.append(value)
+    return tuple(output)
+
+
+def _npz_scalar_text(values: np.ndarray, label: str) -> str:
+    array = np.asarray(values)
+    if array.shape != ():
+        raise CalibrationCacheMismatch(f"{label} must be a scalar string")
+    value = array.item()
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise CalibrationCacheMismatch(f"{label} is not valid UTF-8") from exc
+    if not isinstance(value, str):
+        raise CalibrationCacheMismatch(f"{label} must be a scalar string")
+    return value
+
+
+def _load_claire_v3_blendshapes(
+    path: Path,
+    label: str,
+    expected_pose_names: tuple[str, ...],
+    expected_rig_version: str,
+    *,
+    require_frontal_mask: bool,
+) -> SourceRigGeometry:
+    if not path.is_file():
+        raise CalibratedRetargetError(f"Claire v3 {label} geometry is missing: {path}")
+    expected_keys = {
+        "neutral",
+        "poseNames",
+        "rig_version",
+        *expected_pose_names,
+    }
+    if require_frontal_mask:
+        expected_keys.add("frontalMask")
+    try:
+        with np.load(path, allow_pickle=False) as values:
+            if set(values.files) != expected_keys:
+                missing = sorted(expected_keys - set(values.files))
+                extra = sorted(set(values.files) - expected_keys)
+                raise CalibrationCacheMismatch(
+                    f"Claire v3 {label} geometry keys differ from the pinned release; "
+                    f"missing={missing}, extra={extra}"
+                )
+            pose_names = _npz_text(values["poseNames"], f"Claire v3 {label} poseNames")
+            if pose_names != ("neutral", *expected_pose_names):
+                raise CalibrationCacheMismatch(
+                    f"Claire v3 {label} poseNames differ from the pinned release"
+                )
+            rig_version = _npz_scalar_text(
+                values["rig_version"], f"Claire v3 {label} rig_version"
+            )
+            if rig_version != expected_rig_version:
+                raise CalibrationCacheMismatch(
+                    f"Claire v3 {label} rig_version must be {expected_rig_version!r}, "
+                    f"got {rig_version!r}"
+                )
+            neutral = np.asarray(values["neutral"], dtype=np.float64)
+            deltas = np.stack(
+                [np.asarray(values[name], dtype=np.float64) for name in expected_pose_names]
+            )
+            frontal_mask = (
+                np.asarray(values["frontalMask"], dtype=np.int64)
+                if require_frontal_mask
+                else None
+            )
+    except CalibratedRetargetError:
+        raise
+    except (OSError, ValueError, KeyError) as exc:
+        raise CalibratedRetargetError(
+            f"Could not load Claire v3 {label} geometry {path}: {exc}"
+        ) from exc
+    return SourceRigGeometry(
+        neutral=neutral,
+        deltas=deltas,
+        pose_names=expected_pose_names,
+        alignment_indices=frontal_mask,
+    ).validated(f"Claire v3 {label}")
+
+
+def _validate_claire_v3_model_data(
+    path: Path, skin: SourceRigGeometry, tongue: SourceRigGeometry
+) -> None:
+    expected_keys = {
+        "neutral_jaw",
+        "neutral_skin",
+        "neutral_tongue",
+        "lip_open_pose_delta",
+        "eye_close_pose_delta",
+        "saccade_rot_matrix",
+    }
+    if not path.is_file():
+        raise CalibratedRetargetError(f"Claire v3 model data is missing: {path}")
+    try:
+        with np.load(path, allow_pickle=False) as values:
+            if set(values.files) != expected_keys:
+                raise CalibrationCacheMismatch(
+                    "Claire v3 model_data_Claire keys differ from the pinned release"
+                )
+            neutral_skin = np.asarray(values["neutral_skin"], dtype=np.float64)
+            neutral_tongue = np.asarray(values["neutral_tongue"], dtype=np.float64)
+            neutral_jaw = np.asarray(values["neutral_jaw"], dtype=np.float64)
+            lip_open = np.asarray(values["lip_open_pose_delta"], dtype=np.float64)
+            eye_close = np.asarray(values["eye_close_pose_delta"], dtype=np.float64)
+            saccade = np.asarray(values["saccade_rot_matrix"], dtype=np.float64)
+    except CalibratedRetargetError:
+        raise
+    except (OSError, ValueError, KeyError) as exc:
+        raise CalibratedRetargetError(f"Could not load Claire v3 model data {path}: {exc}") from exc
+    if neutral_jaw.shape != (5, 3):
+        raise CalibrationCacheMismatch("Claire v3 neutral_jaw must have shape [5,3]")
+    if lip_open.shape != skin.neutral.shape or eye_close.shape != skin.neutral.shape:
+        raise CalibrationCacheMismatch(
+            "Claire v3 skin helper deltas do not match the skin neutral geometry"
+        )
+    if saccade.shape != (5_000, 2):
+        raise CalibrationCacheMismatch(
+            "Claire v3 saccade_rot_matrix must have shape [5000,2]"
+        )
+    if not all(
+        np.isfinite(value).all()
+        for value in (neutral_skin, neutral_tongue, neutral_jaw, lip_open, eye_close, saccade)
+    ):
+        raise CalibratedRetargetError("Claire v3 model data contains non-finite values")
+    if neutral_skin.shape != skin.neutral.shape or neutral_tongue.shape != tongue.neutral.shape:
+        raise CalibrationCacheMismatch(
+            "Claire v3 model-data neutral geometry does not match the blendshape topology"
+        )
+
+
+def _load_solver_control_ranges(
+    path: Path, pose_names: tuple[str, ...], label: str
+) -> tuple[np.ndarray, np.ndarray]:
+    config = _read_json(path, f"Claire v3 {label} solver config")
+    params = config.get("blendshape_params")
+    if not isinstance(params, Mapping):
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} solver config lacks blendshape_params"
+        )
+    if params.get("numPoses") != len(pose_names):
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} solver numPoses must be {len(pose_names)}"
+        )
+    try:
+        active = np.asarray(params["bsSolveActivePoses"], dtype=np.int8)
+        multipliers = np.asarray(params["bsWeightMultipliers"], dtype=np.float64)
+        offsets = np.asarray(params["bsWeightOffsets"], dtype=np.float64)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} solver ranges are incomplete"
+        ) from exc
+    expected_shape = (len(pose_names),)
+    if active.shape != expected_shape or multipliers.shape != expected_shape or offsets.shape != expected_shape:
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} solver arrays must have shape {expected_shape}"
+        )
+    if np.any((active != 0) & (active != 1)):
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} active pose flags must be zero or one"
+        )
+    if not np.isfinite(multipliers).all() or np.any(multipliers <= 0):
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} weight multipliers must be finite and positive"
+        )
+    if not np.isfinite(offsets).all():
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} weight offsets must be finite"
+        )
+    expected_active = np.asarray(
+        CLAIRE_V3_SKIN_ACTIVE
+        if label == "skin"
+        else np.ones(len(CLAIRE_V3_TONGUE_POSE_NAMES), dtype=np.int8),
+        dtype=np.int8,
+    )
+    expected_multipliers = np.asarray(
+        np.ones(len(CLAIRE_V3_SKIN_POSE_NAMES), dtype=np.float64)
+        if label == "skin"
+        else CLAIRE_V3_TONGUE_MULTIPLIERS,
+        dtype=np.float64,
+    )
+    expected_offsets = np.asarray(
+        np.zeros(len(CLAIRE_V3_SKIN_POSE_NAMES), dtype=np.float64)
+        if label == "skin"
+        else CLAIRE_V3_TONGUE_OFFSETS,
+        dtype=np.float64,
+    )
+    if (
+        not np.array_equal(active, expected_active)
+        or not np.array_equal(multipliers, expected_multipliers)
+        or not np.array_equal(offsets, expected_offsets)
+    ):
+        raise CalibrationCacheMismatch(
+            f"Claire v3 {label} post-solver controls differ from the pinned release"
+        )
+    maximum = offsets + multipliers * active
+    return offsets.astype(np.float32), maximum.astype(np.float32)
 
 
 def _points(values: np.ndarray, label: str) -> np.ndarray:
@@ -1059,8 +1668,21 @@ def _gnm_region_masks(adapter: GNMAdapter) -> dict[str, np.ndarray]:
 class CalibratedRetargeter:
     """Fast runtime facade over a :class:`DenseRetargetCalibration`."""
 
-    def __init__(self, calibration: DenseRetargetCalibration):
+    def __init__(
+        self,
+        calibration: DenseRetargetCalibration,
+        *,
+        post_solver_ranges: PostSolverControlRanges | None = None,
+    ):
         self.calibration = calibration
+        if post_solver_ranges is not None and (
+            post_solver_ranges.skin_pose_names != calibration.skin_pose_names
+            or post_solver_ranges.tongue_pose_names != calibration.tongue_pose_names
+        ):
+            raise CalibratedRetargetError(
+                "Post-solver control ranges do not match the calibration pose schema"
+            )
+        self.post_solver_ranges = post_solver_ranges
         self._skin_lookup = {
             name: index for index, name in enumerate(calibration.skin_pose_names)
         }
@@ -1151,6 +1773,84 @@ class CalibratedRetargeter:
         )
         calibration.save(cache)
         return cls(calibration)
+
+    @classmethod
+    def from_v3_directory(
+        cls,
+        directory: str | Path,
+        *,
+        adapter: GNMAdapter | None = None,
+        cache_path: str | Path | None = None,
+        force_rebuild: bool = False,
+        config: CalibrationConfig | None = None,
+        expected_revision: str = CLAIRE_V3_HF_REVISION,
+    ) -> CalibratedRetargeter:
+        """Load or build a calibration for pinned Claire Audio2Face v3 assets.
+
+        This constructor has a separate cache identity and preserves the v3
+        solver's published postprocessing ranges.  It must not be pointed at
+        the topologically incompatible Claire v2.3 asset bundle.
+        """
+
+        assets = ClaireV3BlendshapeGeometry.load(
+            directory, expected_revision=expected_revision
+        )
+        root = assets.root
+        settings = config or CalibrationConfig()
+        gnm = adapter or GNMAdapter()
+        if gnm.expression_dim != EXPECTED_GNM_EXPRESSION_DIM:
+            raise CalibratedRetargetError(
+                f"Expected GNM expression dimension {EXPECTED_GNM_EXPRESSION_DIM}, "
+                f"got {gnm.expression_dim}"
+            )
+        target_fingerprint = _gnm_fingerprint(gnm)
+        effective_regions = tuple(
+            RegionSpec(
+                region.name,
+                region.start,
+                region.stop,
+                min(region.bound, settings.coefficient_bound),
+            )
+            for region in GNM_REGION_SPECS
+        )
+        request_hash = _request_hash(
+            assets.source_fingerprint,
+            target_fingerprint,
+            settings,
+            effective_regions,
+            ("left_eye", "right_eye", "lower_face", "pupils"),
+            ("tongue",),
+        )
+        cache = (
+            Path(cache_path).expanduser().resolve()
+            if cache_path is not None
+            else root
+            / f"calibrated_retarget_a2f_v3_claire_{CALIBRATION_FORMAT_VERSION}.npz"
+        )
+        if cache.is_file() and not force_rebuild:
+            try:
+                calibration = DenseRetargetCalibration.load(
+                    cache, expected_request_hash=request_hash
+                )
+                return cls(
+                    calibration, post_solver_ranges=assets.control_ranges
+                )
+            except CalibrationCacheMismatch:
+                pass
+
+        calibration = build_dense_calibration(
+            assets.skin,
+            np.asarray(gnm.model.template_vertex_positions),
+            np.asarray(gnm.model.expression_basis),
+            tongue_source=assets.tongue,
+            target_alignment_mask=gnm.vertex_group("hockey_mask") > 0,
+            target_region_masks=_gnm_region_masks(gnm),
+            config=settings,
+            source_fingerprint=assets.source_fingerprint,
+            target_fingerprint=target_fingerprint,
+        )
+        calibration.save(cache)
+        return cls(calibration, post_solver_ranges=assets.control_ranges)
 
     def _weights(
         self,
@@ -1265,3 +1965,154 @@ class CalibratedRetargeter:
                 "tongue_weights are required with tongue_pose_names"
             )
         return self._bound(controls)
+
+    def _validated_post_solver_values(
+        self,
+        weights: np.ndarray,
+        pose_names: Sequence[str],
+        *,
+        expected_names: tuple[str, ...],
+        minimum: np.ndarray,
+        maximum: np.ndarray,
+        label: str,
+        frames: int | None,
+        tolerance: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        values = np.asarray(weights, dtype=np.float32)
+        names = tuple(str(name) for name in pose_names)
+        expected_shape = (
+            (values.shape[0], len(names))
+            if values.ndim == 2
+            else (0, len(names))
+        )
+        if values.ndim != 2 or values.shape != expected_shape:
+            raise CalibratedRetargetError(
+                f"Expected post-solver {label} weights [frames,{len(names)}], "
+                f"got {values.shape}"
+            )
+        if frames is not None and len(values) != frames:
+            raise CalibratedRetargetError(
+                f"Expected {frames} post-solver {label} frames, got {len(values)}"
+            )
+        if len(set(names)) != len(names):
+            raise CalibratedRetargetError(
+                f"Post-solver {label} pose names must be unique"
+            )
+        missing = sorted(set(expected_names) - set(names))
+        unknown = sorted(set(names) - set(expected_names))
+        if missing or unknown:
+            raise CalibratedRetargetError(
+                f"Post-solver {label} schema mismatch; missing={missing}, unknown={unknown}"
+            )
+        if not np.isfinite(values).all():
+            raise CalibratedRetargetError(
+                f"Post-solver {label} weights contain non-finite values"
+            )
+        order = np.asarray([expected_names.index(name) for name in names], dtype=np.int64)
+        ordered_minimum = minimum[order]
+        ordered_maximum = maximum[order]
+        outside = (values < ordered_minimum - tolerance) | (
+            values > ordered_maximum + tolerance
+        )
+        if np.any(outside):
+            frame_index, pose_index = np.argwhere(outside)[0]
+            raise CalibratedRetargetError(
+                f"Post-solver {label} weight {names[int(pose_index)]!r} at frame "
+                f"{int(frame_index)} is {float(values[frame_index, pose_index]):.7g}, "
+                f"outside [{float(ordered_minimum[pose_index]):.7g}, "
+                f"{float(ordered_maximum[pose_index]):.7g}]"
+            )
+        return values, order
+
+    def retarget_post_solver_sequence(
+        self,
+        skin_weights: np.ndarray,
+        skin_pose_names: Sequence[str],
+        *,
+        tongue_weights: np.ndarray,
+        tongue_pose_names: Sequence[str],
+        tolerance: float = 1.0e-5,
+    ) -> np.ndarray:
+        """Retarget already-postprocessed v3 solver output without clipping it.
+
+        The complete pinned schema is required so a missing offset-bearing or
+        inactive channel cannot silently change the solver contract.
+        """
+
+        ranges = self.post_solver_ranges
+        if ranges is None:
+            raise CalibratedRetargetError(
+                "This calibration has no post-solver control-range contract"
+            )
+        if not np.isfinite(tolerance) or tolerance < 0:
+            raise CalibratedRetargetError(
+                "Post-solver validation tolerance must be finite and non-negative"
+            )
+        skin, skin_order = self._validated_post_solver_values(
+            skin_weights,
+            skin_pose_names,
+            expected_names=ranges.skin_pose_names,
+            minimum=ranges.skin_minimum,
+            maximum=ranges.skin_maximum,
+            label="skin",
+            frames=None,
+            tolerance=tolerance,
+        )
+        tongue, tongue_order = self._validated_post_solver_values(
+            tongue_weights,
+            tongue_pose_names,
+            expected_names=ranges.tongue_pose_names,
+            minimum=ranges.tongue_minimum,
+            maximum=ranges.tongue_maximum,
+            label="tongue",
+            frames=len(skin),
+            tolerance=tolerance,
+        )
+        skin_matrix = self.calibration.skin_matrix[skin_order]
+        tongue_matrix = self.calibration.tongue_matrix[tongue_order]
+        # Do not clamp here: values above one and non-zero offsets are part of
+        # Claire v3's published post-solver rig.  GNM's independent regional
+        # safety bounds are still applied to the final native coefficients.
+        return self._bound(skin @ skin_matrix + tongue @ tongue_matrix)
+
+    def retarget_post_solver(
+        self,
+        skin_weights: Mapping[str, float],
+        tongue_weights: Mapping[str, float],
+        *,
+        tolerance: float = 1.0e-5,
+    ) -> np.ndarray:
+        """Single-frame mapping variant of :meth:`retarget_post_solver_sequence`."""
+
+        ranges = self.post_solver_ranges
+        if ranges is None:
+            raise CalibratedRetargetError(
+                "This calibration has no post-solver control-range contract"
+            )
+        missing_skin = sorted(set(ranges.skin_pose_names) - set(skin_weights))
+        unknown_skin = sorted(set(skin_weights) - set(ranges.skin_pose_names))
+        missing_tongue = sorted(set(ranges.tongue_pose_names) - set(tongue_weights))
+        unknown_tongue = sorted(set(tongue_weights) - set(ranges.tongue_pose_names))
+        if missing_skin or unknown_skin:
+            raise CalibratedRetargetError(
+                "Post-solver skin schema mismatch; "
+                f"missing={missing_skin}, unknown={unknown_skin}"
+            )
+        if missing_tongue or unknown_tongue:
+            raise CalibratedRetargetError(
+                "Post-solver tongue schema mismatch; "
+                f"missing={missing_tongue}, unknown={unknown_tongue}"
+            )
+        return self.retarget_post_solver_sequence(
+            np.asarray(
+                [[skin_weights[name] for name in ranges.skin_pose_names]],
+                dtype=np.float32,
+            ),
+            ranges.skin_pose_names,
+            tongue_weights=np.asarray(
+                [[tongue_weights[name] for name in ranges.tongue_pose_names]],
+                dtype=np.float32,
+            ),
+            tongue_pose_names=ranges.tongue_pose_names,
+            tolerance=tolerance,
+        )[0]

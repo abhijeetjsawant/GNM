@@ -53,6 +53,15 @@ autoanim-gnm multiview front.png left.png right.png profile.png \
   --calibration rig.json --out artifacts/jobs
 autoanim-gnm video performance.mp4 --out artifacts/jobs
 
+# Import controls claimed by a separately provisioned NVIDIA v3 worker.
+# This is candidate-only: hashes validate content, not that v3/CUDA actually ran.
+autoanim-gnm audio speech.wav --out artifacts/jobs --backend a2f-v3 \
+  --v3-request worker-request.json --v3-response worker-response.json \
+  --v3-model /pinned/v3/network.onnx \
+  --v3-runtime worker-runtime-attestation.json \
+  --v3-identity /pinned/v3/model_data_Claire.npz \
+  --v3-schema worker-control-schema.json --v3-profile /pinned/v3
+
 # Validate a complete commercial PBR facial-material package. The JSON spec
 # carries map inventory, capture/provenance, rights, and evidence-backed claims.
 # Its normal inventory entry must declare normal_encoding as unorm or
@@ -91,8 +100,11 @@ approval.
 The global `--model-path`, `--rhubarb-bin`, `--a2f-runner`, and `--a2f-assets`
 options may be placed before the subcommand when using non-default locations.
 Use `--backend learned` to require the neural path or `--backend fallback` for
-the deterministic compiler. The web app is then available at
-<http://127.0.0.1:8000>.
+the deterministic compiler. `--backend a2f-v3` is an explicit, no-fallback
+offline import of a sealed external-worker result; it requires the exact pinned
+model/runtime/identity/schema/profile bindings shown above and never claims the
+worker is authenticated or production-qualified. The web app is then available
+at <http://127.0.0.1:8000>.
 
 Run the normal suite after fetching fixtures:
 

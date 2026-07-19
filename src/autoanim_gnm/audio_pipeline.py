@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, replace
 from pathlib import Path
 import os
+import shutil
 from typing import Any, Mapping
 
 import numpy as np
@@ -19,6 +20,7 @@ from .a2f import (
     run_a2f_runner,
 )
 from .animated_gltf import AnimationCompressionError, export_animated_gnm_glb
+from .artifacts import sha256
 from .animation import (
     AnimationTrack,
     _face_local_mouth,
@@ -30,7 +32,8 @@ from .animation import (
     render_silent_video,
 )
 from .audio import analyze_emotion, extract_prosody, normalize_audio, normalize_cues, run_rhubarb
-from .calibrated_retarget import CalibratedRetargeter
+from .calibrated_retarget import CalibratedRetargetError, CalibratedRetargeter
+from .a2f_v3_profile import load_official_v3_claire_profile
 from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .gltf_export import export_gnm_glb
@@ -52,6 +55,11 @@ from .oral_validation import (
 from .rig import ControlRig
 from .semantic_decoder import ExpressionDecoder
 from .serialization import write_json, write_npz
+from .sequence_provider import (
+    SequenceProviderError,
+    validate_v3_worker_request,
+    validate_v3_worker_response,
+)
 
 
 AUDIO_CAVEAT = "Rhubarb provides coarse viseme timing, not validated phoneme-accurate alignment."
@@ -77,6 +85,16 @@ LIP_CONTACT_ALIGNMENT_CAVEAT = (
     "or independently timed phone/contact annotations."
 )
 LEARNED_BACKEND = "audio2face-3d-v2.3.1-claire-mlx+arkit-solve+gnm-dense-calibrated-v3"
+V3_SEQUENCE_BACKEND = (
+    "unverified-external-controls-claimed-a2f-v3.0-network-3.2+"
+    "claire-profile+gnm-dense-calibrated-candidate"
+)
+V3_SEQUENCE_CAVEAT = (
+    "Audio2Face v3 sequence controls were imported through an external-worker envelope "
+    "and remain an unqualified candidate. The importer does not prove that v3 inference "
+    "actually ran: response hashes prove integrity, not worker identity or SDK recurrent "
+    "state. Jaw matrices are retained but not applied until an SDK convention parity fixture passes."
+)
 LEARNED_CONDITIONER = "detail-preserving-articulation-v4-contact-anchored-quality-space"
 _CONTACT_CRITICAL_CONTROLS = frozenset(
     ("mouthClose", "mouthPressLeft", "mouthPressRight", "mouthRollLower", "mouthRollUpper")
@@ -725,9 +743,49 @@ def run_audio_pipeline(
     runtime_material_paths: Mapping[str, str | Path] | None = None,
     texture_triangle_uvs: np.ndarray | None = None,
     character_ref: dict[str, Any] | None = None,
+    a2f_v3_request_path: str | Path | None = None,
+    a2f_v3_response_path: str | Path | None = None,
+    a2f_v3_model_path: str | Path | None = None,
+    a2f_v3_runtime_path: str | Path | None = None,
+    a2f_v3_identity_path: str | Path | None = None,
+    a2f_v3_schema_path: str | Path | None = None,
+    a2f_v3_profile_dir: str | Path | None = None,
 ) -> dict:
-    if backend not in {"auto", "learned", "fallback"}:
-        raise AutoAnimError("INPUT_INVALID", "Backend must be auto, learned, or fallback")
+    if backend not in {"auto", "learned", "fallback", "a2f-v3"}:
+        raise AutoAnimError(
+            "INPUT_INVALID", "Backend must be auto, learned, fallback, or a2f-v3"
+        )
+    v3_supplied = {
+        "request": a2f_v3_request_path,
+        "response": a2f_v3_response_path,
+        "model": a2f_v3_model_path,
+        "runtime": a2f_v3_runtime_path,
+        "identity": a2f_v3_identity_path,
+        "schema": a2f_v3_schema_path,
+        "profile": a2f_v3_profile_dir,
+    }
+    if backend == "a2f-v3":
+        missing_v3 = sorted(name for name, value in v3_supplied.items() if value is None)
+        if missing_v3:
+            raise AutoAnimError(
+                "INPUT_INVALID",
+                "Explicit a2f-v3 import requires: " + ", ".join(missing_v3),
+            )
+        if fps != 30:
+            raise AutoAnimError(
+                "INPUT_INVALID",
+                "Audio2Face v3 sequence import preserves the official 30-fps clock",
+            )
+        if emotion != "auto":
+            raise AutoAnimError(
+                "INPUT_INVALID",
+                "Audio2Face v3 imported emotion is worker-owned; local emotion override is forbidden",
+            )
+    elif any(value is not None for value in v3_supplied.values()):
+        raise AutoAnimError(
+            "INPUT_INVALID",
+            "v3 request/response bindings require --backend a2f-v3",
+        )
     if not np.isfinite(emotion_strength) or not 0.0 <= emotion_strength <= 1.0:
         raise AutoAnimError("INPUT_INVALID", "Emotion strength must be in [0,1]")
     mouth_aperture_author, mouth_aperture_reason = validate_mouth_aperture_authorship(
@@ -770,7 +828,184 @@ def run_audio_pipeline(
     retarget_calibration_hash: str | None = None
     conditioning: dict[str, float] = {}
     emotion_decomposition = "not_applicable"
-    if backend in {"auto", "learned"}:
+    v3_profile_document: dict[str, Any] | None = None
+    if backend == "a2f-v3":
+        try:
+            request_source_sha256 = sha256(Path(a2f_v3_request_path))  # type: ignore[arg-type]
+            response_source_sha256 = sha256(Path(a2f_v3_response_path))  # type: ignore[arg-type]
+            request = validate_v3_worker_request(
+                a2f_v3_request_path,  # type: ignore[arg-type]
+                audio_path=normalized_path,
+                model_path=a2f_v3_model_path,  # type: ignore[arg-type]
+                runtime_path=a2f_v3_runtime_path,  # type: ignore[arg-type]
+                identity_path=a2f_v3_identity_path,  # type: ignore[arg-type]
+                blendshape_schema_path=a2f_v3_schema_path,  # type: ignore[arg-type]
+            )
+            sequence_track = validate_v3_worker_response(
+                a2f_v3_response_path,  # type: ignore[arg-type]
+                request=request,
+            )
+            official_profile = load_official_v3_claire_profile(
+                a2f_v3_profile_dir  # type: ignore[arg-type]
+            )
+            official_validation = official_profile.validate_track(sequence_track)
+            calibrated_retargeter = CalibratedRetargeter.from_v3_directory(
+                a2f_v3_profile_dir,  # type: ignore[arg-type]
+                adapter=adapter,
+                cache_path=output_dir / "retarget_calibration_a2f_v3_claire.npz",
+            )
+            source_timestamps = np.asarray(sequence_track.timestamps, dtype=np.float32)
+            source_activity = np.interp(
+                source_timestamps.astype(np.float64),
+                prosody.timestamps.astype(np.float64),
+                prosody.speech_activity.astype(np.float64),
+                left=float(prosody.speech_activity[0]),
+                right=float(prosody.speech_activity[-1]),
+            ).astype(np.float32)
+            # v3 is already a sequence model and its official solver applies
+            # temporal regularization. A second generic SG pass would erase
+            # precisely the coarticulation this backend is intended to retain.
+            conditioned_skin = np.asarray(sequence_track.skin, dtype=np.float32).copy()
+            conditioned_tongue = np.asarray(sequence_track.tongue, dtype=np.float32).copy()
+            source_lip_contact_confidence = _derive_lip_contact_confidence(
+                conditioned_skin,
+                sequence_track.control_names.skin,
+                source_activity,
+            )
+            retarget_skin, quarantine_metrics = _quarantine_mouth_close_retarget(
+                conditioned_skin,
+                sequence_track.control_names.skin,
+            )
+            learned_expression = calibrated_retargeter.retarget_post_solver_sequence(
+                retarget_skin,
+                sequence_track.control_names.skin,
+                tongue_weights=conditioned_tongue,
+                tongue_pose_names=sequence_track.control_names.tongue,
+            )
+            source_eyes = np.asarray(sequence_track.eye, dtype=np.float32).reshape(
+                len(source_timestamps), 2, 2
+            )
+            track = compose_learned_animation(
+                learned_expression,
+                source_timestamps,
+                cues,
+                duration,
+                fps,
+                rig,
+                prosody,
+                acting_strength=0.0,
+                source_eye_rotations_degrees=source_eyes,
+                source_lip_contact_confidence=source_lip_contact_confidence,
+                lip_contact_calibration=lip_contact_calibration,
+            )
+            conditioning = {
+                **quarantine_metrics,
+                "sequence_frames": float(len(source_timestamps)),
+                "sequence_skin_control_count": float(len(sequence_track.control_names.skin)),
+                "sequence_tongue_control_count": float(
+                    len(sequence_track.control_names.tongue)
+                ),
+                "sequence_jaw_control_count": float(len(sequence_track.control_names.jaw)),
+                "sequence_eye_control_count": float(len(sequence_track.control_names.eye)),
+                "lip_contact_source_evidence_frames": float(
+                    np.count_nonzero(source_lip_contact_confidence >= 0.12)
+                ),
+                "lip_contact_source_evidence_peak": float(
+                    np.max(source_lip_contact_confidence, initial=0.0)
+                ),
+            }
+            calibrated_retargeter.calibration.save(
+                output_dir / "retarget_calibration_a2f_v3_claire.npz"
+            )
+            write_npz(
+                output_dir / "arkit_controls.npz",
+                timestamps=source_timestamps,
+                skin_weights=sequence_track.skin,
+                conditioned_skin_weights=conditioned_skin,
+                retarget_skin_weights=retarget_skin,
+                skin_pose_names=np.asarray(sequence_track.control_names.skin),
+                tongue_weights=sequence_track.tongue,
+                conditioned_tongue_weights=conditioned_tongue,
+                tongue_pose_names=np.asarray(sequence_track.control_names.tongue),
+                jaw_transform_row_major=sequence_track.jaw,
+                eye_rotations_degrees=source_eyes,
+                source_lip_contact_confidence=source_lip_contact_confidence,
+            )
+            retained_sources = {
+                "a2f-v3-request.json": Path(a2f_v3_request_path),  # type: ignore[arg-type]
+                "a2f-v3-response.json": Path(a2f_v3_response_path),  # type: ignore[arg-type]
+                "a2f-v3-runtime-binding": Path(a2f_v3_runtime_path),  # type: ignore[arg-type]
+                "a2f-v3-identity-binding.npz": Path(a2f_v3_identity_path),  # type: ignore[arg-type]
+                "a2f-v3-control-schema.json": Path(a2f_v3_schema_path),  # type: ignore[arg-type]
+            }
+            for retained_name, source in retained_sources.items():
+                destination = output_dir / retained_name
+                shutil.copyfile(source, destination)
+                if sha256(source) != sha256(destination):
+                    raise SequenceProviderError(
+                        "BINDING_MISMATCH",
+                        f"Retained v3 causal artifact changed while copying: {retained_name}",
+                    )
+            if (
+                sha256(output_dir / "a2f-v3-request.json")
+                != request_source_sha256
+                or sha256(output_dir / "a2f-v3-response.json")
+                != response_source_sha256
+                or sha256(output_dir / "a2f-v3-runtime-binding")
+                != sequence_track.bindings.runtime_sha256
+                or sha256(output_dir / "a2f-v3-identity-binding.npz")
+                != sequence_track.bindings.identity_sha256
+                or sha256(output_dir / "a2f-v3-control-schema.json")
+                != sequence_track.bindings.blendshape_schema_sha256
+            ):
+                raise SequenceProviderError(
+                    "BINDING_MISMATCH",
+                    "Retained v3 request/response or artifact bindings changed after validation",
+                )
+            v3_profile_document = {
+                "schema_version": "autoanim.a2f-v3-import/1.0",
+                "validation": official_validation.as_dict(),
+                "request_sha256": sequence_track.request_sha256,
+                "response_sha256": sequence_track.response_sha256,
+                "bindings": asdict(sequence_track.bindings),
+                "retained_request_file_sha256": request_source_sha256,
+                "retained_response_file_sha256": response_source_sha256,
+                "profile": official_profile.as_dict(),
+                "worker_authentication_verified": False,
+                "sdk_recurrent_state_verified": False,
+                "jaw_matrix_applied": False,
+                "production_qualified": False,
+            }
+            write_json(output_dir / "a2f-v3-import.json", v3_profile_document)
+            learned_artifacts = {
+                "a2f_v3_request": "a2f-v3-request.json",
+                "a2f_v3_response": "a2f-v3-response.json",
+                "a2f_v3_runtime_binding": "a2f-v3-runtime-binding",
+                "a2f_v3_identity_binding": "a2f-v3-identity-binding.npz",
+                "a2f_v3_control_schema": "a2f-v3-control-schema.json",
+                "a2f_v3_import": "a2f-v3-import.json",
+                "arkit_controls": "arkit_controls.npz",
+                "retarget_calibration": "retarget_calibration_a2f_v3_claire.npz",
+            }
+            motion_backend = "unverified_external_sequence_controls_candidate"
+            backend_name = V3_SEQUENCE_BACKEND
+            retargeter_name = "geometry_calibrated_dense_a2f_v3_claire_post_solver"
+            retarget_calibration_hash = calibrated_retargeter.calibration.calibration_hash
+            emotion_applied = "unverified_external_sequence_claim"
+            emotion_decomposition = "external_sequence_claim_unverified"
+        except (
+            SequenceProviderError,
+            CalibratedRetargetError,
+            OSError,
+            ValueError,
+        ) as exc:
+            raise AutoAnimError(
+                "DEPENDENCY_MISSING"
+                if isinstance(exc, OSError)
+                else "INPUT_INVALID",
+                f"Audio2Face v3 sequence import failed: {exc}",
+            ) from exc
+    elif backend in {"auto", "learned"}:
         try:
             asset_root = _resolve_a2f_assets(a2f_asset_dir)
             # Automatic heuristic labels are diagnostic only. Manual or
@@ -1073,6 +1308,11 @@ def run_audio_pipeline(
             prosody,
             lip_contact_calibration=lip_contact_calibration,
         )
+    is_learned_motion = motion_backend == "learned_a2f"
+    is_sequence_candidate = (
+        motion_backend == "unverified_external_sequence_controls_candidate"
+    )
+    has_external_face_controls = is_learned_motion or is_sequence_candidate
     track, mouth_aperture_edit = _apply_audio_mouth_aperture_edit(
         output_dir=output_dir,
         rig=rig,
@@ -1119,7 +1359,10 @@ def run_audio_pipeline(
             "motion_backend": motion_backend,
             "retargeter": retargeter_name,
             "retarget_calibration_hash": retarget_calibration_hash,
-            "temporal_conditioner": LEARNED_CONDITIONER if motion_backend == "learned_a2f" else None,
+            "a2f_v3_import": v3_profile_document,
+            "temporal_conditioner": (
+                LEARNED_CONDITIONER if motion_backend == "learned_a2f" else None
+            ),
             "timestamps": track.timestamps.tolist(),
             "cue_order": list("XABCDEFGH"),
             "viseme_weights": track.viseme_weights.tolist(),
@@ -1285,7 +1528,7 @@ def run_audio_pipeline(
         fps=track.fps,
     )
     warnings: list[str] = []
-    if motion_backend == "learned_a2f":
+    if has_external_face_controls:
         warnings.extend(
             (
                 LEARNED_RETARGET_CAVEAT,
@@ -1294,6 +1537,8 @@ def run_audio_pipeline(
                 LIP_CONTACT_CAVEAT,
             )
         )
+        if is_sequence_candidate:
+            warnings.append(V3_SEQUENCE_CAVEAT)
         if (
             conditioning.get("lip_contact_source_evidence_frames", 0.0) > 0.0
             and temporal["lip_contact_candidate_frames"] == 0
@@ -1449,16 +1694,19 @@ def run_audio_pipeline(
             "motion_backend": motion_backend,
             "retargeter": retargeter_name,
             "retarget_calibration_hash": retarget_calibration_hash,
-            "temporal_conditioner": LEARNED_CONDITIONER if motion_backend == "learned_a2f" else None,
+            "temporal_conditioner": (
+                LEARNED_CONDITIONER if motion_backend == "learned_a2f" else None
+            ),
             "emotion_decomposition": emotion_decomposition,
+            "sequence_import": v3_profile_document,
             "secondary_motion": (
                 "deterministic_audio_conditioned_v2"
-                if motion_backend == "learned_a2f"
+                if has_external_face_controls
                 else "deterministic_audio_conditioned_v1"
             ),
             "lip_contact": (
                 "learned_evidence_plus_character_spatial_contact_v3_anchored"
-                if motion_backend == "learned_a2f"
+                if has_external_face_controls
                 else "rhubarb_bilabial_plus_character_spatial_contact_v1"
             ),
             "mouth_aperture_edit": {
@@ -1474,7 +1722,11 @@ def run_audio_pipeline(
             "quality_speech_mask": "vad_binary_symmetric_hangover_2_frames",
             "emotion": analysis.emotion,
             "emotion_applied": emotion_applied,
-            "emotion_strength": emotion_strength if emotion_applied != "neutral" else 0.0,
+            "emotion_strength": (
+                0.0
+                if is_sequence_candidate
+                else emotion_strength if emotion_applied != "neutral" else 0.0
+            ),
             "emotion_confidence": analysis.confidence,
             "emotion_validated": analysis.validated,
             "emotion_source": analysis.source,
@@ -1485,7 +1737,7 @@ def run_audio_pipeline(
             "fps": track.fps,
             "frames": len(track.expression),
             "expression_shape": list(track.expression.shape),
-            "compiler_version": 11 if motion_backend == "learned_a2f" else 3,
+            "compiler_version": 12 if has_external_face_controls else 3,
             "production_validated": False,
         },
         "viewer": {

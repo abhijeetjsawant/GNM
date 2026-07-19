@@ -42,6 +42,7 @@ from .video_pipeline import run_video_pipeline
 from .video_evidence import load_verified_performance_evidence
 from .viewer import default_viewer_vendor_root, viewer_vendor_health
 from .serialization import write_json, write_npz
+from .sequence_provider import local_a2f_v3_worker_preflight
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -158,6 +159,11 @@ class ApplicationService:
         except Exception as exc:
             checks["a2f_assets"] = {"ready": False, "detail": str(exc)}
             checks["a2f_provenance"] = {"ready": False, "detail": str(exc)}
+        v3_preflight = local_a2f_v3_worker_preflight()
+        checks["a2f_v3_worker"] = {
+            "ready": v3_preflight.can_execute_locally,
+            "detail": v3_preflight.blocker,
+        }
         checks["viewer_bundle"] = viewer_vendor_health(self.viewer_vendor_root)
         required = (
             "gnm", "ffmpeg", "ffprobe", "mediapipe_model", "rhubarb",
@@ -185,6 +191,13 @@ class ApplicationService:
         character_id: str | None = None,
         character_revision_id: str | None = None,
         usage_scope: str = "production",
+        a2f_v3_request_path: str | Path | None = None,
+        a2f_v3_response_path: str | Path | None = None,
+        a2f_v3_model_path: str | Path | None = None,
+        a2f_v3_runtime_path: str | Path | None = None,
+        a2f_v3_identity_path: str | Path | None = None,
+        a2f_v3_schema_path: str | Path | None = None,
+        a2f_v3_profile_dir: str | Path | None = None,
     ) -> dict:
         character = self._resolve_character(
             character_id, character_revision_id, usage_scope=usage_scope
@@ -201,6 +214,7 @@ class ApplicationService:
             "character_id": character.character_id if character is not None else None,
             "character_revision_id": character.revision_id if character is not None else None,
             "usage_scope": usage_scope,
+            "a2f_v3_import": backend == "a2f-v3",
         }
         job_id, job_dir, retained, manifest = self.store.start(
             "audio_animation", input_path, configuration, original_name=input_name
@@ -235,6 +249,13 @@ class ApplicationService:
                     character.triangle_uvs if character is not None else None
                 ),
                 character_ref=self._character_ref(character),
+                a2f_v3_request_path=a2f_v3_request_path,
+                a2f_v3_response_path=a2f_v3_response_path,
+                a2f_v3_model_path=a2f_v3_model_path,
+                a2f_v3_runtime_path=a2f_v3_runtime_path,
+                a2f_v3_identity_path=a2f_v3_identity_path,
+                a2f_v3_schema_path=a2f_v3_schema_path,
+                a2f_v3_profile_dir=a2f_v3_profile_dir,
             )
             return self.store.finish(manifest, job_dir, result, versions)
         except AutoAnimError as exc:

@@ -33,6 +33,35 @@ QUALITY_A2F_V3_SEQUENCE_CANDIDATE = "a2f_v3_sequence_candidate_unqualified"
 QUALITY_A2F_V2_3_FRAMEWISE_PREVIEW = "a2f_v2_3_framewise_preview"
 ZERO_STATE_SHA256 = "0" * 64
 
+# The public model release and its internal network revision are different
+# identifiers in NVIDIA's own v3 package.  Keep both names so provenance never
+# silently collapses ``v3.0`` into the network's ``3.2`` revision.
+A2F_V3_PUBLIC_MODEL_VERSION = "3.0"
+A2F_V3_NETWORK_VERSION = "3.2"
+A2F_V3_IDENTITY = "Claire"
+A2F_V3_IDENTITY_INDEX = 0
+A2F_V3_SAMPLE_RATE_HZ = 16_000
+A2F_V3_OUTPUT_FPS = 30
+A2F_V3_INFERENCE_WINDOW_SAMPLES = 16_000
+A2F_V3_RETAINED_STEP_SAMPLES = 8_000
+A2F_V3_RETAINED_FRAMES_PER_STEP = 30
+A2F_V3_MODEL_REVISION = "b74132732fd9a9d29b237bec193ded64c9745e91"
+A2F_V3_SDK_REVISION = "1ca0f02535ed774f5dbcd724a31cd486368dc783"
+
+# These names define AutoAnim's post-SDK worker ABI.  NVIDIA exposes a 4x4 jaw
+# transform and four eye rotations, but does not prescribe JSON field names.
+# Naming and ordering them here makes the boundary inspectable and prevents a
+# worker from swapping matrix/eye channels while retaining the same widths.
+A2F_V3_JAW_CONTROL_NAMES = tuple(
+    f"jawTransform.m{row}{column}" for row in range(4) for column in range(4)
+)
+A2F_V3_EYE_CONTROL_NAMES = (
+    "rightEye.rotateXDegrees",
+    "rightEye.rotateYDegrees",
+    "leftEye.rotateXDegrees",
+    "leftEye.rotateYDegrees",
+)
+
 _PROVIDER_ID = "nvidia.audio2face-3d"
 _V3_MODEL_VERSION = "3.0"
 _MAX_REQUEST_BYTES = 8 * 1024 * 1024
@@ -297,6 +326,39 @@ class A2FV3WorkerPreflight:
     blocker_code: str
     blocker: str
     required_external_capabilities: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class OfficialV3TrackValidation:
+    """Evidence that a generic sequence track matches the pinned v3 ABI.
+
+    This validates post-SDK control semantics and numeric ranges.  It does not
+    authenticate a remote worker, prove that the SDK maintained recurrent
+    state, or qualify perceptual production quality.
+    """
+
+    public_model_version: str
+    network_version: str
+    identity: str
+    identity_index: int
+    model_revision: str
+    required_sdk_revision: str
+    worker_runtime_sdk_revision_verified: bool
+    sample_rate_hz: int
+    output_fps: int
+    skin_control_count: int
+    tongue_control_count: int
+    jaw_control_count: int
+    eye_control_count: int
+    skin_minimums: tuple[float, ...]
+    skin_maximums: tuple[float, ...]
+    tongue_minimums: tuple[float, ...]
+    tongue_maximums: tuple[float, ...]
+    quality_label: str
+    production_qualified: bool
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -1108,4 +1170,150 @@ def validate_v3_worker_response(
         chunks=tuple(provenance),
         request_sha256=request.request_sha256,
         response_sha256=declared_response_hash,
+    )
+
+
+def validate_official_v3_sequence_track(
+    track: SequenceProviderTrack,
+    *,
+    skin_pose_names: Sequence[str],
+    skin_minimums: Sequence[float],
+    skin_maximums: Sequence[float],
+    tongue_pose_names: Sequence[str],
+    tongue_minimums: Sequence[float],
+    tongue_maximums: Sequence[float],
+    public_model_version: str,
+    network_version: str,
+    identity: str,
+    identity_index: int,
+    model_revision: str,
+    sdk_revision: str,
+) -> OfficialV3TrackValidation:
+    """Require the generic track to match AutoAnim's pinned official-v3 ABI.
+
+    NVIDIA v3 emits character geometry.  AutoAnim's external worker must run
+    the official Claire skin/tongue solvers and expose their named controls,
+    plus the SDK jaw transform and eye rotations.  The post-solver tongue
+    values intentionally use the configured multiplier/offset ranges; they
+    are not clipped to the v2.3 ``[0,1]`` convention.
+    """
+
+    expected_scalars = (
+        (public_model_version, A2F_V3_PUBLIC_MODEL_VERSION, "public_model_version"),
+        (network_version, A2F_V3_NETWORK_VERSION, "network_version"),
+        (identity, A2F_V3_IDENTITY, "identity"),
+        (model_revision, A2F_V3_MODEL_REVISION, "model_revision"),
+        (sdk_revision, A2F_V3_SDK_REVISION, "sdk_revision"),
+    )
+    for actual, expected, field in expected_scalars:
+        if actual != expected:
+            raise SequenceProviderError(
+                "OFFICIAL_PROFILE_MISMATCH",
+                f"{field} does not match the pinned Audio2Face v3 profile",
+                field=field,
+            )
+    if isinstance(identity_index, bool) or identity_index != A2F_V3_IDENTITY_INDEX:
+        raise SequenceProviderError(
+            "OFFICIAL_PROFILE_MISMATCH",
+            "identity_index does not select the pinned Claire identity",
+            field="identity_index",
+        )
+    if (
+        track.provider_id != _PROVIDER_ID
+        or track.model_version != A2F_V3_PUBLIC_MODEL_VERSION
+        or track.quality_label != QUALITY_A2F_V3_SEQUENCE_CANDIDATE
+        or track.audio_sample_rate_hz != A2F_V3_SAMPLE_RATE_HZ
+        or track.output_timebase.fps_numerator != A2F_V3_OUTPUT_FPS
+        or track.output_timebase.fps_denominator != 1
+    ):
+        raise SequenceProviderError(
+            "OFFICIAL_PROFILE_MISMATCH",
+            "Sequence provider, public version, sample clock, or 30-fps clock differs",
+        )
+
+    skin_names = tuple(str(value) for value in skin_pose_names)
+    tongue_names = tuple(str(value) for value in tongue_pose_names)
+    if (
+        len(skin_names) != 52
+        or len(tongue_names) != 16
+        or track.control_names.skin != skin_names
+        or track.control_names.tongue != tongue_names
+        or track.control_names.jaw != A2F_V3_JAW_CONTROL_NAMES
+        or track.control_names.eye != A2F_V3_EYE_CONTROL_NAMES
+    ):
+        raise SequenceProviderError(
+            "OFFICIAL_CONTROL_SCHEMA_MISMATCH",
+            "v3 controls must preserve exact Claire 52/16, jaw-matrix, and eye order",
+            field="control_names",
+        )
+
+    skin_min = np.asarray(skin_minimums, dtype=np.float64)
+    skin_max = np.asarray(skin_maximums, dtype=np.float64)
+    minimums = np.asarray(tongue_minimums, dtype=np.float64)
+    maximums = np.asarray(tongue_maximums, dtype=np.float64)
+    if (
+        skin_min.shape != (52,)
+        or skin_max.shape != (52,)
+        or minimums.shape != (16,)
+        or maximums.shape != (16,)
+        or not np.isfinite(skin_min).all()
+        or not np.isfinite(skin_max).all()
+        or not np.isfinite(minimums).all()
+        or not np.isfinite(maximums).all()
+        or np.any(skin_max < skin_min)
+        or np.any(maximums < minimums)
+    ):
+        raise SequenceProviderError(
+            "OFFICIAL_CONTROL_SCHEMA_MISMATCH",
+            "v3 skin/tongue solver ranges must be finite ordered control intervals",
+            field="control_ranges",
+        )
+    tolerance = 2.0e-4
+    if np.any(track.skin < skin_min[None, :] - tolerance) or np.any(
+        track.skin > skin_max[None, :] + tolerance
+    ):
+        raise SequenceProviderError(
+            "CONTROL_RANGE_MISMATCH",
+            "Official Claire skin controls exceed active solver multiplier/offset ranges",
+            field="controls.skin",
+        )
+    if np.any(track.tongue < minimums[None, :] - tolerance) or np.any(
+        track.tongue > maximums[None, :] + tolerance
+    ):
+        raise SequenceProviderError(
+            "CONTROL_RANGE_MISMATCH",
+            "Official Claire tongue controls exceed solver multiplier/offset ranges",
+            field="controls.tongue",
+        )
+    # The worker ABI stores degrees for eyes.  A deliberately generous bound
+    # rejects swapped/unscaled channels without pretending this is anatomical
+    # gaze validation.  Jaw convention is retained as evidence and is not used
+    # to drive GNM until an SDK parity fixture verifies its matrix convention.
+    if np.any(np.abs(track.eye) > 90.0 + tolerance) or np.any(
+        np.abs(track.jaw) > 1.0e5
+    ):
+        raise SequenceProviderError(
+            "CONTROL_RANGE_MISMATCH",
+            "v3 jaw or eye controls are outside the worker ABI safety bounds",
+        )
+    return OfficialV3TrackValidation(
+        public_model_version=public_model_version,
+        network_version=network_version,
+        identity=identity,
+        identity_index=identity_index,
+        model_revision=model_revision,
+        required_sdk_revision=sdk_revision,
+        worker_runtime_sdk_revision_verified=False,
+        sample_rate_hz=track.audio_sample_rate_hz,
+        output_fps=A2F_V3_OUTPUT_FPS,
+        skin_control_count=len(skin_names),
+        tongue_control_count=len(tongue_names),
+        jaw_control_count=len(A2F_V3_JAW_CONTROL_NAMES),
+        eye_control_count=len(A2F_V3_EYE_CONTROL_NAMES),
+        skin_minimums=tuple(float(value) for value in skin_min),
+        skin_maximums=tuple(float(value) for value in skin_max),
+        tongue_minimums=tuple(float(value) for value in minimums),
+        tongue_maximums=tuple(float(value) for value in maximums),
+        quality_label=track.quality_label,
+        production_qualified=False,
     )
