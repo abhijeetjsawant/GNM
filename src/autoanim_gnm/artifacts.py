@@ -87,6 +87,7 @@ class JobStore:
         configuration: dict[str, Any],
         *,
         original_name: str | None = None,
+        attachments: dict[str, str | Path] | None = None,
     ) -> tuple[str, Path, Path, dict]:
         source = Path(input_path)
         if not source.is_file():
@@ -97,7 +98,37 @@ class JobStore:
         sanitized = safe_input_name(original_name or source.name)
         suffix = Path(sanitized).suffix.lower() or ".bin"
         retained_input = job_dir / f"input{suffix}"
-        shutil.copy2(source, retained_input)
+        retained_attachments: list[dict[str, Any]] = []
+        try:
+            shutil.copy2(source, retained_input)
+            for attachment_index, (logical_name, attachment_path) in enumerate(
+                sorted((attachments or {}).items())
+            ):
+                attachment_source = Path(attachment_path)
+                if not attachment_source.is_file():
+                    raise FileNotFoundError(
+                        f"Attachment {logical_name} must be a file"
+                    )
+                safe_logical = safe_input_name(logical_name)
+                attachment_suffix = attachment_source.suffix.lower() or ".bin"
+                retained_name = (
+                    f"attachment-{attachment_index + 1:02d}-"
+                    f"{safe_logical}{attachment_suffix}"
+                )
+                destination = job_dir / retained_name
+                shutil.copy2(attachment_source, destination)
+                retained_attachments.append(
+                    {
+                        "logical_name": logical_name,
+                        "retained_name": retained_name,
+                        "sha256": sha256(destination),
+                        "bytes": destination.stat().st_size,
+                        "media_type": _media_type(destination),
+                    }
+                )
+        except Exception:
+            shutil.rmtree(job_dir, ignore_errors=True)
+            raise
         created = utc_now()
         manifest = {
             "schema_version": "1.0",
@@ -112,6 +143,7 @@ class JobStore:
                 "bytes": retained_input.stat().st_size,
                 "media_type": _media_type(retained_input),
             },
+            **({"attachments": retained_attachments} if retained_attachments else {}),
             "configuration": configuration,
             "versions": {},
             "metrics": {},

@@ -7,7 +7,7 @@ Status: implemented fail-closed release evidence, 2026-07-19
 AutoAnim's reconstruction, character, audio, video, oral, acting, body, and
 viewer stages can all produce useful artifacts before they are production
 validated. A successful job or a renderable GLB is therefore not a publish
-decision. `autoanim.production-readiness/1.0` collects the evidence for one
+decision. `autoanim.production-readiness/1.1` collects the evidence for one
 performance take into a single machine-readable report without mutating or
 approving any asset.
 
@@ -37,7 +37,7 @@ report; it does not falsify that capability's evidence.
 | `identity` | Independent identity/hidden-geometry validation recorded on the immutable source character revision. |
 | `appearance` | When PBR is required: exact runtime base color, normal, roughness and specular maps plus pore/detail, unseen-light, and appearance production approval. |
 | `oral_animation` | Every source frame and viewer reconstruction structurally validated, no reported lip-order or tongue/teeth risk, and separate phone/tongue/collision/perceptual approval. |
-| `performance` | Audio: learned source, independent phone/prototype quality gate, and approved animation profile. Video: verified Observation-v2 evidence artifact, approved capture, subject calibration, and labeled-neutral calibration. |
+| `performance` | Audio: learned source, independently reviewed phone/apex annotations, passing timing report, hash-verified evidence artifacts, independent prototype quality gate, and approved animation profile. Video: verified Observation-v2 evidence artifact, approved capture, subject calibration, and labeled-neutral calibration. |
 | `delivery` | Full-track, source-clocked animated GLB whose bytes match the signed artifact ledger. |
 | `acting` | When required: a sealed direction job linked to this exact performance, edited/compiled and explicitly artist-approved. An LLM proposal never passes this gate. |
 | `body` | When required: attached body/head seam plus approved body motion and contacts. A canonical skeleton or preview track alone never passes. |

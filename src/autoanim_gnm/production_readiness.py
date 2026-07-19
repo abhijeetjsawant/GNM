@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 
-SCHEMA_VERSION = "autoanim.production-readiness/1.0"
+SCHEMA_VERSION = "autoanim.production-readiness/1.1"
 _PERFORMANCE_KINDS = frozenset({"audio_animation", "video_performance"})
 _PBR_RUNTIME_MAPS = frozenset(
     {"base_color", "normal", "roughness", "specular_color"}
@@ -57,6 +57,7 @@ def evaluate_production_readiness(
     source_input_verified: bool = False,
     delivery_artifact_verified: bool = False,
     performance_evidence_artifact_verified: bool = False,
+    phone_evidence_artifacts_verified: bool = False,
     audio_visual_repair_artifacts_verified: bool = False,
     audio_visual_repair_qualification_verified: bool = False,
     character_revision: dict[str, Any] | None = None,
@@ -226,15 +227,33 @@ def evaluate_production_readiness(
 
     if kind == "audio_animation":
         analysis = _mapping(performance.get("analysis"))
+        phone_evidence = _mapping(analysis.get("phone_evidence"))
+        phone_timing_gate = _mapping(
+            _mapping(performance.get("phone_timing")).get("production_gate")
+        )
         quality_gate = _mapping(_mapping(performance.get("quality")).get("production_gate"))
         animation = _mapping(performance.get("animation"))
         performance_passed = bool(
             analysis.get("motion_backend") == "learned_a2f"
+            and phone_evidence.get("present")
+            and phone_evidence.get("independently_reviewed")
+            and phone_evidence.get("production_review_complete")
+            and phone_timing_gate.get("passed")
+            and phone_evidence_artifacts_verified
             and quality_gate.get("passed")
             and animation.get("production_validated")
         )
         performance_evidence = {
             "motion_backend": analysis.get("motion_backend"),
+            "phone_evidence_present": phone_evidence.get("present", False),
+            "phone_review_complete": phone_evidence.get(
+                "production_review_complete", False
+            ),
+            "phone_timing_gate_passed": phone_timing_gate.get("passed", False),
+            "phone_timing_failures": _string_list(
+                phone_timing_gate.get("failures")
+            ),
+            "phone_evidence_artifacts_verified": phone_evidence_artifacts_verified,
             "independent_quality_gate_passed": quality_gate.get("passed", False),
             "quality_failures": _string_list(quality_gate.get("failures")),
             "animation_production_validated": animation.get(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import platform
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any, Mapping
+import wave
 
 import cv2
 import mediapipe
@@ -18,6 +20,7 @@ import numpy as np
 from . import __version__
 from .a2f import resolve_a2f_runner
 from .acting import ActingDirector, TICKS_PER_SECOND
+from .animation import calibrate_lip_contact
 from .artifacts import JobStore, sha256
 from .characters import CharacterRevision, CharacterStore
 from .audio import resolve_rhubarb
@@ -33,6 +36,12 @@ from .body import (
     compile_body_track,
 )
 from .production_readiness import evaluate_production_readiness
+from .phone_events import (
+    PHONE_EVENT_SCHEMA_VERSION,
+    PHONE_TIMING_REPORT_SCHEMA_VERSION,
+    evaluate_bilabial_timing,
+    load_textgrid_phone_events,
+)
 from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .image import validate_model
@@ -43,6 +52,8 @@ from .video_evidence import load_verified_performance_evidence
 from .viewer import default_viewer_vendor_root, viewer_vendor_health
 from .serialization import write_json, write_npz
 from .sequence_provider import local_a2f_v3_worker_preflight
+from .rig import ControlRig
+from .semantic_decoder import ExpressionDecoder
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -198,10 +209,30 @@ class ApplicationService:
         a2f_v3_identity_path: str | Path | None = None,
         a2f_v3_schema_path: str | Path | None = None,
         a2f_v3_profile_dir: str | Path | None = None,
+        phone_annotation_path: str | Path | None = None,
+        phone_annotation_name: str | None = None,
+        phone_annotations_independently_reviewed: bool = False,
+        phone_annotation_reviewer: str | None = None,
     ) -> dict:
         character = self._resolve_character(
             character_id, character_revision_id, usage_scope=usage_scope
         )
+        annotation_snapshot: Path | None = None
+        if phone_annotation_path is not None:
+            annotation_source = Path(phone_annotation_path)
+            if not annotation_source.is_file():
+                raise AutoAnimError(
+                    "INPUT_INVALID", "Phone TextGrid annotation is not a file"
+                )
+            with tempfile.NamedTemporaryFile(
+                "wb", suffix=".TextGrid", delete=False
+            ) as snapshot_handle:
+                annotation_snapshot = Path(snapshot_handle.name)
+            try:
+                shutil.copy2(annotation_source, annotation_snapshot)
+            except Exception:
+                annotation_snapshot.unlink(missing_ok=True)
+                raise
         configuration = {
             "fps": fps,
             "emotion": emotion,
@@ -215,10 +246,71 @@ class ApplicationService:
             "character_revision_id": character.revision_id if character is not None else None,
             "usage_scope": usage_scope,
             "a2f_v3_import": backend == "a2f-v3",
+            "phone_evidence": (
+                {
+                    "present": True,
+                    "source_name": Path(
+                        phone_annotation_name or str(phone_annotation_path)
+                    ).name,
+                    "source_sha256": sha256(annotation_snapshot),
+                    "independently_reviewed": phone_annotations_independently_reviewed,
+                    "reviewer": phone_annotation_reviewer,
+                    "motion_authority": False,
+                }
+                if annotation_snapshot is not None
+                else {
+                    "present": False,
+                    "independently_reviewed": False,
+                    "reviewer": None,
+                    "motion_authority": False,
+                }
+            ),
         }
-        job_id, job_dir, retained, manifest = self.store.start(
-            "audio_animation", input_path, configuration, original_name=input_name
-        )
+        try:
+            job_id, job_dir, retained, manifest = self.store.start(
+                "audio_animation",
+                input_path,
+                configuration,
+                original_name=input_name,
+                attachments=(
+                    {"phone_annotations": annotation_snapshot}
+                    if annotation_snapshot is not None
+                    else None
+                ),
+            )
+        finally:
+            if annotation_snapshot is not None:
+                annotation_snapshot.unlink(missing_ok=True)
+        retained_phone_annotation: Path | None = None
+        if phone_annotation_path is not None:
+            attachment = next(
+                (
+                    item
+                    for item in manifest.get("attachments", [])
+                    if item.get("logical_name") == "phone_annotations"
+                ),
+                None,
+            )
+            if not isinstance(attachment, dict) or not isinstance(
+                attachment.get("retained_name"), str
+            ):
+                error = AutoAnimError(
+                    "INTERNAL_ERROR", "Phone annotation attachment was not retained"
+                )
+                self.store.fail(
+                    manifest, job_dir, error.as_dict(), runtime_versions()
+                )
+                raise error
+            retained_phone_annotation = job_dir / attachment["retained_name"]
+            if attachment.get("sha256") != configuration["phone_evidence"].get(
+                "source_sha256"
+            ):
+                error = AutoAnimError(
+                    "INPUT_CHANGED",
+                    "Phone TextGrid changed while its immutable job attachment was created",
+                )
+                self.store.fail(manifest, job_dir, error.as_dict(), runtime_versions())
+                raise error
         versions = runtime_versions()
         try:
             result = run_audio_pipeline(
@@ -256,6 +348,11 @@ class ApplicationService:
                 a2f_v3_identity_path=a2f_v3_identity_path,
                 a2f_v3_schema_path=a2f_v3_schema_path,
                 a2f_v3_profile_dir=a2f_v3_profile_dir,
+                phone_annotation_path=retained_phone_annotation,
+                phone_annotations_independently_reviewed=(
+                    phone_annotations_independently_reviewed
+                ),
+                phone_annotation_reviewer=phone_annotation_reviewer,
             )
             return self.store.finish(manifest, job_dir, result, versions)
         except AutoAnimError as exc:
@@ -437,6 +534,210 @@ class ApplicationService:
             except (FileNotFoundError, OSError, ValueError):
                 pass
 
+        phone_evidence_artifacts_verified = False
+        if performance.get("kind") == "audio_animation":
+            try:
+                phone_paths: dict[str, Path] = {}
+                for logical_name in (
+                    "phone_annotations",
+                    "phone_events",
+                    "phone_timing_report",
+                    "normalized_audio",
+                    "controls",
+                ):
+                    entry = _mapping(_mapping(artifact_ledger).get(logical_name))
+                    name = entry.get("name")
+                    if not isinstance(name, str):
+                        raise FileNotFoundError(logical_name)
+                    phone_paths[logical_name] = self.store.artifact(
+                        performance_job_id, name
+                    )
+                event_document = json.loads(
+                    phone_paths["phone_events"].read_text(encoding="utf-8")
+                )
+                timing_document = json.loads(
+                    phone_paths["phone_timing_report"].read_text(encoding="utf-8")
+                )
+                event_bindings = _mapping(
+                    _mapping(event_document).get("bindings")
+                )
+                timing_bindings = _mapping(
+                    _mapping(timing_document).get("annotation_bindings")
+                )
+                phone_analysis = _mapping(
+                    _mapping(performance.get("analysis")).get("phone_evidence")
+                )
+                phone_review = _mapping(
+                    _mapping(event_document).get("review")
+                )
+                phone_configuration = _mapping(
+                    _mapping(performance.get("configuration")).get(
+                        "phone_evidence"
+                    )
+                )
+                expected_audio_sha256 = (
+                    input_ledger.get("sha256")
+                    if isinstance(input_ledger, dict)
+                    else None
+                )
+                textgrid_sha256 = sha256(phone_paths["phone_annotations"])
+                attachment = next(
+                    (
+                        item
+                        for item in performance.get("attachments", [])
+                        if isinstance(item, dict)
+                        and item.get("logical_name") == "phone_annotations"
+                    ),
+                    None,
+                )
+                attachment_name = (
+                    attachment.get("retained_name")
+                    if isinstance(attachment, dict)
+                    else None
+                )
+                attachment_path = (
+                    self.store.job_dir(performance_job_id) / attachment_name
+                    if isinstance(attachment_name, str)
+                    else None
+                )
+                attachment_verified = bool(
+                    isinstance(attachment, dict)
+                    and attachment_path is not None
+                    and Path(attachment_name).name == attachment_name
+                    and attachment_path.is_file()
+                    and attachment_path.stat().st_size == attachment.get("bytes")
+                    and sha256(attachment_path) == attachment.get("sha256")
+                    and attachment.get("sha256") == textgrid_sha256
+                )
+                with wave.open(str(phone_paths["normalized_audio"]), "rb") as audio:
+                    if (
+                        audio.getnchannels() != 1
+                        or audio.getframerate() != 16_000
+                        or audio.getsampwidth() != 2
+                    ):
+                        raise ValueError("Normalized phone-evidence clock is invalid")
+                    normalized_duration = audio.getnframes() / audio.getframerate()
+                annotations = load_textgrid_phone_events(
+                    phone_paths["phone_annotations"],
+                    audio_path=retained_inputs[0],
+                    duration_seconds=normalized_duration,
+                    independently_reviewed=(
+                        phone_configuration.get("independently_reviewed") is True
+                    ),
+                    reviewer=phone_configuration.get("reviewer"),
+                )
+                expected_event_document = annotations.as_dict()
+
+                identity = np.zeros(253, dtype=np.float32)
+                character_ref = _mapping(
+                    _mapping(performance.get("model")).get("character")
+                )
+                character_id = character_ref.get("character_id")
+                character_revision_id = character_ref.get("revision_id")
+                if isinstance(character_id, str) and isinstance(
+                    character_revision_id, str
+                ):
+                    usage_scope = _mapping(performance.get("configuration")).get(
+                        "usage_scope", "production"
+                    )
+                    identity = self.characters.resolve(
+                        character_id,
+                        character_revision_id,
+                        usage_scope=(
+                            usage_scope
+                            if isinstance(usage_scope, str)
+                            else "production"
+                        ),
+                    ).identity
+                with np.load(phone_paths["controls"], allow_pickle=False) as controls:
+                    expression = np.asarray(controls["expression"], dtype=np.float32)
+                    timestamps = np.asarray(controls["timestamps"], dtype=np.float64)
+                adapter = GNMAdapter()
+                rig = ControlRig(
+                    adapter,
+                    ExpressionDecoder(
+                        PROJECT_ROOT
+                        / "gnm/shape/data/semantic_sampler/expression_decoder_model.h5"
+                    ),
+                    identity=np.asarray(identity, dtype=np.float32),
+                )
+                landmarks = np.stack(
+                    [rig.compact_landmarks(frame) for frame in expression]
+                )
+                interocular = float(
+                    np.linalg.norm(landmarks[0, 36] - landmarks[0, 45])
+                )
+                lip_gap_interocular = np.mean(
+                    np.stack(
+                        [
+                            np.linalg.norm(
+                                landmarks[:, upper] - landmarks[:, lower], axis=1
+                            )
+                            for upper, lower in ((61, 67), (62, 66), (63, 65))
+                        ],
+                        axis=1,
+                    ),
+                    axis=1,
+                ) / max(interocular, 1e-8)
+                contact_calibration = calibrate_lip_contact(rig)
+                expected_timing_document = evaluate_bilabial_timing(
+                    annotations,
+                    timestamps_seconds=timestamps,
+                    lip_gap_interocular=lip_gap_interocular,
+                    contact_threshold_interocular=min(
+                        contact_calibration.neutral_gap_interocular,
+                        max(
+                            0.006,
+                            contact_calibration.seal_gap_interocular + 0.003,
+                        ),
+                    ),
+                )
+                phone_evidence_artifacts_verified = bool(
+                    attachment_verified
+                    and _mapping(event_document).get("schema_version")
+                    == PHONE_EVENT_SCHEMA_VERSION
+                    and event_document == expected_event_document
+                    and _mapping(timing_document).get("schema_version")
+                    == PHONE_TIMING_REPORT_SCHEMA_VERSION
+                    and timing_document == expected_timing_document
+                    and isinstance(expected_audio_sha256, str)
+                    and event_bindings.get("audio_sha256")
+                    == expected_audio_sha256
+                    and timing_bindings.get("audio_sha256")
+                    == expected_audio_sha256
+                    and event_bindings.get("textgrid_sha256")
+                    == textgrid_sha256
+                    and timing_bindings.get("textgrid_sha256")
+                    == textgrid_sha256
+                    and phone_configuration.get("source_sha256")
+                    == textgrid_sha256
+                    and phone_configuration.get("motion_authority") is False
+                    and timing_document == performance.get("phone_timing")
+                    and phone_analysis.get("present") is True
+                    and phone_analysis.get("motion_authored_by_annotations")
+                    is False
+                    and phone_analysis.get("event_count")
+                    == _mapping(event_document).get("event_count")
+                    and phone_analysis.get("production_review_complete")
+                    == phone_review.get("production_review_complete")
+                    and phone_analysis.get("independently_reviewed")
+                    == phone_review.get("independently_reviewed")
+                )
+            except (
+                AutoAnimError,
+                FileNotFoundError,
+                KeyError,
+                IndexError,
+                OSError,
+                TypeError,
+                AttributeError,
+                UnicodeError,
+                ValueError,
+                json.JSONDecodeError,
+                wave.Error,
+            ):
+                pass
+
         audio_visual_repair_artifacts_verified = False
         audio_visual_repair_qualification_verified = False
         repair = _mapping(
@@ -543,6 +844,9 @@ class ApplicationService:
             delivery_artifact_verified=delivery_artifact_verified,
             performance_evidence_artifact_verified=(
                 performance_evidence_artifact_verified
+            ),
+            phone_evidence_artifacts_verified=(
+                phone_evidence_artifacts_verified
             ),
             audio_visual_repair_artifacts_verified=(
                 audio_visual_repair_artifacts_verified

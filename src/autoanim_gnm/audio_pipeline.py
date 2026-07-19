@@ -52,6 +52,12 @@ from .oral_validation import (
     validate_controls_npz,
     validate_glb_oral_geometry,
 )
+from .phone_events import (
+    PhoneAnnotationSet,
+    evaluate_bilabial_timing,
+    load_textgrid_phone_events,
+    write_phone_events,
+)
 from .rig import ControlRig
 from .semantic_decoder import ExpressionDecoder
 from .serialization import write_json, write_npz
@@ -738,6 +744,9 @@ def run_audio_pipeline(
     mouth_aperture_gain: float = 1.0,
     mouth_aperture_author: str | None = None,
     mouth_aperture_reason: str | None = None,
+    phone_annotation_path: str | Path | None = None,
+    phone_annotations_independently_reviewed: bool = False,
+    phone_annotation_reviewer: str | None = None,
     identity: np.ndarray | None = None,
     texture_path: str | Path | None = None,
     runtime_material_paths: Mapping[str, str | Path] | None = None,
@@ -804,6 +813,33 @@ def run_audio_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
     normalized_path = output_dir / "normalized.wav"
     duration = normalize_audio(input_path, normalized_path)
+    phone_annotations: PhoneAnnotationSet | None = None
+    phone_artifacts: dict[str, str] = {}
+    if phone_annotation_path is not None:
+        phone_annotations = load_textgrid_phone_events(
+            phone_annotation_path,
+            audio_path=input_path,
+            duration_seconds=duration,
+            independently_reviewed=phone_annotations_independently_reviewed,
+            reviewer=phone_annotation_reviewer,
+        )
+        retained_textgrid = output_dir / "phone-annotations.TextGrid"
+        shutil.copy2(phone_annotation_path, retained_textgrid)
+        if sha256(retained_textgrid) != phone_annotations.source_textgrid_sha256:
+            raise AutoAnimError(
+                "INPUT_CHANGED",
+                "Phone TextGrid changed while it was retained for the job",
+            )
+        write_phone_events(output_dir / "phone-events.json", phone_annotations)
+        phone_artifacts = {
+            "phone_annotations": retained_textgrid.name,
+            "phone_events": "phone-events.json",
+        }
+    elif phone_annotations_independently_reviewed or phone_annotation_reviewer:
+        raise AutoAnimError(
+            "INPUT_INVALID",
+            "Phone review metadata requires a TextGrid annotation",
+        )
     raw_cues = run_rhubarb(
         normalized_path,
         output_dir / "rhubarb.json",
@@ -1527,6 +1563,39 @@ def run_audio_pipeline(
         quality_activity,
         fps=track.fps,
     )
+    phone_timing: dict[str, Any] | None = None
+    if phone_annotations is not None:
+        interocular = float(
+            np.linalg.norm(quality_landmarks[0, 36] - quality_landmarks[0, 45])
+        )
+        lip_gap_interocular = np.mean(
+            np.stack(
+                [
+                    np.linalg.norm(
+                        quality_landmarks[:, upper] - quality_landmarks[:, lower],
+                        axis=1,
+                    )
+                    for upper, lower in ((61, 67), (62, 66), (63, 65))
+                ],
+                axis=1,
+            ),
+            axis=1,
+        ) / max(interocular, 1e-8)
+        contact_threshold = min(
+            lip_contact_calibration.neutral_gap_interocular,
+            max(
+                0.006,
+                lip_contact_calibration.seal_gap_interocular + 0.003,
+            ),
+        )
+        phone_timing = evaluate_bilabial_timing(
+            phone_annotations,
+            timestamps_seconds=track.timestamps,
+            lip_gap_interocular=lip_gap_interocular,
+            contact_threshold_interocular=contact_threshold,
+        )
+        write_json(output_dir / "phone-timing-report.json", phone_timing)
+        phone_artifacts["phone_timing_report"] = "phone-timing-report.json"
     warnings: list[str] = []
     if has_external_face_controls:
         warnings.extend(
@@ -1548,6 +1617,12 @@ def run_audio_pipeline(
         warnings.extend((AUDIO_CAVEAT, FALLBACK_CAVEAT))
     if learned_error is not None:
         warnings.append(f"LEARNED_BACKEND_UNAVAILABLE: {learned_error}")
+    if phone_timing is not None and not phone_timing["production_gate"]["passed"]:
+        warnings.append(
+            "PHONE_EVIDENCE_NOT_PRODUCTION_QUALIFIED: the TextGrid is retained and "
+            "geometry-scored, but reviewed apex coverage, event counts, or timing gates "
+            "are incomplete. It does not alter the animation in this evidence phase."
+        )
     if not analysis.validated:
         warnings.append(EMOTION_CAVEAT)
     if track.saturated:
@@ -1720,6 +1795,27 @@ def run_audio_pipeline(
                 "production_validated": False,
             },
             "quality_speech_mask": "vad_binary_symmetric_hangover_2_frames",
+            "phone_evidence": (
+                {
+                    "present": True,
+                    "independently_reviewed": (
+                        phone_annotations.independently_reviewed
+                    ),
+                    "production_review_complete": (
+                        phone_annotations.production_review_complete
+                    ),
+                    "event_count": len(phone_annotations.events),
+                    "motion_authored_by_annotations": False,
+                }
+                if phone_annotations is not None
+                else {
+                    "present": False,
+                    "independently_reviewed": False,
+                    "production_review_complete": False,
+                    "event_count": 0,
+                    "motion_authored_by_annotations": False,
+                }
+            ),
             "emotion": analysis.emotion,
             "emotion_applied": emotion_applied,
             "emotion_strength": (
@@ -1755,6 +1851,7 @@ def run_audio_pipeline(
             "reconstruction": viewer_reconstruction,
         },
         "quality": quality.as_dict(),
+        "phone_timing": phone_timing,
         "oral_validation": {
             "schema_version": oral_control_report["schema_version"],
             "status": oral_control_report["status"],
@@ -1834,6 +1931,7 @@ def run_audio_pipeline(
             "mouth_aperture_edit_arrays": "mouth-aperture-edit.npz",
             **viewer_artifacts,
             **learned_artifacts,
+            **phone_artifacts,
         },
         "warnings": warnings,
     }

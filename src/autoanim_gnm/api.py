@@ -46,6 +46,8 @@ STATUS_BY_CODE = {
     "FACE_NOT_FOUND": 422,
     "MULTIPLE_FACES": 422,
     "FIT_REJECTED": 422,
+    "PHONE_EVIDENCE_INVALID": 422,
+    "INPUT_CHANGED": 409,
     "DEPENDENCY_MISSING": 424,
     "LLM_UNAVAILABLE": 424,
     "LLM_TIMEOUT": 504,
@@ -292,6 +294,7 @@ def create_app(
     @app.post("/api/audio", status_code=201)
     def audio(
         file: UploadFile = File(...),
+        phone_textgrid: UploadFile | None = File(None),
         dialog: str | None = Form(None),
         emotion: str = Form("auto"),
         emotion_strength: float = Form(0.65),
@@ -303,12 +306,19 @@ def create_app(
         character_id: str = Form(""),
         character_revision_id: str = Form(""),
         usage_scope: str = Form("production"),
+        phone_annotations_reviewed: bool = Form(False),
+        phone_reviewer: str = Form(""),
     ):
         if not operation_lock.acquire(blocking=False):
             return _error_response(AutoAnimError("BUSY", "Another job is currently running", retryable=True))
         temporary: Path | None = None
+        temporary_textgrid: Path | None = None
         try:
             temporary = _retain_upload(file)
+            if phone_textgrid is not None:
+                temporary_textgrid = _retain_upload(
+                    phone_textgrid, max_bytes=8 * 1024 * 1024
+                )
             return service.audio(
                 temporary,
                 fps=fps,
@@ -323,12 +333,20 @@ def create_app(
                 character_id=character_id or None,
                 character_revision_id=character_revision_id or None,
                 usage_scope=usage_scope,
+                phone_annotation_path=temporary_textgrid,
+                phone_annotation_name=(
+                    phone_textgrid.filename if phone_textgrid is not None else None
+                ),
+                phone_annotations_independently_reviewed=phone_annotations_reviewed,
+                phone_annotation_reviewer=phone_reviewer or None,
             )
         except AutoAnimError as exc:
             return _error_response(exc)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
+            if temporary_textgrid is not None:
+                temporary_textgrid.unlink(missing_ok=True)
             operation_lock.release()
 
     @app.post("/api/image", status_code=201)
@@ -921,6 +939,9 @@ UI_HTML = r"""<!doctype html>
       <label for="audio-mouth-aperture">Mouth opening correction · <output id="audio-mouth-aperture-value">1.00×</output></label><input id="audio-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.25" step="0.01" value="1"><small>1.00 is byte-exact off. Higher values request a bounded, contact-preserving geometry edit; they do not scale all mouth controls.</small>
       <label for="audio-mouth-author">Edit author (required above 1.00)</label><input id="audio-mouth-author" name="mouth_aperture_author" maxlength="160" placeholder="Artist or operator">
       <label for="audio-mouth-reason">Edit reason (required above 1.00)</label><textarea id="audio-mouth-reason" name="mouth_aperture_reason" maxlength="500" placeholder="Example: source performance reads too closed on this character"></textarea>
+      <label for="audio-phone-textgrid">Phone timing evidence (optional)</label><input id="audio-phone-textgrid" name="phone_textgrid" type="file" accept=".TextGrid,text/plain"><small>Praat/MFA long TextGrid. Imported evidence is scored and retained but does not alter motion in this phase.</small>
+      <label><input style="width:auto" type="checkbox" name="phone_annotations_reviewed" value="true"> Phone and apex annotations were independently reviewed</label>
+      <label for="audio-phone-reviewer">Phone annotation reviewer</label><input id="audio-phone-reviewer" name="phone_reviewer" maxlength="160" placeholder="Required only for reviewed evidence">
       <label for="dialog">Optional dialog</label><textarea id="dialog" name="dialog" placeholder="Helps Rhubarb and lexical emotion hints"></textarea><input name="fps" type="hidden" value="30">
       <button>Build animation</button><div class="status"></div><div class="result"></div>
     </form>

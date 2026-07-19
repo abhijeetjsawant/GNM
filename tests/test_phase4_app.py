@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+import autoanim_gnm.service as service_module
 from autoanim_gnm.api import create_app
 from autoanim_gnm.animation import probe_av
 from autoanim_gnm.artifacts import JobStore, new_ulid
@@ -22,6 +23,11 @@ MODEL = CACHE / "face_landmarker.task"
 PORTRAIT = FIXTURES / "official-portrait.jpg"
 RHUBARB = CACHE / "rhubarb/rhubarb"
 LIBRISPEECH = FIXTURES / "libri-human-speech-8s.wav"
+LIBRISPEECH_MFA = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "librispeech-5703-47212-0000-first-8s-mfa.TextGrid"
+)
 
 
 def _normalized_result(result: dict) -> bytes:
@@ -98,6 +104,8 @@ def test_home_and_health(tmp_path: Path) -> None:
     assert "Learned Audio2Face motion is preferred" in home.text
     assert "Recent local runs" in home.text
     assert "mouth_aperture" in home.text
+    assert 'id="audio-phone-textgrid"' in home.text
+    assert "phone_annotations_reviewed" in home.text
     assert "audio_visual_repair" in home.text
     assert "Conservative learned audio repair" in home.text
     assert 'id="audio-visual-repair"' in home.text
@@ -108,6 +116,107 @@ def test_home_and_health(tmp_path: Path) -> None:
     assert health.status_code == 200
     assert health.json()["status"] == "ready"
     assert health.json()["checks"]["a2f_provenance"]["ready"] is True
+
+
+def test_phone_evidence_is_optional_and_propagates_through_api_and_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parser = build_parser()
+    default = parser.parse_args(["audio", "take.wav", "--out", "jobs"])
+    enabled = parser.parse_args(
+        [
+            "audio",
+            "take.wav",
+            "--out",
+            "jobs",
+            "--phone-textgrid",
+            "take.TextGrid",
+            "--phone-annotations-reviewed",
+            "--phone-reviewer",
+            "Phonetics QA",
+        ]
+    )
+    assert default.phone_textgrid is None
+    assert default.phone_annotations_reviewed is False
+    assert enabled.phone_textgrid == Path("take.TextGrid")
+    assert enabled.phone_annotations_reviewed is True
+    assert enabled.phone_reviewer == "Phonetics QA"
+
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    observed: list[dict[str, object]] = []
+
+    def fake_audio(_path: Path, **kwargs: object) -> dict:
+        annotation = kwargs["phone_annotation_path"]
+        observed.append(
+            {
+                "annotation_exists": isinstance(annotation, Path) and annotation.is_file(),
+                "reviewed": kwargs["phone_annotations_independently_reviewed"],
+                "reviewer": kwargs["phone_annotation_reviewer"],
+            }
+        )
+        return {"kind": "audio_animation", "status": "succeeded"}
+
+    monkeypatch.setattr(app.state.service, "audio", fake_audio)
+    response = TestClient(app).post(
+        "/api/audio",
+        files={
+            "file": ("take.wav", b"audio", "audio/wav"),
+            "phone_textgrid": ("take.TextGrid", b"TextGrid", "text/plain"),
+        },
+        data={
+            "phone_annotations_reviewed": "true",
+            "phone_reviewer": "Phonetics QA",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert observed == [
+        {
+            "annotation_exists": True,
+            "reviewed": True,
+            "reviewer": "Phonetics QA",
+        }
+    ]
+
+
+def test_service_uses_one_immutable_phone_annotation_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"pipeline is stubbed")
+    annotation = tmp_path / "source.TextGrid"
+    original = b"immutable annotation version A"
+    annotation.write_bytes(original)
+    service = create_app(
+        tmp_path / "jobs", model_path=tmp_path / "missing.task"
+    ).state.service
+    observed: dict[str, object] = {}
+
+    def fake_pipeline(
+        _input: Path, _output: Path, **kwargs: object
+    ) -> dict[str, object]:
+        retained = Path(kwargs["phone_annotation_path"])
+        annotation.write_bytes(b"concurrent caller version B")
+        observed["retained_path"] = retained
+        observed["retained_bytes"] = retained.read_bytes()
+        return {"kind": "audio_animation", "artifacts": {}, "warnings": []}
+
+    monkeypatch.setattr(service_module, "run_audio_pipeline", fake_pipeline)
+    result = service.audio(
+        source,
+        phone_annotation_path=annotation,
+        phone_annotation_name=annotation.name,
+    )
+
+    retained_path = observed["retained_path"]
+    assert isinstance(retained_path, Path)
+    assert retained_path != annotation
+    assert observed["retained_bytes"] == original
+    assert result["configuration"]["phone_evidence"]["source_sha256"] == hashlib.sha256(
+        original
+    ).hexdigest()
+    assert result["attachments"][0]["sha256"] == result["configuration"][
+        "phone_evidence"
+    ]["source_sha256"]
 
 
 def test_video_repair_is_opt_in_and_propagates_through_api_and_cli(
@@ -238,14 +347,25 @@ def test_api_and_cli_real_image_parity_and_allowlist(tmp_path: Path) -> None:
 
 
 def test_api_and_cli_real_audio_parity(tmp_path: Path) -> None:
-    if not LIBRISPEECH.exists() or not RHUBARB.exists():
+    if (
+        not LIBRISPEECH.exists()
+        or not RHUBARB.exists()
+        or not LIBRISPEECH_MFA.exists()
+    ):
         pytest.skip("real audio parity fixtures unavailable")
     api_root = tmp_path / "api"
     client = TestClient(create_app(api_root, model_path=MODEL, rhubarb_bin=RHUBARB))
-    with LIBRISPEECH.open("rb") as handle:
+    with LIBRISPEECH.open("rb") as handle, LIBRISPEECH_MFA.open("rb") as annotation:
         response = client.post(
             "/api/audio",
-            files={"file": (LIBRISPEECH.name, handle, "audio/wav")},
+            files={
+                "file": (LIBRISPEECH.name, handle, "audio/wav"),
+                "phone_textgrid": (
+                    LIBRISPEECH_MFA.name,
+                    annotation,
+                    "text/plain",
+                ),
+            },
             data={"fps": "30", "emotion": "neutral"},
         )
     assert response.status_code == 201, response.text
@@ -267,6 +387,8 @@ def test_api_and_cli_real_audio_parity(tmp_path: Path) -> None:
             str(cli_root),
             "--emotion",
             "neutral",
+            "--phone-textgrid",
+            str(LIBRISPEECH_MFA),
         ],
         check=True,
         capture_output=True,
@@ -286,6 +408,13 @@ def test_api_and_cli_real_audio_parity(tmp_path: Path) -> None:
     api_preview = api_job / api_result["artifacts"]["preview"]["name"]
     cli_preview = cli_job / cli_result["artifacts"]["preview"]["name"]
     assert probe_av(api_preview) == probe_av(cli_preview)
+    readiness = client.get(
+        f"/api/jobs/{api_result['job_id']}/production-readiness"
+    )
+    assert readiness.status_code == 200, readiness.text
+    assert readiness.json()["gates"]["performance"]["evidence"][
+        "phone_evidence_artifacts_verified"
+    ] is True
     assert _reference_frame_hashes(api_preview) == _reference_frame_hashes(cli_preview)
 
 

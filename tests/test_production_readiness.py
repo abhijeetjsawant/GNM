@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -6,6 +8,10 @@ from autoanim_gnm.api import create_app
 from autoanim_gnm.production_readiness import (
     SCHEMA_VERSION,
     evaluate_production_readiness,
+)
+from autoanim_gnm.phone_events import (
+    PHONE_EVENT_SCHEMA_VERSION,
+    PHONE_TIMING_REPORT_SCHEMA_VERSION,
 )
 
 
@@ -30,7 +36,15 @@ def _approved_fixture() -> tuple[dict, dict, dict]:
             "character": character_ref,
             "character_pbr_runtime_applied_to_glb": True,
         },
-        "analysis": {"motion_backend": "learned_a2f"},
+        "analysis": {
+            "motion_backend": "learned_a2f",
+            "phone_evidence": {
+                "present": True,
+                "independently_reviewed": True,
+                "production_review_complete": True,
+            },
+        },
+        "phone_timing": {"production_gate": {"passed": True, "failures": []}},
         "animation": {"production_validated": True},
         "quality": {"production_gate": {"passed": True, "failures": []}},
         "oral_validation": {
@@ -83,6 +97,7 @@ def test_complete_release_evidence_can_pass_every_required_gate() -> None:
         performance_manifest_verified=True,
         source_input_verified=True,
         delivery_artifact_verified=True,
+        phone_evidence_artifacts_verified=True,
         character_revision=character,
         direction=direction,
         direction_manifest_verified=True,
@@ -103,6 +118,11 @@ def test_unverified_external_sequence_controls_cannot_enter_production_allowlist
     performance, character, _ = _approved_fixture()
     performance["analysis"] = {
         "motion_backend": "unverified_external_sequence_controls_candidate",
+        "phone_evidence": {
+            "present": True,
+            "independently_reviewed": True,
+            "production_review_complete": True,
+        },
         "sequence_import": {
             "production_qualified": True,
             "worker_authentication_verified": True,
@@ -115,6 +135,7 @@ def test_unverified_external_sequence_controls_cannot_enter_production_allowlist
         performance_manifest_verified=True,
         source_input_verified=True,
         delivery_artifact_verified=True,
+        phone_evidence_artifacts_verified=True,
         character_revision=character,
     )
 
@@ -155,6 +176,98 @@ def test_plausible_audio_take_remains_blocked_without_independent_evidence() -> 
     assert report["gates"]["acting"]["required"] is False
     assert report["gates"]["body"]["required"] is False
     assert report["advisories"] == ["acting", "body"]
+
+
+def test_audio_release_gate_requires_hash_verified_phone_artifacts() -> None:
+    performance, character, _ = _approved_fixture()
+
+    report = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        phone_evidence_artifacts_verified=False,
+        character_revision=character,
+    )
+
+    assert report["publishable"] is False
+    assert report["failures"] == ["performance"]
+    assert report["gates"]["performance"]["evidence"][
+        "phone_evidence_artifacts_verified"
+    ] is False
+
+
+def test_service_rejects_schema_headers_with_missing_atomic_phone_evidence(
+    tmp_path: Path,
+) -> None:
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    service = app.state.service
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"bound source audio")
+    job_id, job_dir, retained, manifest = service.store.start(
+        "audio_animation", source, {}
+    )
+    annotation_path = job_dir / "phone-annotations.TextGrid"
+    annotation_path.write_bytes(b"immutable TextGrid evidence")
+    audio_hash = hashlib.sha256(retained.read_bytes()).hexdigest()
+    textgrid_hash = hashlib.sha256(annotation_path.read_bytes()).hexdigest()
+    event_document = {
+        "schema_version": PHONE_EVENT_SCHEMA_VERSION,
+        "bindings": {
+            "audio_sha256": audio_hash,
+            "textgrid_sha256": textgrid_hash,
+        },
+        "review": {
+            "independently_reviewed": True,
+            "production_review_complete": True,
+        },
+        "event_count": 100,
+    }
+    timing_document = {
+        "schema_version": PHONE_TIMING_REPORT_SCHEMA_VERSION,
+        "annotation_bindings": dict(event_document["bindings"]),
+        "production_gate": {"passed": False, "failures": ["diagnostic_only"]},
+    }
+    (job_dir / "phone-events.json").write_text(
+        json.dumps(event_document), encoding="utf-8"
+    )
+    timing_path = job_dir / "phone-timing-report.json"
+    timing_path.write_text(json.dumps(timing_document), encoding="utf-8")
+    service.store.finish(
+        manifest,
+        job_dir,
+        {
+            "kind": "audio_animation",
+            "analysis": {
+                "motion_backend": "learned_a2f",
+                "phone_evidence": {
+                    "present": True,
+                    "independently_reviewed": True,
+                    "production_review_complete": True,
+                    "event_count": 100,
+                },
+            },
+            "phone_timing": timing_document,
+            "artifacts": {
+                "phone_annotations": annotation_path.name,
+                "phone_events": "phone-events.json",
+                "phone_timing_report": timing_path.name,
+            },
+            "warnings": [],
+        },
+        {},
+    )
+
+    rejected = service.production_readiness(job_id)
+    assert rejected["gates"]["performance"]["evidence"][
+        "phone_evidence_artifacts_verified"
+    ] is False
+
+    timing_path.write_text("{}", encoding="utf-8")
+    tampered = service.production_readiness(job_id)
+    assert tampered["gates"]["performance"]["evidence"][
+        "phone_evidence_artifacts_verified"
+    ] is False
 
 
 def test_video_gate_requires_subject_and_labeled_neutral_calibration() -> None:
@@ -209,6 +322,7 @@ def test_video_gate_requires_subject_and_labeled_neutral_calibration() -> None:
         performance_manifest_verified=True,
         source_input_verified=True,
         delivery_artifact_verified=True,
+        phone_evidence_artifacts_verified=True,
         character_revision=character,
     )
     assert missing_artifact["gates"]["performance"]["passed"] is False

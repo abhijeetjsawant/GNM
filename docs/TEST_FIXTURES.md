@@ -45,6 +45,27 @@ scikit-image astronaut, public-domain official portrait, and opt-in RAVDESS
 fixtures. See `docs/SPEC.md` and `docs/VERIFICATION.md` for their checksums,
 terms, and current validation scope.
 
+### LibriSpeech phone-alignment evidence
+
+`tests/data/librispeech-5703-47212-0000-first-8s-mfa.TextGrid` is the first
+8.0 seconds of the published Montreal Forced Aligner phone track for
+LibriSpeech utterance `5703-47212-0000`. The final interval was clipped from
+8.26 to 8.0 seconds to match the retained audio excerpt; no timings before the
+cut were changed. The source row is pinned to
+`changelinglab/librispeech-segment` revision
+`63399486c618c9b35ba3c3089d12ff59c9ca50c1`. The checked-in TextGrid SHA-256
+is `91a5925a00d0dc771f897cfda932714b1aeff6db3a250d163f77a304c7972365` and
+the bound local WAV SHA-256 is
+`f298d9abc89993008cd4711e1400ee84e5d4bcd01c55672eb514f33b65dc996b`.
+
+The alignment was produced automatically with MFA, not independently reviewed
+by a human, and contains no reviewed articulatory-apex tier. It therefore tests
+real phone transport, normalization, scoring, retained-evidence reconstruction,
+and motion inertia, but can never pass the production timing gate. The
+[published alignment record](https://zenodo.org/records/2619474) and the
+[pinned repackaged dataset](https://huggingface.co/datasets/changelinglab/librispeech-segment/tree/63399486c618c9b35ba3c3089d12ff59c9ca50c1)
+are CC BY 4.0; retain attribution to Loren Lugosch and the cited MFA work.
+
 ## Calibrated synthetic GNM multiview positive control
 
 The retained artifact at

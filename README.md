@@ -44,6 +44,14 @@ scripts/fetch_test_fixtures.sh
 
 autoanim-gnm health --json
 autoanim-gnm audio .cache/autoanim_gnm/fixtures/libri-human-speech-8s.wav --out artifacts/jobs --backend auto
+# Optional long-format Praat/MFA evidence is retained and geometry-scored.
+# It is diagnostic-only until the event-aware trajectory phase is enabled.
+autoanim-gnm audio speech.wav --out artifacts/jobs --backend auto \
+  --phone-textgrid speech.TextGrid
+# Only attest review when every claimed phone/apex was independently checked.
+autoanim-gnm audio speech.wav --out artifacts/jobs --backend auto \
+  --phone-textgrid speech-reviewed.TextGrid --phone-annotations-reviewed \
+  --phone-reviewer "Phonetics QA"
 autoanim-gnm image .cache/autoanim_gnm/fixtures/official-portrait.jpg --out artifacts/jobs
 autoanim-gnm multiview front.jpg left-3q.jpg right-3q.jpg --roles front,left_3q,right_3q --out artifacts/jobs
 
@@ -135,6 +143,7 @@ Research and implementation evidence:
 - [application spec and phase gates](docs/SPEC.md)
 - [production lipsync research, benchmark, and executed plan](docs/PRODUCTION_LIPSYNC_RESEARCH.md)
 - [current audio production audit and remaining gates](docs/AUDIO_PRODUCTION_RESEARCH.md)
+- [integrated production capture execution plan and implementation ledger](docs/PRODUCTION_CAPTURE_EXECUTION_PLAN.md)
 - [expanded multiview, texture, video, viewer research and phased plan](docs/EXPANDED_RESEARCH_AND_PLAN.md)
 - [calibrated multiview camera contract and held-out evaluation](docs/CALIBRATED_MULTIVIEW.md)
 - [interactive viewer design and validation contract](docs/VIEWER_RESEARCH.md)

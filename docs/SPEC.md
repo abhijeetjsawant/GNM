@@ -348,7 +348,7 @@ bit-identical original stream—and the UI labels this accurately.
 
 ```text
 autoanim-gnm health [--json]
-autoanim-gnm audio INPUT --out DIR [--fps 30] [--emotion auto|neutral|joy|sad|anger|fear|disgust|surprise|contempt] [--dialog TEXT] [--rhubarb-bin PATH]
+autoanim-gnm audio INPUT --out DIR [--fps 30] [--emotion auto|neutral|joy|sad|anger|fear|disgust|surprise|contempt] [--dialog TEXT] [--phone-textgrid PATH] [--phone-annotations-reviewed --phone-reviewer NAME] [--rhubarb-bin PATH]
 autoanim-gnm image INPUT --out DIR [--modes 10|20] [--allow-low-confidence]
 autoanim-gnm serve [--host 127.0.0.1] [--port 8000] [--artifacts DIR]
 ```
@@ -364,6 +364,11 @@ Job IDs are 26-character lowercase ULIDs. Jobs are stored at
 `preview.mp4`, and `result.json`; image jobs contain `input.<ext>`, `fit.npz`,
 `fitted.obj`, `mesh-preview.png`, `overlay.png`, and `result.json`. The local MVP never deletes
 jobs automatically; `--artifacts` selects a disposable root when desired.
+When optional phone evidence is supplied, the exact source TextGrid is also
+retained as a hash-ledger attachment before processing; successful jobs expose
+canonical `phone-annotations.TextGrid`, `phone-events.json`, and
+`phone-timing-report.json` artifacts. Release review reparses and recomputes
+those artifacts from the retained bytes and final controls.
 
 Manifest state is `running|succeeded|failed`, and every manifest includes
 schema version, job ID, kind, UTC timestamps, sanitized input name, SHA-256,
@@ -420,6 +425,10 @@ Retained or reproducibly downloaded real fixtures are:
 
 - LibriSpeech `5703-47212-0000.ogg` from librosa's public example-data URL,
   SHA-256 `a284612b46af0535f7e1873758c4387bb8369f6dbbe192ffdec1f171108f98dd`;
+- the matching first-eight-second MFA phone alignment, derived from the CC BY
+  4.0 LibriSpeech Alignments record and pinned dataset revision documented in
+  `docs/TEST_FIXTURES.md`; it is automatic diagnostic evidence, not an
+  independently reviewed timing reference;
 - the lossless `skimage.data.astronaut()` source PNG, SHA-256
   `88431cd9653ccd539741b555fb0a46b61558b301d4110412b5bc28b5e3ea6cb5`;
 - the public-domain official Barack Obama portrait from
@@ -499,15 +508,16 @@ concurrent POST receives 409 `BUSY` and is not queued.
 | Method/path | Fields and success response |
 |---|---|
 | `GET /api/health` | 200 readiness/dependency JSON; health may be degraded |
-| `POST /api/audio` | multipart `file` required; `dialog` optional <=10,000 chars; `emotion` enum default `auto`; `fps` integer 12-60 default 30; 201 manifest |
+| `POST /api/audio` | multipart `file` required; optional `phone_textgrid` <=8 MiB; `phone_annotations_reviewed` and `phone_reviewer` carry explicit review provenance; `dialog` optional <=10,000 chars; `emotion` enum default `auto`; `fps` integer 12-60 default 30; 201 manifest |
 | `POST /api/image` | multipart `file` required; `modes` enum 10/20 default 20; `allow_low_confidence` boolean default false; 201 manifest |
 | `GET /api/jobs/{id}` | 200 successful or failed manifest |
 | `GET /api/jobs/{id}/files/{name}` | 200 allowlisted artifact bytes |
 
 All errors use the manifest error object. Status mapping is 400 for
 `INPUT_INVALID`, `MEDIA_INVALID`, `AUDIO_SILENT`, or `CUE_INVALID`; 404 for
-`JOB_NOT_FOUND`/`ARTIFACT_NOT_FOUND`; 409 for `BUSY`; 413 for `LIMIT_EXCEEDED`;
-422 for `FACE_NOT_FOUND`, `MULTIPLE_FACES`, or `FIT_REJECTED`; 424 for
+`JOB_NOT_FOUND`/`ARTIFACT_NOT_FOUND`; 409 for `BUSY` or `INPUT_CHANGED`; 413 for
+`LIMIT_EXCEEDED`; 422 for `FACE_NOT_FOUND`, `MULTIPLE_FACES`, `FIT_REJECTED`,
+or `PHONE_EVIDENCE_INVALID`; 424 for
 `DEPENDENCY_MISSING`; and 500 for `INTERNAL_ERROR`. Framework validation errors
 are converted to 400 `INPUT_INVALID`.
 

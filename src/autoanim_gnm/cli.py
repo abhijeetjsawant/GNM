@@ -75,6 +75,20 @@ def build_parser() -> argparse.ArgumentParser:
     audio.add_argument("--mouth-aperture-author")
     audio.add_argument("--mouth-aperture-reason")
     audio.add_argument(
+        "--phone-textgrid",
+        type=Path,
+        help="Praat/MFA long TextGrid retained as diagnostic phone-timing evidence",
+    )
+    audio.add_argument(
+        "--phone-annotations-reviewed",
+        action="store_true",
+        help="Attest that the supplied phone/apex annotations were independently reviewed",
+    )
+    audio.add_argument(
+        "--phone-reviewer",
+        help="Reviewer identity (required with --phone-annotations-reviewed)",
+    )
+    audio.add_argument(
         "--backend",
         choices=("auto", "learned", "fallback", "a2f-v3"),
         default="auto",
@@ -307,6 +321,11 @@ def main(argv: list[str] | None = None) -> int:
                 a2f_v3_identity_path=args.v3_identity,
                 a2f_v3_schema_path=args.v3_schema,
                 a2f_v3_profile_dir=args.v3_profile,
+                phone_annotation_path=args.phone_textgrid,
+                phone_annotations_independently_reviewed=(
+                    args.phone_annotations_reviewed
+                ),
+                phone_annotation_reviewer=args.phone_reviewer,
             )
         elif args.command == "image":
             result = service.image(

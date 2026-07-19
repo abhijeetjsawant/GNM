@@ -49,6 +49,11 @@ CACHE = Path(os.environ.get("AUTOANIM_CACHE_DIR", ".cache/autoanim_gnm"))
 FIXTURES = Path(os.environ.get("AUTOANIM_TEST_FIXTURES", CACHE / "fixtures"))
 RAVDESS_ANGRY = FIXTURES / "03-01-05-02-01-01-01.wav"
 LIBRISPEECH = FIXTURES / "libri-human-speech-8s.wav"
+LIBRISPEECH_MFA = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "librispeech-5703-47212-0000-first-8s-mfa.TextGrid"
+)
 RHUBARB = CACHE / "rhubarb/rhubarb"
 A2F_RUNNER = Path("native/a2f-runner/.build/release/a2f-runner")
 A2F_ASSETS = CACHE / "a2f-claire"
@@ -848,6 +853,64 @@ def test_real_librispeech_end_to_end(tmp_path: Path) -> None:
     av = probe_av(tmp_path / "preview.mp4")
     assert av["has_audio"] and av["has_video"]
     assert av["video_frames"] == result["animation"]["frames"]
+
+
+@pytest.mark.skipif(
+    not LIBRISPEECH.exists()
+    or not RHUBARB.exists()
+    or not LIBRISPEECH_MFA.exists(),
+    reason="real phone-evidence E2E fixtures unavailable",
+)
+def test_real_audio_phone_evidence_is_retained_scored_and_motion_inert(
+    tmp_path: Path,
+) -> None:
+    with wave.open(str(LIBRISPEECH), "rb") as source:
+        duration = source.getnframes() / source.getframerate()
+    assert duration == pytest.approx(8.0)
+    baseline_dir = tmp_path / "baseline"
+    evidence_dir = tmp_path / "evidence"
+    baseline = run_audio_pipeline(
+        LIBRISPEECH, baseline_dir, rhubarb_bin=RHUBARB, backend="fallback"
+    )
+    evidence = run_audio_pipeline(
+        LIBRISPEECH,
+        evidence_dir,
+        rhubarb_bin=RHUBARB,
+        backend="fallback",
+        phone_annotation_path=LIBRISPEECH_MFA,
+    )
+
+    assert baseline["analysis"]["phone_evidence"]["present"] is False
+    assert evidence["analysis"]["phone_evidence"] == {
+        "present": True,
+        "independently_reviewed": False,
+        "production_review_complete": False,
+        "event_count": 85,
+        "motion_authored_by_annotations": False,
+    }
+    assert evidence["phone_timing"]["bilabial_event_count"] == 6
+    assert evidence["phone_timing"]["production_gate"]["passed"] is False
+    assert (evidence_dir / "phone-annotations.TextGrid").read_bytes() == (
+        LIBRISPEECH_MFA.read_bytes()
+    )
+    event_document = json.loads(
+        (evidence_dir / "phone-events.json").read_text(encoding="utf-8")
+    )
+    assert event_document["event_count"] == 85
+    assert event_document["events"][0]["source_label"] == "[SIL]"
+    assert event_document["events"][0]["phone"] == "SIL"
+    assert event_document["review"] == {
+        "independently_reviewed": False,
+        "reviewer": None,
+        "all_articulatory_apexes_reviewed": False,
+        "production_review_complete": False,
+    }
+    assert (evidence_dir / "phone-timing-report.json").is_file()
+    with np.load(baseline_dir / "controls.npz", allow_pickle=False) as before:
+        with np.load(evidence_dir / "controls.npz", allow_pickle=False) as after:
+            assert before.files == after.files
+            for name in before.files:
+                np.testing.assert_array_equal(before[name], after[name])
 
 
 @pytest.mark.skipif(
