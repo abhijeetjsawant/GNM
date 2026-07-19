@@ -35,13 +35,36 @@ EMOTION_DEFINITIONS: dict[str, dict[str, float]] = {
 
 
 class ControlRig:
-    def __init__(self, adapter: GNMAdapter, decoder: ExpressionDecoder):
+    def __init__(
+        self,
+        adapter: GNMAdapter,
+        decoder: ExpressionDecoder,
+        *,
+        identity: np.ndarray | None = None,
+    ):
         self.adapter = adapter
         self.decoder = decoder
         if decoder.output_dim != adapter.expression_dim:
             raise ValueError("Decoder and GNM expression dimensions differ")
+        identity_value = (
+            np.zeros(adapter.identity_dim, dtype=np.float32)
+            if identity is None
+            else np.asarray(identity, dtype=np.float32).copy()
+        )
+        if identity_value.shape != (adapter.identity_dim,) or not np.isfinite(identity_value).all():
+            raise ValueError(f"identity must be one finite ({adapter.identity_dim},) vector")
+        identity_value.setflags(write=False)
+        self.identity = identity_value
         self._prototype_cache: dict[str, np.ndarray] = {}
-        neutral_landmarks = self.adapter.compact_template
+        neutral_landmarks = self.adapter.compact_template + np.einsum(
+            "i,ijk->jk",
+            self.identity,
+            self.adapter.compact_identity_basis,
+            optimize=True,
+        )
+        neutral_landmarks = np.asarray(neutral_landmarks, dtype=np.float32)
+        neutral_landmarks.setflags(write=False)
+        self.neutral_landmarks = neutral_landmarks
         self._interocular_distance = float(np.linalg.norm(neutral_landmarks[36] - neutral_landmarks[45]))
         if self._interocular_distance <= 0:
             raise ValueError("GNM interocular distance is invalid")
@@ -117,7 +140,7 @@ class ControlRig:
 
     def compact_landmarks(self, expression: np.ndarray) -> np.ndarray:
         expression = np.asarray(expression, dtype=np.float32)
-        return self.adapter.compact_template + np.einsum(
+        return self.neutral_landmarks + np.einsum(
             "i,ijk->jk", expression, self.adapter.compact_expression_basis, optimize=True
         )
 
@@ -148,14 +171,14 @@ class ControlRig:
         return output, True
 
     def geometry_metrics(self, expression: np.ndarray) -> dict[str, float]:
-        landmarks = self.adapter.landmarks(expression=expression)
+        landmarks = self.adapter.landmarks(identity=self.identity, expression=expression)
         aperture_pairs = ((61, 67), (62, 66), (63, 65))
         aperture = float(
             np.mean([np.linalg.norm(landmarks[a] - landmarks[b]) for a, b in aperture_pairs])
         )
         width = float(np.linalg.norm(landmarks[48] - landmarks[54]))
-        neutral = self.adapter.mesh()
-        posed = self.adapter.mesh(expression=expression)
+        neutral = self.adapter.mesh(identity=self.identity)
+        posed = self.adapter.mesh(identity=self.identity, expression=expression)
         tongue = self.adapter.vertex_group("tongue") > 0
         tongue_motion = float(np.mean(np.linalg.norm(posed[tongue] - neutral[tongue], axis=1)))
         return {

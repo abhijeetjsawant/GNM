@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import struct
 import tempfile
 
 import numpy as np
+from PIL import Image
 
 from gnm.shape.visualization import vertex_colors as vertex_colors_module
 
@@ -220,6 +222,19 @@ class _GLBBuilder:
         self.buffer_views: list[dict[str, int]] = []
         self.accessors: list[dict[str, object]] = []
 
+    def blob(self, payload: bytes) -> int:
+        """Append an untyped binary payload and return its buffer-view index."""
+
+        while len(self.data) % 4:
+            self.data.append(0)
+        offset = len(self.data)
+        self.data.extend(payload)
+        index = len(self.buffer_views)
+        self.buffer_views.append(
+            {"buffer": 0, "byteOffset": offset, "byteLength": len(payload)}
+        )
+        return index
+
     def accessor(
         self,
         array: np.ndarray,
@@ -305,6 +320,8 @@ def export_animated_gnm_glb(
     *,
     max_targets: int = 32,
     mapping_path: str | Path | None = None,
+    texture_path: str | Path | None = None,
+    triangle_uvs: np.ndarray | None = None,
 ) -> AnimatedGLBExport:
     """Compress and export exact evaluated GNM frames as glTF morph animation."""
 
@@ -320,10 +337,15 @@ def export_animated_gnm_glb(
         landmark_indices=adapter.landmark_indices,
         landmark_weights=adapter.landmark_weights,
     )
+    selected_uvs = (
+        np.asarray(adapter.model.triangle_uvs, dtype=np.float32)
+        if triangle_uvs is None
+        else np.asarray(triangle_uvs, dtype=np.float32)
+    )
     split = split_triangle_corner_uvs(
         factor.base_vertices,
         adapter.triangles,
-        np.asarray(adapter.model.triangle_uvs, dtype=np.float32),
+        selected_uvs,
     )
     source_map = split.source_vertices
     base_normals = _vertex_normals(factor.base_vertices, adapter.triangles)
@@ -336,15 +358,10 @@ def export_animated_gnm_glb(
         )
         morph_normals[index] = target_normals[source_map] - split_normals
 
-    colors = np.asarray(
-        vertex_colors_module.get_vertex_colors(gnm_np=adapter.model), dtype=np.float32
-    )[source_map]
-    rgba = np.column_stack(
-        (
-            np.clip(np.rint(colors * 255.0), 0, 255).astype(np.uint8),
-            np.full(len(colors), 255, dtype=np.uint8),
-        )
-    )
+    # GNM stores triangle-corner UVs in lower-left convention. glTF samples
+    # image rows from the upper-left, so flip V exactly once at export.
+    gltf_uvs = split.uvs.copy()
+    gltf_uvs[:, 1] = 1.0 - gltf_uvs[:, 1]
     builder = _GLBBuilder()
     position_accessor = builder.accessor(
         split.positions,
@@ -360,17 +377,10 @@ def export_animated_gnm_glb(
         target=34962,
     )
     uv_accessor = builder.accessor(
-        split.uvs,
+        gltf_uvs,
         component_type=5126,
         accessor_type="VEC2",
         target=34962,
-    )
-    color_accessor = builder.accessor(
-        rgba,
-        component_type=5121,
-        accessor_type="VEC4",
-        target=34962,
-        normalized=True,
     )
     index_type = np.uint16 if len(split.positions) <= np.iinfo(np.uint16).max else np.uint32
     index_component = 5123 if index_type is np.uint16 else 5125
@@ -415,13 +425,31 @@ def export_animated_gnm_glb(
             accessor_type="SCALAR",
         )
 
-    primitive: dict[str, object] = {
-        "attributes": {
+    attributes: dict[str, int] = {
             "POSITION": position_accessor,
             "NORMAL": normal_accessor,
             "TEXCOORD_0": uv_accessor,
-            "COLOR_0": color_accessor,
-        },
+    }
+    if texture_path is None:
+        colors = np.asarray(
+            vertex_colors_module.get_vertex_colors(gnm_np=adapter.model),
+            dtype=np.float32,
+        )[source_map]
+        rgba = np.column_stack(
+            (
+                np.clip(np.rint(colors * 255.0), 0, 255).astype(np.uint8),
+                np.full(len(colors), 255, dtype=np.uint8),
+            )
+        )
+        attributes["COLOR_0"] = builder.accessor(
+            rgba,
+            component_type=5121,
+            accessor_type="VEC4",
+            target=34962,
+            normalized=True,
+        )
+    primitive: dict[str, object] = {
+        "attributes": attributes,
         "indices": index_accessor,
         "material": 0,
         "mode": 4,
@@ -437,6 +465,32 @@ def export_animated_gnm_glb(
     }
     if factor.rank:
         mesh["weights"] = [0.0] * factor.rank
+    material: dict[str, object] = {
+        "name": "GNM character material" if texture_path is not None else "GNM anatomical preview",
+        "pbrMetallicRoughness": {
+            "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
+            "metallicFactor": 0.0,
+            "roughnessFactor": 0.72,
+        },
+        "doubleSided": False,
+    }
+    images: list[dict[str, object]] | None = None
+    textures: list[dict[str, object]] | None = None
+    samplers: list[dict[str, object]] | None = None
+    if texture_path is not None:
+        source_texture = Path(texture_path)
+        if not source_texture.is_file():
+            raise FileNotFoundError(source_texture)
+        with Image.open(source_texture) as opened:
+            image = opened.convert("RGBA")
+            encoded = BytesIO()
+            image.save(encoded, format="PNG", optimize=False, compress_level=9)
+        image_view = builder.blob(encoded.getvalue())
+        images = [{"name": "Character base color", "bufferView": image_view, "mimeType": "image/png"}]
+        samplers = [{"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497}]
+        textures = [{"name": "Character base color", "sampler": 0, "source": 0}]
+        material["pbrMetallicRoughness"]["baseColorTexture"] = {"index": 0}
+
     document: dict[str, object] = {
         "asset": {
             "version": "2.0",
@@ -457,21 +511,15 @@ def export_animated_gnm_glb(
         "scenes": [{"nodes": [0]}],
         "nodes": [{"name": "AutoAnim_GNM_Head_v3", "mesh": 0}],
         "meshes": [mesh],
-        "materials": [
-            {
-                "name": "GNM anatomical preview",
-                "pbrMetallicRoughness": {
-                    "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
-                    "metallicFactor": 0.0,
-                    "roughnessFactor": 0.72,
-                },
-                "doubleSided": False,
-            }
-        ],
+        "materials": [material],
         "buffers": [{"byteLength": len(builder.data)}],
         "bufferViews": builder.buffer_views,
         "accessors": builder.accessors,
     }
+    if images is not None and textures is not None and samplers is not None:
+        document["images"] = images
+        document["textures"] = textures
+        document["samplers"] = samplers
     if factor.rank and time_accessor is not None and weight_accessor is not None:
         document["animations"] = [
             {
@@ -496,6 +544,8 @@ def export_animated_gnm_glb(
         glb_vertex_to_gnm_vertex=source_map,
         triangles=split.triangles,
         uvs=split.uvs,
+        internal_uvs_lower_left=split.uvs,
+        gltf_uvs_upper_left=gltf_uvs,
         timestamps=times,
         morph_weights=factor.weights,
     )

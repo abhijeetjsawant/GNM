@@ -20,7 +20,7 @@ from .serialization import write_npz
 from .video_capture import CaptureTrack, MONOCULAR_SCALE_CAVEAT
 
 
-PERFORMANCE_SCHEMA_VERSION = "autoanim.gnm-performance.v2"
+PERFORMANCE_SCHEMA_VERSION = "autoanim.gnm-performance.v3"
 NEUTRAL_CALIBRATION_CAVEAT = (
     "Neutral calibration is selected and scored from high-quality low-activity frames, but "
     "MediaPipe blendshape bias is person/camera dependent and a heuristic pass is not a "
@@ -60,6 +60,10 @@ SOURCE_INTEROCULAR_PAIR = (33, 263)
 SOURCE_CONTACT_SEAL_GAP_INTEROCULAR = 0.030
 SOURCE_CONTACT_RELEASE_GAP_INTEROCULAR = 0.055
 SOURCE_CONTACT_CORRECTION_MIN_CONFIDENCE = 0.65
+SOURCE_APERTURE_METHOD = "mediapipe_inner_lip_geometry_identity_calibrated_v1"
+SOURCE_APERTURE_MIN_GAP_INTEROCULAR = 0.055
+SOURCE_APERTURE_MAX_TARGET_INTEROCULAR = 0.250
+SOURCE_APERTURE_TARGET_TOLERANCE_INTEROCULAR = 0.004
 
 
 def _readonly_array(value: object, dtype: np.dtype[Any]) -> np.ndarray:
@@ -157,6 +161,7 @@ class PerformanceProvenance:
     quarantined_expression_controls: tuple[str, ...]
     contact_source_method: str
     contact_calibration_hash: str | None
+    aperture_source_method: str
     negative_baseline_residual_clipped_fraction: float
     caveats: tuple[str, ...]
 
@@ -165,6 +170,8 @@ class PerformanceProvenance:
             raise ValueError("Negative baseline residual fraction must lie in [0,1]")
         if not self.contact_source_method:
             raise ValueError("Video contact source method is required")
+        if not self.aperture_source_method:
+            raise ValueError("Video aperture source method is required")
         if len(set(self.quarantined_expression_controls)) != len(
             self.quarantined_expression_controls
         ):
@@ -202,6 +209,7 @@ class PerformanceProvenance:
             ),
             "contact_source_method": self.contact_source_method,
             "contact_calibration_hash": self.contact_calibration_hash,
+            "aperture_source_method": self.aperture_source_method,
             "negative_baseline_residual_clipped_fraction": (
                 self.negative_baseline_residual_clipped_fraction
             ),
@@ -247,6 +255,9 @@ class GNMPerformanceTrack:
     lip_contact_target_gap_interocular: np.ndarray
     contact_correction_applied: np.ndarray
     lip_contact_attained: np.ndarray
+    lip_aperture_target_gap_interocular: np.ndarray
+    lip_aperture_correction_applied: np.ndarray
+    lip_aperture_target_attained: np.ndarray
     provenance: PerformanceProvenance
     schema_version: str = PERFORMANCE_SCHEMA_VERSION
 
@@ -281,6 +292,18 @@ class GNMPerformanceTrack:
                 np.bool_,
             ),
             "lip_contact_attained": (self.lip_contact_attained, np.bool_),
+            "lip_aperture_target_gap_interocular": (
+                self.lip_aperture_target_gap_interocular,
+                np.float32,
+            ),
+            "lip_aperture_correction_applied": (
+                self.lip_aperture_correction_applied,
+                np.bool_,
+            ),
+            "lip_aperture_target_attained": (
+                self.lip_aperture_target_attained,
+                np.bool_,
+            ),
         }
         for name, (value, dtype) in arrays.items():
             object.__setattr__(self, name, _readonly_array(value, dtype))
@@ -304,6 +327,9 @@ class GNMPerformanceTrack:
             self.lip_contact_target_gap_interocular,
             self.contact_correction_applied,
             self.lip_contact_attained,
+            self.lip_aperture_target_gap_interocular,
+            self.lip_aperture_correction_applied,
+            self.lip_aperture_target_attained,
         )
         if any(value.shape != (count,) for value in contact_arrays):
             raise ValueError("GNM contact metadata has invalid shape")
@@ -324,6 +350,7 @@ class GNMPerformanceTrack:
                 self.source_lip_gap_interocular,
                 self.source_lip_contact_confidence,
                 self.lip_contact_target_gap_interocular,
+                self.lip_aperture_target_gap_interocular,
             )
         ):
             raise ValueError("GNM performance controls must be nonempty and finite")
@@ -413,7 +440,7 @@ def source_lip_contact_geometry(
 
 def _rig_lip_gap_interocular(rig: ControlRig, expression: np.ndarray) -> float:
     landmarks = rig.compact_landmarks(np.asarray(expression, dtype=np.float32))
-    neutral = rig.adapter.compact_template
+    neutral = rig.neutral_landmarks
     interocular = float(np.linalg.norm(neutral[36] - neutral[45]))
     if not np.isfinite(interocular) or interocular <= 0.0:
         raise AutoAnimError("INTERNAL_ERROR", "GNM interocular distance is invalid")
@@ -425,6 +452,95 @@ def _rig_lip_gap_interocular(rig: ControlRig, expression: np.ndarray) -> float:
             ]
         )
     )
+
+
+def _apply_lip_aperture_match(
+    rig: ControlRig,
+    expression: np.ndarray,
+    calibration: LipContactCalibration,
+    *,
+    source_gap_interocular: float,
+    quality: float,
+) -> tuple[np.ndarray, bool, float]:
+    """Open the character toward observed inner-lip geometry without changing timing.
+
+    The same identity-calibrated compact-landmark inverse used for contact is
+    driven in the opposite direction. The solve preserves the current
+    left/right lip shape, modifies only GNM's lower-face block, bounds upper-
+    face drift, and caps monocular 2D targets at a plausible production-review
+    envelope. This is a measurable aperture correction, not a jaw/collision
+    model; physical oral validation remains a separate gate.
+    """
+
+    original = np.asarray(expression, dtype=np.float32)
+    source_gap = float(source_gap_interocular)
+    confidence = float(np.clip(quality, 0.0, 1.0))
+    if (
+        not np.isfinite(source_gap)
+        or source_gap < SOURCE_APERTURE_MIN_GAP_INTEROCULAR
+        or confidence < 0.20
+    ):
+        return original.copy(), False, 0.0
+    landmarks = rig.compact_landmarks(original)
+    neutral = rig.neutral_landmarks
+    interocular = float(np.linalg.norm(neutral[36] - neutral[45]))
+    current_gap = _rig_lip_gap_interocular(rig, original)
+    observed_target = min(source_gap, SOURCE_APERTURE_MAX_TARGET_INTEROCULAR)
+    target_gap = current_gap + confidence * (observed_target - current_gap)
+    if target_gap <= current_gap + 1.0e-4:
+        return original.copy(), False, float(max(target_gap, 0.0))
+
+    pairs = ((61, 67), (62, 66), (63, 65))
+    desired = np.zeros((68, 3), dtype=np.float32)
+    current_pair_gaps = np.asarray(
+        [
+            np.linalg.norm(landmarks[upper] - landmarks[lower]) / interocular
+            for upper, lower in pairs
+        ],
+        dtype=np.float32,
+    )
+    pair_targets = current_pair_gaps + np.float32(target_gap - current_gap)
+    for pair_target, (upper, lower) in zip(pair_targets, pairs, strict=True):
+        separation = landmarks[lower] - landmarks[upper]
+        length = float(np.linalg.norm(separation))
+        wanted = float(max(pair_target, 0.0) * interocular)
+        if length <= 1.0e-9 or wanted <= length:
+            continue
+        expansion = separation * np.float32(wanted / length - 1.0)
+        desired[upper] -= np.float32(0.5) * expansion
+        desired[lower] += np.float32(0.5) * expansion
+    inner_indices = np.asarray((61, 62, 63, 65, 66, 67), dtype=np.int64)
+    solved = np.asarray(calibration.inner_response, dtype=np.float32) @ desired[
+        inner_indices
+    ].reshape(-1)
+    if not np.isfinite(solved).all() or np.max(np.abs(solved), initial=0.0) <= 1.0e-9:
+        return original.copy(), False, float(target_gap)
+    direction = np.zeros(rig.adapter.expression_dim, dtype=np.float32)
+    direction[200:350] = solved
+    zero = np.zeros_like(original)
+
+    best = original.copy()
+    best_gap = current_gap
+    for alpha in np.linspace(0.05, 1.50, 30, dtype=np.float32):
+        candidate, _ = rig.compose(original + alpha * direction, zero)
+        candidate_landmarks = rig.compact_landmarks(candidate)
+        upper_face_drift = float(
+            np.max(
+                np.linalg.norm(candidate_landmarks[17:48] - landmarks[17:48], axis=1),
+                initial=0.0,
+            )
+            / interocular
+        )
+        if upper_face_drift > 0.002:
+            continue
+        candidate_gap = _rig_lip_gap_interocular(rig, candidate)
+        if candidate_gap > best_gap:
+            best = candidate
+            best_gap = candidate_gap
+        if candidate_gap >= target_gap:
+            break
+    applied = best_gap > current_gap + 1.0e-4
+    return best if applied else original.copy(), applied, float(target_gap)
 
 
 def _adaptive_alpha(
@@ -922,6 +1038,9 @@ def retarget_capture(
     lip_contact_target_gap = np.zeros(track.frame_count, dtype=np.float32)
     contact_correction_applied = np.zeros(track.frame_count, dtype=bool)
     lip_contact_attained = np.zeros(track.frame_count, dtype=bool)
+    lip_aperture_target_gap = np.zeros(track.frame_count, dtype=np.float32)
+    lip_aperture_correction_applied = np.zeros(track.frame_count, dtype=bool)
+    lip_aperture_target_attained = np.zeros(track.frame_count, dtype=bool)
     if contact_rig is not None and lip_contact_calibration is not None:
         if contact_rig.adapter.expression_dim != expression.shape[1]:
             raise AutoAnimError(
@@ -929,6 +1048,21 @@ def retarget_capture(
                 "Video contact rig does not match the retargeted GNM expression space",
             )
         for frame in range(track.frame_count):
+            if (
+                source_lip_geometry_valid[frame]
+                and source_lip_contact_confidence[frame] < 0.12
+            ):
+                (
+                    expression[frame],
+                    lip_aperture_correction_applied[frame],
+                    lip_aperture_target_gap[frame],
+                ) = _apply_lip_aperture_match(
+                    contact_rig,
+                    expression[frame],
+                    lip_contact_calibration,
+                    source_gap_interocular=float(source_lip_gap[frame]),
+                    quality=float(filtered.effective_quality[frame]),
+                )
             (
                 expression[frame],
                 contact_correction_applied[frame],
@@ -948,6 +1082,12 @@ def retarget_capture(
                 lip_contact_attained[frame] = (
                     _rig_lip_gap_interocular(contact_rig, expression[frame])
                     <= float(lip_contact_target_gap[frame]) + 1.0e-3
+                )
+            if lip_aperture_target_gap[frame] > 0.0:
+                lip_aperture_target_attained[frame] = (
+                    _rig_lip_gap_interocular(contact_rig, expression[frame])
+                    >= float(lip_aperture_target_gap[frame])
+                    - SOURCE_APERTURE_TARGET_TOLERANCE_INTEROCULAR
                 )
     rotations, translation, baseline_indices = _pose_from_transforms(
         track,
@@ -996,6 +1136,7 @@ def retarget_capture(
             if lip_contact_calibration is None
             else lip_contact_calibration.calibration_hash
         ),
+        aperture_source_method=SOURCE_APERTURE_METHOD,
         negative_baseline_residual_clipped_fraction=negative_residual_fraction,
         caveats=(
             MONOCULAR_SCALE_CAVEAT,
@@ -1028,6 +1169,9 @@ def retarget_capture(
         lip_contact_target_gap_interocular=lip_contact_target_gap,
         contact_correction_applied=contact_correction_applied,
         lip_contact_attained=lip_contact_attained,
+        lip_aperture_target_gap_interocular=lip_aperture_target_gap,
+        lip_aperture_correction_applied=lip_aperture_correction_applied,
+        lip_aperture_target_attained=lip_aperture_target_attained,
         provenance=provenance,
     )
 
@@ -1053,6 +1197,11 @@ def write_performance_npz(path: str | Path, track: GNMPerformanceTrack) -> Path:
         lip_contact_target_gap_interocular=track.lip_contact_target_gap_interocular,
         contact_correction_applied=track.contact_correction_applied,
         lip_contact_attained=track.lip_contact_attained,
+        lip_aperture_target_gap_interocular=(
+            track.lip_aperture_target_gap_interocular
+        ),
+        lip_aperture_correction_applied=track.lip_aperture_correction_applied,
+        lip_aperture_target_attained=track.lip_aperture_target_attained,
         provenance_json=np.asarray(provenance),
     )
 
@@ -1103,6 +1252,15 @@ def write_performance_jsonl(path: str | Path, track: GNMPerformanceTrack) -> Pat
                     track.contact_correction_applied[index]
                 ),
                 "lipContactAttained": bool(track.lip_contact_attained[index]),
+                "lipApertureTargetGapInterocular": float(
+                    track.lip_aperture_target_gap_interocular[index]
+                ),
+                "lipApertureCorrectionApplied": bool(
+                    track.lip_aperture_correction_applied[index]
+                ),
+                "lipApertureTargetAttained": bool(
+                    track.lip_aperture_target_attained[index]
+                ),
                 "expression": track.expression[index].tolist(),
                 "rotations": track.rotations[index].tolist(),
                 "translation": track.translation[index].tolist(),

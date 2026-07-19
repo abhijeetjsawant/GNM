@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from pathlib import Path
 import os
+from typing import Any
 
 import numpy as np
 from scipy.signal import savgol_filter
@@ -542,11 +543,22 @@ def run_audio_pipeline(
     a2f_asset_dir: str | Path | None = None,
     a2f_offline: bool = False,
     emotion_strength: float = 0.65,
+    identity: np.ndarray | None = None,
+    texture_path: str | Path | None = None,
+    texture_triangle_uvs: np.ndarray | None = None,
+    character_ref: dict[str, Any] | None = None,
 ) -> dict:
     if backend not in {"auto", "learned", "fallback"}:
         raise AutoAnimError("INPUT_INVALID", "Backend must be auto, learned, or fallback")
     if not np.isfinite(emotion_strength) or not 0.0 <= emotion_strength <= 1.0:
         raise AutoAnimError("INPUT_INVALID", "Emotion strength must be in [0,1]")
+    identity_value = (
+        np.zeros(253, dtype=np.float32)
+        if identity is None
+        else np.asarray(identity, dtype=np.float32).copy()
+    )
+    if identity_value.shape != (253,) or not np.isfinite(identity_value).all():
+        raise AutoAnimError("INPUT_INVALID", "Character identity must be one finite (253,) vector")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     normalized_path = output_dir / "normalized.wav"
@@ -562,7 +574,10 @@ def run_audio_pipeline(
     prosody = extract_prosody(normalized_path, cues, fps)
     adapter = GNMAdapter()
     decoder = ExpressionDecoder("gnm/shape/data/semantic_sampler/expression_decoder_model.h5")
-    rig = ControlRig(adapter, decoder)
+    rig = ControlRig(adapter, decoder, identity=identity_value)
+    # Calibrate against the selected identity once so automatic and explicit
+    # fallback retain the same bilabial-contact contract as learned audio.
+    lip_contact_calibration = calibrate_lip_contact(rig)
     learned_error: str | None = None
     learned_artifacts: dict[str, str] = {}
     motion_backend = "procedural_fallback"
@@ -655,7 +670,6 @@ def run_audio_pipeline(
                 asset_root,
                 adapter=adapter,
             )
-            lip_contact_calibration = calibrate_lip_contact(rig)
             conditioning.update(
                 {
                     "lip_contact_character_neutral_gap_interocular": (
@@ -855,9 +869,25 @@ def run_audio_pipeline(
                     "DEPENDENCY_MISSING" if isinstance(exc, A2FRunnerError) else "INTERNAL_ERROR",
                     f"Learned Audio2Face backend failed: {exc}",
                 ) from exc
-            track = compose_animation(cues, duration, fps, rig, analysis.emotion, prosody)
+            track = compose_animation(
+                cues,
+                duration,
+                fps,
+                rig,
+                analysis.emotion,
+                prosody,
+                lip_contact_calibration=lip_contact_calibration,
+            )
     else:
-        track = compose_animation(cues, duration, fps, rig, analysis.emotion, prosody)
+        track = compose_animation(
+            cues,
+            duration,
+            fps,
+            rig,
+            analysis.emotion,
+            prosody,
+            lip_contact_calibration=lip_contact_calibration,
+        )
     apertures = [
         _mouth_aperture(rig.compact_landmarks(frame)) for frame in track.expression
     ]
@@ -911,7 +941,12 @@ def run_audio_pipeline(
             "mouth_aperture": apertures,
         },
     )
-    silent_path = render_silent_video(track, adapter, output_dir / "preview-silent.mp4")
+    silent_path = render_silent_video(
+        track,
+        adapter,
+        output_dir / "preview-silent.mp4",
+        identity=identity_value,
+    )
     preview_path = mux_audio(silent_path, normalized_path, output_dir / "preview.mp4")
     av = probe_av(preview_path)
     offset_frames = abs(float(av["video_duration"]) - duration) * fps
@@ -928,6 +963,7 @@ def run_audio_pipeline(
     viewer_frames = np.stack(
         [
             adapter.mesh(
+                identity=identity_value,
                 expression=expression,
                 rotations=rotations,
                 translation=translation,
@@ -946,6 +982,8 @@ def run_audio_pipeline(
             viewer_frames,
             track.timestamps,
             mapping_path=output_dir / "animation-glb-mapping.npz",
+            texture_path=texture_path,
+            triangle_uvs=texture_triangle_uvs,
         )
         viewer_status = "ready" if viewer_export.rank else "static_only"
         viewer_reconstruction = {
@@ -967,6 +1005,8 @@ def run_audio_pipeline(
             adapter,
             viewer_frames[0],
             mapping_path=output_dir / "animation-glb-mapping.npz",
+            texture_path=texture_path,
+            triangle_uvs=texture_triangle_uvs,
         )
         viewer_status = "static_only"
         viewer_warning = "VIEWER_RECONSTRUCTION_LIMIT"
@@ -1023,10 +1063,22 @@ def run_audio_pipeline(
         warnings.append("COEFFICIENT_SATURATED")
     if viewer_warning is not None:
         warnings.append(viewer_warning)
+    if texture_path is not None:
+        warnings.append(
+            "CHARACTER_TEXTURE_GLTF_ONLY: the interactive GLB uses the saved texture; "
+            "the downloadable MP4 remains an untextured diagnostic preview."
+        )
     result = {
         "kind": "audio_animation",
         "status": "succeeded",
-        "model": {"gnm_version": "3.0", "expression_dim": adapter.expression_dim},
+        "model": {
+            "gnm_version": "3.0",
+            "identity_dim": adapter.identity_dim,
+            "expression_dim": adapter.expression_dim,
+            "character": character_ref,
+            "character_texture_applied_to_glb": texture_path is not None,
+            "preview_texture_applied": False,
+        },
         "audio": {"duration_s": round(duration, 8), "sample_rate": 16000},
         "analysis": {
             "backend": backend_name,
@@ -1043,7 +1095,7 @@ def run_audio_pipeline(
             "lip_contact": (
                 "learned_evidence_plus_character_spatial_contact_v3_anchored"
                 if motion_backend == "learned_a2f"
-                else "not_applicable"
+                else "rhubarb_bilabial_plus_character_spatial_contact_v1"
             ),
             "quality_speech_mask": "vad_binary_symmetric_hangover_2_frames",
             "emotion": analysis.emotion,

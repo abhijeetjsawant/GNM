@@ -8,6 +8,8 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
+from typing import Any
 
 import cv2
 import mediapipe
@@ -15,9 +17,21 @@ import numpy as np
 
 from . import __version__
 from .a2f import resolve_a2f_runner
-from .artifacts import JobStore
+from .acting import ActingDirector, TICKS_PER_SECOND
+from .artifacts import JobStore, sha256
+from .characters import CharacterRevision, CharacterStore
 from .audio import resolve_rhubarb
 from .audio_pipeline import _resolve_a2f_assets, run_audio_pipeline
+from .body import (
+    ATTACHMENT_SCHEMA_VERSION,
+    BODY_TRACK_LIMITATIONS,
+    BODY_TRACK_SCHEMA_VERSION,
+    CANONICAL_HUMANOID,
+    MAX_DURATION_TICKS,
+    SKELETON_SCHEMA_VERSION,
+    attachment_contract,
+    compile_body_track,
+)
 from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .image import validate_model
@@ -25,6 +39,7 @@ from .image_pipeline import run_image_pipeline
 from .multiview_pipeline import run_multiview_pipeline
 from .video_pipeline import run_video_pipeline
 from .viewer import default_viewer_vendor_root, viewer_vendor_health
+from .serialization import write_json, write_npz
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -70,8 +85,17 @@ class ApplicationService:
         a2f_asset_dir: str | Path | None = None,
         a2f_offline: bool = False,
         viewer_vendor_root: str | Path | None = None,
+        character_root: str | Path | None = None,
     ):
         self.store = JobStore(artifact_root)
+        self.characters = CharacterStore(
+            (
+                Path(character_root)
+                if character_root is not None
+                else self.store.root.parent / "characters"
+            ),
+            self.store,
+        )
         self.model_path = Path(model_path) if model_path is not None else default_model_path()
         self.rhubarb_bin = Path(rhubarb_bin) if rhubarb_bin is not None else None
         self.a2f_runner = Path(a2f_runner) if a2f_runner is not None else None
@@ -149,13 +173,22 @@ class ApplicationService:
         backend: str = "auto",
         emotion_strength: float = 0.65,
         input_name: str | None = None,
+        character_id: str | None = None,
+        character_revision_id: str | None = None,
+        usage_scope: str = "production",
     ) -> dict:
+        character = self._resolve_character(
+            character_id, character_revision_id, usage_scope=usage_scope
+        )
         configuration = {
             "fps": fps,
             "emotion": emotion,
             "emotion_strength": emotion_strength,
             "dialog": dialog,
             "backend": backend,
+            "character_id": character.character_id if character is not None else None,
+            "character_revision_id": character.revision_id if character is not None else None,
+            "usage_scope": usage_scope,
         }
         job_id, job_dir, retained, manifest = self.store.start(
             "audio_animation", input_path, configuration, original_name=input_name
@@ -174,6 +207,12 @@ class ApplicationService:
                 a2f_runner=self.a2f_runner,
                 a2f_asset_dir=self.a2f_asset_dir,
                 a2f_offline=self.a2f_offline,
+                identity=character.identity if character is not None else None,
+                texture_path=character.texture_path if character is not None else None,
+                texture_triangle_uvs=(
+                    character.triangle_uvs if character is not None else None
+                ),
+                character_ref=self._character_ref(character),
             )
             return self.store.finish(manifest, job_dir, result, versions)
         except AutoAnimError as exc:
@@ -219,16 +258,25 @@ class ApplicationService:
         input_path: str | Path,
         *,
         input_name: str | None = None,
+        character_id: str | None = None,
+        character_revision_id: str | None = None,
+        usage_scope: str = "production",
     ) -> dict:
+        character = self._resolve_character(
+            character_id, character_revision_id, usage_scope=usage_scope
+        )
         configuration = {
             "backend": "mediapipe",
             "retargeter": (
-                "geometry_calibrated_dense_contact_v2"
+                "geometry_calibrated_dense_contact_aperture_v3"
                 if self.a2f_asset_dir is not None
-                else "semantic_prototype_contact_v2_fallback"
+                else "semantic_prototype_contact_aperture_v3_fallback"
             ),
             "neutral_baseline_seconds": 0.2,
             "profile": "offline",
+            "character_id": character.character_id if character is not None else None,
+            "character_revision_id": character.revision_id if character is not None else None,
+            "usage_scope": usage_scope,
         }
         _, job_dir, retained, manifest = self.store.start(
             "video_performance", input_path, configuration, original_name=input_name
@@ -240,6 +288,12 @@ class ApplicationService:
                 job_dir,
                 model_path=self.model_path,
                 a2f_asset_dir=self.a2f_asset_dir,
+                identity=character.identity if character is not None else None,
+                texture_path=character.texture_path if character is not None else None,
+                texture_triangle_uvs=(
+                    character.triangle_uvs if character is not None else None
+                ),
+                character_ref=self._character_ref(character),
             )
             return self.store.finish(manifest, job_dir, result, versions)
         except AutoAnimError as exc:
@@ -249,6 +303,355 @@ class ApplicationService:
             error = AutoAnimError("INTERNAL_ERROR", str(exc))
             self.store.fail(manifest, job_dir, error.as_dict(), versions)
             raise error from exc
+
+    def promote_character(
+        self,
+        job_id: str,
+        *,
+        name: str,
+        consent_attested: bool,
+        consent_subject: str,
+        consent_attester: str,
+        consent_scope: str,
+        consent_evidence_ref: str,
+        consent_evidence_sha256: str,
+        consent_expires_at: str | None = None,
+        consent_note: str | None = None,
+    ) -> dict:
+        return self.characters.promote(
+            job_id,
+            name=name,
+            consent_attested=consent_attested,
+            consent_subject=consent_subject,
+            consent_attester=consent_attester,
+            consent_scope=consent_scope,
+            consent_evidence_ref=consent_evidence_ref,
+            consent_evidence_sha256=consent_evidence_sha256,
+            consent_expires_at=consent_expires_at,
+            consent_note=consent_note,
+        )
+
+    def direct(
+        self,
+        source_job_id: str,
+        *,
+        provider: str,
+        instructions: str,
+        transcript: str = "",
+        character_id: str | None = None,
+        character_revision_id: str | None = None,
+        usage_scope: str = "production",
+        model: str | None = None,
+        timeout_seconds: int = 180,
+        provider_executable: str | Path | None = None,
+        max_budget_usd: float | None = None,
+    ) -> dict:
+        try:
+            source = self.store.require_sealed(source_job_id)
+        except FileNotFoundError as exc:
+            raise AutoAnimError("JOB_NOT_FOUND", "Source performance job was not found") from exc
+        if source.get("status") != "succeeded" or source.get("kind") not in {
+            "audio_animation",
+            "video_performance",
+        }:
+            raise AutoAnimError(
+                "INPUT_INVALID",
+                "Acting direction requires a successful audio-animation or video-performance job",
+            )
+        character = self._resolve_character(
+            character_id, character_revision_id, usage_scope=usage_scope
+        )
+        duration = (
+            source.get("audio", {}).get("duration_s")
+            if source.get("kind") == "audio_animation"
+            else source.get("capture", {}).get("duration_s")
+        )
+        if not isinstance(duration, (int, float)) or duration <= 0:
+            raise AutoAnimError("INTERNAL_ERROR", "Source job has no valid performance duration")
+        duration_ticks = max(1, int(round(float(duration) * TICKS_PER_SECOND)))
+        if duration_ticks > MAX_DURATION_TICKS:
+            raise AutoAnimError(
+                "LIMIT_EXCEEDED",
+                "Acting/body preview is limited to 30 minutes per take",
+                {
+                    "duration_ticks": duration_ticks,
+                    "maximum_duration_ticks": MAX_DURATION_TICKS,
+                },
+            )
+        performance_context = self._acting_context(source_job_id, source)
+        context_document = {
+            "schema_version": "autoanim.direction-input/1.0",
+            "source_job_id": source_job_id,
+            "source_job_kind": source["kind"],
+            "source_input_sha256": source.get("input", {}).get("sha256"),
+            "duration_seconds": duration,
+            "performance": performance_context,
+            "character": self._character_ref(character),
+        }
+        with tempfile.TemporaryDirectory(prefix="autoanim-direction-input-") as temporary:
+            context_path = write_json(Path(temporary) / "direction-context.json", context_document)
+            _, job_dir, _, manifest = self.store.start(
+                "acting_direction",
+                context_path,
+                {
+                    "source_job_id": source_job_id,
+                    "provider": provider,
+                    "model": model,
+                    "timeout_seconds": timeout_seconds,
+                    "character_id": character.character_id if character is not None else None,
+                    "character_revision_id": character.revision_id if character is not None else None,
+                    "usage_scope": usage_scope,
+                },
+                original_name="direction-context.json",
+            )
+        versions = runtime_versions()
+        try:
+            directed = ActingDirector(
+                provider,  # type: ignore[arg-type]
+                executable=provider_executable,
+                timeout_seconds=timeout_seconds,
+                model=model,
+                max_budget_usd=max_budget_usd,
+            ).direct(
+                job_dir,
+                duration_seconds=float(duration),
+                transcript=transcript,
+                instructions=instructions,
+                performance_context=performance_context,
+                character_ref=self._character_ref(character),
+            )
+            body_track = compile_body_track(
+                directed.plan,
+                duration_ticks=duration_ticks,
+            )
+            body_arrays_path = write_npz(
+                job_dir / "body-track.npz",
+                ticks=body_track.ticks,
+                root_translation_m=body_track.root_translation_m,
+                local_rotations_xyzw=body_track.local_rotations_xyzw,
+                foot_contacts=body_track.foot_contacts,
+                gaze_direction_body=body_track.gaze_direction_body,
+                gaze_strength=body_track.gaze_strength,
+                gnm_eye_rotations_xyzw=body_track.gnm_eye_rotations_xyzw,
+            )
+            body_manifest = {
+                "schema_version": BODY_TRACK_SCHEMA_VERSION,
+                "skeleton_schema_version": SKELETON_SCHEMA_VERSION,
+                "attachment_schema_version": ATTACHMENT_SCHEMA_VERSION,
+                "approval_status": "unapproved_preview",
+                "timebase": {
+                    "ticks_per_second": body_track.ticks_per_second,
+                    "duration_ticks": body_track.duration_ticks,
+                    "sample_rate_hz": body_track.sample_rate_hz,
+                },
+                "joint_names": list(body_track.joint_names),
+                "source_plan_sha256": body_track.source_plan_sha256,
+                "limitations": list(BODY_TRACK_LIMITATIONS),
+                "arrays": {
+                    "artifact": "body-track.npz",
+                    "sha256": sha256(body_arrays_path),
+                    "bytes": body_arrays_path.stat().st_size,
+                    "names": {
+                        "ticks": list(body_track.ticks.shape),
+                        "root_translation_m": list(body_track.root_translation_m.shape),
+                        "local_rotations_xyzw": list(
+                            body_track.local_rotations_xyzw.shape
+                        ),
+                        "foot_contacts": list(body_track.foot_contacts.shape),
+                        "gaze_direction_body": list(
+                            body_track.gaze_direction_body.shape
+                        ),
+                        "gaze_strength": list(body_track.gaze_strength.shape),
+                        "gnm_eye_rotations_xyzw": list(
+                            body_track.gnm_eye_rotations_xyzw.shape
+                        ),
+                    },
+                },
+            }
+            write_json(job_dir / "body-track.json", body_manifest)
+            write_json(job_dir / "humanoid-skeleton.json", CANONICAL_HUMANOID.as_dict())
+            write_json(job_dir / "gnm-body-attachment.json", attachment_contract())
+            result = {
+                "kind": "acting_direction",
+                "status": "succeeded",
+                "source": {
+                    "job_id": source_job_id,
+                    "kind": source["kind"],
+                    "motion_evidence": performance_context["motion_evidence"],
+                    "audio_is_animation_source": source["kind"] == "audio_animation",
+                    "video_visual_tracking_is_animation_source": source["kind"] == "video_performance",
+                },
+                "model": {
+                    "provider": provider,
+                    "requested_model": model,
+                    "character": self._character_ref(character),
+                },
+                "direction": {
+                    "summary": directed.plan["summary"],
+                    "beat_count": len(directed.plan["beats"]),
+                    "ticks_per_second": directed.envelope["ticks_per_second"],
+                    "duration_ticks": directed.envelope["duration_ticks"],
+                    "tools_allowed": False,
+                    "lipsync_override_allowed": False,
+                    "body_preview_compiled": True,
+                    "body_preview_approval_status": "unapproved_preview",
+                    "body_track_sample_rate_hz": body_track.sample_rate_hz,
+                    "production_validated": False,
+                },
+                "metrics": {
+                    "provider_duration_seconds": directed.envelope["duration_seconds"],
+                    "performance_window_count": len(performance_context["windows"]),
+                    "body_track_sample_count": int(body_track.ticks.size),
+                    "body_foot_contact_fraction": float(
+                        np.mean(body_track.foot_contacts)
+                    ),
+                },
+                "artifacts": {
+                    **directed.artifacts,
+                    "body_track": "body-track.npz",
+                    "body_track_manifest": "body-track.json",
+                    "humanoid_skeleton": "humanoid-skeleton.json",
+                    "gnm_body_attachment": "gnm-body-attachment.json",
+                },
+                "warnings": [
+                    "LLM_DIRECTION_IS_A_PROPOSAL: the body track is an unapproved deterministic preview; approve or edit beats and recompile before publish.",
+                    "The LLM authors declarative acting intent only; it does not generate or override lipsync controls.",
+                    "BODY_TRACK_IS_FOUNDATIONAL: deterministic upper-body/gaze intent is compiled, but no body mesh, mocap reconstruction, locomotion, or production validation is included.",
+                ],
+            }
+            return self.store.finish(manifest, job_dir, result, versions)
+        except AutoAnimError as exc:
+            self.store.fail(manifest, job_dir, exc.as_dict(), versions)
+            raise
+        except Exception as exc:
+            error = AutoAnimError("INTERNAL_ERROR", str(exc))
+            self.store.fail(manifest, job_dir, error.as_dict(), versions)
+            raise error from exc
+
+    def _acting_context(self, job_id: str, result: dict) -> dict:
+        artifacts = result.get("artifacts", {})
+        controls = artifacts.get("controls")
+        if not isinstance(controls, dict) or not isinstance(controls.get("name"), str):
+            raise AutoAnimError("INTERNAL_ERROR", "Source job has no allowlisted control artifact")
+        try:
+            controls_path = self.store.artifact(job_id, controls["name"])
+            with np.load(controls_path, allow_pickle=False) as values:
+                if result["kind"] == "audio_animation":
+                    timestamps = np.asarray(values["timestamps"], dtype=np.float64)
+                    expression = np.asarray(values["expression"], dtype=np.float64)
+                    rotations = np.asarray(values["rotations"], dtype=np.float64)
+                    series = {
+                        "speech": np.asarray(values["speech_activity"], dtype=np.float64),
+                        "energy": np.asarray(values["energy"], dtype=np.float64),
+                        "accent": np.asarray(values["accent"], dtype=np.float64),
+                        "pitch_semitones": np.asarray(values["pitch_semitones"], dtype=np.float64),
+                        "emotion_intensity": np.asarray(values["emotion_intensity"], dtype=np.float64),
+                    }
+                    evidence = "audio_inference_and_prosody"
+                else:
+                    timestamps = np.asarray(values["timestamps_seconds"], dtype=np.float64)
+                    expression = np.asarray(values["expression"], dtype=np.float64)
+                    rotations = np.asarray(values["rotations"], dtype=np.float64)
+                    series = {
+                        "tracking_quality": np.asarray(values["effective_quality"], dtype=np.float64),
+                        "source_lip_gap": np.asarray(values["source_lip_gap_interocular"], dtype=np.float64),
+                        "source_lip_contact": np.asarray(values["source_lip_contact_confidence"], dtype=np.float64),
+                    }
+                    evidence = "visual_video_tracking_exact_pts; audio_not_used_for_motion"
+        except (FileNotFoundError, OSError, KeyError, ValueError) as exc:
+            raise AutoAnimError("INTERNAL_ERROR", "Source control artifact is unreadable") from exc
+        if (
+            timestamps.ndim != 1
+            or not len(timestamps)
+            or expression.shape[0] != len(timestamps)
+            or rotations.shape[0] != len(timestamps)
+            or not np.isfinite(timestamps).all()
+            or not np.isfinite(expression).all()
+            or not np.isfinite(rotations).all()
+            or any(array.shape != timestamps.shape or not np.isfinite(array).all() for array in series.values())
+        ):
+            raise AutoAnimError("INTERNAL_ERROR", "Source control arrays are inconsistent")
+        expression_speed = np.zeros(len(timestamps), dtype=np.float64)
+        head_speed = np.zeros(len(timestamps), dtype=np.float64)
+        if len(timestamps) > 1:
+            delta = np.maximum(np.diff(timestamps), 1e-6)
+            expression_speed[1:] = np.linalg.norm(np.diff(expression, axis=0), axis=1) / delta
+            head_speed[1:] = np.rad2deg(
+                np.linalg.norm(np.diff(rotations[:, 1], axis=0), axis=1) / delta
+            )
+        series["expression_speed"] = expression_speed
+        series["head_speed_degrees_per_second"] = head_speed
+        series["head_pose_degrees"] = np.rad2deg(np.linalg.norm(rotations[:, 1], axis=1))
+        series["gaze_degrees"] = np.rad2deg(np.max(np.linalg.norm(rotations[:, 2:4], axis=2), axis=1))
+        window_seconds = 0.5
+        indices = np.floor((timestamps - timestamps[0]) / window_seconds).astype(np.int64)
+        windows: list[dict] = []
+        for index in range(int(indices.max(initial=0)) + 1):
+            selected = indices == index
+            if not np.any(selected):
+                continue
+            window: dict[str, float | int] = {
+                "start_tick": int(round(float(timestamps[selected][0]) * 48_000)),
+                "end_tick": int(round(float(timestamps[selected][-1]) * 48_000)),
+                "samples": int(np.count_nonzero(selected)),
+            }
+            for name, array in series.items():
+                window[f"{name}_mean"] = round(float(np.mean(array[selected])), 6)
+                window[f"{name}_peak"] = round(float(np.max(array[selected])), 6)
+            windows.append(window)
+        return {
+            "motion_evidence": evidence,
+            "timebase": {"ticks_per_second": 48_000, "window_seconds": window_seconds},
+            "windows": windows,
+            "source_analysis": {
+                "emotion": result.get("analysis", {}).get("emotion"),
+                "emotion_validated": result.get("analysis", {}).get("emotion_validated"),
+                "neutral_baseline_method": result.get("retargeting", {}).get("neutral_baseline_method"),
+                "warnings": result.get("warnings", [])[:12],
+            },
+        }
+
+    def _resolve_character(
+        self,
+        character_id: str | None,
+        revision_id: str | None,
+        *,
+        usage_scope: str = "production",
+    ) -> CharacterRevision | None:
+        if character_id is None or not character_id.strip():
+            if revision_id is not None and revision_id.strip():
+                raise AutoAnimError(
+                    "INPUT_INVALID", "A character revision cannot be selected without a character"
+                )
+            return None
+        try:
+            return self.characters.resolve(
+                character_id.strip(), revision_id or None, usage_scope=usage_scope
+            )
+        except FileNotFoundError as exc:
+            raise AutoAnimError("CHARACTER_NOT_FOUND", "Character or revision was not found") from exc
+
+    @staticmethod
+    def _character_ref(character: CharacterRevision | None) -> dict[str, Any] | None:
+        if character is None:
+            return None
+        consent = character.manifest.get("consent", {})
+        return {
+            "character_id": character.character_id,
+            "revision_id": character.revision_id,
+            "name": character.name,
+            "revision_manifest_sha256": character.manifest_sha256,
+            "identity_sha256": character.identity_sha256,
+            "base_color_sha256": character.texture_sha256,
+            "texture_uvs_sha256": character.texture_uvs_sha256,
+            "consent_scope": consent.get("scope") if isinstance(consent, dict) else None,
+            "consent_evidence_sha256": (
+                consent.get("evidence_sha256") if isinstance(consent, dict) else None
+            ),
+            "consent_expires_at": (
+                consent.get("expires_at") if isinstance(consent, dict) else None
+            ),
+        }
 
     def multiview(
         self,

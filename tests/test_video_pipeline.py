@@ -8,6 +8,7 @@ import subprocess
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from autoanim_gnm.api import create_app
 from autoanim_gnm.animation import calibrate_lip_contact
@@ -22,6 +23,7 @@ from autoanim_gnm.video_capture import (
 )
 from autoanim_gnm.video_pipeline import (
     MAX_PROXY_PTS_ERROR_SECONDS,
+    _export_static_performance_glb,
     _final_output_retention_metrics,
 )
 from autoanim_gnm.video_retarget import retarget_capture
@@ -39,6 +41,25 @@ RETAINED_CREMA_JOB = Path(
         "artifacts/jobs/01kxtx72xy7z1hbmv747hgjzdc",
     )
 )
+
+
+def test_long_track_static_viewer_preserves_character_uv_layout(tmp_path: Path) -> None:
+    adapter = GNMAdapter()
+    packed_uvs = np.asarray(adapter.model.triangle_uvs, dtype=np.float32) * 0.5 + 0.1
+    texture = tmp_path / "packed.png"
+    Image.new("RGB", (16, 16), (110, 80, 65)).save(texture)
+    exported = _export_static_performance_glb(
+        tmp_path,
+        adapter,
+        adapter.mesh(),
+        texture_path=texture,
+        texture_triangle_uvs=packed_uvs,
+    )
+    with np.load(exported.mapping_path, allow_pickle=False) as mapping:
+        np.testing.assert_allclose(
+            mapping["uvs_lower_left"][mapping["triangles"]],
+            packed_uvs,
+        )
 
 
 @pytest.mark.skipif(
@@ -127,6 +148,12 @@ def test_retained_crema_capture_neutral_audit_and_final_geometry_retention() -> 
     assert metrics["final_expression_motion_retained_fraction"] == pytest.approx(1.0)
     assert metrics["final_expression_motion_correlation"] > 0.85
     assert metrics["final_expression_landmark_step_p95_interocular"] > 0.05
+    assert metrics["final_lip_aperture_source_output_correlation"] >= 0.90
+    assert 0.85 <= metrics["final_lip_aperture_open_p95_ratio"] <= 1.15
+    assert 0.85 <= metrics["final_lip_aperture_affine_slope"] <= 1.15
+    assert metrics["final_lip_aperture_correction_applied_frames"] > 0
+    assert metrics["final_lip_aperture_target_attainment_fraction"] >= 0.95
+    assert np.max(np.abs(performance.expression)) <= 3.0
 
 
 @pytest.mark.skipif(
@@ -163,7 +190,9 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
         "otherwise_in_frame_fraction"
     )
     assert result["capture"]["production_validated"] is False
-    assert result["retargeting"]["backend"] == "geometry_calibrated_dense_contact_v2"
+    assert result["retargeting"]["backend"] == (
+        "geometry_calibrated_dense_contact_aperture_v3"
+    )
     assert result["retargeting"]["geometry_calibrated"] is True
     assert len(result["retargeting"]["calibration_hash"]) == 64
     assert result["retargeting"]["matched_source_controls"] == 51
@@ -181,6 +210,9 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert any("NEUTRAL_BASELINE_ONE_SIDED_LOSS" in warning for warning in result["warnings"])
     assert result["metrics"]["final_expression_motion_retained_fraction"] >= 0.80
     assert result["metrics"]["final_expression_motion_correlation"] > 0.45
+    assert result["metrics"]["final_lip_aperture_source_output_correlation"] >= 0.90
+    assert 0.85 <= result["metrics"]["final_lip_aperture_open_p95_ratio"] <= 1.15
+    assert result["metrics"]["final_lip_aperture_target_attainment_fraction"] >= 0.95
     assert result["metrics"]["final_blink_source_event_count"] >= 0
     assert result["metrics"]["final_contact_source_event_count"] >= 0
     assert "final_blink_event_retained_fraction" in result["metrics"]
@@ -213,6 +245,10 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
             np.testing.assert_array_equal(performance["source_pts"], capture["source_pts"])
             assert np.isfinite(performance["expression"]).all()
             assert np.count_nonzero(np.ptp(performance["expression"], axis=0) > 1e-7) > 25
+            assert np.count_nonzero(performance["lip_aperture_correction_applied"]) > 0
+            assert np.mean(performance["lip_aperture_target_attained"][
+                performance["lip_aperture_target_gap_interocular"] > 0.0
+            ]) >= 0.95
             provenance = json.loads(str(performance["provenance_json"].item()))
             assert "CalibratedRetargeter" in provenance["retargeter"]
             assert provenance["baseline_frame_indices"] == list(range(7))

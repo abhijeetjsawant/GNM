@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import json
 import os
 from pathlib import Path
 import secrets
@@ -11,6 +12,8 @@ import shutil
 from typing import Any
 
 from .serialization import write_json
+from .errors import AutoAnimError
+from .integrity import IntegritySigner
 
 
 _ULID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
@@ -48,14 +51,22 @@ class JobStore:
     def __init__(self, root: str | Path):
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self.signer = IntegritySigner(
+            self.root.parent / ".autoanim-integrity" / "hmac.key"
+        )
         self.recover_interrupted()
+
+    def _write_manifest(self, path: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+        signed = self.signer.sign(manifest)
+        write_json(path, signed)
+        return signed
 
     def recover_interrupted(self) -> None:
         for manifest_path in self.root.glob("*/result.json"):
             try:
-                import json
-
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if "integrity" in manifest and not self.signer.verify(manifest):
+                    continue
                 if manifest.get("status") == "running":
                     manifest["status"] = "failed"
                     manifest["updated_at"] = utc_now()
@@ -65,7 +76,7 @@ class JobStore:
                         "details": {},
                         "retryable": True,
                     }
-                    write_json(manifest_path, manifest)
+                    self._write_manifest(manifest_path, manifest)
             except Exception:
                 continue
 
@@ -108,7 +119,7 @@ class JobStore:
             "artifacts": {},
             "error": None,
         }
-        write_json(job_dir / "result.json", manifest)
+        manifest = self._write_manifest(job_dir / "result.json", manifest)
         return job_id, job_dir, retained_input, manifest
 
     def start_many(
@@ -210,7 +221,7 @@ class JobStore:
             "artifacts": {},
             "error": None,
         }
-        write_json(job_dir / "result.json", manifest)
+        manifest = self._write_manifest(job_dir / "result.json", manifest)
         return job_id, job_dir, tuple(retained), manifest
 
     def finish(
@@ -249,8 +260,7 @@ class JobStore:
             final["inputs"] = manifest["inputs"]
         if "attachments" in manifest:
             final["attachments"] = manifest["attachments"]
-        write_json(job_dir / "result.json", final)
-        return final
+        return self._write_manifest(job_dir / "result.json", final)
 
     def fail(self, manifest: dict, job_dir: Path, error: dict, versions: dict[str, str]) -> dict:
         manifest.update(
@@ -261,28 +271,129 @@ class JobStore:
                 "error": error,
             }
         )
-        write_json(job_dir / "result.json", manifest)
-        return manifest
+        return self._write_manifest(job_dir / "result.json", manifest)
 
     def read(self, job_id: str) -> dict:
-        import json
-
         path = self.job_dir(job_id) / "result.json"
         if not path.is_file():
             raise FileNotFoundError(job_id)
-        return json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if "integrity" in value and not self.signer.verify(value):
+            raise AutoAnimError(
+                "INTEGRITY_FAILED", "Job manifest failed its cryptographic integrity check"
+            )
+        return value
+
+    def require_sealed(self, job_id: str) -> dict[str, Any]:
+        value = self.read(job_id)
+        if not self.signer.verify(value):
+            raise AutoAnimError(
+                "INTEGRITY_UNSEALED",
+                "Legacy job has no trusted manifest seal; explicitly attest and seal it before reuse",
+            )
+        return value
+
+    def seal_legacy(
+        self,
+        job_id: str,
+        *,
+        attested_by: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Explicitly adopt a pre-sealing job after verifying its current bytes."""
+
+        actor = " ".join(attested_by.split())
+        explanation = " ".join(reason.split())
+        if not actor or len(actor) > 160 or not explanation or len(explanation) > 500:
+            raise AutoAnimError(
+                "INPUT_INVALID", "Legacy seal requires an attester and a concise reason"
+            )
+        path = self.job_dir(job_id) / "result.json"
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FileNotFoundError(job_id) from exc
+        if "integrity" in value:
+            if not self.signer.verify(value):
+                raise AutoAnimError(
+                    "INTEGRITY_FAILED", "Existing job seal is invalid and cannot be replaced"
+                )
+            return value
+        if value.get("status") not in {"succeeded", "failed"}:
+            raise AutoAnimError("INPUT_INVALID", "Only terminal legacy jobs can be sealed")
+        job_dir = self.job_dir(job_id)
+        for entry in value.get("artifacts", {}).values():
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+                raise AutoAnimError("INTEGRITY_FAILED", "Legacy artifact ledger is invalid")
+            name = entry["name"]
+            candidate = job_dir / name
+            if (
+                Path(name).name != name
+                or not candidate.is_file()
+                or candidate.stat().st_size != entry.get("bytes")
+                or sha256(candidate) != entry.get("sha256")
+            ):
+                raise AutoAnimError(
+                    "INTEGRITY_FAILED", f"Legacy artifact {name} does not match its ledger"
+                )
+        inputs = value.get("inputs")
+        if isinstance(inputs, list):
+            for entry in inputs:
+                index = entry.get("index") if isinstance(entry, dict) else None
+                matches = (
+                    list(job_dir.glob(f"input-{index + 1:02d}.*"))
+                    if isinstance(index, int)
+                    else []
+                )
+                if (
+                    len(matches) != 1
+                    or matches[0].stat().st_size != entry.get("bytes")
+                    or sha256(matches[0]) != entry.get("sha256")
+                ):
+                    raise AutoAnimError(
+                        "INTEGRITY_FAILED", "Legacy input ledger does not match"
+                    )
+        else:
+            entry = value.get("input", {})
+            matches = [item for item in job_dir.glob("input.*") if item.is_file()]
+            if (
+                len(matches) != 1
+                or matches[0].stat().st_size != entry.get("bytes")
+                or sha256(matches[0]) != entry.get("sha256")
+            ):
+                raise AutoAnimError(
+                    "INTEGRITY_FAILED", "Legacy input ledger does not match"
+                )
+        for entry in value.get("attachments", []):
+            name = entry.get("retained_name") if isinstance(entry, dict) else None
+            candidate = job_dir / str(name)
+            if (
+                not isinstance(name, str)
+                or Path(name).name != name
+                or not candidate.is_file()
+                or candidate.stat().st_size != entry.get("bytes")
+                or sha256(candidate) != entry.get("sha256")
+            ):
+                raise AutoAnimError(
+                    "INTEGRITY_FAILED", "Legacy attachment ledger does not match"
+                )
+        adopted = dict(value)
+        adopted["integrity_migration"] = {
+            "sealed_at": utc_now(),
+            "attested_by": actor,
+            "reason": explanation,
+            "preexisting_provenance_not_cryptographically_proven": True,
+        }
+        return self._write_manifest(path, adopted)
 
     def list_recent(self, limit: int = 20) -> list[dict[str, Any]]:
         """Return privacy-minimized summaries in reverse chronological order."""
 
-        import json
-
         summaries: list[dict[str, Any]] = []
         for manifest_path in self.root.glob("*/result.json"):
             try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 job_id = manifest_path.parent.name
-                self.job_dir(job_id)
+                manifest = self.read(job_id)
                 artifacts = manifest.get("artifacts", {})
                 viewable = isinstance(
                     artifacts.get("textured_glb") or artifacts.get("glb"), dict
@@ -321,11 +432,23 @@ class JobStore:
 
     def artifact(self, job_id: str, name: str) -> Path:
         manifest = self.read(job_id)
-        allowed = {entry["name"] for entry in manifest.get("artifacts", {}).values()}
-        if Path(name).name != name or name not in allowed:
+        entry = next(
+            (
+                value
+                for value in manifest.get("artifacts", {}).values()
+                if isinstance(value, dict) and value.get("name") == name
+            ),
+            None,
+        )
+        if Path(name).name != name or entry is None:
             raise FileNotFoundError(name)
         path = self.job_dir(job_id) / name
         if not path.is_file():
+            raise FileNotFoundError(name)
+        if (
+            path.stat().st_size != entry.get("bytes")
+            or sha256(path) != entry.get("sha256")
+        ):
             raise FileNotFoundError(name)
         return path
 

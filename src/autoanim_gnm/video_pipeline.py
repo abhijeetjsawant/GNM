@@ -6,6 +6,7 @@ from fractions import Fraction
 from pathlib import Path
 import shutil
 import subprocess
+from typing import Any
 
 import numpy as np
 
@@ -29,6 +30,7 @@ from .video_retarget import (
     FAST_CONTACT_CONTROLS,
     NEUTRAL_CALIBRATION_CAVEAT,
     QUARANTINED_EXPRESSION_CONTROLS,
+    SOURCE_APERTURE_MAX_TARGET_INTEROCULAR,
     filter_blendshapes,
     retarget_capture,
     serialize_performance,
@@ -382,6 +384,32 @@ def _final_output_retention_metrics(capture, performance, adapter: GNMAdapter) -
         output_threshold=0.20,
     )
     high_confidence_contact = source_contact >= 0.65
+    open_geometry = (
+        performance.source_lip_geometry_valid
+        & (performance.source_lip_contact_confidence < 0.12)
+        & (performance.source_lip_gap_interocular >= 0.055)
+    )
+    if np.count_nonzero(open_geometry) >= 3:
+        source_open = performance.source_lip_gap_interocular[open_geometry].astype(
+            np.float64
+        )
+        final_open = lip_gap[open_geometry]
+        aperture_correlation = _curve_correlation(source_open, final_open)
+        source_variance = float(np.var(source_open))
+        aperture_slope = (
+            float(np.cov(source_open, final_open, ddof=0)[0, 1] / source_variance)
+            if source_variance > 1.0e-12
+            else None
+        )
+        aperture_p95_ratio = float(
+            np.percentile(final_open, 95)
+            / max(float(np.percentile(source_open, 95)), 1.0e-8)
+        )
+    else:
+        aperture_correlation = None
+        aperture_slope = None
+        aperture_p95_ratio = None
+    aperture_candidates = performance.lip_aperture_target_gap_interocular > 0.0
     return {
         "final_blink_source_event_count": blink_count,
         "final_blink_event_retained_fraction": blink_retention,
@@ -418,6 +446,22 @@ def _final_output_retention_metrics(capture, performance, adapter: GNMAdapter) -
             if np.any(performance.source_lip_geometry_valid)
             else None
         ),
+        "final_lip_aperture_open_frame_count": int(np.count_nonzero(open_geometry)),
+        "final_lip_aperture_source_output_correlation": aperture_correlation,
+        "final_lip_aperture_affine_slope": aperture_slope,
+        "final_lip_aperture_open_p95_ratio": aperture_p95_ratio,
+        "final_lip_aperture_correction_applied_frames": int(
+            np.count_nonzero(performance.lip_aperture_correction_applied)
+        ),
+        "final_lip_aperture_target_attainment_fraction": (
+            float(
+                np.mean(
+                    performance.lip_aperture_target_attained[aperture_candidates]
+                )
+            )
+            if np.any(aperture_candidates)
+            else None
+        ),
         "final_expression_source_event_count": expression_count,
         "final_expression_motion_retained_fraction": expression_retention,
         "final_expression_motion_correlation": (
@@ -438,6 +482,26 @@ def _final_output_retention_metrics(capture, performance, adapter: GNMAdapter) -
     }
 
 
+def _export_static_performance_glb(
+    output: Path,
+    adapter: GNMAdapter,
+    frame: np.ndarray,
+    *,
+    texture_path: str | Path | None,
+    texture_triangle_uvs: np.ndarray | None,
+):
+    """Export the long-track/compression fallback with the character's exact atlas."""
+
+    return export_gnm_glb(
+        output / "performance.glb",
+        adapter,
+        frame,
+        mapping_path=output / "performance-glb-mapping.npz",
+        texture_path=texture_path,
+        triangle_uvs=texture_triangle_uvs,
+    )
+
+
 def run_video_pipeline(
     input_path: str | Path,
     output_dir: str | Path,
@@ -445,6 +509,9 @@ def run_video_pipeline(
     model_path: str | Path,
     identity: np.ndarray | None = None,
     a2f_asset_dir: str | Path | None = None,
+    texture_path: str | Path | None = None,
+    texture_triangle_uvs: np.ndarray | None = None,
+    character_ref: dict[str, Any] | None = None,
 ) -> dict:
     """Track a real video, retarget it, and package synchronized 3D playback."""
 
@@ -458,8 +525,15 @@ def run_video_pipeline(
     serialize_capture(output, capture)
 
     adapter = GNMAdapter()
+    identity_value = (
+        np.zeros(adapter.identity_dim, dtype=np.float32)
+        if identity is None
+        else np.asarray(identity, dtype=np.float32).copy()
+    )
+    if identity_value.shape != (adapter.identity_dim,) or not np.isfinite(identity_value).all():
+        raise AutoAnimError("INPUT_INVALID", "Character identity must be one finite (253,) vector")
     decoder = ExpressionDecoder("gnm/shape/data/semantic_sampler/expression_decoder_model.h5")
-    contact_rig = ControlRig(adapter, decoder)
+    contact_rig = ControlRig(adapter, decoder, identity=identity_value)
     lip_contact_calibration = calibrate_lip_contact(contact_rig)
     calibration_hash: str | None = None
     retarget_artifacts: dict[str, str] = {}
@@ -479,7 +553,7 @@ def run_video_pipeline(
         calibration_hash = retargeter.calibration.calibration_hash
         calibrated_names = set(retargeter.calibration.skin_pose_names)
         matched_controls = len(source_names & calibrated_names)
-        retarget_backend = "geometry_calibrated_dense_contact_v2"
+        retarget_backend = "geometry_calibrated_dense_contact_aperture_v3"
         retarget_caveat = VIDEO_CALIBRATED_RETARGET_CAVEAT
         retarget_artifacts["retarget_calibration"] = "retarget_calibration.npz"
     else:
@@ -488,12 +562,12 @@ def run_video_pipeline(
             source_names
             & {source for rule in retargeter.rules for source in rule.sources}
         )
-        retarget_backend = "semantic_prototype_contact_v2_fallback"
+        retarget_backend = "semantic_prototype_contact_aperture_v3_fallback"
         retarget_caveat = VIDEO_SEMANTIC_RETARGET_CAVEAT
     performance = retarget_capture(
         capture,
         retargeter,
-        identity=identity,
+        identity=identity_value,
         retarget_caveats=(retarget_caveat,),
         contact_rig=contact_rig,
         lip_contact_calibration=lip_contact_calibration,
@@ -579,6 +653,8 @@ def run_video_pipeline(
                 frames,
                 performance.timestamps_seconds,
                 mapping_path=output / "performance-glb-mapping.npz",
+                texture_path=texture_path,
+                triangle_uvs=texture_triangle_uvs,
             )
             viewer_reconstruction = {
                 "expression_pose_rank": exported.rank,
@@ -589,11 +665,12 @@ def run_video_pipeline(
                 "landmark_max_mm": exported.landmark_max_mm,
             }
         except AnimationCompressionError as exc:
-            export_gnm_glb(
-                output / "performance.glb",
+            _export_static_performance_glb(
+                output,
                 adapter,
                 frames[0],
-                mapping_path=output / "performance-glb-mapping.npz",
+                texture_path=texture_path,
+                texture_triangle_uvs=texture_triangle_uvs,
             )
             viewer_status = "static_only"
             viewer_mode = "static"
@@ -610,11 +687,12 @@ def run_video_pipeline(
             rotations=performance.rotations[0],
             translation=performance.translation[0],
         )
-        export_gnm_glb(
-            output / "performance.glb",
+        _export_static_performance_glb(
+            output,
             adapter,
             first,
-            mapping_path=output / "performance-glb-mapping.npz",
+            texture_path=texture_path,
+            texture_triangle_uvs=texture_triangle_uvs,
         )
         viewer_status = "static_only"
         viewer_mode = "static"
@@ -667,6 +745,15 @@ def run_video_pipeline(
                 "the source event envelope (correlation below 0.20); artist correction or a "
                 "better calibrated mapping is required."
             )
+    aperture_ratio = final_output_retention.get(
+        "final_lip_aperture_open_p95_ratio"
+    )
+    if aperture_ratio is not None and not 0.85 <= float(aperture_ratio) <= 1.15:
+        warnings.append(
+            "FINAL_LIP_APERTURE_AMPLITUDE_MISMATCH: open-mouth p95 is outside "
+            "the 0.85-1.15 source/output review band; artist correction or a "
+            "subject-calibrated jaw solve is required."
+        )
     result = {
         "kind": "video_performance",
         "status": "succeeded",
@@ -674,6 +761,9 @@ def run_video_pipeline(
             "gnm_version": "3.0",
             "identity_dim": adapter.identity_dim,
             "expression_dim": adapter.expression_dim,
+            "character": character_ref,
+            "character_texture_applied_to_glb": texture_path is not None,
+            "source_proxy_is_character_render": False,
         },
         "capture": {
             "backend": "mediapipe-face-landmarker-video",
@@ -706,6 +796,11 @@ def run_video_pipeline(
             "contact_calibration_hash": (
                 performance.provenance.contact_calibration_hash
             ),
+            "aperture_source": performance.provenance.aperture_source_method,
+            "aperture_target_max_interocular": (
+                SOURCE_APERTURE_MAX_TARGET_INTEROCULAR
+            ),
+            "aperture_subject_calibrated": False,
             "subject_calibrated": False,
             "neutral_baseline_frame_indices": list(
                 performance.provenance.baseline_frame_indices

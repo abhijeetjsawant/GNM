@@ -52,6 +52,15 @@ autoanim-gnm multiview front.jpg left-3q.jpg right-3q.jpg --roles front,left_3q,
 autoanim-gnm multiview front.png left.png right.png profile.png \
   --calibration rig.json --out artifacts/jobs
 autoanim-gnm video performance.mp4 --out artifacts/jobs
+
+# Validate a complete commercial PBR facial-material package. The JSON spec
+# carries map inventory, capture/provenance, rights, and evidence-backed claims.
+autoanim-gnm material /path/to/material-package --spec material-package.json
+
+# A successful audio/video take can be directed by a tool-disabled terminal LLM;
+# the result includes editable beats plus a deterministic humanoid body/gaze track.
+autoanim-gnm direct JOB_ID --artifacts artifacts/jobs --provider codex \
+  --instructions "Restrained, reassuring; one small open-palm beat"
 autoanim-gnm serve --host 127.0.0.1 --port 8000 --artifacts artifacts/jobs
 ```
 
@@ -95,6 +104,7 @@ Research and implementation evidence:
 - [interactive viewer design and validation contract](docs/VIEWER_RESEARCH.md)
 - [requirement-by-requirement completion audit](docs/COMPLETION_AUDIT.md)
 - [final verification and retained metrics](docs/VERIFICATION.md)
+- [unified production character, acting, appearance, body, oral, security, and phased workflow](docs/PRODUCTION_WORKFLOW.md)
 
 The original upstream project overview follows.
 

@@ -329,6 +329,44 @@ def test_soft_lip_contact_correction_closes_without_overapplying(rig: ControlRig
     assert target > 0.0
 
 
+def test_procedural_composer_retains_character_contact_calibration(
+    rig: ControlRig,
+) -> None:
+    identity = np.zeros(rig.adapter.identity_dim, dtype=np.float32)
+    identity[:32] = np.linspace(-0.25, 0.25, 32, dtype=np.float32)
+    character_rig = ControlRig(rig.adapter, rig.decoder, identity=identity)
+    calibration = calibrate_lip_contact(character_rig)
+    cues = [
+        MouthCue(0.0, 0.50, "X"),
+        MouthCue(0.50, 0.80, "A"),
+        MouthCue(0.80, 1.70, "X"),
+    ]
+    track = compose_animation(
+        cues,
+        1.70,
+        30,
+        character_rig,
+        "neutral",
+        lip_contact_calibration=calibration,
+    )
+
+    candidates = track.lip_contact_target_gap > 0.0
+    assert np.count_nonzero(candidates) > 0
+    assert np.max(track.lip_contact_confidence) > 0.9
+    assert np.min(track.lip_contact_target_gap[candidates]) <= (
+        calibration.seal_gap_interocular + 1.0e-3
+    )
+    assert np.count_nonzero(track.contact_correction_applied) > 0
+    assert np.count_nonzero(track.contact_corrected) > 0
+    candidates = track.lip_contact_target_gap > 0.0
+    assert np.mean(track.lip_contact_attained[candidates]) >= 0.75
+    assert not np.any(
+        track.contact_correction_applied
+        & ~track.lip_contact_attained
+        & track.contact_continuity_restored
+    )
+
+
 def test_learned_composer_preserves_fast_articulation_and_adds_secondary_motion(
     rig: ControlRig,
 ) -> None:

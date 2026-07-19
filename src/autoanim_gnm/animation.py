@@ -248,7 +248,7 @@ def _mouth_gap_interocular(rig: ControlRig, expression: np.ndarray) -> float:
             for upper, lower in ((61, 67), (62, 66), (63, 65))
         ]
     )
-    neutral = rig.adapter.compact_template
+    neutral = np.asarray(rig.neutral_landmarks, dtype=np.float64)
     interocular = float(np.linalg.norm(neutral[36] - neutral[45]))
     if interocular <= 0.0:
         raise AutoAnimError("INTERNAL_ERROR", "GNM interocular distance is invalid")
@@ -467,7 +467,7 @@ def calibrate_lip_contact(rig: ControlRig) -> LipContactCalibration:
             "INTERNAL_ERROR",
             "GNM lower-face contact calibration requires expression modes 200:350",
         )
-    neutral = np.asarray(rig.adapter.compact_template, dtype=np.float64)
+    neutral = np.asarray(rig.neutral_landmarks, dtype=np.float64)
     compact_basis = np.asarray(
         rig.adapter.compact_expression_basis[200:350],
         dtype=np.float64,
@@ -667,7 +667,7 @@ def _apply_lip_contact_correction(
         raise AutoAnimError("INTERNAL_ERROR", "Lip-contact calibration is invalid")
     original = np.asarray(expression, dtype=np.float32)
     original_landmarks = rig.compact_landmarks(original)
-    neutral_landmarks = rig.adapter.compact_template
+    neutral_landmarks = rig.neutral_landmarks
     interocular = float(np.linalg.norm(neutral_landmarks[36] - neutral_landmarks[45]))
     original_pair_gaps = np.asarray(
         [
@@ -823,6 +823,7 @@ def compose_animation(
     prosody: ProsodyTrack | None = None,
     *,
     head_motion: bool = True,
+    lip_contact_calibration: LipContactCalibration | None = None,
 ) -> AnimationTrack:
     if not 12 <= fps <= 60:
         raise AutoAnimError("INPUT_INVALID", "FPS must be in [12, 60]")
@@ -836,6 +837,9 @@ def compose_animation(
     _validate_prosody(prosody, timestamps)
     controls = np.stack([rig.viseme(cue) for cue in CUE_ORDER])
     viseme_weights = _activation_matrix(cues, timestamps)
+    lip_contact_confidence = np.clip(
+        viseme_weights[:, _CUE_INDEX["A"]], 0.0, 1.0
+    ).astype(np.float32)
     expression = np.zeros((frame_count, rig.adapter.expression_dim), dtype=np.float32)
     for frame in range(frame_count):
         cue_scale = np.ones(len(CUE_ORDER), dtype=np.float32)
@@ -851,11 +855,14 @@ def compose_animation(
         expression[-1, 200:382] = 0.0
         viseme_weights[-1] = 0.0
         viseme_weights[-1, 0] = 1.0
+        lip_contact_confidence[-1] = 0.0
     emotion = rig.emotion(emotion_name)
     emotion_intensity = _emotion_envelope(duration, fps, timestamps, prosody)
     blink = rig.blink()
     blink_intensity = _blink_envelope(timestamps)
     saturated = False
+    lip_contact_target_gap = np.zeros(frame_count, dtype=np.float32)
+    contact_correction_applied = np.zeros(frame_count, dtype=bool)
     for frame in range(frame_count):
         expression[frame], clipped = rig.compose(
             expression[frame],
@@ -869,22 +876,82 @@ def compose_animation(
                 np.zeros_like(emotion),
             )
             clipped |= blink_clipped
+        if lip_contact_calibration is not None:
+            (
+                expression[frame],
+                contact_correction_applied[frame],
+                lip_contact_target_gap[frame],
+            ) = _apply_lip_contact_correction(
+                rig,
+                expression[frame],
+                lip_contact_calibration,
+                float(lip_contact_confidence[frame]),
+            )
         saturated |= clipped
 
     # Rest is a hard export contract. The reverse temporal pass below starts
     # relaxing early enough to reach it without a one-frame snap.
     expression[-1, 200:382] = 0.0
-
+    desired_expression = expression.copy()
+    contact_candidates = lip_contact_target_gap > 0.0
+    prelimit_contact_attained = np.zeros(frame_count, dtype=bool)
+    if np.any(contact_candidates):
+        prelimit_gaps = np.asarray(
+            [_mouth_gap_interocular(rig, frame) for frame in desired_expression],
+            dtype=np.float32,
+        )
+        prelimit_contact_attained[contact_candidates] = (
+            prelimit_gaps[contact_candidates]
+            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
+        )
+    # Leave margin for the difference between the face-local projection metric
+    # and the raw-landmark export gate while contact anchors are redistributed.
+    speed_limit = 0.0365
     mouth_speed_limited = np.zeros(frame_count, dtype=bool)
     for frame in range(1, frame_count):
-        expression[frame], mouth_speed_limited[frame] = rig.limit_mouth_step(
-            expression[frame - 1], expression[frame], maximum_ratio=0.0395
+        expression[frame], mouth_speed_limited[frame] = _limit_mouth_step_quality_space(
+            rig,
+            expression[frame - 1], expression[frame], maximum_ratio=speed_limit
         )
     for frame in range(frame_count - 2, -1, -1):
-        expression[frame], reverse_limited = rig.limit_mouth_step(
-            expression[frame + 1], expression[frame], maximum_ratio=0.0395
+        expression[frame], reverse_limited = _limit_mouth_step_quality_space(
+            rig,
+            expression[frame + 1], expression[frame], maximum_ratio=speed_limit
         )
         mouth_speed_limited[frame] |= reverse_limited
+    baseline_contact_attained = np.zeros(frame_count, dtype=bool)
+    if np.any(contact_candidates):
+        baseline_gaps = np.asarray(
+            [_mouth_gap_interocular(rig, frame) for frame in expression],
+            dtype=np.float32,
+        )
+        baseline_contact_attained[contact_candidates] = (
+            baseline_gaps[contact_candidates]
+            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
+        )
+    expression, contact_continuity_restored = _restore_contact_anchors_quality_space(
+        rig,
+        desired_expression,
+        expression,
+        hard_contact_anchors=prelimit_contact_attained,
+        restore_needed=prelimit_contact_attained & ~baseline_contact_attained,
+        maximum_ratio=speed_limit,
+        horizon_frames=8,
+    )
+    mouth_speed_limited = (
+        np.max(np.abs(expression - desired_expression), axis=1) > np.float32(1.0e-7)
+    )
+    lip_contact_attained = np.zeros(frame_count, dtype=bool)
+    if np.any(contact_candidates):
+        final_gaps = np.asarray(
+            [_mouth_gap_interocular(rig, frame) for frame in expression],
+            dtype=np.float32,
+        )
+        lip_contact_attained[contact_candidates] = (
+            final_gaps[contact_candidates]
+            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
+        )
+    contact_corrected = contact_correction_applied & lip_contact_attained
     rotations = (
         _head_motion(timestamps, prosody, rig.adapter.model.num_joints)
         if head_motion
@@ -906,12 +973,12 @@ def compose_animation(
         phrase_id=prosody.phrase_id.astype(np.int32),
         emotion_intensity=emotion_intensity,
         mouth_speed_limited=mouth_speed_limited,
-        lip_contact_confidence=np.zeros(frame_count, dtype=np.float32),
-        lip_contact_target_gap=np.zeros(frame_count, dtype=np.float32),
-        contact_correction_applied=np.zeros(frame_count, dtype=bool),
-        lip_contact_attained=np.zeros(frame_count, dtype=bool),
-        contact_continuity_restored=np.zeros(frame_count, dtype=bool),
-        contact_corrected=np.zeros(frame_count, dtype=bool),
+        lip_contact_confidence=lip_contact_confidence,
+        lip_contact_target_gap=lip_contact_target_gap,
+        contact_correction_applied=contact_correction_applied,
+        lip_contact_attained=lip_contact_attained,
+        contact_continuity_restored=contact_continuity_restored,
+        contact_corrected=contact_corrected,
     )
 
 
@@ -1268,10 +1335,12 @@ def render_silent_video(
     track: AnimationTrack,
     adapter: GNMAdapter,
     output_path: str | Path,
+    *,
+    identity: np.ndarray | None = None,
 ) -> Path:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    renderer = MeshRenderer(adapter)
+    renderer = MeshRenderer(adapter, identity=identity)
     command = [
         "ffmpeg", "-y", "-v", "error",
         "-f", "rawvideo", "-pixel_format", "bgr24", "-video_size", "640x640",
@@ -1289,8 +1358,18 @@ def render_silent_video(
         for expression, rotations, translation in zip(
             track.expression, track.rotations, track.translation, strict=True
         ):
-            vertices = adapter.mesh(expression=expression, rotations=rotations, translation=translation)
-            landmarks = adapter.landmarks(expression=expression, rotations=rotations, translation=translation)
+            vertices = adapter.mesh(
+                identity=identity,
+                expression=expression,
+                rotations=rotations,
+                translation=translation,
+            )
+            landmarks = adapter.landmarks(
+                identity=identity,
+                expression=expression,
+                rotations=rotations,
+                translation=translation,
+            )
             process.stdin.write(renderer.render(vertices, landmarks).tobytes())
         process.stdin.close()
         stderr = process.stderr.read() if process.stderr is not None else b""
@@ -1305,14 +1384,23 @@ def render_silent_video(
 
 def mux_audio(silent_path: str | Path, wav_path: str | Path, output_path: str | Path) -> Path:
     output_path = Path(output_path)
+    target_duration = float(probe_av(silent_path)["video_duration"])
+    if not np.isfinite(target_duration) or target_duration <= 0.0:
+        raise AutoAnimError("INTERNAL_ERROR", "Silent preview has no valid video duration")
     command = [
         "ffmpeg", "-y", "-v", "error", "-i", str(silent_path), "-i", str(wav_path),
-        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-af", "apad", "-shortest",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-af", "apad",
+        "-t", f"{target_duration:.9f}",
         "-movflags", "+faststart", "-metadata", "creation_time=", str(output_path),
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True)
-    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            timeout=max(60.0, target_duration * 2.0 + 30.0),
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise AutoAnimError("INTERNAL_ERROR", "ffmpeg could not mux the preview") from exc
     return output_path
 

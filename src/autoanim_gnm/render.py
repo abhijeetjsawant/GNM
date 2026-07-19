@@ -11,10 +11,17 @@ from .gnm_adapter import GNMAdapter
 
 
 class MeshRenderer:
-    def __init__(self, adapter: GNMAdapter, size: int = 640):
+    def __init__(
+        self,
+        adapter: GNMAdapter,
+        size: int = 640,
+        *,
+        identity: np.ndarray | None = None,
+    ):
         self.adapter = adapter
         self.size = int(size)
-        neutral = adapter.mesh()
+        self.identity = None if identity is None else np.asarray(identity, dtype=np.float32)
+        neutral = adapter.mesh(identity=self.identity)
         skin = adapter.vertex_group("skin_exterior") > 0.5
         xy = neutral[skin, :2]
         self.center = (xy.min(axis=0) + xy.max(axis=0)) / 2

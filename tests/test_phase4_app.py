@@ -27,6 +27,9 @@ def _normalized_result(result: dict) -> bytes:
     normalized = json.loads(json.dumps(result))
     for key in ("job_id", "created_at", "updated_at"):
         normalized.pop(key, None)
+    # Integrity envelopes are transport-local because API and CLI roots use
+    # different owner-only signing keys; semantic/artifact parity remains exact.
+    normalized.pop("integrity", None)
     normalized.get("input", {}).pop("sha256", None)
     for artifact in normalized.get("artifacts", {}).values():
         artifact.pop("sha256", None)
