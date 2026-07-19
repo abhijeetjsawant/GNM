@@ -25,6 +25,10 @@ from .animated_gltf import AnimationCompressionError, export_animated_gnm_glb
 from .audio_pipeline import _resolve_a2f_assets, run_audio_pipeline
 from .audio_visual_repair import apply_audio_visual_repair
 from .calibrated_retarget import CalibratedRetargetError, CalibratedRetargeter
+from .capture_session import (
+    CAPTURE_SESSION_SCHEMA_VERSION,
+    write_video_capture_session,
+)
 from .errors import AutoAnimError
 from .gltf_export import export_gnm_glb
 from .gnm_adapter import GNMAdapter
@@ -57,6 +61,14 @@ from .video_evidence import (
     PERFORMANCE_EVIDENCE_SCHEMA_VERSION,
     build_audio_video_timing_evidence,
     write_performance_evidence,
+)
+from .video_observation import (
+    OBSERVATION_V3_POLICY,
+    OBSERVATION_V3_SCHEMA_VERSION,
+    PIXEL_OBSERVATION_SCHEMA_VERSION,
+    analyze_video_pixels,
+    write_observation_v3_summary,
+    write_pixel_observations,
 )
 from .video_retarget import (
     FAST_CONTACT_CONTROLS,
@@ -826,8 +838,35 @@ def _run_video_pipeline_impl(
     detected_count = int(np.count_nonzero(capture.detected))
     if detected_count == 0:
         raise AutoAnimError("FACE_NOT_FOUND", "No face was detected in the video")
-    serialize_capture(output, capture)
-    write_performance_evidence(output / "performance-evidence.json", capture)
+    capture_path, capture_jsonl_path = serialize_capture(output, capture)
+    performance_evidence_path = write_performance_evidence(
+        output / "performance-evidence.json", capture
+    )
+    pixel_observations = analyze_video_pixels(source, capture)
+    pixel_observations_path = write_pixel_observations(
+        output / "pixel-observations.npz", pixel_observations
+    )
+    observation_v3_path = write_observation_v3_summary(
+        output / "observation-v3.json",
+        capture,
+        pixel_observations,
+        capture_artifact_sha256=_file_sha256(capture_path),
+        capture_artifact_bytes=capture_path.stat().st_size,
+        pixel_observations_sha256=_file_sha256(pixel_observations_path),
+        pixel_observations_bytes=pixel_observations_path.stat().st_size,
+    )
+    capture_session_path = write_video_capture_session(
+        output / "capture-session.json",
+        capture,
+        pixel_observations,
+        artifact_paths={
+            "capture": capture_path,
+            "capture_jsonl": capture_jsonl_path,
+            "performance_evidence": performance_evidence_path,
+            "pixel_observations": pixel_observations_path,
+            "observation_v3": observation_v3_path,
+        },
+    )
     if require_audio_visual_repair and not audio_video_timing_evidence:
         raise AutoAnimError(
             "INPUT_INVALID",
@@ -1627,6 +1666,13 @@ def _run_video_pipeline_impl(
                 PERFORMANCE_EVIDENCE_SCHEMA_VERSION
             ),
             "performance_evidence_policy": "observation_only_no_motion_effect",
+            "observation_v3_schema_version": OBSERVATION_V3_SCHEMA_VERSION,
+            "observation_v3_arrays_schema_version": (
+                PIXEL_OBSERVATION_SCHEMA_VERSION
+            ),
+            "observation_v3_policy": OBSERVATION_V3_POLICY,
+            "observation_v3_consumed_by_retargeting": False,
+            "capture_session_schema_version": CAPTURE_SESSION_SCHEMA_VERSION,
             "production_validated": False,
             **(
                 {
@@ -1844,6 +1890,9 @@ def _run_video_pipeline_impl(
             "capture": "capture.npz",
             "capture_jsonl": "capture.jsonl",
             "performance_evidence": "performance-evidence.json",
+            "pixel_observations": "pixel-observations.npz",
+            "observation_v3": "observation-v3.json",
+            "capture_session": "capture-session.json",
             "controls": "performance.npz",
             "controls_jsonl": "performance.jsonl",
             "glb": "performance.glb",

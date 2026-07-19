@@ -6,7 +6,7 @@ Date: 2026-07-19
 
 GNM revision: `3de70dfca5f3244620f44103c24b7cedc0dcb8b6`
 
-AutoAnim baseline: `50ca2c9da0204395372cc18f0164fec02d03b2ba`
+AutoAnim baseline: `f16a2656dea7266d68828ed602d14587509f8b57`
 
 ## Implementation ledger
 
@@ -25,9 +25,36 @@ AutoAnim baseline: `50ca2c9da0204395372cc18f0164fec02d03b2ba`
   human-reviewed apex data plus labiodental, tongue and false-contact
   evaluation remain unavailable. Final verification: 467 tests passed, one
   optional released-Claire asset test skipped.
-- **E0 as a whole — not complete.** Observation v3 regional pixel evidence,
-  the CaptureSession schema, and frozen multiview/video evidence baselines are
-  still required before advancing to A1.
+- **E0 Observation-v3/CaptureSession slice — implemented and real-input
+  green.** Video jobs now emit a compact `observation-v3.json` plus bounded
+  `pixel-observations.npz`. They bind exact source PTS, capture/model/source
+  hashes, per-frame decoded RGB hashes, regional absolute/take-relative focus,
+  exposure and flow signals, three-signal structural cut candidates, separate
+  photometric-discontinuity candidates and explicit observation-epoch
+  boundaries. Flat-frame correlation is unavailable rather than fabricated as
+  zero or perfect agreement.
+  A deterministic, path-free `capture-session.json` binds Capture v1,
+  Observation v2, Observation v3 and their artifact hashes under the sealed job
+  ledger. Readiness reconstructs all three evidence contracts from sealed bytes.
+  The lane is uncalibrated, capped below the strong tier, re-decodes the source
+  rather than claiming detector-ingress pixel identity, and is not consumed by
+  retargeting. Synthetic regional/blur/cut/tamper tests and the checksum-pinned
+  real CREMA-D API-to-GNM path pass.
+- **Resource/readiness boundary — fail-closed.** Capture now accepts at most
+  7,200 frames and 20 billion aggregate decoded pixels, keeping the mandatory
+  Observation-v2 JSON under its 64 MiB verification ceiling with measured
+  margin. Capture NPZ/JSONL and Observation-v3 NPZ loaders enforce compressed,
+  expanded, member, dtype and schema limits before readiness reconstruction.
+  CaptureSession structural verification cannot approve production: its current
+  unbound subject, unknown neutrality/identity and `production_validated=false`
+  claims remain a separate required failure.
+- **Final verification — green.** The hardened slice passed `55` focused
+  capture/evidence/readiness/real-CREMA tests and the complete repository passed
+  `492 passed, 1 skipped, 1 dependency warning in 483.17s`. The skip is the
+  duplicate opt-in released-Claire asset test; retained learned routes and the
+  checksum-pinned real video path ran.
+- **E0 as a whole — not complete.** Frozen multiview/video evidence baselines
+  and the Observation-v3 viewer diagnostics remain before advancing to A1.
 
 ## Decision summary
 
@@ -154,7 +181,9 @@ Every video frame carries separate mouth, eyes, upper-face and head evidence:
 - face/crop pixel size, blur, exposure and saturation;
 - landmark innovation and flow/reprojection residual;
 - forward/backward optical-flow consistency;
-- mask coverage, cut/reinitialization and identity-continuity diagnostics;
+- mask coverage, cut candidates, observation epochs and identity-continuity
+  diagnostics; MediaPipe's private tracker-reinitialization state is not
+  claimed;
 - motion owner, repair/fill state and provenance.
 
 ### CharacterRevision
@@ -373,9 +402,14 @@ Gate:
 
 ### Phase V1 - Observation v3 and viewer diagnostics
 
+Status: pixel-evidence/CaptureSession foundation implemented; calibrated
+classification, same-buffer detector ingress, adversarial real capture set and
+viewer timeline/overlay remain.
+
 Re-read pixels and emit regional crop resolution, blur/exposure, flow
-consistency, landmark innovation, cut/reinitialization and reason codes. Keep it
-diagnostic-only during this phase. Add the confidence timeline/source overlay.
+consistency, landmark innovation, cut candidates, observation epochs and reason
+codes. Keep it diagnostic-only during this phase. Add the confidence
+timeline/source overlay.
 
 Gate:
 

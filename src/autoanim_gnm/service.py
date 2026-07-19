@@ -22,6 +22,7 @@ from .a2f import resolve_a2f_runner
 from .acting import ActingDirector, TICKS_PER_SECOND
 from .animation import calibrate_lip_contact
 from .artifacts import JobStore, sha256
+from .capture_session import load_verified_video_capture_session
 from .characters import CharacterRevision, CharacterStore
 from .audio import resolve_rhubarb
 from .audio_pipeline import _resolve_a2f_assets, run_audio_pipeline
@@ -48,7 +49,12 @@ from .image import validate_model
 from .image_pipeline import run_image_pipeline
 from .multiview_pipeline import run_multiview_pipeline
 from .video_pipeline import run_video_pipeline
+from .video_capture import load_capture_npz, load_verified_capture_jsonl
 from .video_evidence import load_verified_performance_evidence
+from .video_observation import (
+    load_pixel_observations,
+    load_verified_observation_v3_summary,
+)
 from .viewer import default_viewer_vendor_root, viewer_vendor_health
 from .serialization import write_json, write_npz
 from .sequence_provider import local_a2f_v3_worker_preflight
@@ -510,8 +516,10 @@ class ApplicationService:
             if isinstance(artifact_ledger, dict)
             else None
         )
-        if isinstance(evidence_ledger, dict) and isinstance(
-            evidence_ledger.get("name"), str
+        if (
+            performance_manifest_verified
+            and isinstance(evidence_ledger, dict)
+            and isinstance(evidence_ledger.get("name"), str)
         ):
             try:
                 evidence_path = self.store.artifact(
@@ -530,8 +538,123 @@ class ApplicationService:
                         expected_source_sha256=input_sha256,
                         expected_frame_count=capture_frames,
                     )
-                    performance_evidence_artifact_verified = True
+                    performance_evidence_artifact_verified = (
+                        performance.get("kind") != "video_performance"
+                    )
             except (FileNotFoundError, OSError, ValueError):
+                pass
+
+        observation_v3_artifacts_verified = False
+        capture_session_artifact_verified = False
+        capture_session_production_claims_verified = False
+        if (
+            performance.get("kind") == "video_performance"
+            and performance_manifest_verified
+        ):
+            try:
+                self.store.require_sealed(performance_job_id)
+                video_paths: dict[str, Path] = {}
+                for logical_name in (
+                    "capture",
+                    "capture_jsonl",
+                    "performance_evidence",
+                    "pixel_observations",
+                    "observation_v3",
+                    "capture_session",
+                ):
+                    entry = _mapping(_mapping(artifact_ledger).get(logical_name))
+                    name = entry.get("name")
+                    if not isinstance(name, str):
+                        raise FileNotFoundError(logical_name)
+                    artifact_path = self.store.artifact(
+                        performance_job_id, name
+                    )
+                    if (
+                        artifact_path.stat().st_size != entry.get("bytes")
+                        or sha256(artifact_path) != entry.get("sha256")
+                    ):
+                        raise FileNotFoundError(logical_name)
+                    video_paths[logical_name] = artifact_path
+                capture_track = load_capture_npz(video_paths["capture"])
+                load_verified_capture_jsonl(
+                    video_paths["capture_jsonl"], capture_track
+                )
+                pixel_observations = load_pixel_observations(
+                    video_paths["pixel_observations"]
+                )
+                input_sha256 = (
+                    input_ledger.get("sha256")
+                    if isinstance(input_ledger, dict)
+                    else None
+                )
+                input_bytes = (
+                    input_ledger.get("bytes")
+                    if isinstance(input_ledger, dict)
+                    else None
+                )
+                capture_summary = _mapping(performance.get("capture"))
+                if (
+                    capture_track.provenance.source_sha256 != input_sha256
+                    or capture_track.provenance.source_bytes != input_bytes
+                    or capture_track.frame_count != capture_summary.get("frames")
+                ):
+                    raise ValueError("Capture source binding does not match the sealed job")
+                pixel_observations.validate_capture(capture_track)
+                load_verified_performance_evidence(
+                    video_paths["performance_evidence"],
+                    expected_source_sha256=(
+                        capture_track.provenance.source_sha256
+                    ),
+                    expected_frame_count=capture_track.frame_count,
+                    expected_capture=capture_track,
+                )
+                performance_evidence_artifact_verified = source_input_verified
+                load_verified_observation_v3_summary(
+                    video_paths["observation_v3"],
+                    pixel_observations_path=video_paths["pixel_observations"],
+                    capture_artifact_path=video_paths["capture"],
+                    expected_capture=capture_track,
+                )
+                observation_v3_artifacts_verified = source_input_verified
+                capture_session = load_verified_video_capture_session(
+                    video_paths["capture_session"],
+                    expected_capture=capture_track,
+                    expected_observations=pixel_observations,
+                    artifact_paths={
+                        name: video_paths[name]
+                        for name in (
+                            "capture",
+                            "capture_jsonl",
+                            "performance_evidence",
+                            "pixel_observations",
+                            "observation_v3",
+                        )
+                    },
+                )
+                capture_session_artifact_verified = source_input_verified
+                session_claims = _mapping(capture_session.get("claims"))
+                session_assessments = _mapping(
+                    capture_session.get("assessments")
+                )
+                capture_session_production_claims_verified = bool(
+                    source_input_verified
+                    and session_claims.get("production_validated")
+                    and session_claims.get("identity_continuity_verified")
+                    and session_claims.get("neutrality_independently_confirmed")
+                    and _mapping(capture_session.get("subject_binding")).get(
+                        "state"
+                    )
+                    == "bound"
+                    and _mapping(session_assessments.get("neutrality")).get(
+                        "state"
+                    )
+                    == "confirmed_neutral"
+                    and _mapping(
+                        session_assessments.get("identity_continuity")
+                    ).get("state")
+                    == "verified_consistent"
+                )
+            except (AutoAnimError, FileNotFoundError, OSError, ValueError):
                 pass
 
         phone_evidence_artifacts_verified = False
@@ -844,6 +967,15 @@ class ApplicationService:
             delivery_artifact_verified=delivery_artifact_verified,
             performance_evidence_artifact_verified=(
                 performance_evidence_artifact_verified
+            ),
+            observation_v3_artifacts_verified=(
+                observation_v3_artifacts_verified
+            ),
+            capture_session_artifact_verified=(
+                capture_session_artifact_verified
+            ),
+            capture_session_production_claims_verified=(
+                capture_session_production_claims_verified
             ),
             phone_evidence_artifacts_verified=(
                 phone_evidence_artifacts_verified

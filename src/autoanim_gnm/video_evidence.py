@@ -488,6 +488,7 @@ def load_verified_performance_evidence(
     *,
     expected_source_sha256: str,
     expected_frame_count: int,
+    expected_capture: CaptureTrack | None = None,
 ) -> dict[str, Any]:
     """Load and verify the timing/state contract of an Observation-v2 artifact."""
 
@@ -641,6 +642,15 @@ def load_verified_performance_evidence(
         or summary.get("lastProjectTick") != frames[-1].get("projectTick")
     ):
         raise ValueError("Performance evidence summary does not match its frames")
+    if expected_capture is not None:
+        if (
+            expected_capture.provenance.source_sha256 != expected_source_sha256
+            or expected_capture.frame_count != expected_frame_count
+            or payload != build_performance_evidence(expected_capture)
+        ):
+            raise ValueError(
+                "Performance evidence does not reconstruct from the expected capture"
+            )
     return payload
 
 

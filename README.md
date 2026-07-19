@@ -105,6 +105,13 @@ teeth geometry plus viewer reconstruction. They are structural reports, not
 claims of phone accuracy, visibility, penetration-free geometry or artist
 approval.
 
+Video jobs also emit compatibility `performance-evidence.json` (Observation
+v2), bounded `pixel-observations.npz`, compact `observation-v3.json`, and a
+path-free `capture-session.json`. The new pixel lane measures regional image
+support and verifies exact source/capture/artifact bindings, but is deliberately
+uncalibrated and motion-inert: it does not yet authorize occlusion, identity,
+neutrality, microexpression, or production-quality claims.
+
 The global `--model-path`, `--rhubarb-bin`, `--a2f-runner`, and `--a2f-assets`
 options may be placed before the subcommand when using non-default locations.
 Use `--backend learned` to require the neural path or `--backend fallback` for

@@ -631,12 +631,29 @@ Deliver the phase in four build/review/test loops:
    both tools finish. On the retained CREMA-D source it measures a `-27 ms` audio start
    offset and `+37.653061 ms` duration drift. The fusion gate remains blocked
    because no phone/audio semantics have been classified, and the artifact is
-   diagnostic-only. Remaining work is identity continuity, pixel-derived
-   blur/occlusion, mouth/eye crops and reprojection residuals. Test
+   diagnostic-only.
+2. **Observation v3 + CaptureSession foundation (implemented, diagnostic):**
+   `pixel-observations.npz` retains exact PTS, decoded-RGB hashes, regional
+   crops, absolute plus take-relative focus, exposure/flow signals, structural
+   cut and photometric-discontinuity signals, and observation epochs;
+   compact `observation-v3.json` reconstructs summaries and events from those
+   arrays. `capture-session.json` binds Capture v1, Observation v2 and v3 under
+   the signed artifact ledger without job IDs, timestamps or absolute paths.
+   Portable verification reconstructs Capture JSONL, Observation v2, the pixel
+   arrays and Observation v3 from Capture v1 rather than trusting schema labels
+   or matching only source hash/frame count. FFprobe output, archive expansion,
+   duplicate NPZ members and JSONL writes are resource-bounded.
+   Missing values remain null/NaN, pixel confidence is uncalibrated and capped
+   below 0.75, and occlusion/identity/neutrality stay unknown. The exact source
+   is re-decoded, so the contract explicitly does not claim the pixels are the
+   original MediaPipe ingress buffers. Flat or insufficient flow/correlation is
+   unavailable, never numeric zero or perfect consistency. Remaining work is
+   labeled calibration, identity continuity, same-buffer Capture v2 and viewer
+   diagnostics. Test
    variable-frame-rate, B-frame, rotation, blur, occlusion,
    multiple-face, cut and missing-frame fixtures; exact source PTS must remain
    bit-identical.
-2. **Constrained fusion (deterministic first pass implemented):**
+3. **Constrained fusion (deterministic first pass implemented):**
    `audio_visual_repair.py` validates learned `[T,383]` controls, samples at
    exact video display start minus decoded-audio start while requiring native
    sample coverage, resamples without time warp, locks video
@@ -648,19 +665,19 @@ Deliver the phase in four build/review/test loops:
    fails when learned A2F is unavailable instead of silently using Rhubarb.
    Unit adversaries cover fallback rejection, PTS tampering, partial audio
    coverage, contact conflict and authority locks. The retained real CREMA-D
-   video+audio E2E passes. Remaining: pixel-derived regional uncertainty,
-   conflict intervals rather than frame flags, silent-expression,
+   video+audio E2E passes. Remaining: calibrated regional uncertainty
+   consumption, conflict intervals rather than frame flags, silent-expression,
    neutral-face-speech, dubbed-offset and deliberate mouth-occlusion real
    fixtures, and comparison with a trained audiovisual model. High-confidence
    video controls must remain bit-identical in all of them.
-3. **Artist review viewer (foundation implemented):** the viewer now steps the
+4. **Artist review viewer (foundation implemented):** the viewer now steps the
    source and paused GLB action to the exact Observation-v2 timestamp and shows
    PTS/tick/time, regional confidence, and missing/unknown state. Remaining:
    synchronized side-by-side and overlay modes, locked camera, mouth/tongue
    close-up, region/confidence/control curves, gaze rays, and jump-to-conflict
    flags. Browser tests must compare requested PTS with the sampled GLB frame
    and capture deterministic screenshots of flagged real frames.
-4. **Ground-truth acceptance:** a consented calibration take with a real
+5. **Ground-truth acceptance:** a consented calibration take with a real
    neutral segment, phone/contact annotation, known gaze targets and calibrated
    head pose, plus a separate natural acting take and occlusion stress take.
    Report by region and capture condition; do not collapse the result into one
@@ -975,14 +992,17 @@ adapters.
   above, exact source-frame stepping and regional evidence readout in the
   interactive viewer, and a hash-bound native-audio-sample/video-PTS join with
   rational offset/drift and typed fail-closed evidence.
+- Implemented: additive pixel-derived Observation v3 and a deterministic
+  CaptureSession sidecar, both verified from sealed artifact bytes. They remain
+  diagnostic, uncalibrated and motion-inert.
 - Implemented: optional named `audio_visual_repair` with a required learned
   source, exact display-time/decoded-audio clock joining, visible-video ownership
   locks, globally weak-observation lower-face repair, dedicated audio tongue,
   contact disagreement diagnostics and complete
   revision artifacts. Default `video_follow` remains unchanged.
-- Remaining: pixel-derived regional uncertainty, time-interval conflict review,
-  trained multimodal fusion, real contradictory/occlusion fixtures,
-  side-by-side/overlay review and the physical oral system.
+- Remaining: calibrated consumption of regional uncertainty, time-interval
+  conflict review, trained multimodal fusion, real contradictory/occlusion
+  fixtures, side-by-side/overlay review and the physical oral system.
 - Gate: rigid-teeth residual `<0.10 mm`, oral penetration p99 `<0.10 mm` / max
   `<0.25 mm`, tongue timing within one annotated frame, no false visibility,
   and the audio-visual acceptance gates defined in the video fidelity audit.
@@ -1039,10 +1059,14 @@ artist gates pass.
   into v3's published post-solver ranges, so this proves the v3 transport and
   retarget boundary—not v3 inference quality. Focused v3/import/calibration/
   readiness/app tests passed `48` tests after the integration review.
-- Current full post-review regression: `431 passed, 1 skipped, 1 dependency
+- Pre-Observation-v3 full regression: `431 passed, 1 skipped, 1 dependency
   warning in 407.96s`. The only skip is the duplicate opt-in v2 released-Claire
   asset test; the retained learned v2 route and the real-audio v3-profile import
   boundary both ran in this suite.
+- Observation-v3/CaptureSession post-review regression: `492 passed, 1 skipped,
+  1 dependency warning in 483.17s`. The only skip remains the duplicate opt-in
+  released-Claire asset test; the mandatory retained learned routes and
+  checksum-pinned CREMA-D video route ran and passed.
 - Honest release state: the implementation is a working candidate, not a
   production approval. Production remains blocked on mouth-local visual
   uncertainty or a trained multimodal model, a rights-cleared labeled A/V

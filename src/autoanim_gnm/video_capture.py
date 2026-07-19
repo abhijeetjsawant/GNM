@@ -16,9 +16,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import tempfile
+import time
 from typing import Any
+import zipfile
 
 import mediapipe as mp
 import numpy as np
@@ -29,6 +32,11 @@ from .serialization import write_npz
 
 
 CAPTURE_SCHEMA_VERSION = "autoanim.capture.v1"
+MAX_CAPTURE_NPZ_BYTES = 192 * 1024 * 1024
+MAX_CAPTURE_NPZ_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+MAX_CAPTURE_JSONL_BYTES = 512 * 1024 * 1024
+MAX_FFPROBE_STDOUT_BYTES = 8 * 1024 * 1024
+MAX_FFPROBE_STDERR_BYTES = 1 * 1024 * 1024
 LANDMARK_COUNT = 478
 MONOCULAR_SCALE_CAVEAT = (
     "MediaPipe's monocular facial transform is relative to its canonical face; "
@@ -100,6 +108,15 @@ def _readonly_array(value: object, dtype: np.dtype[Any]) -> np.ndarray:
     return array
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON member: {key}")
+        result[key] = value
+    return result
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -124,14 +141,25 @@ def _tool_version(executable: str) -> str:
     return result.stdout.splitlines()[0].strip()
 
 
+def _command_template(command: Sequence[str], source: Path) -> tuple[str, ...]:
+    source_forms = {str(source), str(source.resolve())}
+    return tuple("${SOURCE}" if str(item) in source_forms else str(item) for item in command)
+
+
 @dataclass(frozen=True, slots=True)
 class VideoDecodeLimits:
     max_file_bytes: int = 2 * 1024 * 1024 * 1024
     max_pixels_per_frame: int = 16_000_000
-    max_frames: int = 18_000
+    max_frames: int = 7_200
+    max_total_decoded_pixels: int = 20_000_000_000
 
     def __post_init__(self) -> None:
-        if min(self.max_file_bytes, self.max_pixels_per_frame, self.max_frames) <= 0:
+        if min(
+            self.max_file_bytes,
+            self.max_pixels_per_frame,
+            self.max_frames,
+            self.max_total_decoded_pixels,
+        ) <= 0:
             raise ValueError("Video decode limits must be positive")
 
 
@@ -209,6 +237,67 @@ class CaptureProvenance:
     ffmpeg_command: tuple[str, ...]
     caveats: tuple[str, ...] = (MONOCULAR_SCALE_CAVEAT,)
 
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("source_name", self.source_name),
+            ("model_name", self.model_name),
+            ("mediapipe_version", self.mediapipe_version),
+            ("ffprobe_version", self.ffprobe_version),
+            ("ffmpeg_version", self.ffmpeg_version),
+            ("codec", self.codec),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"Capture provenance {label} must be non-empty")
+        if (
+            Path(self.source_name).name != self.source_name
+            or Path(self.model_name).name != self.model_name
+        ):
+            raise ValueError("Capture provenance source/model names must be basenames")
+        for label, value in (
+            ("source_sha256", self.source_sha256),
+            ("model_sha256", self.model_sha256),
+        ):
+            if (
+                not isinstance(value, str)
+                or len(value) != 64
+                or value != value.lower()
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                raise ValueError(f"Capture provenance {label} must be lowercase SHA-256")
+        if (
+            not isinstance(self.source_bytes, int)
+            or isinstance(self.source_bytes, bool)
+            or self.source_bytes <= 0
+        ):
+            raise ValueError("Capture provenance source_bytes must be positive")
+        if (
+            not isinstance(self.time_base_numerator, int)
+            or isinstance(self.time_base_numerator, bool)
+            or not isinstance(self.time_base_denominator, int)
+            or isinstance(self.time_base_denominator, bool)
+            or self.time_base_numerator <= 0
+            or self.time_base_denominator <= 0
+        ):
+            raise ValueError("Capture provenance time base must be positive")
+        if self.display_rotation_degrees not in {0, 90, 180, 270}:
+            raise ValueError("Capture provenance rotation must be a right angle")
+        for label, command in (
+            ("ffprobe_command", self.ffprobe_command),
+            ("ffmpeg_command", self.ffmpeg_command),
+        ):
+            if (
+                not isinstance(command, tuple)
+                or not command
+                or any(not isinstance(item, str) or not item for item in command)
+            ):
+                raise ValueError(f"Capture provenance {label} must be a non-empty recipe")
+        if (
+            not isinstance(self.caveats, tuple)
+            or not self.caveats
+            or any(not isinstance(item, str) or not item for item in self.caveats)
+        ):
+            raise ValueError("Capture provenance caveats must be non-empty")
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "source_name": self.source_name,
@@ -230,24 +319,75 @@ class CaptureProvenance:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> CaptureProvenance:
+        expected_keys = {
+            "source_name",
+            "source_sha256",
+            "source_bytes",
+            "model_name",
+            "model_sha256",
+            "mediapipe_version",
+            "ffprobe_version",
+            "ffmpeg_version",
+            "codec",
+            "time_base",
+            "source_start_pts",
+            "display_rotation_degrees",
+            "ffprobe_command",
+            "ffmpeg_command",
+            "caveats",
+        }
+        if set(value) != expected_keys:
+            raise ValueError("Capture provenance members do not match capture.v1")
         time_base = value["time_base"]
+        if (
+            not isinstance(time_base, list)
+            or len(time_base) != 2
+            or any(not isinstance(item, int) or isinstance(item, bool) for item in time_base)
+            or any(
+                not isinstance(value[name], int) or isinstance(value[name], bool)
+                for name in (
+                    "source_bytes",
+                    "source_start_pts",
+                    "display_rotation_degrees",
+                )
+            )
+            or any(
+                not isinstance(value[name], str)
+                for name in (
+                    "source_name",
+                    "source_sha256",
+                    "model_name",
+                    "model_sha256",
+                    "mediapipe_version",
+                    "ffprobe_version",
+                    "ffmpeg_version",
+                    "codec",
+                )
+            )
+            or any(
+                not isinstance(value[name], list)
+                or any(not isinstance(item, str) for item in value[name])
+                for name in ("ffprobe_command", "ffmpeg_command", "caveats")
+            )
+        ):
+            raise ValueError("Capture provenance values do not match capture.v1")
         return cls(
-            source_name=str(value["source_name"]),
-            source_sha256=str(value["source_sha256"]),
-            source_bytes=int(value["source_bytes"]),
-            model_name=str(value["model_name"]),
-            model_sha256=str(value["model_sha256"]),
-            mediapipe_version=str(value["mediapipe_version"]),
-            ffprobe_version=str(value["ffprobe_version"]),
-            ffmpeg_version=str(value["ffmpeg_version"]),
-            codec=str(value["codec"]),
-            time_base_numerator=int(time_base[0]),
-            time_base_denominator=int(time_base[1]),
-            source_start_pts=int(value["source_start_pts"]),
-            display_rotation_degrees=int(value["display_rotation_degrees"]),
-            ffprobe_command=tuple(str(item) for item in value["ffprobe_command"]),
-            ffmpeg_command=tuple(str(item) for item in value["ffmpeg_command"]),
-            caveats=tuple(str(item) for item in value["caveats"]),
+            source_name=value["source_name"],
+            source_sha256=value["source_sha256"],
+            source_bytes=value["source_bytes"],
+            model_name=value["model_name"],
+            model_sha256=value["model_sha256"],
+            mediapipe_version=value["mediapipe_version"],
+            ffprobe_version=value["ffprobe_version"],
+            ffmpeg_version=value["ffmpeg_version"],
+            codec=value["codec"],
+            time_base_numerator=time_base[0],
+            time_base_denominator=time_base[1],
+            source_start_pts=value["source_start_pts"],
+            display_rotation_degrees=value["display_rotation_degrees"],
+            ffprobe_command=tuple(value["ffprobe_command"]),
+            ffmpeg_command=tuple(value["ffmpeg_command"]),
+            caveats=tuple(value["caveats"]),
         )
 
 
@@ -295,6 +435,35 @@ class CaptureTrack:
             raise ValueError(f"Unsupported capture schema: {self.schema_version}")
         if self.width <= 0 or self.height <= 0 or count == 0:
             raise ValueError("Capture track has invalid dimensions or no frames")
+        if self.provenance.source_start_pts != int(self.source_pts[0]):
+            raise ValueError(
+                "Capture provenance source_start_pts does not match the first frame"
+            )
+        time_base = Fraction(
+            self.provenance.time_base_numerator,
+            self.provenance.time_base_denominator,
+        )
+        expected_seconds = np.asarray(
+            [
+                float(Fraction(int(value) - int(self.source_pts[0])) * time_base)
+                for value in self.source_pts
+            ],
+            dtype=np.float64,
+        )
+        expected_milliseconds = np.asarray(
+            [int(round(Fraction(int(value) - int(self.source_pts[0])) * time_base * 1000))
+             for value in self.source_pts],
+            dtype=np.int64,
+        )
+        if not np.allclose(
+            self.timestamps_seconds,
+            expected_seconds,
+            rtol=0.0,
+            atol=np.finfo(np.float64).eps * 8,
+        ) or not np.array_equal(
+            self.mediapipe_timestamps_ms, expected_milliseconds
+        ):
+            raise ValueError("Capture timestamps do not match source PTS and time base")
         expected = {
             "timestamps_seconds": (count,),
             "mediapipe_timestamps_ms": (count,),
@@ -363,6 +532,97 @@ def _parse_fraction(value: object, *, field: str) -> Fraction:
     return fraction
 
 
+def _run_bounded_text_command(
+    command: Sequence[str],
+    *,
+    timeout_seconds: float,
+    max_stdout_bytes: int,
+    max_stderr_bytes: int,
+) -> tuple[str, str]:
+    """Run a tool without buffering unbounded output in memory or on disk."""
+
+    if timeout_seconds <= 0 or max_stdout_bytes <= 0 or max_stderr_bytes <= 0:
+        raise ValueError("Command resource limits must be positive")
+
+    file_limit = max(max_stdout_bytes, max_stderr_bytes)
+    popen_options: dict[str, Any] = {}
+    if os.name == "posix":
+        # RLIMIT_FSIZE is the hard backstop; the parent also polls both files so
+        # non-POSIX hosts still terminate an unexpectedly verbose dependency.
+        import resource
+
+        def _limit_output_files() -> None:
+            _, hard_limit = resource.getrlimit(resource.RLIMIT_FSIZE)
+            bounded_hard = (
+                file_limit
+                if hard_limit == resource.RLIM_INFINITY
+                else min(file_limit, hard_limit)
+            )
+            resource.setrlimit(
+                resource.RLIMIT_FSIZE,
+                (min(file_limit, bounded_hard), bounded_hard),
+            )
+
+        popen_options["preexec_fn"] = _limit_output_files
+
+    with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(
+        mode="w+b"
+    ) as stderr_file:
+        process = subprocess.Popen(
+            tuple(command),
+            stdout=stdout_file,
+            stderr=stderr_file,
+            **popen_options,
+        )
+        deadline = time.monotonic() + timeout_seconds
+        limit_exceeded = False
+        while process.poll() is None:
+            if (
+                os.fstat(stdout_file.fileno()).st_size >= max_stdout_bytes
+                or os.fstat(stderr_file.fileno()).st_size >= max_stderr_bytes
+            ):
+                limit_exceeded = True
+                process.kill()
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                process.kill()
+                process.wait()
+                raise subprocess.TimeoutExpired(tuple(command), timeout_seconds)
+            try:
+                process.wait(timeout=min(0.05, remaining))
+            except subprocess.TimeoutExpired:
+                continue
+        process.wait()
+        stdout_size = os.fstat(stdout_file.fileno()).st_size
+        stderr_size = os.fstat(stderr_file.fileno()).st_size
+        file_signal = (
+            os.name == "posix"
+            and process.returncode == -getattr(signal, "SIGXFSZ", -1)
+        )
+        if (
+            limit_exceeded
+            or file_signal
+            or stdout_size >= max_stdout_bytes
+            or stderr_size >= max_stderr_bytes
+        ):
+            raise AutoAnimError(
+                "LIMIT_EXCEEDED", "Dependency output exceeded its configured byte limit"
+            )
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        stdout = stdout_file.read().decode("utf-8", errors="replace")
+        stderr = stderr_file.read().decode("utf-8", errors="replace")
+        if process.returncode:
+            raise subprocess.CalledProcessError(
+                process.returncode,
+                tuple(command),
+                output=stdout,
+                stderr=stderr,
+            )
+        return stdout, stderr
+
+
 def probe_video(
     path: str | Path,
     *,
@@ -392,10 +652,13 @@ def probe_video(
         str(source),
     )
     try:
-        result = subprocess.run(
-            command, capture_output=True, text=True, check=True, timeout=120
+        stdout, _ = _run_bounded_text_command(
+            command,
+            timeout_seconds=120,
+            max_stdout_bytes=MAX_FFPROBE_STDOUT_BYTES,
+            max_stderr_bytes=MAX_FFPROBE_STDERR_BYTES,
         )
-        payload = json.loads(result.stdout)
+        payload = json.loads(stdout)
     except FileNotFoundError as exc:
         raise AutoAnimError("DEPENDENCY_MISSING", f"FFprobe is unavailable: {ffprobe_bin}") from exc
     except subprocess.TimeoutExpired as exc:
@@ -427,6 +690,11 @@ def probe_video(
         raise AutoAnimError("LIMIT_EXCEEDED", "Video frame dimensions exceed configured limits")
     if len(pts) > limits.max_frames:
         raise AutoAnimError("LIMIT_EXCEEDED", "Video contains too many frames")
+    if width * height * len(pts) > limits.max_total_decoded_pixels:
+        raise AutoAnimError(
+            "LIMIT_EXCEEDED",
+            "Video exceeds the configured aggregate decoded-pixel work limit",
+        )
     if len(pts) > 1 and np.any(np.diff(pts) <= 0):
         raise AutoAnimError(
             "MEDIA_INVALID",
@@ -677,8 +945,8 @@ def capture_video(
         time_base_denominator=probe.time_base_denominator,
         source_start_pts=int(probe.source_pts[0]),
         display_rotation_degrees=probe.display_rotation_degrees,
-        ffprobe_command=probe.ffprobe_command,
-        ffmpeg_command=ffmpeg_command,
+        ffprobe_command=_command_template(probe.ffprobe_command, probe.path),
+        ffmpeg_command=_command_template(ffmpeg_command, probe.path),
     )
     return CaptureTrack(
         source_pts=probe.source_pts,
@@ -724,11 +992,73 @@ def write_capture_npz(path: str | Path, track: CaptureTrack) -> Path:
 
 
 def load_capture_npz(path: str | Path) -> CaptureTrack:
+    source = Path(path)
+    if source.stat().st_size <= 0 or source.stat().st_size > MAX_CAPTURE_NPZ_BYTES:
+        raise AutoAnimError(
+            "MEDIA_INVALID", "Capture NPZ exceeds its compressed byte limit"
+        )
     try:
-        with np.load(Path(path), allow_pickle=False) as values:
+        with zipfile.ZipFile(source) as archive:
+            member_names = [item.filename for item in archive.infolist()]
+            if (
+                len(member_names) != len(set(member_names))
+                or len(member_names) > 32
+                or sum(item.file_size for item in archive.infolist())
+                > MAX_CAPTURE_NPZ_UNCOMPRESSED_BYTES
+            ):
+                raise ValueError(
+                    "Capture NPZ has duplicate members or exceeds its resource limit"
+                )
+        with np.load(source, allow_pickle=False) as values:
+            expected_keys = {
+                "schema_version",
+                "source_pts",
+                "timestamps_seconds",
+                "mediapipe_timestamps_ms",
+                "detected",
+                "landmarks_xyz",
+                "landmark_visibility",
+                "landmark_presence",
+                "blendshape_names",
+                "blendshape_scores",
+                "facial_transforms",
+                "face_confidence",
+                "tracking_quality",
+                "frame_size",
+                "provenance_json",
+            }
+            if set(values.files) != expected_keys:
+                raise ValueError("Capture NPZ arrays do not match capture.v1")
+            exact_dtypes = {
+                "source_pts": np.dtype(np.int64),
+                "timestamps_seconds": np.dtype(np.float64),
+                "mediapipe_timestamps_ms": np.dtype(np.int64),
+                "detected": np.dtype(np.bool_),
+                "landmarks_xyz": np.dtype(np.float32),
+                "landmark_visibility": np.dtype(np.float32),
+                "landmark_presence": np.dtype(np.float32),
+                "blendshape_scores": np.dtype(np.float32),
+                "facial_transforms": np.dtype(np.float32),
+                "face_confidence": np.dtype(np.float32),
+                "tracking_quality": np.dtype(np.float32),
+                "frame_size": np.dtype(np.int32),
+            }
+            if any(values[name].dtype != dtype for name, dtype in exact_dtypes.items()):
+                raise ValueError("Capture NPZ array dtype does not match capture.v1")
+            if any(
+                values[name].dtype.kind != "U"
+                for name in ("schema_version", "blendshape_names", "provenance_json")
+            ):
+                raise ValueError("Capture NPZ text arrays must be Unicode")
             width, height = values["frame_size"].tolist()
             provenance = CaptureProvenance.from_dict(
-                json.loads(str(values["provenance_json"].item()))
+                json.loads(
+                    str(values["provenance_json"].item()),
+                    object_pairs_hook=_reject_duplicate_keys,
+                    parse_constant=lambda value: (_ for _ in ()).throw(
+                        ValueError(f"Non-finite JSON number: {value}")
+                    ),
+                )
             )
             return CaptureTrack(
                 schema_version=str(values["schema_version"].item()),
@@ -748,7 +1078,13 @@ def load_capture_npz(path: str | Path) -> CaptureTrack:
                 height=int(height),
                 provenance=provenance,
             )
-    except (OSError, KeyError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        KeyError,
+        ValueError,
+        json.JSONDecodeError,
+        zipfile.BadZipFile,
+    ) as exc:
         raise AutoAnimError("MEDIA_INVALID", f"Invalid capture NPZ: {exc}") from exc
 
 
@@ -759,6 +1095,42 @@ def _nullable(value: np.ndarray) -> Any:
             return None
         return scalar
     return [_nullable(item) for item in value]
+
+
+def _capture_jsonl_metadata(track: CaptureTrack) -> dict[str, Any]:
+    return {
+        "recordType": "metadata",
+        "schemaVersion": track.schema_version,
+        "frameCount": track.frame_count,
+        "frameSize": [track.width, track.height],
+        "blendshapeNames": list(track.blendshape_names),
+        "provenance": track.provenance.as_dict(),
+    }
+
+
+def _capture_jsonl_frame(track: CaptureTrack, index: int) -> dict[str, Any]:
+    is_detected = bool(track.detected[index])
+    return {
+        "recordType": "frame",
+        "frameIndex": index,
+        "sourcePTS": int(track.source_pts[index]),
+        "timestampSeconds": float(track.timestamps_seconds[index]),
+        "mediapipeTimestampMs": int(track.mediapipe_timestamps_ms[index]),
+        "detected": is_detected,
+        "landmarksXYZ": _nullable(track.landmarks_xyz[index]) if is_detected else None,
+        "landmarkVisibility": (
+            _nullable(track.landmark_visibility[index]) if is_detected else None
+        ),
+        "landmarkPresence": (
+            _nullable(track.landmark_presence[index]) if is_detected else None
+        ),
+        "blendshapeScores": track.blendshape_scores[index].tolist(),
+        "facialTransform": (
+            track.facial_transforms[index].tolist() if is_detected else None
+        ),
+        "faceConfidence": _nullable(track.face_confidence[index]),
+        "trackingQuality": float(track.tracking_quality[index]),
+    }
 
 
 def write_capture_jsonl(path: str | Path, track: CaptureTrack) -> Path:
@@ -777,43 +1149,18 @@ def write_capture_jsonl(path: str | Path, track: CaptureTrack) -> Path:
     )
     temporary = Path(handle.name)
     try:
-        metadata = {
-            "recordType": "metadata",
-            "schemaVersion": track.schema_version,
-            "frameCount": track.frame_count,
-            "frameSize": [track.width, track.height],
-            "blendshapeNames": list(track.blendshape_names),
-            "provenance": track.provenance.as_dict(),
-        }
+        metadata = _capture_jsonl_metadata(track)
         handle.write(json.dumps(metadata, sort_keys=True, allow_nan=False) + "\n")
         for index in range(track.frame_count):
-            is_detected = bool(track.detected[index])
-            record = {
-                "recordType": "frame",
-                "frameIndex": index,
-                "sourcePTS": int(track.source_pts[index]),
-                "timestampSeconds": float(track.timestamps_seconds[index]),
-                "mediapipeTimestampMs": int(track.mediapipe_timestamps_ms[index]),
-                "detected": is_detected,
-                "landmarksXYZ": (
-                    _nullable(track.landmarks_xyz[index]) if is_detected else None
-                ),
-                "landmarkVisibility": (
-                    _nullable(track.landmark_visibility[index]) if is_detected else None
-                ),
-                "landmarkPresence": (
-                    _nullable(track.landmark_presence[index]) if is_detected else None
-                ),
-                "blendshapeScores": track.blendshape_scores[index].tolist(),
-                "facialTransform": (
-                    track.facial_transforms[index].tolist() if is_detected else None
-                ),
-                "faceConfidence": _nullable(track.face_confidence[index]),
-                "trackingQuality": float(track.tracking_quality[index]),
-            }
+            record = _capture_jsonl_frame(track, index)
             handle.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
+        if temporary.stat().st_size > MAX_CAPTURE_JSONL_BYTES:
+            raise AutoAnimError(
+                "LIMIT_EXCEEDED",
+                "Capture JSONL exceeds its configured byte limit while writing",
+            )
         handle.close()
         os.replace(temporary, destination)
     except Exception:
@@ -821,6 +1168,46 @@ def write_capture_jsonl(path: str | Path, track: CaptureTrack) -> Path:
         temporary.unlink(missing_ok=True)
         raise
     return destination
+
+
+def load_verified_capture_jsonl(
+    path: str | Path,
+    expected_capture: CaptureTrack,
+) -> None:
+    """Stream and reconstruct Capture v1 JSONL from the authoritative NPZ track."""
+
+    source = Path(path)
+    if source.stat().st_size <= 0 or source.stat().st_size > MAX_CAPTURE_JSONL_BYTES:
+        raise AutoAnimError(
+            "MEDIA_INVALID", "Capture JSONL exceeds its configured byte limit"
+        )
+
+    def parse(line: str) -> Any:
+        return json.loads(
+            line,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"Non-finite JSON number: {value}")
+            ),
+        )
+
+    try:
+        with source.open("r", encoding="utf-8", newline="") as handle:
+            first = handle.readline()
+            if not first or parse(first) != _capture_jsonl_metadata(expected_capture):
+                raise ValueError("Capture JSONL metadata differs from Capture v1")
+            for index in range(expected_capture.frame_count):
+                line = handle.readline()
+                if not line or parse(line) != _capture_jsonl_frame(
+                    expected_capture, index
+                ):
+                    raise ValueError(
+                        f"Capture JSONL frame {index} differs from Capture v1"
+                    )
+            if handle.readline():
+                raise ValueError("Capture JSONL contains trailing records")
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise AutoAnimError("MEDIA_INVALID", f"Invalid capture JSONL: {exc}") from exc
 
 
 def serialize_capture(directory: str | Path, track: CaptureTrack) -> tuple[Path, Path]:

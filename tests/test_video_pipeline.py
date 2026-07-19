@@ -1,3 +1,4 @@
+from dataclasses import fields
 import hashlib
 import json
 import os
@@ -13,6 +14,10 @@ from PIL import Image
 from autoanim_gnm.api import create_app
 from autoanim_gnm.animation import calibrate_lip_contact
 from autoanim_gnm.calibrated_retarget import CalibratedRetargeter
+from autoanim_gnm.capture_session import (
+    CAPTURE_SESSION_SCHEMA_VERSION,
+    load_verified_video_capture_session,
+)
 from autoanim_gnm.gnm_adapter import GNMAdapter
 from autoanim_gnm.rig import ControlRig
 from autoanim_gnm.semantic_decoder import ExpressionDecoder
@@ -30,6 +35,15 @@ from autoanim_gnm.video_pipeline import (
 from autoanim_gnm.video_evidence import (
     PERFORMANCE_EVIDENCE_SCHEMA_VERSION,
     build_performance_evidence,
+)
+from autoanim_gnm.video_observation import (
+    OBSERVATION_V3_POLICY,
+    OBSERVATION_V3_SCHEMA_VERSION,
+    PIXEL_DIAGNOSTIC_CONFIDENCE_CAP,
+    PIXEL_OBSERVATION_SCHEMA_VERSION,
+    analyze_video_pixels,
+    load_pixel_observations,
+    load_verified_observation_v3_summary,
 )
 from autoanim_gnm.video_retarget import retarget_capture
 
@@ -130,6 +144,21 @@ def test_retained_crema_capture_neutral_audit_and_final_geometry_retention(
         contact_rig=rig,
         lip_contact_calibration=contact_calibration,
     )
+    observations = analyze_video_pixels(source, capture)
+    performance_after_observation = retarget_capture(
+        capture,
+        retargeter,
+        contact_rig=rig,
+        lip_contact_calibration=contact_calibration,
+    )
+    for field in fields(performance):
+        before_value = getattr(performance, field.name)
+        after_value = getattr(performance_after_observation, field.name)
+        if isinstance(before_value, np.ndarray):
+            np.testing.assert_array_equal(before_value, after_value)
+        else:
+            assert before_value == after_value
+    observations.validate_capture(capture)
 
     np.testing.assert_array_equal(performance.source_pts, capture.source_pts)
     np.testing.assert_array_equal(
@@ -265,6 +294,17 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert result["capture"]["performance_evidence_policy"] == (
         "observation_only_no_motion_effect"
     )
+    assert result["capture"]["observation_v3_schema_version"] == (
+        OBSERVATION_V3_SCHEMA_VERSION
+    )
+    assert result["capture"]["observation_v3_arrays_schema_version"] == (
+        PIXEL_OBSERVATION_SCHEMA_VERSION
+    )
+    assert result["capture"]["observation_v3_policy"] == OBSERVATION_V3_POLICY
+    assert result["capture"]["observation_v3_consumed_by_retargeting"] is False
+    assert result["capture"]["capture_session_schema_version"] == (
+        CAPTURE_SESSION_SCHEMA_VERSION
+    )
     assert result["capture"]["production_validated"] is False
     assert result["retargeting"]["backend"] == (
         "geometry_calibrated_dense_contact_aperture_v3"
@@ -325,6 +365,15 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert result["artifacts"]["performance_evidence"]["media_type"] == (
         "application/json"
     )
+    assert result["artifacts"]["pixel_observations"]["media_type"] == (
+        "application/octet-stream"
+    )
+    assert result["artifacts"]["observation_v3"]["media_type"] == (
+        "application/json"
+    )
+    assert result["artifacts"]["capture_session"]["media_type"] == (
+        "application/json"
+    )
 
     evidence_report = json.loads(
         (job_dir / "performance-evidence.json").read_text(encoding="utf-8")
@@ -341,6 +390,92 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
         frame["neutralityState"] == "unknown"
         for frame in evidence_report["frames"]
     )
+
+    capture_track = load_capture_npz(job_dir / "capture.npz")
+    assert "${SOURCE}" in capture_track.provenance.ffprobe_command
+    assert "${SOURCE}" in capture_track.provenance.ffmpeg_command
+    assert str(job_dir) not in json.dumps(capture_track.provenance.as_dict())
+    pixel_observations = load_pixel_observations(
+        job_dir / "pixel-observations.npz"
+    )
+    pixel_observations.validate_capture(capture_track)
+    np.testing.assert_array_equal(
+        pixel_observations.source_pts, capture_track.source_pts
+    )
+    assert np.nanmax(pixel_observations.confidence) <= (
+        PIXEL_DIAGNOSTIC_CONFIDENCE_CAP
+    )
+    assert np.isfinite(pixel_observations.focus_reference).all()
+    assert np.ptp(pixel_observations.confidence[:, 0]) > 0.25
+    assert np.mean(
+        pixel_observations.confidence == PIXEL_DIAGNOSTIC_CONFIDENCE_CAP
+    ) < 0.10
+    assert np.min(pixel_observations.roi_pixel_count) > 256
+    assert not np.any(pixel_observations.cut_candidate)
+    assert not np.any(pixel_observations.photometric_discontinuity_candidate)
+    assert np.flatnonzero(pixel_observations.observation_epoch_start).tolist() == [0]
+    assert np.sum(np.isfinite(pixel_observations.temporal_innovation), axis=0).tolist() == [
+        66,
+        66,
+        66,
+        66,
+    ]
+    assert np.sum(np.isfinite(pixel_observations.flow_consistency), axis=0).tolist() == [
+        66,
+        66,
+        66,
+        66,
+    ]
+    observation_v3 = load_verified_observation_v3_summary(
+        job_dir / "observation-v3.json",
+        pixel_observations_path=job_dir / "pixel-observations.npz",
+        capture_artifact_path=job_dir / "capture.npz",
+        expected_capture=capture_track,
+    )
+    assert observation_v3["schemaVersion"] == OBSERVATION_V3_SCHEMA_VERSION
+    assert observation_v3["consumedByRetargeting"] is False
+    assert observation_v3["claims"]["productionValidated"] is False
+    assert observation_v3["decodedPixels"]["relationshipToDetectorInput"] == (
+        "redecoded_for_evidence"
+    )
+    assert "frames" not in observation_v3
+    assert observation_v3["events"]["identityContinuityState"] == "unknown"
+    assert observation_v3["events"][
+        "identityOrTrackingJumpCandidateFrames"
+    ] is None
+    assert all(
+        summary["strongFrames"] == 0
+        for summary in observation_v3["summary"]["regions"].values()
+    )
+    capture_session = load_verified_video_capture_session(
+        job_dir / "capture-session.json",
+        expected_capture=capture_track,
+        expected_observations=pixel_observations,
+        artifact_paths={
+            "capture": job_dir / "capture.npz",
+            "capture_jsonl": job_dir / "capture.jsonl",
+            "performance_evidence": job_dir / "performance-evidence.json",
+            "pixel_observations": job_dir / "pixel-observations.npz",
+            "observation_v3": job_dir / "observation-v3.json",
+        },
+    )
+    assert capture_session["schema_version"] == CAPTURE_SESSION_SCHEMA_VERSION
+    assert capture_session["subject_binding"]["state"] == "unbound"
+    assert capture_session["assessments"]["identity_continuity"]["state"] == (
+        "unknown"
+    )
+    assert capture_session["claims"]["changes_final_gnm_motion"] is False
+    assert capture_session["claims"]["production_validated"] is False
+
+    readiness = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/production-readiness"
+    )
+    assert readiness.status_code == 200
+    readiness_evidence = readiness.json()["gates"]["performance"]["evidence"]
+    assert readiness_evidence["performance_evidence_artifact_verified"] is True
+    assert readiness_evidence["observation_v3_artifacts_verified"] is True
+    assert readiness_evidence["capture_session_artifact_verified"] is True
+    assert readiness_evidence["capture_session_production_claims_verified"] is False
 
     oral_report = json.loads((job_dir / "oral-validation.json").read_text(encoding="utf-8"))
     assert oral_report["source"]["evaluation_mode"] == "provided_complete_gnm_frames"
@@ -417,3 +552,11 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert viewer.status_code == 200
     assert 'mediaKind="video"' in viewer.text
     assert f"/api/jobs/{result['job_id']}/files/source-proxy.mp4" in viewer.text
+
+    (job_dir / "observation-v3.json").write_text("{}\n", encoding="utf-8")
+    tampered_readiness = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/production-readiness"
+    ).json()
+    tampered_evidence = tampered_readiness["gates"]["performance"]["evidence"]
+    assert tampered_evidence["observation_v3_artifacts_verified"] is False
+    assert tampered_evidence["capture_session_artifact_verified"] is False

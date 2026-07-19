@@ -1,25 +1,36 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from fractions import Fraction
 import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+import warnings
+import zipfile
 
 import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
+import autoanim_gnm.video_capture as video_capture_module
+from autoanim_gnm.errors import AutoAnimError
 from autoanim_gnm.video_capture import (
     CaptureProvenance,
     CaptureTrack,
     MEDIAPIPE_BLENDSHAPE_NAMES,
+    VideoDecodeLimits,
     VideoProbe,
+    _command_template,
+    _run_bounded_text_command,
     capture_video,
     decoded_video_frames,
     load_capture_npz,
+    load_verified_capture_jsonl,
     probe_video,
     serialize_capture,
+    write_capture_jsonl,
 )
 from autoanim_gnm.video_retarget import (
     FAST_CONTACT_CONTROLS,
@@ -133,6 +144,8 @@ class _FakeRetargeter:
 
 def test_capture_schema_is_immutable_and_rejects_nonmonotonic_pts() -> None:
     track = _capture_track()
+    assert VideoDecodeLimits().max_frames == 7_200
+    assert VideoDecodeLimits().max_total_decoded_pixels == 20_000_000_000
     assert not track.landmarks_xyz.flags.writeable
     assert not track.blendshape_scores.flags.writeable
     with pytest.raises(ValueError):
@@ -151,6 +164,17 @@ def test_capture_schema_is_immutable_and_rejects_nonmonotonic_pts() -> None:
             display_rotation_degrees=0,
             ffprobe_command=("ffprobe",),
         )
+
+
+def test_capture_provenance_and_clock_are_strictly_validated() -> None:
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        replace(_provenance(), source_sha256="not-a-hash")
+    with pytest.raises(ValueError, match="basenames"):
+        replace(_provenance(), source_name="/tmp/source.mp4")
+    with pytest.raises(ValueError, match="right angle"):
+        replace(_provenance(), display_rotation_degrees=45)
+    with pytest.raises(ValueError, match="source_start_pts"):
+        replace(_capture_track(), provenance=replace(_provenance(), source_start_pts=99))
 
 
 @pytest.mark.skipif(
@@ -188,6 +212,38 @@ def test_real_ffmpeg_decode_has_one_rgb_frame_per_exact_pts(tmp_path: Path) -> N
         probe.mediapipe_timestamps_ms.tolist()
     )
     assert all(frame.rgb.shape == (64, 96, 3) for frame in decoded)
+    with pytest.raises(AutoAnimError, match="aggregate decoded-pixel"):
+        probe_video(
+            video,
+            limits=VideoDecodeLimits(max_total_decoded_pixels=96 * 64 * 6),
+        )
+
+
+def test_capture_command_recipe_is_independent_of_job_root(tmp_path: Path) -> None:
+    first = tmp_path / "job-a" / "input.flv"
+    second = tmp_path / "job-b" / "input.flv"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    assert _command_template(("ffmpeg", "-i", str(first)), first) == (
+        "ffmpeg",
+        "-i",
+        "${SOURCE}",
+    )
+    assert _command_template(("ffmpeg", "-i", str(second)), second) == (
+        "ffmpeg",
+        "-i",
+        "${SOURCE}",
+    )
+
+
+def test_dependency_output_is_bounded_before_json_parsing() -> None:
+    with pytest.raises(AutoAnimError, match="output exceeded"):
+        _run_bounded_text_command(
+            (sys.executable, "-c", "import sys; sys.stdout.write('x' * 8192)"),
+            timeout_seconds=5,
+            max_stdout_bytes=1024,
+            max_stderr_bytes=1024,
+        )
 
 
 def test_filter_preserves_blinks_and_mouth_contacts_without_broad_smoothing() -> None:
@@ -291,6 +347,7 @@ def test_capture_and_performance_serialization_include_provenance(tmp_path: Path
     capture = _capture_track(include_missing=True)
     capture_npz, capture_jsonl = serialize_capture(tmp_path / "capture", capture)
     loaded = load_capture_npz(capture_npz)
+    load_verified_capture_jsonl(capture_jsonl, loaded)
     np.testing.assert_array_equal(loaded.source_pts, capture.source_pts)
     np.testing.assert_array_equal(loaded.detected, capture.detected)
     assert loaded.provenance.source_sha256 == capture.provenance.source_sha256
@@ -299,6 +356,13 @@ def test_capture_and_performance_serialization_include_provenance(tmp_path: Path
     assert records[0]["provenance"]["source_sha256"] == "1" * 64
     assert records[4]["landmarksXYZ"] is None
     assert records[1]["faceConfidence"] is None
+    records[1]["sourcePTS"] += 1
+    capture_jsonl.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(AutoAnimError, match="frame 0 differs"):
+        load_verified_capture_jsonl(capture_jsonl, loaded)
 
     performance = retarget_capture(
         capture, _FakeRetargeter(), baseline_frame_count=1
@@ -327,6 +391,46 @@ def test_capture_and_performance_serialization_include_provenance(tmp_path: Path
     assert "sourceLipContactConfidence" in first_frame
     assert "sourceLipGeometryValid" in first_frame
     assert "lipContactAttained" in first_frame
+
+
+def test_capture_npz_rejects_dtype_tampering(tmp_path: Path) -> None:
+    capture_path, _ = serialize_capture(tmp_path, _capture_track())
+    with np.load(capture_path, allow_pickle=False) as values:
+        tampered = {name: values[name] for name in values.files}
+    tampered["source_pts"] = tampered["source_pts"].astype(np.int32)
+    np.savez_compressed(capture_path, **tampered)
+    with pytest.raises(AutoAnimError, match="dtype"):
+        load_capture_npz(capture_path)
+
+
+def test_capture_npz_rejects_duplicate_members(tmp_path: Path) -> None:
+    capture_path, _ = serialize_capture(tmp_path, _capture_track())
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(capture_path, mode="a") as archive:
+            archive.writestr("source_pts.npy", b"ambiguous")
+    with pytest.raises(AutoAnimError, match="duplicate members"):
+        load_capture_npz(capture_path)
+
+
+def test_capture_artifact_resource_limits_are_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture_path, jsonl_path = serialize_capture(tmp_path, _capture_track())
+    monkeypatch.setattr(
+        video_capture_module, "MAX_CAPTURE_NPZ_UNCOMPRESSED_BYTES", 1
+    )
+    with pytest.raises(AutoAnimError, match="resource limit"):
+        load_capture_npz(capture_path)
+    monkeypatch.setattr(
+        video_capture_module,
+        "MAX_CAPTURE_JSONL_BYTES",
+        jsonl_path.stat().st_size - 1,
+    )
+    with pytest.raises(AutoAnimError, match="byte limit"):
+        load_verified_capture_jsonl(jsonl_path, _capture_track())
+    with pytest.raises(AutoAnimError, match="while writing"):
+        write_capture_jsonl(tmp_path / "bounded.jsonl", _capture_track())
 
 
 @pytest.mark.skipif(

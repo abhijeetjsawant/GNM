@@ -146,8 +146,36 @@ def test_performance_evidence_json_is_deterministic_and_nan_free(tmp_path: Path)
         first,
         expected_source_sha256="a" * 64,
         expected_frame_count=3,
+        expected_capture=_track(),
     )
     assert verified["frames"][1]["observationState"] == "missing"
+
+
+def test_observation_v2_rejects_an_internally_valid_different_capture_clock(
+    tmp_path: Path,
+) -> None:
+    track = _track()
+    path = write_performance_evidence(tmp_path / "evidence.json", track)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["source"]["sourceStartPTS"] += 10
+    for frame in payload["frames"]:
+        frame["sourcePTS"] += 10
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    # The document remains self-consistent, but it is not evidence for this
+    # Capture v1 timeline and must fail the portable verifier boundary.
+    load_verified_performance_evidence(
+        path,
+        expected_source_sha256="a" * 64,
+        expected_frame_count=3,
+    )
+    with pytest.raises(ValueError, match="expected capture"):
+        load_verified_performance_evidence(
+            path,
+            expected_source_sha256="a" * 64,
+            expected_frame_count=3,
+            expected_capture=track,
+        )
 
 
 @pytest.mark.parametrize(

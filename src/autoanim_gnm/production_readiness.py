@@ -57,6 +57,9 @@ def evaluate_production_readiness(
     source_input_verified: bool = False,
     delivery_artifact_verified: bool = False,
     performance_evidence_artifact_verified: bool = False,
+    observation_v3_artifacts_verified: bool = False,
+    capture_session_artifact_verified: bool = False,
+    capture_session_production_claims_verified: bool = False,
     phone_evidence_artifacts_verified: bool = False,
     audio_visual_repair_artifacts_verified: bool = False,
     audio_visual_repair_qualification_verified: bool = False,
@@ -277,6 +280,18 @@ def evaluate_production_readiness(
             and capture.get("performance_evidence_policy")
             == "observation_only_no_motion_effect"
             and performance_evidence_artifact_verified
+            and capture.get("observation_v3_schema_version")
+            == "autoanim.performance-evidence.v3"
+            and capture.get("observation_v3_arrays_schema_version")
+            == "autoanim.pixel-observation/1.0"
+            and capture.get("observation_v3_policy")
+            == "observation_only_pixel_diagnostics_no_motion_effect_v1"
+            and capture.get("observation_v3_consumed_by_retargeting") is False
+            and observation_v3_artifacts_verified
+            and capture.get("capture_session_schema_version")
+            == "autoanim.capture-session.v1"
+            and capture_session_artifact_verified
+            and capture_session_production_claims_verified
         )
         performance_evidence = {
             "capture_production_validated": capture.get(
@@ -292,6 +307,24 @@ def evaluate_production_readiness(
             "performance_evidence_artifact_verified": (
                 performance_evidence_artifact_verified
             ),
+            "observation_v3_schema_version": capture.get(
+                "observation_v3_schema_version"
+            ),
+            "observation_v3_artifacts_verified": (
+                observation_v3_artifacts_verified
+            ),
+            "observation_v3_consumed_by_retargeting": capture.get(
+                "observation_v3_consumed_by_retargeting"
+            ),
+            "capture_session_schema_version": capture.get(
+                "capture_session_schema_version"
+            ),
+            "capture_session_artifact_verified": (
+                capture_session_artifact_verified
+            ),
+            "capture_session_production_claims_verified": (
+                capture_session_production_claims_verified
+            ),
             "face_presence_fraction": metrics.get("face_presence_fraction"),
             "expression_motion_correlation": metrics.get(
                 "final_expression_motion_correlation"
@@ -301,8 +334,9 @@ def evaluate_production_readiness(
             ),
         }
         performance_remediation = (
-            "Capture a labeled subject-neutral calibration and validate expression, "
-            "microexpression, gaze, head, mouth, and timing against held-out visual ground truth."
+            "Capture a labeled subject-neutral calibration, preserve a verified CaptureSession "
+            "and regional pixel evidence, then validate expression, microexpression, gaze, head, "
+            "mouth, and timing against held-out visual ground truth."
         )
     else:
         performance_passed = False

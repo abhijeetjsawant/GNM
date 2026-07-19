@@ -330,6 +330,35 @@ def test_video_gate_requires_subject_and_labeled_neutral_calibration() -> None:
         "performance_evidence_artifact_verified"
     ] is False
 
+    performance["capture"].update(
+        {
+            "observation_v3_schema_version": "autoanim.performance-evidence.v3",
+            "observation_v3_arrays_schema_version": (
+                "autoanim.pixel-observation/1.0"
+            ),
+            "observation_v3_policy": (
+                "observation_only_pixel_diagnostics_no_motion_effect_v1"
+            ),
+            "observation_v3_consumed_by_retargeting": False,
+            "capture_session_schema_version": "autoanim.capture-session.v1",
+        }
+    )
+    structural_only = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        performance_evidence_artifact_verified=True,
+        observation_v3_artifacts_verified=True,
+        capture_session_artifact_verified=True,
+        capture_session_production_claims_verified=False,
+        character_revision=character,
+    )
+    assert structural_only["gates"]["performance"]["passed"] is False
+    assert structural_only["gates"]["performance"]["evidence"][
+        "capture_session_production_claims_verified"
+    ] is False
+
 
 def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
     performance, character, _ = _approved_fixture()
@@ -342,6 +371,15 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
                     "autoanim.performance-evidence.v2"
                 ),
                 "performance_evidence_policy": "observation_only_no_motion_effect",
+                "observation_v3_schema_version": "autoanim.performance-evidence.v3",
+                "observation_v3_arrays_schema_version": (
+                    "autoanim.pixel-observation/1.0"
+                ),
+                "observation_v3_policy": (
+                    "observation_only_pixel_diagnostics_no_motion_effect_v1"
+                ),
+                "observation_v3_consumed_by_retargeting": False,
+                "capture_session_schema_version": "autoanim.capture-session.v1",
             },
             "retargeting": {
                 "subject_calibrated": True,
@@ -405,6 +443,9 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         source_input_verified=True,
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
+        observation_v3_artifacts_verified=True,
+        capture_session_artifact_verified=True,
+        capture_session_production_claims_verified=True,
         character_revision=character,
     )
     assert report["failures"] == ["audio_visual_repair"]
@@ -428,6 +469,9 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         source_input_verified=True,
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
+        observation_v3_artifacts_verified=True,
+        capture_session_artifact_verified=True,
+        capture_session_production_claims_verified=True,
         character_revision=character,
     )
     assert unverified["gates"]["audio_visual_repair"]["passed"] is False
@@ -440,6 +484,9 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         source_input_verified=True,
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
+        observation_v3_artifacts_verified=True,
+        capture_session_artifact_verified=True,
+        capture_session_production_claims_verified=True,
         audio_visual_repair_artifacts_verified=True,
         character_revision=character,
     )
@@ -453,6 +500,9 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         source_input_verified=True,
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
+        observation_v3_artifacts_verified=True,
+        capture_session_artifact_verified=True,
+        capture_session_production_claims_verified=True,
         audio_visual_repair_artifacts_verified=True,
         audio_visual_repair_qualification_verified=True,
         character_revision=character,

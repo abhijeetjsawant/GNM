@@ -37,7 +37,7 @@ report; it does not falsify that capability's evidence.
 | `identity` | Independent identity/hidden-geometry validation recorded on the immutable source character revision. |
 | `appearance` | When PBR is required: exact runtime base color, normal, roughness and specular maps plus pore/detail, unseen-light, and appearance production approval. |
 | `oral_animation` | Every source frame and viewer reconstruction structurally validated, no reported lip-order or tongue/teeth risk, and separate phone/tongue/collision/perceptual approval. |
-| `performance` | Audio: learned source, independently reviewed phone/apex annotations, passing timing report, hash-verified evidence artifacts, independent prototype quality gate, and approved animation profile. Video: verified Observation-v2 evidence artifact, approved capture, subject calibration, and labeled-neutral calibration. |
+| `performance` | Audio: learned source, independently reviewed phone/apex annotations, passing timing report, hash-verified evidence artifacts, independent prototype quality gate, and approved animation profile. Video: verified Observation-v2, regional Observation-v3 and CaptureSession artifacts, approved capture, subject calibration, and labeled-neutral calibration. Observation v3 remains diagnostic and cannot itself approve a take. |
 | `delivery` | Full-track, source-clocked animated GLB whose bytes match the signed artifact ledger. |
 | `acting` | When required: a sealed direction job linked to this exact performance, edited/compiled and explicitly artist-approved. An LLM proposal never passes this gate. |
 | `body` | When required: attached body/head seam plus approved body motion and contacts. A canonical skeleton or preview track alone never passes. |
@@ -47,14 +47,23 @@ as landmark NME, expression correlation, mouth smoothness, texture resolution,
 or structural GLB reconstruction remain visible as evidence but never override
 a missing independent approval.
 
+CaptureSession has two deliberately separate readiness facts. Artifact
+verification means its deterministic document reconstructs from the exact
+sealed Capture v1, JSONL, Observation-v2 and Observation-v3 bytes. Production
+claims require a bound subject plus confirmed neutrality, verified identity
+continuity and explicit production approval. The current v1 emitter always
+leaves those claims false/unknown, so structural integrity alone cannot make a
+video take publishable.
+
 ## Integrity behavior
 
 The report re-resolves the exact character revision on every request and
-rechecks the retained source and GLB bytes. Tampering after job completion
-therefore changes `provenance_integrity` or `delivery` to failed even if the
-signed manifest itself is unchanged. Character consent and material-rights
-expiry are also evaluated at request time rather than copied from an old UI
-label.
+rechecks the retained source and GLB bytes. For video, it also loads Capture v1,
+reconstructs Observation v3 from its bounded NPZ arrays, and reconstructs the
+path-free CaptureSession against all referenced sealed artifacts. Tampering
+after job completion therefore changes the relevant integrity or evidence gate
+to failed even if an old UI label says otherwise. Character consent and
+material-rights expiry are evaluated at request time.
 
 Readiness evaluation is read-only. Future approval operations must create a
 new immutable, signed evidence revision or review record; they must not rewrite
