@@ -174,6 +174,9 @@ class ApplicationService:
         dialog: str | None = None,
         backend: str = "auto",
         emotion_strength: float = 0.65,
+        mouth_aperture_gain: float = 1.0,
+        mouth_aperture_author: str | None = None,
+        mouth_aperture_reason: str | None = None,
         input_name: str | None = None,
         character_id: str | None = None,
         character_revision_id: str | None = None,
@@ -186,6 +189,9 @@ class ApplicationService:
             "fps": fps,
             "emotion": emotion,
             "emotion_strength": emotion_strength,
+            "mouth_aperture_gain": mouth_aperture_gain,
+            "mouth_aperture_author": mouth_aperture_author,
+            "mouth_aperture_reason": mouth_aperture_reason,
             "dialog": dialog,
             "backend": backend,
             "character_id": character.character_id if character is not None else None,
@@ -206,6 +212,9 @@ class ApplicationService:
                 rhubarb_bin=self.rhubarb_bin,
                 backend=backend,
                 emotion_strength=emotion_strength,
+                mouth_aperture_gain=mouth_aperture_gain,
+                mouth_aperture_author=mouth_aperture_author,
+                mouth_aperture_reason=mouth_aperture_reason,
                 a2f_runner=self.a2f_runner,
                 a2f_asset_dir=self.a2f_asset_dir,
                 a2f_offline=self.a2f_offline,
@@ -270,6 +279,9 @@ class ApplicationService:
         character_id: str | None = None,
         character_revision_id: str | None = None,
         usage_scope: str = "production",
+        mouth_aperture_gain: float = 1.0,
+        mouth_aperture_author: str | None = None,
+        mouth_aperture_reason: str | None = None,
     ) -> dict:
         character = self._resolve_character(
             character_id, character_revision_id, usage_scope=usage_scope
@@ -286,6 +298,9 @@ class ApplicationService:
             "character_id": character.character_id if character is not None else None,
             "character_revision_id": character.revision_id if character is not None else None,
             "usage_scope": usage_scope,
+            "mouth_aperture_gain": mouth_aperture_gain,
+            "mouth_aperture_author": mouth_aperture_author,
+            "mouth_aperture_reason": mouth_aperture_reason,
         }
         _, job_dir, retained, manifest = self.store.start(
             "video_performance", input_path, configuration, original_name=input_name
@@ -310,6 +325,9 @@ class ApplicationService:
                     character.triangle_uvs if character is not None else None
                 ),
                 character_ref=self._character_ref(character),
+                mouth_aperture_gain=mouth_aperture_gain,
+                mouth_aperture_author=mouth_aperture_author,
+                mouth_aperture_reason=mouth_aperture_reason,
             )
             return self.store.finish(manifest, job_dir, result, versions)
         except AutoAnimError as exc:

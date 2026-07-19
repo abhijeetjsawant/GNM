@@ -41,6 +41,7 @@ class AnimationTrack:
     lip_contact_attained: np.ndarray
     contact_continuity_restored: np.ndarray
     contact_corrected: np.ndarray
+    lip_order_repaired: np.ndarray
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +254,72 @@ def _mouth_gap_interocular(rig: ControlRig, expression: np.ndarray) -> float:
     if interocular <= 0.0:
         raise AutoAnimError("INTERNAL_ERROR", "GNM interocular distance is invalid")
     return float(gap / interocular)
+
+
+def _mouth_lip_order_minimum_interocular(
+    rig: ControlRig,
+    expression: np.ndarray,
+) -> float:
+    """Signed inner-lip order in the same geometry convention as oral QA."""
+
+    landmarks = rig.compact_landmarks(expression)
+    neutral = np.asarray(rig.neutral_landmarks, dtype=np.float64)
+    interocular = float(np.linalg.norm(neutral[36] - neutral[45]))
+    face_up = landmarks[27] - landmarks[8]
+    face_up_norm = float(np.linalg.norm(face_up))
+    if interocular <= 1.0e-8 or face_up_norm <= 1.0e-8:
+        raise AutoAnimError("INTERNAL_ERROR", "GNM lip-order frame is invalid")
+    face_up = face_up / np.float32(face_up_norm)
+    return float(
+        min(
+            np.dot(landmarks[upper] - landmarks[lower], face_up) / interocular
+            for upper, lower in ((61, 67), (62, 66), (63, 65))
+        )
+    )
+
+
+def _repair_lip_order_inversion(
+    rig: ControlRig,
+    expression: np.ndarray,
+    *,
+    minimum_order: float = -5.0e-4,
+) -> tuple[np.ndarray, bool]:
+    """Project an inverted lower-lip pose to the nearest safe GNM control.
+
+    Only lower-face modes 200:350 are attenuated. Tongue, upper-face, and
+    reserved coefficients remain exact. The solve keeps the largest fraction
+    of the incoming performance whose measured inner-lip ordering is valid.
+    """
+
+    source = np.asarray(expression, dtype=np.float32)
+    if _mouth_lip_order_minimum_interocular(rig, source) >= minimum_order:
+        return source.copy(), False
+
+    def candidate(alpha: float) -> np.ndarray:
+        output = source.copy()
+        output[200:350] = np.float32(alpha) * source[200:350]
+        return output
+
+    if _mouth_lip_order_minimum_interocular(rig, candidate(0.0)) < minimum_order:
+        raise AutoAnimError(
+            "ORAL_LIP_ORDER_UNREPAIRABLE",
+            "Upper-face or tongue controls invert the inner lips even with a neutral lower face",
+        )
+    lower = 0.0
+    upper = 1.0
+    for _ in range(24):
+        middle = 0.5 * (lower + upper)
+        if _mouth_lip_order_minimum_interocular(rig, candidate(middle)) >= minimum_order:
+            lower = middle
+        else:
+            upper = middle
+    repaired = candidate(lower * 0.999999)
+    if _mouth_lip_order_minimum_interocular(rig, repaired) < minimum_order - 1.0e-7:
+        raise AutoAnimError(
+            "ORAL_LIP_ORDER_UNREPAIRABLE",
+            "Lower-face projection did not produce safe inner-lip ordering",
+        )
+    return repaired.astype(np.float32), True
 
 
 def _face_local_mouth(rig: ControlRig, expression: np.ndarray) -> np.ndarray:
@@ -765,17 +832,32 @@ def _apply_lip_contact_correction(
     if search_bound <= 1e-6:
         return original.copy(), False, float(target_gap)
     samples = np.linspace(0.0, search_bound, 25, dtype=np.float32)
+    sample_candidates = tuple(bounded_candidate(float(alpha)) for alpha in samples)
     gaps = np.asarray(
-        [_mouth_gap_interocular(rig, bounded_candidate(float(alpha))) for alpha in samples]
+        [_mouth_gap_interocular(rig, candidate) for candidate in sample_candidates]
     )
-    reached = np.flatnonzero(gaps <= target_gap)
+    original_lip_order = _mouth_lip_order_minimum_interocular(rig, original)
+    minimum_lip_order = min(original_lip_order, -5.0e-4)
+    lip_order = np.asarray(
+        [
+            _mouth_lip_order_minimum_interocular(rig, candidate)
+            for candidate in sample_candidates
+        ]
+    )
+    valid_lip_order = lip_order >= minimum_lip_order - 1.0e-7
+    reached = np.flatnonzero((gaps <= target_gap) & valid_lip_order)
     if len(reached):
         upper_index = int(reached[0])
         lower = float(samples[max(upper_index - 1, 0)])
         upper = float(samples[upper_index])
         for _ in range(8):
             middle = 0.5 * (lower + upper)
-            if _mouth_gap_interocular(rig, bounded_candidate(middle)) <= target_gap:
+            middle_candidate = bounded_candidate(middle)
+            if (
+                _mouth_gap_interocular(rig, middle_candidate) <= target_gap
+                and _mouth_lip_order_minimum_interocular(rig, middle_candidate)
+                >= minimum_lip_order - 1.0e-7
+            ):
                 upper = middle
             else:
                 lower = middle
@@ -786,11 +868,16 @@ def _apply_lip_contact_correction(
         # This avoids both a false success and a complete loss of useful
         # closure motion when GNM's affine space cannot reach the requested
         # character seal from the current coarticulated pose.
-        minimum_index = int(np.argmin(gaps))
+        valid_indices = np.flatnonzero(valid_lip_order)
+        if not len(valid_indices):
+            return original.copy(), False, float(target_gap)
+        minimum_index = int(valid_indices[int(np.argmin(gaps[valid_indices]))])
         if minimum_index == 0 or gaps[minimum_index] >= original_gap - 1e-5:
             return original.copy(), False, float(target_gap)
         alpha = float(samples[minimum_index])
     corrected = bounded_candidate(alpha)
+    if _mouth_lip_order_minimum_interocular(rig, corrected) < minimum_lip_order - 1.0e-7:
+        return original.copy(), False, float(target_gap)
     return (
         corrected,
         bool(_mouth_gap_interocular(rig, corrected) < original_gap - 1e-5),
@@ -979,6 +1066,7 @@ def compose_animation(
         lip_contact_attained=lip_contact_attained,
         contact_continuity_restored=contact_continuity_restored,
         contact_corrected=contact_corrected,
+        lip_order_repaired=np.zeros(frame_count, dtype=bool),
     )
 
 
@@ -1150,6 +1238,7 @@ def compose_learned_animation(
     blink_envelope = _blink_envelope(timestamps)
     lip_contact_target_gap = np.zeros(frame_count, dtype=np.float32)
     contact_correction_applied = np.zeros(frame_count, dtype=bool)
+    lip_order_repaired = np.zeros(frame_count, dtype=bool)
     emotion_envelope = (
         np.float32(np.clip(acting_strength, 0.0, 1.0))
         * _emotion_envelope(duration, fps, timestamps, prosody)
@@ -1178,6 +1267,10 @@ def compose_learned_animation(
                 contact_calibration,
                 float(lip_contact_confidence[frame]),
             )
+        expression[frame], lip_order_repaired[frame] = _repair_lip_order_inversion(
+            rig,
+            expression[frame],
+        )
         saturated |= clipped or blink_clipped
 
     # Exported clips have a deterministic rest boundary. The bidirectional
@@ -1261,6 +1354,16 @@ def compose_learned_animation(
         )
     contact_corrected = contact_correction_applied & lip_contact_attained
 
+    final_lip_order = np.asarray(
+        [_mouth_lip_order_minimum_interocular(rig, frame) for frame in expression],
+        dtype=np.float32,
+    )
+    if np.any(final_lip_order < np.float32(-5.0e-4 - 1.0e-7)):
+        raise AutoAnimError(
+            "ORAL_LIP_ORDER_UNREPAIRABLE",
+            "Continuity processing reintroduced structurally inverted inner lips",
+        )
+
     rotations = (
         _head_motion(timestamps, prosody, rig.adapter.model.num_joints)
         if head_motion
@@ -1328,6 +1431,7 @@ def compose_learned_animation(
         lip_contact_attained=lip_contact_attained,
         contact_continuity_restored=contact_continuity_restored,
         contact_corrected=contact_corrected,
+        lip_order_repaired=lip_order_repaired,
     )
 
 

@@ -105,6 +105,47 @@ def test_home_and_health(tmp_path: Path) -> None:
     assert health.json()["checks"]["a2f_provenance"]["ready"] is True
 
 
+def test_api_and_cli_require_authorship_for_nondefault_mouth_edit(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "input.wav"
+    source.write_bytes(b"not needed: authorship fails before media decode")
+    client = TestClient(
+        create_app(tmp_path / "api-jobs", model_path=MODEL, rhubarb_bin=RHUBARB)
+    )
+    with source.open("rb") as handle:
+        response = client.post(
+            "/api/audio",
+            files={"file": (source.name, handle, "audio/wav")},
+            data={"mouth_aperture_gain": "1.08"},
+        )
+    assert response.status_code == 400
+    assert response.json()["code"] == "INPUT_INVALID"
+    assert "author" in response.json()["message"].casefold()
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "autoanim_gnm.cli",
+            "audio",
+            str(source),
+            "--out",
+            str(tmp_path / "cli-jobs"),
+            "--mouth-aperture-gain",
+            "1.08",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 2
+    error = json.loads(completed.stderr)
+    assert error["code"] == "INPUT_INVALID"
+    assert "author" in error["message"].casefold()
+
+
 def test_api_and_cli_real_image_parity_and_allowlist(tmp_path: Path) -> None:
     if not MODEL.exists() or not PORTRAIT.exists():
         pytest.skip("real image parity fixtures unavailable")

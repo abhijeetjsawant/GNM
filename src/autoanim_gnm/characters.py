@@ -28,8 +28,10 @@ from .materials import (
     validate_material_package,
 )
 from .runtime_material import (
+    MAX_RUNTIME_TEXTURE_DIMENSION,
     PRESERVED_SEMANTICS,
     RUNTIME_DERIVATIVE_KEYS,
+    RUNTIME_PROJECTION_PROFILE,
     write_runtime_material_derivatives,
 )
 from .serialization import write_json, write_npz
@@ -913,6 +915,39 @@ class CharacterStore:
                     "sha256": sha256(path),
                 }
                 runtime_asset_keys[semantic] = logical
+            with Image.open(runtime_material_paths["base_color"]) as runtime_base:
+                runtime_resolution = [
+                    int(runtime_base.size[0]),
+                    int(runtime_base.size[1]),
+                ]
+            source_base = validated["maps"]["base_color"]["files"]["atlas"]
+            source_resolution = [
+                int(source_base["width"]),
+                int(source_base["height"]),
+            ]
+            source_runtime_bindings = {
+                semantic: {
+                    "sha256": str(entry["files"]["atlas"]["sha256"]),
+                    "width": int(entry["files"]["atlas"]["width"]),
+                    "height": int(entry["files"]["atlas"]["height"]),
+                    "dtype": str(entry["files"]["atlas"]["dtype"]),
+                    "color_space": str(entry["color_space"]),
+                    "resampling": str(entry["resampling"]),
+                }
+                for semantic, entry in sorted(validated["maps"].items())
+                if semantic in {"base_color", "normal", "roughness", "specular_color"}
+            }
+            derivative_bindings = {
+                semantic: {
+                    "sha256": str(copied[logical]["sha256"]),
+                    "bytes": int(copied[logical]["bytes"]),
+                    "width": runtime_resolution[0],
+                    "height": runtime_resolution[1],
+                    "format": "PNG",
+                    "bit_depth": 8,
+                }
+                for semantic, logical in sorted(runtime_asset_keys.items())
+            }
 
             binding = validated_attachment
             write_json(temporary / "material-package.json", validated)
@@ -922,7 +957,7 @@ class CharacterStore:
                 "sha256": sha256(temporary / "material-package.json"),
             }
             material_descriptor = {
-                "schema_version": "autoanim.character-material.v2",
+                "schema_version": "autoanim.character-material.v3",
                 "model": "OpenPBR-compatible source package with glTF runtime projection",
                 "package_id": validated["package_id"],
                 "package_manifest_payload_sha256": validated[
@@ -934,7 +969,13 @@ class CharacterStore:
                 "claims": validated["claims"],
                 "quality_evidence": validated["quality_evidence"],
                 "runtime_projection": {
+                    "schema_version": RUNTIME_PROJECTION_PROFILE,
+                    "source_package_manifest_payload_sha256": validated[
+                        "manifest_payload_sha256"
+                    ],
                     "assets": runtime_asset_keys,
+                    "source_bindings": source_runtime_bindings,
+                    "derivative_bindings": derivative_bindings,
                     "rendered": list(runtime_asset_keys),
                     "preserved_not_rendered": [
                         name
@@ -953,6 +994,13 @@ class CharacterStore:
                     ],
                     "runtime_bit_depth": 8,
                     "source_precision_preserved": True,
+                    "source_resolution": source_resolution,
+                    "runtime_resolution": runtime_resolution,
+                    "maximum_runtime_dimension": MAX_RUNTIME_TEXTURE_DIMENSION,
+                    "downsample_filter": "power_of_two_box_linear_light_v1",
+                    "normal_filter": "vector_average_renormalize_v1",
+                    "roughness_filter": "linear_box_v1",
+                    "source_decode": "bounded_tiff_scratch_chunks_or_resident_png_v1",
                 },
                 "production_validated": False,
             }
@@ -1307,7 +1355,11 @@ class CharacterStore:
         runtime_material_paths: dict[str, Path] = {}
         runtime_material_sha256s: dict[str, str] = {}
         descriptor_maps = material_document.get("maps", {})
-        if material_document.get("schema_version") == "autoanim.character-material.v2":
+        material_schema = material_document.get("schema_version")
+        if material_schema in {
+            "autoanim.character-material.v2",
+            "autoanim.character-material.v3",
+        }:
             package_logical = material_document.get("package_artifact")
             if not isinstance(package_logical, str):
                 raise AutoAnimError(
@@ -1388,11 +1440,88 @@ class CharacterStore:
                     "INTEGRITY_FAILED",
                     "Character runtime material asset index is invalid",
                 )
+            if material_schema == "autoanim.character-material.v3":
+                if (
+                    package_document.get("schema_version")
+                    != "autoanim.material-package.v2"
+                    or runtime_projection.get("schema_version")
+                    != RUNTIME_PROJECTION_PROFILE
+                    or runtime_projection.get(
+                        "source_package_manifest_payload_sha256"
+                    )
+                    != supplied_package_digest
+                    or runtime_projection.get("maximum_runtime_dimension")
+                    != MAX_RUNTIME_TEXTURE_DIMENSION
+                    or runtime_projection.get("source_decode")
+                    != "bounded_tiff_scratch_chunks_or_resident_png_v1"
+                    or runtime_projection.get("downsample_filter")
+                    != "power_of_two_box_linear_light_v1"
+                    or runtime_projection.get("normal_filter")
+                    != "vector_average_renormalize_v1"
+                    or runtime_projection.get("roughness_filter")
+                    != "linear_box_v1"
+                ):
+                    raise AutoAnimError(
+                        "INTEGRITY_FAILED",
+                        "Character runtime projection provenance is invalid",
+                    )
+                source_bindings = runtime_projection.get("source_bindings")
+                package_maps = package_document.get("maps")
+                if (
+                    not isinstance(source_bindings, dict)
+                    or set(source_bindings)
+                    != {"base_color", "normal", "roughness", "specular_color"}
+                    or not isinstance(package_maps, dict)
+                ):
+                    raise AutoAnimError(
+                        "INTEGRITY_FAILED",
+                        "Character runtime source bindings are invalid",
+                    )
+                for semantic, source_binding in source_bindings.items():
+                    package_map = package_maps.get(semantic)
+                    if (
+                        not isinstance(source_binding, dict)
+                        or not isinstance(package_map, dict)
+                        or not isinstance(package_map.get("files"), dict)
+                        or not isinstance(
+                            package_map["files"].get("atlas"), dict
+                        )
+                    ):
+                        raise AutoAnimError(
+                            "INTEGRITY_FAILED",
+                            "Character runtime source binding is malformed",
+                        )
+                    source_file = package_map["files"]["atlas"]
+                    expected_source_binding = {
+                        "sha256": source_file.get("sha256"),
+                        "width": source_file.get("width"),
+                        "height": source_file.get("height"),
+                        "dtype": source_file.get("dtype"),
+                        "color_space": package_map.get("color_space"),
+                        "resampling": package_map.get("resampling"),
+                    }
+                    if source_binding != expected_source_binding:
+                        raise AutoAnimError(
+                            "INTEGRITY_FAILED",
+                            "Character runtime source binding does not match the sealed package",
+                        )
             if not set(runtime_assets) <= RUNTIME_DERIVATIVE_KEYS:
                 raise AutoAnimError(
                     "INTEGRITY_FAILED",
                     "Character runtime material contains unknown semantics",
                 )
+            if material_schema == "autoanim.character-material.v3":
+                derivative_bindings = runtime_projection.get(
+                    "derivative_bindings"
+                )
+                if (
+                    not isinstance(derivative_bindings, dict)
+                    or set(derivative_bindings) != set(runtime_assets)
+                ):
+                    raise AutoAnimError(
+                        "INTEGRITY_FAILED",
+                        "Character runtime derivative bindings are invalid",
+                    )
             for semantic, logical in sorted(runtime_assets.items()):
                 if not isinstance(logical, str):
                     raise AutoAnimError(
@@ -1405,6 +1534,36 @@ class CharacterStore:
                 runtime_material_sha256s[semantic] = str(
                     assets[logical]["sha256"]
                 )
+                if material_schema == "autoanim.character-material.v3":
+                    derivative_bindings = runtime_projection.get(
+                        "derivative_bindings"
+                    )
+                    derivative = (
+                        derivative_bindings.get(semantic)
+                        if isinstance(derivative_bindings, dict)
+                        else None
+                    )
+                    if not isinstance(derivative, dict):
+                        raise AutoAnimError(
+                            "INTEGRITY_FAILED",
+                            "Character runtime derivative binding is missing",
+                        )
+                    with Image.open(runtime_path) as runtime_image:
+                        actual_size = runtime_image.size
+                        actual_format = runtime_image.format
+                    expected_derivative = {
+                        "sha256": assets[logical]["sha256"],
+                        "bytes": assets[logical]["bytes"],
+                        "width": int(actual_size[0]),
+                        "height": int(actual_size[1]),
+                        "format": actual_format,
+                        "bit_depth": 8,
+                    }
+                    if derivative != expected_derivative:
+                        raise AutoAnimError(
+                            "INTEGRITY_FAILED",
+                            "Character runtime derivative binding is invalid",
+                        )
             if "base_color" not in runtime_material_paths:
                 raise AutoAnimError(
                     "INTEGRITY_FAILED",

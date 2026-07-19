@@ -15,6 +15,7 @@ from autoanim_gnm.body_provider import (
     BODY_ASSET_SCHEMA,
     BODY_PROVIDER_REQUEST_SCHEMA,
     BODY_PROVIDER_RESPONSE_SCHEMA,
+    CORROBORATED_MAKEHUMAN_SYSTEM_ASSETS_SHA256,
     MAKEHUMAN_LICENSE_URL,
     MAKEHUMAN_SYSTEM_ASSETS_URL,
     MPFB_RELEASE_URL,
@@ -43,7 +44,7 @@ from autoanim_gnm.body_provider import (
 )
 
 
-SYSTEM_ASSETS_SHA = "7" * 64
+SYSTEM_ASSETS_SHA = CORROBORATED_MAKEHUMAN_SYSTEM_ASSETS_SHA256
 
 
 def _structural_fixture() -> tuple[dict, dict[str, np.ndarray]]:

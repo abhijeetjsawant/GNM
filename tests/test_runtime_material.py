@@ -82,6 +82,9 @@ def test_runtime_projection_has_explicit_source_and_viewer_lod_limits(
     monkeypatch.setattr(runtime_material, "MAX_RUNTIME_TEXTURE_DIMENSION", 2)
     projected = prepare_runtime_material(sources)
     assert projected.runtime_size == (2, 1)
+    assert projected.source_size == (3, 1)
+    assert projected.lod_scale_factor == 2
+    assert projected.projection_profile == "autoanim.browser-material-lod.v1"
 
     monkeypatch.setattr(runtime_material, "MAX_RUNTIME_SOURCE_DIMENSION", 2)
     with pytest.raises(ValueError, match="attachment limit"):
@@ -109,3 +112,21 @@ def test_signed_float_normal_encoding_is_never_guessed_from_pixel_minimum(
 
     with pytest.raises(ValueError, match="floating-point"):
         prepare_runtime_material(_sources(tmp_path), normal_encoding="signed_float")
+
+
+def test_browser_lod_filters_base_color_in_linear_light(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = np.asarray([[[0, 0, 0], [255, 255, 255]]], dtype=np.uint8)
+    Image.fromarray(base, mode="RGB").save(tmp_path / "base.png")
+    monkeypatch.setattr(runtime_material, "MAX_RUNTIME_TEXTURE_DIMENSION", 1)
+
+    projected = prepare_runtime_material({"base_color": tmp_path / "base.png"})
+
+    assert projected.runtime_size == (1, 1)
+    # Equal black/white energy averages to linear 0.5, encoded around sRGB 188.
+    np.testing.assert_allclose(
+        np.asarray(projected.base_color)[0, 0, :3],
+        np.asarray([188, 188, 188]),
+        atol=1,
+    )

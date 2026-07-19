@@ -18,6 +18,7 @@ from gnm.shape.visualization import vertex_colors as vertex_colors_module
 
 from .gltf_export import split_triangle_corner_uvs
 from .gnm_adapter import GNMAdapter
+from .oral_validation import classify_lip_landmarks
 from .runtime_material import (
     load_runtime_material_derivatives,
     prepare_runtime_material,
@@ -31,6 +32,10 @@ class AnimationCompressionError(ValueError):
     def __init__(self, message: str, metrics: dict[str, float | int]):
         super().__init__(message)
         self.metrics = metrics
+
+
+_ORAL_PRIORITY_LANDMARKS = (8, 27, 36, 45, 61, 62, 63, 65, 66, 67)
+_ORAL_PRIORITY_SCALE = 32.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,8 +88,17 @@ def factor_vertex_animation(
     landmark_weights: np.ndarray | None = None,
     landmark_p95_limit_m: float = 0.00025,
     landmark_max_limit_m: float = 0.00100,
+    preserve_oral_semantics: bool = False,
+    lip_contact_gap_interocular: float = 0.006,
+    lip_order_inversion_tolerance_interocular: float = 0.0005,
 ) -> LowRankVertexAnimation:
-    """Find the smallest deterministic morph basis that passes geometry gates."""
+    """Find the smallest deterministic morph basis that passes geometry gates.
+
+    When ``preserve_oral_semantics`` is enabled, factorization prioritizes the
+    landmark-support vertices used for inner-lip contact and signed ordering.
+    A rank is accepted only when it preserves the source contact classification
+    and introduces no new lip-order inversion risks.
+    """
 
     values = np.asarray(frames, dtype=np.float32)
     if values.ndim != 3 or values.shape[2:] != (3,) or len(values) < 1:
@@ -103,9 +117,55 @@ def factor_vertex_animation(
         )
     ):
         raise ValueError("animation reconstruction limits must be finite and non-negative")
+    if (
+        not np.isfinite(lip_contact_gap_interocular)
+        or lip_contact_gap_interocular <= 0.0
+        or not np.isfinite(lip_order_inversion_tolerance_interocular)
+        or lip_order_inversion_tolerance_interocular <= 0.0
+    ):
+        raise ValueError("oral semantic thresholds must be finite and positive")
+
+    observed_landmarks = _landmarks(values, landmark_indices, landmark_weights)
+    coordinate_scale = np.ones((values.shape[1], 3), dtype=np.float32)
+    observed_contact: np.ndarray | None = None
+    observed_order_risk: np.ndarray | None = None
+    if preserve_oral_semantics:
+        if observed_landmarks is None:
+            raise ValueError(
+                "preserve_oral_semantics requires landmark indices and weights"
+            )
+        landmark_index_values = np.asarray(landmark_indices, dtype=np.int64)
+        if landmark_index_values.ndim < 2 or landmark_index_values.shape[0] < 68:
+            raise ValueError(
+                "preserve_oral_semantics requires a 68-landmark vertex regressor"
+            )
+        priority_vertices = np.unique(
+            landmark_index_values[np.asarray(_ORAL_PRIORITY_LANDMARKS)].reshape(-1)
+        )
+        if (
+            np.any(priority_vertices < 0)
+            or np.any(priority_vertices >= values.shape[1])
+        ):
+            raise ValueError("oral landmark regressor contains an invalid vertex index")
+        coordinate_scale[priority_vertices] = np.float32(_ORAL_PRIORITY_SCALE)
+        semantic_weights = np.asarray(landmark_weights, dtype=np.float64)
+        observed_semantic_landmarks = _landmarks(
+            values,
+            landmark_indices,
+            semantic_weights,
+        )
+        if observed_semantic_landmarks is None:
+            raise AssertionError("oral semantic landmark evaluation unexpectedly failed")
+        _, observed_contact, observed_order_risk = classify_lip_landmarks(
+            observed_semantic_landmarks,
+            contact_gap_interocular=lip_contact_gap_interocular,
+            order_tolerance_interocular=(
+                lip_order_inversion_tolerance_interocular
+            ),
+        )
 
     base = values[0].copy()
-    flattened = (values - base).reshape(len(values), -1)
+    flattened = ((values - base) * coordinate_scale).reshape(len(values), -1)
     if float(np.max(np.abs(flattened), initial=0.0)) <= 1e-12:
         return LowRankVertexAnimation(
             base,
@@ -152,12 +212,13 @@ def factor_vertex_animation(
             track_weights[:, component] *= -1.0
     track_weights[0] = 0.0
 
-    observed_landmarks = _landmarks(values, landmark_indices, landmark_weights)
     reconstruction = np.zeros_like(flattened)
     final_metrics: dict[str, float | int] = {}
     for rank in range(1, available + 1):
         reconstruction += np.outer(track_weights[:, rank - 1], right[rank - 1])
-        reconstructed_frames = reconstruction.reshape(values.shape) + base
+        reconstructed_frames = (
+            reconstruction.reshape(values.shape) / coordinate_scale + base
+        )
         vertex_error = np.linalg.norm(reconstructed_frames - values, axis=2)
         mesh_p95 = float(np.percentile(vertex_error, 95))
         mesh_max = float(np.max(vertex_error, initial=0.0))
@@ -181,17 +242,56 @@ def factor_vertex_animation(
             "landmark_p95_m": landmark_p95,
             "landmark_max_m": landmark_max,
         }
+        oral_semantics_passed = True
+        if preserve_oral_semantics:
+            if (
+                predicted_landmarks is None
+                or observed_contact is None
+                or observed_order_risk is None
+            ):
+                raise AssertionError("oral semantic inputs disappeared during factorization")
+            predicted_semantic_landmarks = _landmarks(
+                reconstructed_frames,
+                landmark_indices,
+                semantic_weights,
+            )
+            if predicted_semantic_landmarks is None:
+                raise AssertionError(
+                    "oral semantic landmark evaluation unexpectedly failed"
+                )
+            _, predicted_contact, predicted_order_risk = classify_lip_landmarks(
+                predicted_semantic_landmarks,
+                contact_gap_interocular=lip_contact_gap_interocular,
+                order_tolerance_interocular=(
+                    lip_order_inversion_tolerance_interocular
+                ),
+            )
+            contact_changes = int(np.count_nonzero(predicted_contact != observed_contact))
+            introduced_order_risks = int(
+                np.count_nonzero(predicted_order_risk & ~observed_order_risk)
+            )
+            final_metrics.update(
+                {
+                    "lip_contact_classification_changed_frames": contact_changes,
+                    "introduced_lip_order_risk_frames": introduced_order_risks,
+                }
+            )
+            oral_semantics_passed = (
+                contact_changes == 0 and introduced_order_risks == 0
+            )
         if (
             mesh_p95 <= mesh_p95_limit_m
             and mesh_max <= mesh_max_limit_m
             and landmark_p95 <= landmark_p95_limit_m
             and landmark_max <= landmark_max_limit_m
+            and oral_semantics_passed
         ):
             return LowRankVertexAnimation(
                 base_vertices=base,
-                morph_positions=right[:rank].reshape(rank, values.shape[1], 3).astype(
-                    np.float32
-                ),
+                morph_positions=(
+                    right[:rank].reshape(rank, values.shape[1], 3)
+                    / coordinate_scale[None, :, :]
+                ).astype(np.float32),
                 weights=track_weights[:, :rank].astype(np.float32),
                 mesh_p95_m=mesh_p95,
                 mesh_max_m=mesh_max,
@@ -199,7 +299,8 @@ def factor_vertex_animation(
                 landmark_max_m=landmark_max,
             )
     raise AnimationCompressionError(
-        f"Animation needs more than {max_targets} morph targets to pass reconstruction gates",
+        f"Animation needs more than {max_targets} morph targets to pass reconstruction "
+        "and oral-semantic gates",
         final_metrics,
     )
 
@@ -432,6 +533,7 @@ def export_animated_gnm_glb(
         max_targets=max_targets,
         landmark_indices=adapter.landmark_indices,
         landmark_weights=adapter.landmark_weights,
+        preserve_oral_semantics=True,
     )
     selected_uvs = (
         np.asarray(adapter.model.triangle_uvs, dtype=np.float32)

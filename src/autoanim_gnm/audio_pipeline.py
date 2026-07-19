@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 import os
 from typing import Any, Mapping
@@ -20,6 +20,8 @@ from .a2f import (
 )
 from .animated_gltf import AnimationCompressionError, export_animated_gnm_glb
 from .animation import (
+    AnimationTrack,
+    _face_local_mouth,
     calibrate_lip_contact,
     compose_animation,
     compose_learned_animation,
@@ -33,8 +35,17 @@ from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .gltf_export import export_gnm_glb
 from .lipsync_quality import evaluate_lipsync_quality
+from .mouth_aperture_correction import (
+    MouthApertureConfig,
+    MouthApertureCorrectionResult,
+    MouthContactEvidence,
+    correct_mouth_aperture,
+    mouth_aperture_target_attainment,
+    validate_mouth_aperture_authorship,
+)
 from .oral_validation import (
     OralValidationError,
+    require_glb_oral_semantic_preservation,
     validate_controls_npz,
     validate_glb_oral_geometry,
 )
@@ -86,6 +97,146 @@ _ARTICULATION_CRITICAL_CONTROLS = frozenset(
     )
 )
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _apply_audio_mouth_aperture_edit(
+    *,
+    output_dir: Path,
+    rig: ControlRig,
+    track: AnimationTrack,
+    gain: float,
+    author: str | None,
+    reason: str | None,
+) -> tuple[AnimationTrack, MouthApertureCorrectionResult]:
+    """Apply and serialize one contact-vetoed audio mouth-aperture revision."""
+
+    author, reason = validate_mouth_aperture_authorship(
+        gain=gain,
+        author=author,
+        reason=reason,
+    )
+    config = MouthApertureConfig(gain=float(gain))
+    bilabial = np.asarray(track.viseme_weights[:, 1] >= 0.05, dtype=bool)
+    labels = tuple("bilabial" if value else "none" for value in bilabial)
+    contact_anchor = np.asarray(
+        (track.lip_contact_target_gap > 0.0)
+        | track.contact_correction_applied
+        | track.lip_contact_attained,
+        dtype=bool,
+    )
+    eligible = np.asarray(track.speech_activity >= 0.08, dtype=bool)
+    base_expression = np.asarray(track.expression, dtype=np.float32).copy()
+    correction = correct_mouth_aperture(
+        rig,
+        identity=np.asarray(rig.identity, dtype=np.float32),
+        expression=base_expression,
+        rotations=np.asarray(track.rotations, dtype=np.float32),
+        translation=np.asarray(track.translation, dtype=np.float32),
+        timestamps_seconds=np.asarray(track.timestamps, dtype=np.float64),
+        eligible_frames=eligible,
+        contact_evidence=MouthContactEvidence(
+            anchor=contact_anchor,
+            confidence=np.asarray(track.lip_contact_confidence, dtype=np.float32),
+            label=labels,
+        ),
+        config=config,
+    )
+    corrected_track = replace(track, expression=correction.expression)
+    report_path = output_dir / "mouth-aperture-edit.json"
+    arrays_path = output_dir / "mouth-aperture-edit.npz"
+    frame_reports = [asdict(report) for report in correction.reports]
+    target_attainment = mouth_aperture_target_attainment(correction)
+    write_npz(
+        arrays_path,
+        base_expression=base_expression,
+        corrected_expression=correction.expression,
+        eligible_frames=eligible,
+        protected_contact=correction.protected_contact,
+        correction_applied=correction.correction_applied,
+        target_attained=correction.target_attained,
+        final_continuity_scale=correction.final_continuity_scale,
+        requested_target_gap_interocular=np.asarray(
+            [report.requested_target_gap_interocular for report in correction.reports],
+            dtype=np.float32,
+        ),
+        bounded_target_gap_interocular=np.asarray(
+            [report.bounded_target_gap_interocular for report in correction.reports],
+            dtype=np.float32,
+        ),
+        final_gap_interocular=np.asarray(
+            [report.final_gap_interocular for report in correction.reports],
+            dtype=np.float32,
+        ),
+    )
+    write_json(
+        report_path,
+        {
+            "schema_version": correction.schema_version,
+            "source_mode": "audio",
+            "status": (
+                "corrected"
+                if np.any(correction.correction_applied)
+                else "exact_noop"
+                if gain == 1.0
+                else "bounded_no_change"
+            ),
+            "authored_edit": gain != 1.0,
+            "author": author,
+            "reason": reason,
+            "config": asdict(config),
+            "bindings": {
+                "identity_sha256": correction.identity_sha256,
+                "input_sha256": correction.input_sha256,
+                "output_sha256": correction.output_sha256,
+            },
+            "summary": {
+                "frames": len(correction.reports),
+                "eligible_open_frames": int(np.count_nonzero(correction.eligible_open)),
+                "protected_contact_frames": int(np.count_nonzero(correction.protected_contact)),
+                "corrected_frames": int(np.count_nonzero(correction.correction_applied)),
+                "final_continuity_limited_frames": int(
+                    np.count_nonzero(
+                        correction.correction_applied
+                        & (correction.final_continuity_scale < 1.0 - 1.0e-6)
+                    )
+                ),
+                "final_continuity_limit_interocular": (
+                    correction.final_continuity_limit_interocular
+                ),
+                "target_attained_fraction": target_attainment,
+                "maximum_tongue_mesh_tail_interocular": float(
+                    max(
+                        (report.tongue_displacement_interocular for report in correction.reports),
+                        default=0.0,
+                    )
+                ),
+                "baseline_lip_order_risk_frames": int(
+                    sum(
+                        report.original_lip_order_minimum_interocular < -0.0005
+                        for report in correction.reports
+                    )
+                ),
+                "revised_lip_order_risk_frames": int(
+                    sum(report.lip_order_inversion_risk for report in correction.reports)
+                ),
+                "introduced_lip_order_risk_frames": int(
+                    sum(
+                        report.lip_order_inversion_introduced
+                        for report in correction.reports
+                    )
+                ),
+            },
+            "claims": {
+                "tongue_coefficients_byte_identical": True,
+                "tongue_mesh_vertices_exactly_unchanged": False,
+                "contact_is_a_hard_veto": True,
+                "new_lip_order_inversion_rejected": True,
+                "production_validated": False,
+            },
+            "frame_reports": frame_reports,
+        },
+    )
+    return corrected_track, correction
 
 
 def _resolve_a2f_assets(explicit: str | Path | None) -> Path:
@@ -405,11 +556,22 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
     iod = float(np.linalg.norm(compact[0, 36] - compact[0, 45]))
     mouth = compact[:, 48:68]
     if len(mouth) > 1:
-        step = np.max(np.linalg.norm(np.diff(mouth, axis=0), axis=2), axis=1) / max(iod, 1e-8)
+        face_local_mouth = np.stack(
+            [_face_local_mouth(rig, frame) for frame in track.expression]
+        )
+        step = np.max(
+            np.linalg.norm(np.diff(face_local_mouth, axis=0), axis=2),
+            axis=1,
+        )
+        raw_step = (
+            np.max(np.linalg.norm(np.diff(mouth, axis=0), axis=2), axis=1)
+            / max(iod, 1e-8)
+        )
         lower_velocity = np.linalg.norm(np.diff(track.expression[:, 200:382], axis=0), axis=1)
         stationary = lower_velocity <= 1e-7
     else:
         step = np.zeros(0, dtype=np.float32)
+        raw_step = np.zeros(0, dtype=np.float32)
         lower_velocity = np.zeros(0, dtype=np.float32)
         stationary = np.zeros(0, dtype=bool)
     acceleration = np.diff(lower_velocity) if len(lower_velocity) > 1 else np.zeros(0, dtype=np.float32)
@@ -445,6 +607,9 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
     return {
         "mouth_step_max_interocular": float(np.max(step, initial=0.0)),
         "mouth_step_p95_interocular": float(np.percentile(step, 95)) if len(step) else 0.0,
+        "mouth_step_raw_landmark_max_interocular": float(
+            np.max(raw_step, initial=0.0)
+        ),
         "lower_face_stationary_fraction": float(np.mean(stationary)) if len(stationary) else 0.0,
         "lower_face_velocity_p95": float(np.percentile(lower_velocity, 95)) if len(lower_velocity) else 0.0,
         "lower_face_acceleration_p95": float(np.percentile(np.abs(acceleration), 95)) if len(acceleration) else 0.0,
@@ -463,6 +628,9 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
         "lip_contact_corrected_frames": corrected_count,
         "lip_contact_corrected_fraction": float(
             corrected_count / max(len(track.expression), 1)
+        ),
+        "lip_order_repaired_frames": int(
+            np.count_nonzero(track.lip_order_repaired)
         ),
         "lip_contact_candidate_gap_p95_interocular": (
             float(np.percentile(lip_gap[contact_candidates], 95))
@@ -548,6 +716,9 @@ def run_audio_pipeline(
     a2f_asset_dir: str | Path | None = None,
     a2f_offline: bool = False,
     emotion_strength: float = 0.65,
+    mouth_aperture_gain: float = 1.0,
+    mouth_aperture_author: str | None = None,
+    mouth_aperture_reason: str | None = None,
     identity: np.ndarray | None = None,
     texture_path: str | Path | None = None,
     runtime_material_paths: Mapping[str, str | Path] | None = None,
@@ -558,6 +729,11 @@ def run_audio_pipeline(
         raise AutoAnimError("INPUT_INVALID", "Backend must be auto, learned, or fallback")
     if not np.isfinite(emotion_strength) or not 0.0 <= emotion_strength <= 1.0:
         raise AutoAnimError("INPUT_INVALID", "Emotion strength must be in [0,1]")
+    mouth_aperture_author, mouth_aperture_reason = validate_mouth_aperture_authorship(
+        gain=mouth_aperture_gain,
+        author=mouth_aperture_author,
+        reason=mouth_aperture_reason,
+    )
     identity_value = (
         np.zeros(253, dtype=np.float32)
         if identity is None
@@ -894,6 +1070,14 @@ def run_audio_pipeline(
             prosody,
             lip_contact_calibration=lip_contact_calibration,
         )
+    track, mouth_aperture_edit = _apply_audio_mouth_aperture_edit(
+        output_dir=output_dir,
+        rig=rig,
+        track=track,
+        gain=mouth_aperture_gain,
+        author=mouth_aperture_author,
+        reason=mouth_aperture_reason,
+    )
     apertures = [
         _mouth_aperture(rig.compact_landmarks(frame)) for frame in track.expression
     ]
@@ -919,11 +1103,16 @@ def run_audio_pipeline(
         lip_contact_attained=track.lip_contact_attained,
         contact_continuity_restored=track.contact_continuity_restored,
         contact_corrected=track.contact_corrected,
+        lip_order_repaired=track.lip_order_repaired,
+        mouth_aperture_edit_eligible=mouth_aperture_edit.eligible_open,
+        mouth_aperture_edit_protected_contact=mouth_aperture_edit.protected_contact,
+        mouth_aperture_edit_applied=mouth_aperture_edit.correction_applied,
+        mouth_aperture_edit_target_attained=mouth_aperture_edit.target_attained,
     )
     write_json(
         output_dir / "timeline.json",
         {
-            "version": 9,
+            "version": 11,
             "motion_backend": motion_backend,
             "retargeter": retargeter_name,
             "retarget_calibration_hash": retarget_calibration_hash,
@@ -944,6 +1133,13 @@ def run_audio_pipeline(
             "lip_contact_attained": track.lip_contact_attained.tolist(),
             "contact_continuity_restored": track.contact_continuity_restored.tolist(),
             "contact_corrected": track.contact_corrected.tolist(),
+            "lip_order_repaired": track.lip_order_repaired.tolist(),
+            "mouth_aperture_edit_applied": (
+                mouth_aperture_edit.correction_applied.tolist()
+            ),
+            "mouth_aperture_edit_target_attained": (
+                mouth_aperture_edit.target_attained.tolist()
+            ),
             "mouth_aperture": apertures,
         },
     )
@@ -1061,6 +1257,8 @@ def run_audio_pipeline(
             reference_frames=viewer_frames if glb_covers_full_track else None,
             identity=identity_value,
         )
+        if glb_covers_full_track:
+            require_glb_oral_semantic_preservation(oral_controls, oral_glb)
     except OralValidationError as exc:
         raise AutoAnimError(
             "INTERNAL_ERROR",
@@ -1105,8 +1303,37 @@ def run_audio_pipeline(
         warnings.append(EMOTION_CAVEAT)
     if track.saturated:
         warnings.append("COEFFICIENT_SATURATED")
+    if np.any(track.lip_order_repaired):
+        warnings.append(
+            "ORAL_LIP_ORDER_REPAIRED: lower-face controls were minimally projected toward "
+            "the character neutral to prevent measured inner-lip inversion; tongue and "
+            "upper-face coefficients remained exact."
+        )
     if viewer_warning is not None:
         warnings.append(viewer_warning)
+    corrected_mouth_frames = int(np.count_nonzero(mouth_aperture_edit.correction_applied))
+    mouth_edit_target_attainment = mouth_aperture_target_attainment(
+        mouth_aperture_edit
+    )
+    if mouth_aperture_gain != 1.0:
+        warnings.append(
+            "ARTIST_MOUTH_APERTURE_EDIT: an authored neutral-relative geometry correction "
+            f"changed {corrected_mouth_frames}/{len(track.expression)} frames; contact anchors "
+            "were vetoed and all final quality/oral/export checks used the revised controls."
+        )
+        if (
+            mouth_edit_target_attainment is None
+            or mouth_edit_target_attainment < 0.95
+        ):
+            warnings.append(
+                "MOUTH_APERTURE_EDIT_TARGET_UNATTAINED: fewer than 95% of eligible "
+                "open frames reached the authored geometry target within structural and "
+                "continuity bounds; keep the edit review-only."
+            )
+        warnings.append(
+            "MOUTH_APERTURE_PCA_TONGUE_TAIL: GNM tongue coefficients are byte-identical, "
+            "but lower-face PCA modes can produce a small bounded displacement on tongue vertices."
+        )
     character_material_applied = texture_path is not None or bool(
         runtime_material_paths
     )
@@ -1117,15 +1344,68 @@ def run_audio_pipeline(
         )
     oral_control_report = oral_controls.report
     oral_glb_report = oral_glb.report
-    if oral_control_report["lip_contact"]["order_inversion_risk_frames"]:
+    control_lip_order_risk_frames = int(
+        np.count_nonzero(oral_controls.lip_order_inversion_risk_frames)
+    )
+    viewer_lip_order_risk_frames = int(
+        np.count_nonzero(oral_glb.lip_order_inversion_risk_frames)
+    )
+    if (
+        oral_controls.lip_order_inversion_risk_frames.shape
+        == oral_glb.lip_order_inversion_risk_frames.shape
+    ):
+        lip_order_risk_frames = int(
+            np.count_nonzero(
+                oral_controls.lip_order_inversion_risk_frames
+                | oral_glb.lip_order_inversion_risk_frames
+            )
+        )
+    else:
+        lip_order_risk_frames = max(
+            control_lip_order_risk_frames,
+            viewer_lip_order_risk_frames,
+        )
+    control_tongue_teeth_risk_frames = int(
+        np.count_nonzero(oral_controls.tongue_teeth_collision_risk_frames)
+    )
+    viewer_tongue_teeth_risk_frames = int(
+        np.count_nonzero(oral_glb.tongue_teeth_collision_risk_frames)
+    )
+    if (
+        oral_controls.tongue_teeth_collision_risk_frames.shape
+        == oral_glb.tongue_teeth_collision_risk_frames.shape
+    ):
+        tongue_teeth_risk_frames = int(
+            np.count_nonzero(
+                oral_controls.tongue_teeth_collision_risk_frames
+                | oral_glb.tongue_teeth_collision_risk_frames
+            )
+        )
+    else:
+        tongue_teeth_risk_frames = max(
+            control_tongue_teeth_risk_frames,
+            viewer_tongue_teeth_risk_frames,
+        )
+    if lip_order_risk_frames:
         warnings.append(
             "ORAL_LIP_ORDER_RISK: structurally inverted inner-lip landmark ordering was "
-            "measured; inspect those frames before approval."
+            "measured in the control track or reconstructed viewer; inspect those frames "
+            "before approval."
         )
-    if oral_control_report["tongue_teeth"]["collision_risk_frames"]:
+    oral_contact_attainment = oral_control_report["lip_contact"]["target_evidence"][
+        "geometry_attainment_fraction"
+    ]
+    if oral_contact_attainment is not None and float(oral_contact_attainment) < 0.95:
+        warnings.append(
+            "ORAL_CONTACT_TARGET_UNATTAINED: fewer than 95% of the unvalidated contact "
+            "targets were reached without violating geometry bounds; unresolved frames remain "
+            "artist-review blockers."
+        )
+    if tongue_teeth_risk_frames:
         warnings.append(
             "ORAL_TONGUE_TEETH_PROXIMITY_RISK: tongue vertices entered the conservative "
-            "teeth-proximity risk band; exact surface penetration is not established."
+            "teeth-proximity risk band in the control track or reconstructed viewer; exact "
+            "surface penetration is not established."
         )
     if not oral_control_report["control_evidence"][
         "isolated_tongue_geometry_active_frames"
@@ -1139,6 +1419,14 @@ def run_audio_pipeline(
             "ORAL_GLB_NOT_STRUCTURALLY_VALIDATED: the viewer fallback is static or its "
             "oral reconstruction has not passed the source-control comparison."
         )
+    tongue_geometry_motion_frames = int(
+        oral_control_report["tongue_motion"]["moving_frames_over_0_1mm"]
+    )
+    isolated_tongue_geometry_active_frames = int(
+        oral_control_report["control_evidence"][
+            "isolated_tongue_geometry_active_frames"
+        ]
+    )
     result = {
         "kind": "audio_animation",
         "status": "succeeded",
@@ -1169,6 +1457,16 @@ def run_audio_pipeline(
                 if motion_backend == "learned_a2f"
                 else "rhubarb_bilabial_plus_character_spatial_contact_v1"
             ),
+            "mouth_aperture_edit": {
+                "gain": mouth_aperture_gain,
+                "authored": mouth_aperture_gain != 1.0,
+                "author": mouth_aperture_author.strip() if mouth_aperture_author else None,
+                "reason": mouth_aperture_reason.strip() if mouth_aperture_reason else None,
+                "corrected_frames": corrected_mouth_frames,
+                "input_sha256": mouth_aperture_edit.input_sha256,
+                "output_sha256": mouth_aperture_edit.output_sha256,
+                "production_validated": False,
+            },
             "quality_speech_mask": "vad_binary_symmetric_hangover_2_frames",
             "emotion": analysis.emotion,
             "emotion_applied": emotion_applied,
@@ -1183,7 +1481,7 @@ def run_audio_pipeline(
             "fps": track.fps,
             "frames": len(track.expression),
             "expression_shape": list(track.expression.shape),
-            "compiler_version": 9 if motion_backend == "learned_a2f" else 2,
+            "compiler_version": 11 if motion_backend == "learned_a2f" else 3,
             "production_validated": False,
         },
         "viewer": {
@@ -1210,15 +1508,30 @@ def run_audio_pipeline(
             "tongue_control_active_frames": oral_control_report["control_evidence"][
                 "tongue_control_active_frames"
             ],
-            "isolated_tongue_geometry_active_frames": oral_control_report[
-                "control_evidence"
-            ]["isolated_tongue_geometry_active_frames"],
-            "tongue_teeth_collision_risk_frames": oral_control_report[
-                "tongue_teeth"
-            ]["collision_risk_frames"],
-            "lip_order_inversion_risk_frames": oral_control_report["lip_contact"][
-                "order_inversion_risk_frames"
-            ],
+            "isolated_tongue_geometry_active_frames": (
+                isolated_tongue_geometry_active_frames
+            ),
+            "tongue_geometry_motion_frames": tongue_geometry_motion_frames,
+            "tongue_motion_source": (
+                "dedicated_gnm_tongue_controls_plus_basis_coupling"
+                if isolated_tongue_geometry_active_frames
+                else "gnm_basis_coupling_only"
+            ),
+            "tongue_teeth_collision_risk_frames": tongue_teeth_risk_frames,
+            "control_tongue_teeth_collision_risk_frames": (
+                control_tongue_teeth_risk_frames
+            ),
+            "viewer_tongue_teeth_collision_risk_frames": (
+                viewer_tongue_teeth_risk_frames
+            ),
+            "lip_order_inversion_risk_frames": lip_order_risk_frames,
+            "control_lip_order_inversion_risk_frames": (
+                control_lip_order_risk_frames
+            ),
+            "viewer_lip_order_inversion_risk_frames": (
+                viewer_lip_order_risk_frames
+            ),
+            "lip_contact_target_attainment_fraction": oral_contact_attainment,
             "viewer_structural_reconstruction_validated": oral_glb_report["claims"][
                 "structural_reconstruction_validated"
             ],
@@ -1238,6 +1551,19 @@ def run_audio_pipeline(
             "preview_audio_duration_s": av["audio_duration"],
             "preview_video_frames": av["video_frames"],
             "audio_video_offset_frames": offset_frames,
+            "mouth_aperture_edit_corrected_frames": corrected_mouth_frames,
+            "mouth_aperture_edit_protected_contact_frames": int(
+                np.count_nonzero(mouth_aperture_edit.protected_contact)
+            ),
+            "mouth_aperture_edit_target_attained_fraction": (
+                mouth_edit_target_attainment
+            ),
+            "mouth_aperture_edit_introduced_lip_order_risk_frames": int(
+                sum(
+                    report.lip_order_inversion_introduced
+                    for report in mouth_aperture_edit.reports
+                )
+            ),
             **conditioning,
             **temporal,
         },
@@ -1248,6 +1574,8 @@ def run_audio_pipeline(
             "timeline": "timeline.json",
             "oral_validation": "oral-validation.json",
             "oral_glb_validation": "oral-glb-validation.json",
+            "mouth_aperture_edit": "mouth-aperture-edit.json",
+            "mouth_aperture_edit_arrays": "mouth-aperture-edit.npz",
             **viewer_artifacts,
             **learned_artifacts,
         },

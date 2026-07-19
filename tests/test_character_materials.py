@@ -379,6 +379,25 @@ def test_material_attachment_is_exact_immutable_and_runtime_renderable(
     assert current.manifest["appearance"]["uv_binding"][
         "attachment_payload_sha256"
     ] == prepared["attachment"]["attachment_payload_sha256"]
+    material_document = json.loads(
+        (current.preview_path.parent / "material.json").read_text(encoding="utf-8")
+    )
+    assert material_document["schema_version"] == "autoanim.character-material.v3"
+    projection = material_document["runtime_projection"]
+    assert projection["schema_version"] == "autoanim.browser-material-lod.v1"
+    assert projection["source_package_manifest_payload_sha256"] == (
+        prepared["material_manifest"]["manifest_payload_sha256"]
+    )
+    assert projection["source_resolution"] == [16, 16]
+    assert projection["runtime_resolution"] == [16, 16]
+    assert projection["source_bindings"]["base_color"]["sha256"] == (
+        prepared["material_manifest"]["maps"]["base_color"]["files"]["atlas"][
+            "sha256"
+        ]
+    )
+    assert set(projection["derivative_bindings"]) == set(
+        current.runtime_material_paths
+    )
     document = _glb_json(current.preview_path)
     primitive = document["meshes"][0]["primitives"][0]
     material = document["materials"][0]

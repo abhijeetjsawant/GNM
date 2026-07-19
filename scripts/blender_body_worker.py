@@ -39,11 +39,14 @@ from autoanim_gnm.body_provider import (
     PROVIDER_ID,
     BodyProviderError,
     DependencyIssue,
+    audit_makehuman_system_assets_archive,
+    audit_mpfb_extension_archive,
     blocked_body_provider_response,
     load_body_provider_request,
     sha256_file,
     succeeded_body_provider_response,
     validate_body_asset,
+    validate_body_profile_attestation,
     write_body_provider_json,
 )
 
@@ -71,6 +74,17 @@ def _mpfb_installed_version(human_service) -> str | None:
     return None
 
 
+def _mpfb_extension_root(human_service) -> Path:
+    module = importlib.import_module(human_service.__module__)
+    module_file = Path(module.__file__).resolve()
+    for directory in (module_file.parent, *module_file.parents):
+        if (directory / "blender_manifest.toml").is_file():
+            return directory
+        if directory == directory.parent:
+            break
+    raise BodyProviderError("Loaded MPFB extension root could not be located")
+
+
 def _write_blocked(response_path: Path, request_id: str, issue: DependencyIssue) -> int:
     write_body_provider_json(response_path, blocked_body_provider_response(request_id, [issue]))
     return 2
@@ -83,6 +97,7 @@ def _archive_issue(
     expected_sha256: str,
     missing_code: str,
     mismatch_code: str,
+    validator=None,
 ) -> DependencyIssue | None:
     archive_value = os.environ.get(environment_key)
     if not archive_value or not Path(archive_value).is_file():
@@ -102,6 +117,17 @@ def _archive_issue(
             observed,
             "Source archive digest does not match the request pin",
         )
+    if validator is not None:
+        try:
+            validator(Path(archive_value))
+        except BodyProviderError as exc:
+            return DependencyIssue(
+                mismatch_code,
+                dependency,
+                expected_sha256,
+                observed,
+                str(exc),
+            )
     return None
 
 
@@ -122,6 +148,47 @@ def _blender_to_autoanim_matrix() -> np.ndarray:
         [[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
         dtype=np.float64,
     )
+
+
+def _collapse_vertex_influences(
+    vertex_groups,
+    group_to_joint: dict[int, int],
+    *,
+    maximum_influences: int,
+) -> list[tuple[int, float]]:
+    """Aggregate MPFB deformation groups after canonical-joint collapse.
+
+    Several source bones (twists, fingers and secondary spine segments) can
+    resolve to the same selected canonical ancestor.  Summing those weights
+    before truncation is essential: emitting each source group separately
+    creates duplicate active joint indices and changes the effective weight
+    when only the largest eight slots survive.
+    """
+
+    accumulated: dict[int, float] = {}
+    for group in vertex_groups:
+        joint = group_to_joint.get(group.group)
+        weight = float(group.weight)
+        if joint is None or not np.isfinite(weight) or weight <= 0.0:
+            continue
+        accumulated[joint] = accumulated.get(joint, 0.0) + weight
+    weighted = sorted(accumulated.items(), key=lambda item: item[1], reverse=True)
+    weighted = weighted[:maximum_influences]
+    total = sum(weight for _, weight in weighted)
+    if not np.isfinite(total) or total <= 0.0:
+        return []
+    return [(joint, weight / total) for joint, weight in weighted]
+
+
+def _cleanup_failed_export(*paths: Path | None) -> None:
+    """Remove only current-request artifacts that cannot have passed validation."""
+
+    for path in paths:
+        if path is not None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                print(f"Could not remove failed body artifact {path}: {exc}", file=sys.stderr)
 
 
 def _extract_asset(
@@ -191,17 +258,16 @@ def _extract_asset(
         joint_indices = np.zeros((len(mesh.vertices), influences), dtype=np.int16)
         joint_weights = np.zeros((len(mesh.vertices), influences), dtype=np.float32)
         for vertex in mesh.vertices:
-            weighted = sorted(
-                ((group_to_joint[group.group], float(group.weight)) for group in vertex.groups if group.group in group_to_joint and group.weight > 0.0),
-                key=lambda item: item[1],
-                reverse=True,
-            )[:influences]
+            weighted = _collapse_vertex_influences(
+                vertex.groups,
+                group_to_joint,
+                maximum_influences=influences,
+            )
             if not weighted:
                 raise BodyProviderError(f"Vertex {vertex.index} has no canonical skin influence")
-            total = sum(weight for _, weight in weighted)
             for slot, (joint_index, weight) in enumerate(weighted):
                 joint_indices[vertex.index, slot] = joint_index
-                joint_weights[vertex.index, slot] = weight / total
+                joint_weights[vertex.index, slot] = weight
 
         head_index = CANONICAL_HUMANOID.index("Head")
         # Calibration is intentionally deferred.  Identity means the GNM
@@ -292,6 +358,8 @@ def _extract_asset(
 
 def main() -> int:
     request_path, response_path = _parse_paths()
+    npz_path: Path | None = None
+    manifest_path: Path | None = None
     try:
         request = load_body_provider_request(request_path)
     except BodyProviderError as exc:
@@ -321,6 +389,7 @@ def main() -> int:
             expected_sha256=PINNED_MPFB_EXTENSION_SHA256,
             missing_code="MPFB_EXTENSION_ARCHIVE_MISSING",
             mismatch_code="MPFB_EXTENSION_ARCHIVE_HASH_MISMATCH",
+            validator=audit_mpfb_extension_archive,
         ),
         _archive_issue(
             "AUTOANIM_MAKEHUMAN_SYSTEM_ASSETS_ZIP",
@@ -328,12 +397,18 @@ def main() -> int:
             expected_sha256=request["provider"]["system_assets_sha256"],
             missing_code="MAKEHUMAN_SYSTEM_ASSETS_ARCHIVE_MISSING",
             mismatch_code="MAKEHUMAN_SYSTEM_ASSETS_ARCHIVE_HASH_MISMATCH",
+            validator=lambda path: audit_makehuman_system_assets_archive(
+                path,
+                expected_sha256=request["provider"]["system_assets_sha256"],
+            ),
         ),
     ):
         if issue is not None:
             return _write_blocked(response_path, request["request_id"], issue)
     try:
         HumanService = _dynamic_import("mpfb.services.humanservice", "HumanService")
+        AssetService = _dynamic_import("mpfb.services.assetservice", "AssetService")
+        LocationService = _dynamic_import("mpfb.services.locationservice", "LocationService")
     except ImportError:
         return _write_blocked(
             response_path,
@@ -346,6 +421,54 @@ def main() -> int:
             response_path,
             request["request_id"],
             DependencyIssue("MPFB_VERSION_MISMATCH", "MPFB extension", PINNED_MPFB_VERSION, observed_mpfb, "Loaded extension manifest does not match the pinned release"),
+        )
+    system_assets_state = AssetService.check_if_modern_makehuman_system_assets_installed()
+    if system_assets_state != (True, True) or not AssetService.system_assets_pack_is_installed():
+        return _write_blocked(
+            response_path,
+            request["request_id"],
+            DependencyIssue(
+                "MAKEHUMAN_SYSTEM_ASSETS_NOT_INSTALLED",
+                "MakeHuman system assets",
+                request["provider"]["system_assets_sha256"],
+                str(system_assets_state),
+                "Install the audited archive in this isolated MPFB profile",
+            ),
+        )
+    attestation_value = os.environ.get("AUTOANIM_BODY_PROFILE_ATTESTATION")
+    if not attestation_value or not Path(attestation_value).is_file():
+        return _write_blocked(
+            response_path,
+            request["request_id"],
+            DependencyIssue(
+                "BODY_PROFILE_ATTESTATION_MISSING",
+                "Isolated body-provider profile",
+                request["provider"]["system_assets_sha256"],
+                None,
+                "Install the audited archives with install_blender_body_profile.py",
+            ),
+        )
+    try:
+        validate_body_profile_attestation(
+            attestation_value,
+            extension_root=_mpfb_extension_root(HumanService),
+            system_assets_root=Path(LocationService.get_user_home()).resolve() / "data",
+            expected_mpfb_archive_sha256=PINNED_MPFB_EXTENSION_SHA256,
+            expected_system_assets_archive_sha256=request["provider"][
+                "system_assets_sha256"
+            ],
+        )
+    except (BodyProviderError, OSError) as exc:
+        return _write_blocked(
+            response_path,
+            request["request_id"],
+            DependencyIssue(
+                "BODY_PROFILE_ATTESTATION_MISMATCH",
+                "Isolated body-provider profile",
+                request["provider"]["system_assets_sha256"],
+                None,
+                str(exc),
+            ),
         )
 
     try:
@@ -373,6 +496,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         traceback.print_exc()
+        _cleanup_failed_export(npz_path, manifest_path)
         return _write_blocked(
             response_path,
             request["request_id"],

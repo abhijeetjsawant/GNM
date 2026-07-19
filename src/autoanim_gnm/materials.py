@@ -17,10 +17,10 @@ import copy
 import hashlib
 import json
 import math
-import mmap
 import os
 import re
 import stat
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -32,7 +32,7 @@ from PIL import Image, UnidentifiedImageError
 from tifffile import TiffFile, TiffFileError
 
 
-SCHEMA_VERSION = "autoanim.material-package.v1"
+SCHEMA_VERSION = "autoanim.material-package.v2"
 ATTACHMENT_SCHEMA_VERSION = "autoanim.material-attachment.v1"
 
 MAX_MATERIAL_FILES = 128
@@ -44,6 +44,14 @@ MAX_MATERIAL_DIMENSION = 16_384
 MAX_MATERIAL_PIXELS_PER_FILE = 268_435_456
 MAX_MATERIAL_AGGREGATE_PIXELS = 1_200_000_000
 MAX_MATERIAL_PATH_DEPTH = 8
+MAX_MATERIAL_DECODED_BYTES_PER_FILE = 1024 * 1024 * 1024
+MAX_MATERIAL_AGGREGATE_DECODED_BYTES = 6 * 1024 * 1024 * 1024
+MAX_RESIDENT_IMAGE_BYTES = 128 * 1024 * 1024
+MAX_RESIDENT_ENCODED_BYTES = 256 * 1024 * 1024
+MAX_TIFF_SEGMENT_DECODED_BYTES = 64 * 1024 * 1024
+MAX_TIFF_SEGMENTS = 16_384
+MAX_MATERIAL_AGGREGATE_TIFF_SEGMENTS = 65_536
+PIXEL_SCAN_CHUNK_BYTES = 8 * 1024 * 1024
 
 _MATERIAL_SEMANTICS = (
     "base_color",
@@ -110,6 +118,14 @@ _EXPECTED_FORMAT = {
     ".jpeg": "JPEG",
 }
 _LOSSLESS_FORMATS = frozenset(("PNG", "TIFF"))
+_LOSSLESS_TIFF_COMPRESSIONS = frozenset(
+    (
+        "NONE",
+        "ADOBE_DEFLATE",
+        "DEFLATE",
+        "PACKBITS",
+    )
+)
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _PACKAGE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -153,6 +169,10 @@ class _DecodedFile:
     dtype: str
     minimum: float
     maximum: float
+    decoded_bytes: int
+    decode_strategy: str
+    segment_count: int
+    maximum_decoded_segment_bytes: int
 
     def as_manifest(self) -> dict[str, Any]:
         return {
@@ -166,6 +186,10 @@ class _DecodedFile:
             "bit_depth": self.bit_depth,
             "dtype": self.dtype,
             "value_range": [self.minimum, self.maximum],
+            "decoded_bytes": self.decoded_bytes,
+            "decode_strategy": self.decode_strategy,
+            "segment_count": self.segment_count,
+            "maximum_decoded_segment_bytes": self.maximum_decoded_segment_bytes,
         }
 
 
@@ -197,8 +221,10 @@ def validate_material_package(
          "color_space": "srgb", "source_resolution": [4096, 4096],
          "resampling": "none"}
 
-    Paths are always relative to ``package_root``.  The function performs no
-    writes and never follows symlinks.
+    Paths are always relative to ``package_root``.  The function never modifies
+    package bytes and never follows symlinks. TIFF pixels are decoded into an
+    unlinked temporary scratch file so compressed or contiguous 8K sources do
+    not become multi-gigabyte resident arrays or mutable-source memory maps.
     """
 
     validator = MaterialPackageValidator(package_root, now=now)
@@ -471,6 +497,8 @@ class MaterialPackageValidator:
         self._decoded_file_count = 0
         self._encoded_bytes = 0
         self._declared_pixels = 0
+        self._declared_decoded_bytes = 0
+        self._tiff_segments = 0
 
     def validate(
         self,
@@ -488,6 +516,8 @@ class MaterialPackageValidator:
         self._decoded_file_count = 0
         self._encoded_bytes = 0
         self._declared_pixels = 0
+        self._declared_decoded_bytes = 0
+        self._tiff_segments = 0
         if not isinstance(package_id, str) or not _PACKAGE_ID_RE.fullmatch(package_id):
             raise MaterialValidationError(
                 "INVALID_PACKAGE_ID", "package_id contains unsupported characters.", field="package_id"
@@ -558,6 +588,9 @@ class MaterialPackageValidator:
             "totals": {
                 "file_count": len(unique_files),
                 "bytes": sum(item.byte_count for item in unique_files.values()),
+                "decoded_bytes": sum(
+                    item.decoded_bytes for item in unique_files.values()
+                ),
             },
         }
         canonical = _canonical_json(manifest)
@@ -620,6 +653,15 @@ class MaterialPackageValidator:
             raise MaterialValidationError(
                 "RESOURCE_LIMIT_EXCEEDED",
                 "Material package decoded pixels exceed the import limit.",
+                field="inventory",
+            )
+        if (
+            sum(item.decoded_bytes for item in decoded)
+            > MAX_MATERIAL_AGGREGATE_DECODED_BYTES
+        ):
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                "Material package decoded bytes exceed the import limit.",
                 field="inventory",
             )
         return output
@@ -830,6 +872,11 @@ class MaterialPackageValidator:
                 field=field,
             )
         file_descriptor, file_info = self._open_regular_file(relative, field=field)
+        decoded: np.ndarray | None = None
+        decode_scratch = None
+        decode_strategy = ""
+        segment_count = 1
+        maximum_decoded_segment_bytes = 0
         try:
             if file_info.st_size > MAX_MATERIAL_FILE_BYTES:
                 raise MaterialValidationError(
@@ -851,44 +898,289 @@ class MaterialPackageValidator:
                     "Material package encoded bytes exceed the import limit.",
                     field="inventory",
                 )
-            with os.fdopen(os.dup(file_descriptor), "rb") as image_file:
-                if expected_format == "TIFF":
+            if expected_format == "TIFF":
+                with os.fdopen(os.dup(file_descriptor), "rb") as image_file:
                     with TiffFile(image_file, name=relative) as tiff:
                         frame_count = len(tiff.pages)
                         if frame_count < 1:
                             raise TiffFileError("TIFF has no image pages")
-                        first_page = tiff.pages[0]
-                        declared_width = int(first_page.imagewidth)
-                        declared_height = int(first_page.imagelength)
-                    actual_format = "TIFF"
-                else:
-                    image = Image.open(image_file)
-                    actual_format = image.format
-                    frame_count = getattr(image, "n_frames", 1)
-                    declared_width, declared_height = image.size
-                    image.verify()
-                if (
-                    declared_width > MAX_MATERIAL_DIMENSION
-                    or declared_height > MAX_MATERIAL_DIMENSION
-                    or declared_width * declared_height > MAX_MATERIAL_PIXELS_PER_FILE
-                ):
+                        page = tiff.pages[0]
+                        actual_format = "TIFF"
+                        declared_width = int(page.imagewidth)
+                        declared_height = int(page.imagelength)
+                        declared_channels = int(page.samplesperpixel or 1)
+                        dtype = np.dtype(page.dtype)
+                        bit_depth = _dtype_depth(dtype)
+                        expected_axes = "YXS" if declared_channels > 1 else "YX"
+                        if (
+                            int(page.imagedepth or 1) != 1
+                            or int(page.tiledepth or 1) != 1
+                            or str(page.axes) != expected_axes
+                            or tuple(page.shape)
+                            != (
+                                (declared_height, declared_width, declared_channels)
+                                if declared_channels > 1
+                                else (declared_height, declared_width)
+                            )
+                            or bool(page.subifds)
+                        ):
+                            raise MaterialValidationError(
+                                "TIFF_DIMENSIONAL_LAYOUT_UNSUPPORTED",
+                                f"{relative} must be a single 2D YX/YXS image without depth or SubIFDs.",
+                                field=field,
+                            )
+                        declared_decoded_bytes = self._record_decoded_budget(
+                            relative=relative,
+                            width=declared_width,
+                            height=declared_height,
+                            channels=declared_channels,
+                            itemsize=dtype.itemsize,
+                            field=field,
+                        )
+                        if frame_count != 1:
+                            raise MaterialValidationError(
+                                "MULTIFRAME_IMAGE_FORBIDDEN",
+                                f"{relative} contains {frame_count} frames; material maps must contain exactly one image.",
+                                field=field,
+                            )
+                        compression = getattr(page.compression, "name", str(page.compression))
+                        if compression not in _LOSSLESS_TIFF_COMPRESSIONS:
+                            raise MaterialValidationError(
+                                "LOSSY_IMAGE_FORBIDDEN",
+                                f"{relative} uses unsupported or lossy TIFF compression {compression!r}.",
+                                field=field,
+                            )
+                        orientation_tag = page.tags.get("Orientation")
+                        if orientation_tag is not None and int(orientation_tag.value) != 1:
+                            raise MaterialValidationError(
+                                "TIFF_ORIENTATION_UNSUPPORTED",
+                                f"{relative} must store pixels in top-left row order; orientation transforms are not inferred.",
+                                field=field,
+                            )
+                        planar_value = int(page.planarconfig or 1)
+                        if declared_channels > 1 and planar_value != 1:
+                            raise MaterialValidationError(
+                                "TIFF_PLANAR_LAYOUT_UNSUPPORTED",
+                                f"{relative} must use contiguous interleaved samples.",
+                                field=field,
+                            )
+                        photometric = getattr(page.photometric, "name", str(page.photometric))
+                        expected_photometric = (
+                            "RGB" if declared_channels in {3, 4} else "MINISBLACK"
+                        )
+                        if photometric != expected_photometric:
+                            raise MaterialValidationError(
+                                "TIFF_PHOTOMETRIC_MISMATCH",
+                                f"{relative} uses {photometric!r}; {semantic} requires {expected_photometric!r} sample semantics.",
+                                field=field,
+                            )
+                        if page.is_tiled:
+                            segment_width = min(
+                                declared_width, int(page.tilewidth or declared_width)
+                            )
+                            segment_height = min(
+                                declared_height, int(page.tilelength or declared_height)
+                            )
+                        else:
+                            segment_width = declared_width
+                            segment_height = min(
+                                declared_height,
+                                int(page.rowsperstrip or declared_height),
+                            )
+                        segment_count = len(page.dataoffsets)
+                        self._tiff_segments += segment_count
+                        maximum_decoded_segment_bytes = int(
+                            segment_width
+                            * segment_height
+                            * declared_channels
+                            * dtype.itemsize
+                        )
+                        if (
+                            segment_count < 1
+                            or segment_count > MAX_TIFF_SEGMENTS
+                            or self._tiff_segments
+                            > MAX_MATERIAL_AGGREGATE_TIFF_SEGMENTS
+                            or maximum_decoded_segment_bytes
+                            > MAX_TIFF_SEGMENT_DECODED_BYTES
+                        ):
+                            raise MaterialValidationError(
+                                "TIFF_SEGMENT_LIMIT_EXCEEDED",
+                                f"{relative} has an unsafe TIFF strip/tile layout; use bounded tiles or strips.",
+                                field=field,
+                            )
+                        decode_scratch = tempfile.TemporaryFile(
+                            prefix="autoanim-material-decode-"
+                        )
+                        filesystem = os.fstatvfs(decode_scratch.fileno())
+                        available_scratch_bytes = int(
+                            filesystem.f_bavail * filesystem.f_frsize
+                        )
+                        if available_scratch_bytes < (
+                            declared_decoded_bytes + 128 * 1024 * 1024
+                        ):
+                            raise MaterialValidationError(
+                                "TEMP_STORAGE_LIMIT_EXCEEDED",
+                                f"Insufficient scratch space to validate {relative} safely.",
+                                field=field,
+                            )
+                        decoded = page.asarray(
+                            out=decode_scratch,
+                            maxworkers=1,
+                            buffersize=PIXEL_SCAN_CHUNK_BYTES,
+                        )
+                        decode_strategy = "disk_memmap_tiff_segments"
+                        (
+                            width,
+                            height,
+                            channels,
+                            bit_depth,
+                            minimum,
+                            maximum,
+                        ) = _scan_decoded_pixels(
+                            decoded,
+                            semantic=semantic,
+                            normal_encoding=normal_encoding,
+                            relative=relative,
+                            field=field,
+                        )
+                        if (
+                            (width, height, channels)
+                            != (
+                                declared_width,
+                                declared_height,
+                                declared_channels,
+                            )
+                            or np.dtype(decoded.dtype) != dtype
+                        ):
+                            raise MaterialValidationError(
+                                "IMAGE_HEADER_MISMATCH",
+                                f"{relative} decoded pixels do not match TIFF metadata.",
+                                field=field,
+                            )
+            else:
+                if file_info.st_size > MAX_RESIDENT_ENCODED_BYTES:
                     raise MaterialValidationError(
-                        "RESOURCE_LIMIT_EXCEEDED",
-                        f"{relative} exceeds the decoded dimension or pixel limit.",
+                        "SCALABLE_SOURCE_REQUIRED",
+                        f"{relative} encoded bytes exceed the resident parser budget; use a bounded-strip/tiled TIFF.",
                         field=field,
                     )
-                self._declared_pixels += int(declared_width * declared_height)
-                if self._declared_pixels > MAX_MATERIAL_AGGREGATE_PIXELS:
-                    raise MaterialValidationError(
-                        "RESOURCE_LIMIT_EXCEEDED",
-                        "Material package decoded pixels exceed the import limit.",
-                        field="inventory",
+                is_png = os.pread(file_descriptor, 8, 0) == b"\x89PNG\r\n\x1a\n"
+                decoded_bytes = 0
+                declared_channels = 0
+                png_bit_depth = 0
+                png_width = png_height = 0
+                if is_png:
+                    (
+                        png_width,
+                        png_height,
+                        declared_channels,
+                        png_bit_depth,
+                    ) = _inspect_png_header(
+                        file_descriptor, relative=relative, field=field
                     )
-            with mmap.mmap(file_descriptor, length=0, access=mmap.ACCESS_READ) as encoded_map:
-                encoded = np.frombuffer(encoded_map, dtype=np.uint8)
+                    decoded_bytes = self._record_decoded_budget(
+                        relative=relative,
+                        width=png_width,
+                        height=png_height,
+                        channels=declared_channels,
+                        itemsize=png_bit_depth // 8,
+                        field=field,
+                    )
+                    maximum_decoded_segment_bytes = decoded_bytes
+                    if decoded_bytes > MAX_RESIDENT_IMAGE_BYTES:
+                        raise MaterialValidationError(
+                            "SCALABLE_SOURCE_REQUIRED",
+                            f"{relative} cannot be decoded within the resident-memory budget; store native high-resolution maps as bounded-strip/tiled TIFF.",
+                            field=field,
+                        )
+                with os.fdopen(os.dup(file_descriptor), "rb") as image_file:
+                    with Image.open(image_file) as image:
+                        actual_format = image.format
+                        frame_count = int(getattr(image, "n_frames", 1))
+                        declared_width, declared_height = image.size
+                        image.verify()
+                if actual_format != expected_format:
+                    raise MaterialValidationError(
+                        "IMAGE_FORMAT_MISMATCH",
+                        f"{relative} extension declares {expected_format}, bytes are {actual_format}.",
+                        field=field,
+                    )
+                if frame_count != 1:
+                    raise MaterialValidationError(
+                        "MULTIFRAME_IMAGE_FORBIDDEN",
+                        f"{relative} contains {frame_count} frames; material maps must contain exactly one image.",
+                        field=field,
+                    )
+                if actual_format not in _LOSSLESS_FORMATS:
+                    raise MaterialValidationError(
+                        "LOSSY_IMAGE_FORBIDDEN",
+                        f"{relative} is lossy; production material maps must be PNG or TIFF.",
+                        field=field,
+                    )
+                if (png_width, png_height) != (
+                    declared_width,
+                    declared_height,
+                ):
+                    raise MaterialValidationError(
+                        "IMAGE_HEADER_MISMATCH",
+                        f"{relative} PNG metadata is internally inconsistent.",
+                        field=field,
+                    )
+                payload = _read_file_descriptor(
+                    file_descriptor,
+                    int(file_info.st_size),
+                    maximum=MAX_RESIDENT_ENCODED_BYTES,
+                )
+                if len(payload) != file_info.st_size:
+                    raise MaterialValidationError(
+                        "IMAGE_DECODE_FAILED",
+                        f"Could not read exactly {file_info.st_size} encoded bytes from {relative}.",
+                        field=field,
+                    )
+                encoded = np.frombuffer(payload, dtype=np.uint8)
                 decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
-                file_sha256 = hashlib.sha256(encoded_map).hexdigest()
-                del encoded
+                file_sha256 = hashlib.sha256(payload).hexdigest()
+                del encoded, payload
+                decode_strategy = "bounded_resident_png"
+                (
+                    width,
+                    height,
+                    channels,
+                    bit_depth,
+                    minimum,
+                    maximum,
+                ) = _scan_decoded_pixels(
+                    decoded,
+                    semantic=semantic,
+                    normal_encoding=normal_encoding,
+                    relative=relative,
+                    field=field,
+                )
+                if (
+                    (width, height, channels, bit_depth)
+                    != (
+                        declared_width,
+                        declared_height,
+                        declared_channels,
+                        png_bit_depth,
+                    )
+                ):
+                    raise MaterialValidationError(
+                        "IMAGE_HEADER_MISMATCH",
+                        f"{relative} decoded pixels do not match PNG metadata.",
+                        field=field,
+                    )
+            if expected_format == "TIFF":
+                file_sha256 = _sha256_file_descriptor(
+                    file_descriptor, int(file_info.st_size), relative=relative, field=field
+                )
+            final_info = os.fstat(file_descriptor)
+            if _stat_identity(file_info) != _stat_identity(final_info):
+                raise MaterialValidationError(
+                    "SOURCE_CHANGED_DURING_VALIDATION",
+                    f"{relative} changed while it was being validated.",
+                    field=field,
+                )
         except MaterialValidationError:
             raise
         except (
@@ -897,11 +1189,18 @@ class MaterialPackageValidator:
             OSError,
             SyntaxError,
             ValueError,
+            MemoryError,
         ) as exc:
             raise MaterialValidationError(
                 "IMAGE_DECODE_FAILED", f"Image decode failed for {relative}.", field=field
             ) from exc
         finally:
+            if isinstance(decoded, np.memmap):
+                mapping = getattr(decoded, "_mmap", None)
+                if mapping is not None:
+                    mapping.close()
+            if decode_scratch is not None:
+                decode_scratch.close()
             os.close(file_descriptor)
         if actual_format != expected_format:
             raise MaterialValidationError(
@@ -909,121 +1208,7 @@ class MaterialPackageValidator:
                 f"{relative} extension declares {expected_format}, bytes are {actual_format}.",
                 field=field,
             )
-        if frame_count != 1:
-            raise MaterialValidationError(
-                "MULTIFRAME_IMAGE_FORBIDDEN",
-                f"{relative} contains {frame_count} frames; material maps must contain exactly one image.",
-                field=field,
-            )
-        if actual_format not in _LOSSLESS_FORMATS:
-            raise MaterialValidationError(
-                "LOSSY_IMAGE_FORBIDDEN",
-                f"{relative} is lossy; production material maps must be PNG or TIFF.",
-                field=field,
-            )
-
-        if decoded is None or decoded.size == 0:
-            raise MaterialValidationError(
-                "IMAGE_DECODE_FAILED", f"OpenCV could not decode {relative}.", field=field
-            )
-        if decoded.ndim == 2:
-            channels = 1
-            height, width = decoded.shape
-        elif decoded.ndim == 3:
-            height, width, channels = decoded.shape
-        else:
-            raise MaterialValidationError(
-                "INVALID_IMAGE_SHAPE", f"Unsupported image shape for {relative}: {decoded.shape}.", field=field
-            )
-        if width <= 0 or height <= 0 or channels not in _CHANNELS[semantic]:
-            expected = sorted(_CHANNELS[semantic])
-            raise MaterialValidationError(
-                "CHANNEL_MISMATCH",
-                f"{relative} has {channels} channels; {semantic} requires {expected}.",
-                field=field,
-            )
-        if (
-            width > MAX_MATERIAL_DIMENSION
-            or height > MAX_MATERIAL_DIMENSION
-            or width * height > MAX_MATERIAL_PIXELS_PER_FILE
-        ):
-            raise MaterialValidationError(
-                "RESOURCE_LIMIT_EXCEEDED",
-                f"{relative} exceeds the decoded dimension or pixel limit.",
-                field=field,
-            )
-        bit_depth = _dtype_depth(decoded.dtype)
-        if bit_depth not in _ALLOWED_DEPTHS[semantic]:
-            raise MaterialValidationError(
-                "BIT_DEPTH_MISMATCH",
-                f"{relative} is {bit_depth}-bit; {semantic} accepts {sorted(_ALLOWED_DEPTHS[semantic])}.",
-                field=field,
-            )
-        if np.issubdtype(decoded.dtype, np.floating):
-            if not bool(np.isfinite(decoded).all()):
-                raise MaterialValidationError(
-                    "NONFINITE_PIXELS", f"{relative} contains NaN or infinite pixels.", field=field
-                )
-            if semantic in _NORMALIZED_FLOAT_SEMANTICS:
-                minimum = float(decoded.min())
-                maximum = float(decoded.max())
-                if minimum < 0.0 or maximum > 1.0:
-                    raise MaterialValidationError(
-                        "PIXEL_RANGE_MISMATCH",
-                        f"{relative} must be normalized to [0, 1].",
-                        field=field,
-                    )
-            elif semantic == "normal":
-                minimum = float(decoded.min())
-                maximum = float(decoded.max())
-                expected_range = (
-                    (0.0, 1.0) if normal_encoding == "unorm" else (-1.0, 1.0)
-                )
-                if minimum < expected_range[0] or maximum > expected_range[1]:
-                    raise MaterialValidationError(
-                        "PIXEL_RANGE_MISMATCH",
-                        f"Float normal map {relative} does not match declared "
-                        f"{normal_encoding!r} range {list(expected_range)}.",
-                        field=field,
-                    )
-            else:
-                minimum = float(decoded.min())
-                maximum = float(decoded.max())
-        else:
-            minimum = float(decoded.min())
-            maximum = float(decoded.max())
-
-        if (
-            semantic == "normal"
-            and normal_encoding == "signed_float"
-            and not np.issubdtype(decoded.dtype, np.floating)
-        ):
-            raise MaterialValidationError(
-                "NORMAL_ENCODING_DTYPE_MISMATCH",
-                f"{relative} declares signed_float but has integer pixels.",
-                field=field,
-            )
-
-        if semantic == "normal":
-            # Inspect a bounded, deterministic sample so an 8K/16-bit map does
-            # not need another full-size float copy. Channel order does not
-            # affect vector length.
-            stride = max(1, int(math.sqrt((width * height) / 1_000_000)))
-            vectors = decoded[::stride, ::stride, :3].astype(np.float32)
-            if np.issubdtype(decoded.dtype, np.integer):
-                vectors = vectors / float(np.iinfo(decoded.dtype).max)
-                vectors = vectors * 2.0 - 1.0
-            elif normal_encoding == "unorm":
-                vectors = vectors * 2.0 - 1.0
-            lengths = np.linalg.norm(vectors, axis=2)
-            plausible = np.logical_and(lengths >= 0.5, lengths <= 1.5)
-            if float(np.mean(plausible)) < 0.99:
-                raise MaterialValidationError(
-                    "NORMAL_VECTOR_MISMATCH",
-                    f"{relative} does not contain plausible encoded tangent-space normal vectors.",
-                    field=field,
-                )
-
+        decoded_bytes = int(width * height * channels * (bit_depth // 8))
         return _DecodedFile(
             path=relative,
             sha256=file_sha256,
@@ -1036,7 +1221,51 @@ class MaterialPackageValidator:
             dtype=str(decoded.dtype),
             minimum=minimum,
             maximum=maximum,
+            decoded_bytes=decoded_bytes,
+            decode_strategy=decode_strategy,
+            segment_count=segment_count,
+            maximum_decoded_segment_bytes=maximum_decoded_segment_bytes,
         )
+
+    def _record_decoded_budget(
+        self,
+        *,
+        relative: str,
+        width: int,
+        height: int,
+        channels: int,
+        itemsize: int,
+        field: str,
+    ) -> int:
+        pixels = int(width * height)
+        decoded_bytes = int(pixels * channels * itemsize)
+        if (
+            width < 1
+            or height < 1
+            or channels < 1
+            or width > MAX_MATERIAL_DIMENSION
+            or height > MAX_MATERIAL_DIMENSION
+            or pixels > MAX_MATERIAL_PIXELS_PER_FILE
+            or decoded_bytes > MAX_MATERIAL_DECODED_BYTES_PER_FILE
+        ):
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                f"{relative} exceeds the decoded dimension, pixel, or byte limit.",
+                field=field,
+            )
+        self._declared_pixels += pixels
+        self._declared_decoded_bytes += decoded_bytes
+        if (
+            self._declared_pixels > MAX_MATERIAL_AGGREGATE_PIXELS
+            or self._declared_decoded_bytes
+            > MAX_MATERIAL_AGGREGATE_DECODED_BYTES
+        ):
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                "Material package decoded pixels or bytes exceed the import limit.",
+                field="inventory",
+            )
+        return decoded_bytes
 
     def _open_regular_file(self, relative: str, *, field: str) -> tuple[int, os.stat_result]:
         """Open a package file without following any path component symlink."""
@@ -1387,6 +1616,255 @@ def _parse_time(value: Any, *, field: str) -> datetime:
     if parsed.tzinfo is None:
         raise MaterialValidationError("INVALID_TIMESTAMP", f"{field} must include a timezone.", field=field)
     return parsed.astimezone(timezone.utc)
+
+
+def _inspect_png_header(
+    file_descriptor: int, *, relative: str, field: str
+) -> tuple[int, int, int, int]:
+    """Read the fixed PNG IHDR without allocating for declared image size."""
+
+    header = os.pread(file_descriptor, 33, 0)
+    if (
+        len(header) != 33
+        or header[:8] != b"\x89PNG\r\n\x1a\n"
+        or header[8:12] != b"\x00\x00\x00\r"
+        or header[12:16] != b"IHDR"
+    ):
+        raise MaterialValidationError(
+            "IMAGE_DECODE_FAILED",
+            f"{relative} has no valid PNG IHDR.",
+            field=field,
+        )
+    width = int.from_bytes(header[16:20], "big")
+    height = int.from_bytes(header[20:24], "big")
+    bit_depth = int(header[24])
+    color_type = int(header[25])
+    channels_by_type = {0: 1, 2: 3, 4: 2, 6: 4}
+    channels = channels_by_type.get(color_type)
+    valid_depths = {
+        0: {1, 2, 4, 8, 16},
+        2: {8, 16},
+        4: {8, 16},
+        6: {8, 16},
+    }
+    if channels is None or bit_depth not in valid_depths.get(color_type, set()):
+        raise MaterialValidationError(
+            "UNSUPPORTED_PIXEL_TYPE",
+            f"{relative} uses unsupported PNG color type/depth {color_type}/{bit_depth}.",
+            field=field,
+        )
+    # Packed sub-byte images are never valid production material precision.
+    if bit_depth not in {8, 16}:
+        raise MaterialValidationError(
+            "BIT_DEPTH_MISMATCH",
+            f"{relative} is {bit_depth}-bit; production material maps require byte-aligned samples.",
+            field=field,
+        )
+    return width, height, channels, bit_depth
+
+
+def _sha256_file_descriptor(
+    file_descriptor: int,
+    byte_count: int,
+    *,
+    relative: str,
+    field: str,
+) -> str:
+    """Hash an already-safe-open file in bounded chunks without path races."""
+
+    digest = hashlib.sha256()
+    offset = 0
+    chunk_size = 8 * 1024 * 1024
+    while offset < byte_count:
+        chunk = os.pread(file_descriptor, min(chunk_size, byte_count - offset), offset)
+        if not chunk:
+            raise MaterialValidationError(
+                "SOURCE_CHANGED_DURING_VALIDATION",
+                f"{relative} became shorter while it was being hashed.",
+                field=field,
+            )
+        digest.update(chunk)
+        offset += len(chunk)
+    if offset != byte_count:
+        raise MaterialValidationError(
+            "SOURCE_CHANGED_DURING_VALIDATION",
+            f"{relative} byte count changed while it was being hashed.",
+            field=field,
+        )
+    return digest.hexdigest()
+
+
+def _read_file_descriptor(
+    file_descriptor: int, byte_count: int, *, maximum: int
+) -> bytearray:
+    if byte_count > maximum:
+        return bytearray()
+    payload = bytearray(byte_count)
+    view = memoryview(payload)
+    offset = 0
+    chunk_size = 8 * 1024 * 1024
+    while offset < byte_count:
+        stop = min(byte_count, offset + chunk_size)
+        read = os.preadv(file_descriptor, [view[offset:stop]], offset)
+        if read < 1:
+            break
+        offset += int(read)
+    if offset != byte_count:
+        return bytearray()
+    return payload
+
+
+def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        int(value.st_dev),
+        int(value.st_ino),
+        int(value.st_size),
+        int(value.st_mtime_ns),
+        int(value.st_ctime_ns),
+    )
+
+
+def _scan_decoded_pixels(
+    decoded: np.ndarray,
+    *,
+    semantic: str,
+    normal_encoding: str | None,
+    relative: str,
+    field: str,
+) -> tuple[int, int, int, int, float, float]:
+    """Validate pixels in bounded row chunks; source may be a disk memmap."""
+
+    if decoded is None or decoded.size == 0:
+        raise MaterialValidationError(
+            "IMAGE_DECODE_FAILED", f"Image decoder returned no pixels for {relative}.", field=field
+        )
+    if decoded.ndim == 2:
+        height, width = decoded.shape
+        channels = 1
+    elif decoded.ndim == 3:
+        height, width, channels = decoded.shape
+    else:
+        raise MaterialValidationError(
+            "INVALID_IMAGE_SHAPE",
+            f"Unsupported image shape for {relative}: {decoded.shape}.",
+            field=field,
+        )
+    if width <= 0 or height <= 0 or channels not in _CHANNELS[semantic]:
+        expected = sorted(_CHANNELS[semantic])
+        raise MaterialValidationError(
+            "CHANNEL_MISMATCH",
+            f"{relative} has {channels} channels; {semantic} requires {expected}.",
+            field=field,
+        )
+    bit_depth = _dtype_depth(decoded.dtype)
+    if bit_depth not in _ALLOWED_DEPTHS[semantic]:
+        raise MaterialValidationError(
+            "BIT_DEPTH_MISMATCH",
+            f"{relative} is {bit_depth}-bit; {semantic} accepts {sorted(_ALLOWED_DEPTHS[semantic])}.",
+            field=field,
+        )
+    if np.issubdtype(decoded.dtype, np.signedinteger):
+        raise MaterialValidationError(
+            "PIXEL_DTYPE_MISMATCH",
+            f"{relative} uses signed integer samples; material integer maps must be unsigned.",
+            field=field,
+        )
+    if (
+        semantic == "normal"
+        and normal_encoding == "signed_float"
+        and not np.issubdtype(decoded.dtype, np.floating)
+    ):
+        raise MaterialValidationError(
+            "NORMAL_ENCODING_DTYPE_MISMATCH",
+            f"{relative} declares signed_float but has integer pixels.",
+            field=field,
+        )
+
+    row_bytes = max(1, int(width * channels * decoded.dtype.itemsize))
+    rows_per_chunk = max(1, PIXEL_SCAN_CHUNK_BYTES // row_bytes)
+    minimum = math.inf
+    maximum = -math.inf
+    plausible_normal_count = 0
+    inspected_normal_count = 0
+    for row_start in range(0, int(height), rows_per_chunk):
+        chunk = np.asarray(decoded[row_start : row_start + rows_per_chunk])
+        if np.issubdtype(chunk.dtype, np.floating) and not bool(
+            np.isfinite(chunk).all()
+        ):
+            raise MaterialValidationError(
+                "NONFINITE_PIXELS",
+                f"{relative} contains NaN or infinite pixels.",
+                field=field,
+            )
+        minimum = min(minimum, float(np.min(chunk)))
+        maximum = max(maximum, float(np.max(chunk)))
+        if semantic == "base_color" and channels == 4:
+            opaque = (
+                1.0
+                if np.issubdtype(chunk.dtype, np.floating)
+                else float(np.iinfo(chunk.dtype).max)
+            )
+            if not bool(np.all(chunk[..., 3] == opaque)):
+                raise MaterialValidationError(
+                    "BASE_COLOR_ALPHA_MISMATCH",
+                    f"{relative} declares unused opaque alpha but contains non-opaque samples.",
+                    field=field,
+                )
+        if semantic == "normal":
+            vectors = chunk[..., :3].astype(np.float32)
+            if np.issubdtype(chunk.dtype, np.unsignedinteger):
+                vectors /= float(np.iinfo(chunk.dtype).max)
+                vectors = vectors * 2.0 - 1.0
+            elif normal_encoding == "unorm":
+                vectors = vectors * 2.0 - 1.0
+            lengths = np.linalg.norm(vectors, axis=2)
+            plausible_normal_count += int(
+                np.count_nonzero(
+                    np.logical_and(lengths >= 0.5, lengths <= 1.5)
+                )
+            )
+            inspected_normal_count += int(lengths.size)
+
+    if np.issubdtype(decoded.dtype, np.floating):
+        if semantic in _NORMALIZED_FLOAT_SEMANTICS and (
+            minimum < 0.0 or maximum > 1.0
+        ):
+            raise MaterialValidationError(
+                "PIXEL_RANGE_MISMATCH",
+                f"{relative} must be normalized to [0, 1].",
+                field=field,
+            )
+        if semantic == "normal":
+            expected_range = (
+                (0.0, 1.0) if normal_encoding == "unorm" else (-1.0, 1.0)
+            )
+            if minimum < expected_range[0] or maximum > expected_range[1]:
+                raise MaterialValidationError(
+                    "PIXEL_RANGE_MISMATCH",
+                    f"Float normal map {relative} does not match declared "
+                    f"{normal_encoding!r} range {list(expected_range)}.",
+                    field=field,
+                )
+
+    if semantic == "normal":
+        if (
+            inspected_normal_count < 1
+            or plausible_normal_count / inspected_normal_count < 0.99
+        ):
+            raise MaterialValidationError(
+                "NORMAL_VECTOR_MISMATCH",
+                f"{relative} does not contain plausible encoded tangent-space normal vectors.",
+                field=field,
+            )
+
+    return (
+        int(width),
+        int(height),
+        int(channels),
+        int(bit_depth),
+        float(minimum),
+        float(maximum),
+    )
 
 
 def _dtype_depth(dtype: np.dtype[Any]) -> int:

@@ -71,6 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
     audio.add_argument("--fps", type=int, default=30)
     audio.add_argument("--emotion", default="auto")
     audio.add_argument("--emotion-strength", type=float, default=0.65)
+    audio.add_argument("--mouth-aperture-gain", type=float, default=1.0)
+    audio.add_argument("--mouth-aperture-author")
+    audio.add_argument("--mouth-aperture-reason")
     audio.add_argument("--backend", choices=("auto", "learned", "fallback"), default="auto")
     audio.add_argument("--dialog")
     audio.add_argument("--character", help="Saved character ID to apply")
@@ -106,6 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
     video.add_argument("--out", type=Path, required=True)
     video.add_argument("--character", help="Saved target character ID")
     video.add_argument("--character-revision", help="Exact saved character revision ID")
+    video.add_argument("--mouth-aperture-gain", type=float, default=1.0)
+    video.add_argument("--mouth-aperture-author")
+    video.add_argument("--mouth-aperture-reason")
     video.add_argument(
         "--usage-scope",
         choices=("personal", "production", "commercial", "research"),
@@ -259,6 +265,9 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 emotion=args.emotion,
                 emotion_strength=args.emotion_strength,
+                mouth_aperture_gain=args.mouth_aperture_gain,
+                mouth_aperture_author=args.mouth_aperture_author,
+                mouth_aperture_reason=args.mouth_aperture_reason,
                 backend=args.backend,
                 dialog=args.dialog,
                 character_id=args.character,
@@ -292,6 +301,9 @@ def main(argv: list[str] | None = None) -> int:
                 character_id=args.character,
                 character_revision_id=args.character_revision,
                 usage_scope=args.usage_scope,
+                mouth_aperture_gain=args.mouth_aperture_gain,
+                mouth_aperture_author=args.mouth_aperture_author,
+                mouth_aperture_reason=args.mouth_aperture_reason,
             )
         elif args.command == "qualify-lipsync":
             evidence: dict[str, Path] = {}

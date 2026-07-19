@@ -13,6 +13,8 @@ from autoanim_gnm.animation import (
     _apply_lip_contact_correction,
     _default_prosody,
     _mouth_gap_interocular,
+    _mouth_lip_order_minimum_interocular,
+    _repair_lip_order_inversion,
     calibrate_lip_contact,
     compose_animation,
     compose_learned_animation,
@@ -29,6 +31,7 @@ from autoanim_gnm.audio_pipeline import (
     FALLBACK_CAVEAT,
     LIP_CONTACT_CAVEAT,
     _condition_learned_controls,
+    _apply_audio_mouth_aperture_edit,
     _derive_lip_contact_confidence,
     _fuse_jaw_observation,
     _quality_speech_activity,
@@ -154,6 +157,85 @@ def test_temporal_compiler_is_deterministic_and_rejects_empty_cues(rig: ControlR
     np.testing.assert_array_equal(first.rotations, second.rotations)
     with pytest.raises(AutoAnimError, match="mouth cue"):
         compose_animation([], 1.0, 30, rig, "neutral")
+
+
+def test_audio_mouth_aperture_edit_is_audited_contact_safe_revision(
+    rig: ControlRig,
+    tmp_path: Path,
+) -> None:
+    cues = [
+        MouthCue(0.0, 0.25, "X"),
+        MouthCue(0.25, 0.75, "D"),
+        MouthCue(0.75, 0.95, "A"),
+        MouthCue(0.95, 1.35, "D"),
+        MouthCue(1.35, 1.6, "X"),
+    ]
+    track = compose_animation(
+        cues,
+        1.6,
+        30,
+        rig,
+        "neutral",
+        lip_contact_calibration=calibrate_lip_contact(rig),
+    )
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir()
+    baseline, baseline_report = _apply_audio_mouth_aperture_edit(
+        output_dir=baseline_dir,
+        rig=rig,
+        track=track,
+        gain=1.0,
+        author=None,
+        reason=None,
+    )
+    np.testing.assert_array_equal(baseline.expression, track.expression)
+    assert not baseline_report.correction_applied.any()
+
+    edit_dir = tmp_path / "edit"
+    edit_dir.mkdir()
+    edited, report = _apply_audio_mouth_aperture_edit(
+        output_dir=edit_dir,
+        rig=rig,
+        track=track,
+        gain=1.12,
+        author="Test artist",
+        reason="Character-specific open-vowel correction",
+    )
+    assert np.any(report.correction_applied)
+    contacts = track.lip_contact_target_gap > 0.0
+    np.testing.assert_array_equal(edited.expression[contacts], track.expression[contacts])
+    np.testing.assert_array_equal(edited.expression[:, :200], track.expression[:, :200])
+    np.testing.assert_array_equal(edited.expression[:, 350:], track.expression[:, 350:])
+    payload = json.loads((edit_dir / "mouth-aperture-edit.json").read_text())
+    assert payload["status"] == "corrected"
+    assert payload["author"] == "Test artist"
+    assert payload["claims"]["contact_is_a_hard_veto"] is True
+    assert payload["summary"]["introduced_lip_order_risk_frames"] == 0
+    assert payload["claims"]["tongue_coefficients_byte_identical"] is True
+    assert payload["claims"]["tongue_mesh_vertices_exactly_unchanged"] is False
+    assert (edit_dir / "mouth-aperture-edit.npz").is_file()
+
+
+def test_audio_mouth_aperture_edit_requires_accountable_authorship(
+    rig: ControlRig,
+    tmp_path: Path,
+) -> None:
+    track = compose_animation(
+        [MouthCue(0.0, 0.5, "D")],
+        0.5,
+        30,
+        rig,
+        "neutral",
+    )
+    with pytest.raises(AutoAnimError, match="author and a reason"):
+        _apply_audio_mouth_aperture_edit(
+            output_dir=tmp_path,
+            rig=rig,
+            track=track,
+            gain=1.1,
+            author=None,
+            reason=None,
+        )
 
 
 def test_learned_conditioner_reduces_jerk_without_erasing_contact() -> None:
@@ -327,6 +409,22 @@ def test_soft_lip_contact_correction_closes_without_overapplying(rig: ControlRig
     np.testing.assert_array_equal(unreachable, opened)
     assert not applied
     assert target > 0.0
+
+
+def test_lip_order_projection_is_lower_face_only_and_reaches_safe_boundary(
+    rig: ControlRig,
+) -> None:
+    calibration = calibrate_lip_contact(rig)
+    inverted = np.float32(calibration.maximum_alpha) * calibration.direction
+    assert _mouth_lip_order_minimum_interocular(rig, inverted) < -0.0005
+
+    repaired, changed = _repair_lip_order_inversion(rig, inverted)
+
+    assert changed
+    assert _mouth_lip_order_minimum_interocular(rig, repaired) >= -0.0005001
+    np.testing.assert_array_equal(repaired[:200], inverted[:200])
+    np.testing.assert_array_equal(repaired[350:], inverted[350:])
+    assert not np.array_equal(repaired[200:350], inverted[200:350])
 
 
 def test_procedural_composer_retains_character_contact_calibration(
@@ -686,6 +784,10 @@ def test_real_ravdess_angry_end_to_end(tmp_path: Path) -> None:
     assert glb_report["structural_reconstruction"]["reference_evaluation_mode"] == (
         "provided_complete_gnm_frames"
     )
+    assert glb_report["lip_contact"]["order_inversion_risk_frames"] == 0
+    assert result["oral_validation"]["control_lip_order_inversion_risk_frames"] == 0
+    assert result["oral_validation"]["viewer_lip_order_inversion_risk_frames"] == 0
+    assert result["oral_validation"]["lip_order_inversion_risk_frames"] == 0
     av = probe_av(tmp_path / "preview.mp4")
     assert av["has_audio"] and av["has_video"]
     assert av["video_frames"] == result["animation"]["frames"]

@@ -23,6 +23,7 @@ from autoanim_gnm.video_capture import (
 )
 from autoanim_gnm.video_pipeline import (
     MAX_PROXY_PTS_ERROR_SECONDS,
+    _apply_video_mouth_aperture_edit,
     _export_static_performance_glb,
     _final_output_retention_metrics,
 )
@@ -94,7 +95,9 @@ def test_mediapipe_controls_use_dense_geometry_calibration() -> None:
     or not (A2F_ASSETS / "bs_skin.npz").is_file(),
     reason="retained checksum-pinned CREMA-D capture unavailable",
 )
-def test_retained_crema_capture_neutral_audit_and_final_geometry_retention() -> None:
+def test_retained_crema_capture_neutral_audit_and_final_geometry_retention(
+    tmp_path: Path,
+) -> None:
     source = RETAINED_CREMA_JOB / "input.flv"
     assert hashlib.sha256(source.read_bytes()).hexdigest() == CREMA_D_ANGRY_SHA256
     capture = load_capture_npz(RETAINED_CREMA_JOB / "capture.npz")
@@ -173,6 +176,54 @@ def test_retained_crema_capture_neutral_audit_and_final_geometry_retention() -> 
     assert metrics["final_lip_aperture_correction_applied_frames"] > 0
     assert metrics["final_lip_aperture_target_attainment_fraction"] >= 0.95
     assert np.max(np.abs(performance.expression)) <= 3.0
+
+    no_op_dir = tmp_path / "no-op"
+    no_op_dir.mkdir()
+    no_op, no_op_report = _apply_video_mouth_aperture_edit(
+        output_dir=no_op_dir,
+        rig=rig,
+        performance=performance,
+        gain=1.0,
+        author=None,
+        reason=None,
+        source_sha256=capture.provenance.source_sha256,
+        model_sha256=capture.provenance.model_sha256,
+        retarget_calibration_hash=retargeter.calibration.calibration_hash,
+    )
+    np.testing.assert_array_equal(no_op.expression, performance.expression)
+    assert not no_op_report.correction_applied.any()
+
+    edit_dir = tmp_path / "authored"
+    edit_dir.mkdir()
+    edited, edit_report = _apply_video_mouth_aperture_edit(
+        output_dir=edit_dir,
+        rig=rig,
+        performance=performance,
+        gain=1.08,
+        author="Test artist",
+        reason="Open-vowel review correction",
+        source_sha256=capture.provenance.source_sha256,
+        model_sha256=capture.provenance.model_sha256,
+        retarget_calibration_hash=retargeter.calibration.calibration_hash,
+    )
+    assert np.any(edit_report.correction_applied)
+    protected = edit_report.protected_contact
+    np.testing.assert_array_equal(edited.expression[protected], performance.expression[protected])
+    np.testing.assert_array_equal(edited.expression[:, :200], performance.expression[:, :200])
+    np.testing.assert_array_equal(edited.expression[:, 350:], performance.expression[:, 350:])
+    np.testing.assert_array_equal(edited.source_pts, performance.source_pts)
+    np.testing.assert_array_equal(edited.timestamps_seconds, performance.timestamps_seconds)
+    edited_metrics = _final_output_retention_metrics(capture, edited, adapter)
+    assert edited_metrics["final_lip_aperture_source_output_correlation"] >= 0.95
+    assert 0.90 <= edited_metrics["final_lip_aperture_open_p95_ratio"] <= 1.10
+    assert 0.90 <= edited_metrics["final_lip_aperture_affine_slope"] <= 1.10
+    payload = json.loads((edit_dir / "mouth-aperture-edit.json").read_text())
+    assert payload["timeline"]["source_pts"] == capture.source_pts.tolist()
+    assert payload["claims"]["video_pts_byte_identical"] is True
+    assert payload["claims"]["contact_is_a_hard_veto"] is True
+    assert payload["summary"]["introduced_lip_order_risk_frames"] == 0
+    assert payload["summary"]["rapid_source_motion_veto_frames"] >= 2
+    assert payload["summary"]["target_attained_fraction"] >= 0.95
 
 
 @pytest.mark.skipif(
@@ -297,6 +348,19 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     )
     assert glb_report["structural_reconstruction"]["reference_evaluation_mode"] == (
         "provided_complete_gnm_frames"
+    )
+    assert oral_report["lip_contact"]["order_inversion_risk_frames"] == 0
+    assert glb_report["lip_contact"]["order_inversion_risk_frames"] == 0
+    assert result["oral_validation"]["control_lip_order_inversion_risk_frames"] == 0
+    assert result["oral_validation"]["viewer_lip_order_inversion_risk_frames"] == 0
+    assert result["oral_validation"]["lip_order_inversion_risk_frames"] == 0
+    assert result["oral_validation"]["tongue_geometry_motion_frames"] > 0
+    assert result["oral_validation"]["tongue_motion_source"] == (
+        "gnm_lower_face_basis_coupling_no_dedicated_source"
+    )
+    assert any(
+        "ORAL_UNSOURCED_TONGUE_BASIS_COUPLING" in warning
+        for warning in result["warnings"]
     )
 
     with np.load(job_dir / "capture.npz", allow_pickle=False) as capture:

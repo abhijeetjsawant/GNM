@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -16,6 +17,8 @@ from autoanim_gnm.gnm_adapter import GNMAdapter
 from autoanim_gnm.oral_validation import (
     OralValidationError,
     OralValidationThresholds,
+    classify_lip_landmarks,
+    require_glb_oral_semantic_preservation,
     validate_controls_npz,
     validate_glb_oral_geometry,
     validate_oral_frames,
@@ -39,6 +42,56 @@ def rig(adapter: GNMAdapter) -> ControlRig:
         adapter,
         ExpressionDecoder("gnm/shape/data/semantic_sampler/expression_decoder_model.h5"),
     )
+
+
+def test_lip_classifier_uses_authoritative_float64_threshold_semantics() -> None:
+    landmarks = np.zeros((1, 68, 3), dtype=np.float32)
+    landmarks[0, 36, 0] = -0.5
+    landmarks[0, 45, 0] = 0.5
+    landmarks[0, 27, 1] = 1.0
+    landmarks[0, 61, 1] = np.float32(-0.0005)
+    landmarks[0, 62, 1] = 0.01
+    landmarks[0, 63, 1] = 0.01
+    _, _, order_risk = classify_lip_landmarks(
+        landmarks,
+        contact_gap_interocular=0.006,
+        order_tolerance_interocular=0.0005,
+    )
+    assert order_risk.tolist() == [True]
+
+
+def test_viewer_oral_semantics_fail_closed_on_introduced_risks(
+    adapter: GNMAdapter,
+) -> None:
+    control = validate_oral_frames(adapter.mesh()[None], adapter=adapter)
+    require_glb_oral_semantic_preservation(control, control)
+    assert not np.any(control.lip_order_inversion_risk_frames)
+    assert not np.any(control.tongue_teeth_collision_risk_frames)
+
+    changed_contact = replace(
+        control,
+        lip_contact_frames=~control.lip_contact_frames,
+    )
+    with pytest.raises(OralValidationError, match="lip contact"):
+        require_glb_oral_semantic_preservation(control, changed_contact)
+
+    introduced_lip_order = replace(
+        control,
+        lip_order_inversion_risk_frames=np.ones_like(
+            control.lip_order_inversion_risk_frames
+        ),
+    )
+    with pytest.raises(OralValidationError, match="lip-order inversion"):
+        require_glb_oral_semantic_preservation(control, introduced_lip_order)
+
+    introduced_tongue_teeth = replace(
+        control,
+        tongue_teeth_collision_risk_frames=np.ones_like(
+            control.tongue_teeth_collision_risk_frames
+        ),
+    )
+    with pytest.raises(OralValidationError, match="tongue/teeth collision"):
+        require_glb_oral_semantic_preservation(control, introduced_tongue_teeth)
 
 
 def _controls(

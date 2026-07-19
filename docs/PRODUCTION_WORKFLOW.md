@@ -100,12 +100,12 @@ character" is resolved to an exact revision before a job starts.
 |---|---|---|
 | Single image to GNM | MediaPipe landmarks, bounded visible-geometry identity fit, neutral GLB/OBJ/overlay | Working estimate; not metric depth or hidden anatomy |
 | Multiple images to GNM | Shared identity solve, optional calibrated cameras and held-out view, UV bake | Working research pipeline; ordinary photos cannot prove perfect likeness |
-| Texture | Up to 1024 RGB reconstruction atlas composed in explicit linear-sRGB with one sRGB output encode, plus a CLI import path for complete base/normal/displacement/specular/roughness/SSS/radius/confidence/mask packages; exact subject/revision/identity/UV binding; immutable material revisions; glTF base/normal/roughness/specular runtime projection | Linear-light composition, attachment and audio/video rendering work; tagged-profile/chart calibration, semantic masking, scalable 4K/8K recovery, pore/relighting validation, SSS/displacement runtime rendering and artist look-dev approval remain open |
-| Audio animation | Rhubarb timing plus native Claire MLX learned motion, 52 skin/16 tongue controls, dense GNM retarget, character contact solve | Working; independent phoneme/perceptual approval and physical oral rig remain open |
-| Video animation | Exact source PTS, MediaPipe face/expression/head/translation/gaze, direct inner-lip geometry, identity-calibrated contact and aperture | Follows the video visually, not its audio; microexpression/FACS ground truth remains open |
+| Texture | Up to 1024 RGB reconstruction atlas composed in explicit linear-sRGB with one sRGB output encode, plus a CLI import path for complete base/normal/displacement/specular/roughness/SSS/radius/confidence/mask packages; exact subject/revision/identity/UV binding; immutable material revisions; bounded native-8K TIFF validation and deterministic at-most-4K glTF base/normal/roughness/specular projection | Source-precision retention, bounded chunked projection and audio/video rendering work. Recovering measured 4K/8K skin from capture, tagged-profile/chart calibration, semantic masking, selectable browser LOD pyramids, pore/relighting validation, SSS/displacement rendering and artist look-dev approval remain open |
+| Audio animation | Rhubarb timing plus native Claire MLX learned motion, 52 skin/16 tongue controls, dense GNM retarget, character contact solve, authored neutral-relative aperture pass and measured lip-order repair | Working structural track; independent phone/perceptual approval and a physical oral rig remain open |
+| Video animation | Exact source PTS, MediaPipe face/expression/head/translation/gaze, direct inner-lip geometry, identity-calibrated contact/aperture, and exact source-audio sample/PTS evidence | Motion follows the video visually; audio is diagnostic only and cannot change controls. Microexpression/FACS ground truth and audiovisual repair semantics remain open |
 | Character reuse | Versioned identity/preview/material revision, exact revision transport, consent scope/expiry/revocation, content hashes and HMAC trust root | Working local trust boundary; hosted deployment should move signing to KMS/HSM |
 | LLM acting | Codex and Claude terminal adapters, no tools, strict schema and semantic validator, trusted envelope, measured performance windows | Produces an editable proposal; its body/gaze portion is deterministically compiled, but artist approval still follows |
-| Full body | 25-joint canonical humanoid, 48 kHz integer-tick sampled body/gaze track, OpenUSD/glTF/VRM mappings, contact constraints and GNM attachment ownership | Foundation works; no body mesh, mocap reconstruction, locomotion, USD/glTF skin writer, or production capture is shipped |
+| Full body | 25-joint canonical humanoid, 48 kHz integer-tick body/gaze track, OpenUSD/glTF/VRM mappings, contact constraints, GNM ownership contract, and a real pinned MakeHuman/MPFB neutral-body provider | A validated neutral mesh/skin now exists; character attachment, seam calibration, mocap reconstruction, locomotion, skinned USD/glTF export, corrective deformation and production capture remain open |
 | Tongue | Real learned-audio motion reaches GNM and animated GLB; every job now emits all-frame lip/tongue/teeth geometry and GLB reconstruction audits | Structural transfer is measured; exact surface collision, camera visibility, phoneme timing and perceptual approval remain open |
 
 ## Character library specification
@@ -159,16 +159,42 @@ glTF's dielectric F0, not an absolute measured F0 map; an absolute-F0 package
 needs a future `KHR_materials_ior` conversion before it can attach.
 Imports use a per-character filesystem lock and compare-and-swap against the
 current revision. Source files are opened without following symlinks, rehashed
-while copied, and retained at source precision. Deterministic PNG derivatives
-are generated once for glTF: RGBA base color, reflected tangent-normal green
-for the UV-origin conversion, 16/float-safe roughness packed into the glTF
-green channel, and linear specular converted to sRGB for
-`KHR_materials_specular`. Source displacement, SSS/radius, confidence and masks
-remain sealed but are honestly reported as not rendered by the web viewer.
-The current realtime attachment profile accepts source maps up to native 8K
-and deterministically derives at most 4K viewer textures; larger validated
-packages require an explicit offline LOD bake instead of risking multi-gigabyte
-decode memory or an unusable browser GLB.
+while copied, and retained byte-for-byte at source precision. Material-package
+v2 records encoded and decoded byte counts, dtype, dimensions, segment counts,
+per-file hash and the decoder strategy. High-resolution TIFFs must be a single
+2D `YX`/`YXS` image with interleaved samples, top-left stored row order, no
+depth/SubIFDs, supported lossless compression (`none`, Deflate or PackBits), at
+most 16,384 bounded strips/tiles, and no decoded segment over 64 MiB. Decoded
+files are capped at 1 GiB each and 6 GiB per package. PNG remains supported only
+when its whole decoded image fits the 128 MiB resident budget; native 8K RGB(A)
+PNG therefore fails closed with instructions to use bounded tiled TIFF.
+
+TIFF validation and projection decode into unlinked, capacity-checked scratch
+files, scan/process bounded row chunks and never memory-map the mutable package
+file. Deterministic browser PNG derivatives use a power-of-two box filter:
+base color is averaged in linear light, tangent normals are vector-averaged and
+renormalized, roughness stays linear, and linear specular is encoded to sRGB for
+`KHR_materials_specular`. The tangent-normal green channel is reflected once
+for the UV-origin conversion. Source displacement, SSS/radius, confidence and
+masks remain sealed but are honestly reported as not rendered. Every derivative
+in character-material v3 is bound to its source-package digest, exact source
+hash/dtype/color-space/resampling metadata, runtime hash/size and projection
+profile. The attachment runtime accepts source maps up to native 8192x8192 and
+derives one at-most-4096 delivery LOD. It does not claim that the 4K derivative
+is native 4K evidence.
+
+The retained executable E2E fixture is a programmatically generated,
+non-biometric complete native 8192x8192 tiled-TIFF package. It exercises all
+required material slots, validates every native pixel, keeps `pore_resolved`
+false, and derives four 4096x4096 glTF textures in 31.09 seconds on the retained
+development machine. The measured pytest process peak was 1.054 GiB RSS,
+including application/test imports; the comparable tiny-package process peaked
+at 0.503 GiB, for about 0.551 GiB incremental peak. It proves the bounded
+transport/projection path, not real
+skin recovery, likeness, pore fidelity or look-development quality. A
+selectable 1K/2K/4K external-texture pyramid, GPU-budget selection, cancellation
+and texture disposal are still required before calling the browser path
+production-scalable; the current GLB embeds its single selected texture set.
 
 The browser does not accept archive uploads yet. Complete packages can be many
 gigabytes, so the first safe interface is local CLI import with file-count,
@@ -277,6 +303,26 @@ procedural Rhubarb fallback is deterministic and now uses the same
 character-specific bilabial contact calibration. Contact anchors are restored
 after the temporal limiter so closure is not silently erased.
 
+The optional mouth-opening control is an authored, identity-calibrated geometry
+edit, not a global coefficient multiplier. It changes only GNM lower-face modes
+`200:350`; P/B/M labels, learned contact evidence and existing contact anchors
+are hard vetoes. Upper-face, tongue and reserved coefficients, pose and timing
+remain byte-identical. Because GNM uses a PCA basis rather than spatially local
+blendshapes, lower-face modes can leave a small tongue-vertex tail; that tail is
+measured and bounded rather than described as exact locality. Final face-local
+mouth steps are constrained without smoothing the whole take, and an inverted
+inner-lip pose is minimally projected toward the character neutral while
+preserving tongue and upper-face coefficients.
+
+On the retained real learned-audio clip, a requested `1.08` aperture gain
+changed 132/211 frames. Twenty-eight local frames were continuity-limited,
+83.3% of changed frames reached the full requested geometry target, the final
+step maximum was `0.03995` interocular, one inherited lip-order inversion was
+repaired, and the final reports measured zero lip-order and tongue/teeth
+proximity risks. GNM tongue controls and isolated tongue geometry were active
+on 209/211 frames. This is structural evidence, not independent phoneme,
+surface-collision, visibility or perceptual approval.
+
 An LLM does not replace the acoustic model. AutoAnim sends it a bounded summary
 of measured energy, speech activity, pitch/accent and existing motion windows,
 plus optional transcript and direction. The output is declarative beats with
@@ -302,12 +348,17 @@ Video motion is derived from **visual frames**, not the audio track:
 - source audio is copied only into the proxy/playback clock.
 
 The earlier retained CREMA-D run had 0.974 lip-opening timing correlation but
-an affine amplitude slope of 0.582: roughly 40% under-opening. The new
-identity-calibrated aperture layer reaches 0.988 correlation, 0.883 slope and
-0.885 p95 source/output amplitude ratio on the same retained capture while
-preserving contact. The acceptance gate is correlation `>= 0.90` and open-frame
-p95 ratio `0.85–1.15`. This directly addresses the perceived "mouth too
-closed" issue without inflating true closed frames.
+an affine amplitude slope of 0.582: roughly 40% under-opening. The current
+identity-calibrated retarget plus authored `1.08` aperture pass reaches 0.988
+correlation, 0.939 slope and 0.939 p95 source/output amplitude ratio on the same
+retained capture. It corrects 35/67 frames, hard-protects 25 contact/evidence
+frames, and vetoes four frames adjacent to source motion above 0.08
+interocular/frame rather than smoothing the captured transition. It preserves
+exact source PTS and introduces no lip-order inversion. The
+acceptance gate is correlation `>=0.90`, slope `0.90–1.10`, and open-frame p95
+ratio `0.90–1.10`. One soft contact target remains below the 95% attainment
+review threshold even though all high-confidence source contact events are
+retained, so the take is still review-required.
 
 Video tongue remains zero because the pinned result schema does not expose or
 ingest a tongue channel and the RGB lane has no pixel-derived tongue surface
@@ -383,10 +434,11 @@ viewer transport and the current geometry proxies. CREMA-D supplies no
 frame-level FACS, gaze target, lip-contact, tongue surface or dense 3D ground
 truth, so those tests do not establish production expression accuracy.
 
-### Next implementable phase: timestamped audio-visual performance evidence
+### Next implementable phase: constrained audio-visual performance repair
 
-Do not average audio and video coefficients. Add an evidence layer and a named
-`audio_visual_repair` policy in which high-confidence visible performance stays
+Do not average audio and video coefficients. The exact clock-join evidence is
+now implemented; the next step is a named `audio_visual_repair` policy in which
+high-confidence visible performance stays
 authoritative and audio may repair only speech-correlated controls when the
 image evidence is weak. Default `video_follow` remains visual-only.
 
@@ -440,14 +492,24 @@ Fusion is control-family aware:
 
 Deliver the phase in four build/review/test loops:
 
-1. **Observation v2 (foundation implemented):** `performance-evidence.json`
+1. **Observation v2 + exact A/V clock join (implemented):**
+   `performance-evidence.json`
    now preserves raw PTS/timebase, exact rational and nearest 48 kHz ticks,
    explicit observed/missing/unknown states, and conservative mouth/eyes/
    upper-face/head confidence from existing tracker evidence. Geometry-only
    confidence is capped at 0.5 and the artifact is explicitly not consumed by
-   retargeting. Remaining work is the exact audio-sample join, identity
-   continuity, pixel-derived blur/occlusion, mouth/eye crops and reprojection
-   residuals. Test variable-frame-rate, B-frame, rotation, blur, occlusion,
+   retargeting. `audio-video-timing.json` additionally hashes a deterministic
+   native-rate mono PCM decode and maps every exact display interval to its
+   covering sample span, with rational offset/drift and complete-coverage
+   evidence. FFprobe and FFmpeg consume one descriptor-copied, read-only
+   snapshot; probe output and the final artifact are capped at 64 MiB, tool
+   failures redact filesystem paths, and the snapshot hash is rechecked after
+   both tools finish. On the retained CREMA-D source it measures a `-27 ms` audio start
+   offset and `+37.653061 ms` duration drift. The fusion gate remains blocked
+   because no phone/audio semantics have been classified, and the artifact is
+   diagnostic-only. Remaining work is identity continuity, pixel-derived
+   blur/occlusion, mouth/eye crops and reprojection residuals. Test
+   variable-frame-rate, B-frame, rotation, blur, occlusion,
    multiple-face, cut and missing-frame fixtures; exact source PTS must remain
    bit-identical.
 2. **Constrained fusion:** consume the existing audio observation artifact by
@@ -505,6 +567,29 @@ GNM's oral meshes are open surfaces, so these are proximity and ordering
 proxies, not signed penetration tests. The report deliberately keeps
 `phoneme_correctness_validated`, `perceptual_correctness_validated`,
 `penetration_free_validated` and `production_validated` false.
+
+The GLB exporter also enforces the control track's oral semantics during
+low-rank compression. It prioritizes the landmark-support vertices used for
+face scale and inner-lip geometry, then rejects a candidate rank if it changes
+any contact classification or introduces a signed lip-order risk. This closed
+a real retained-video defect where a globally acceptable rank-13 approximation
+created five viewer-only inversions. Re-exporting the same 67-frame controls
+selected rank 29, kept all twelve source contact frames, introduced zero
+inversions, and passed at 0.0187 mm p95 / 0.0933 mm maximum oral error. Public
+job results report both control and viewer counts and conservatively aggregate
+them for readiness checks.
+
+The same video audit also establishes a separate tongue limitation. The source
+contains no dedicated tongue observation and all 32 dedicated GNM tongue
+coefficients remain zero, yet GNM's lower-face statistical modes have support
+on tongue vertices: 62/67 control frames exceed 0.1 mm face-local tongue
+motion and the maximum is 12.56 mm. This is not captured tongue acting and is
+not primarily caused by the aperture edit (its maximum incremental tongue tail
+is `2.27e-6` interocular on this take). Video results therefore label the motion
+`gnm_lower_face_basis_coupling_no_dedicated_source` and emit
+`ORAL_UNSOURCED_TONGUE_BASIS_COUPLING`. A dedicated tongue signal, constrained
+tongue-neutral projection, or artist pass is required before visible-video
+tongue performance can be approved.
 
 ## Body choice and head connection
 
@@ -573,11 +658,11 @@ residuals, and explicit foot contacts. It is labeled an **unapproved preview**:
 the present UI has no beat editor/approval transaction, so publish must not
 treat it as an approved compilation. Takes are preflight-limited to 30 minutes
 before invoking the LLM. It is upper-body procedural direction only: there is
-still no body mesh, motion estimation from the source video, skin export,
-locomotion, or performer-approved body performance.
+no motion estimation from the source video, locomotion, or performer-approved
+body performance, and acting jobs do not yet bind/export the provider mesh.
 
-The next provider boundary is also implemented, but no body asset was forged
-when its dependencies failed. `autoanim.blender-body-request/1.0` pins Blender
+The provider boundary is implemented and has now executed against real pinned
+dependencies. `autoanim.blender-body-request/1.0` pins Blender
 4.5.11, MPFB 2.0.16, hm08, the default deformation rig, the reviewed 25-joint
 map, and caller-pinned CC0 system-asset bytes. The isolated Blender worker uses
 MPFB's real `HumanService` path and exports a neutral mesh, canonical rest and
@@ -587,12 +672,24 @@ checks strict JSON/NPZ layout, request/artifact hashes, units/axes, hierarchy,
 rigid matrices, weights, geometry, seam ownership, and license provenance.
 Those content hashes are not remote-worker authentication.
 
-Local execution is honestly blocked: the installed Blender is 4.2.0 rather
-than the pinned 4.5.11, MPFB is absent, and no caller-pinned MakeHuman
-system-assets archive is installed. A background launch of the local Blender
-also aborts during Metal initialization before worker Python starts. Therefore
-there is still no accepted real body mesh, no GNM seam calibration, and no
-body animation export in the application.
+The project-local bootstrap verified Blender's publisher SHA-256, Apple code
+signature and notarization, pinned MPFB 2.0.16 extension bytes and recorded its
+upstream Git commit (without proving the archive/commit relationship), and
+verified byte-identical MakeHuman system-asset archives from two official
+mirrors. MakeHuman publishes no signed archive checksum, so that last digest is
+recorded as corroborated rather than publisher-signed. The retained real output
+contains 13,380 vertices, 26,756 triangles and 25 joints, is 1.65943 m tall,
+uses at most six aggregated canonical influences, and has weight-sum and
+inverse-bind errors of `1.19e-7` and `1.23e-7`. Its artifact SHA-256 is
+`b42f2a9cda5f8e6138fdc3d93c918dd799c627d157d7e23233c30476ca2bf621`.
+Production requests reject any other caller-selected system-pack digest. The
+isolated installer records complete stable-file digests for the installed MPFB
+extension and MakeHuman data trees, and the worker recomputes both before body
+generation; a stale or subsequently modified profile therefore fails closed.
+This proves a reproducible neutral mesh/skin provider. GNM/body seam
+calibration, character-revision attachment, body motion estimation, corrective
+deformation and combined skinned face/body export remain unimplemented and
+must not be inferred from the provider smoke result.
 
 The stable 25-joint schema may be extended, without renumbering the core, by 15
 VRM finger bones per hand. Body owns root through macro head pose; GNM owns
@@ -698,7 +795,7 @@ adapters.
 - Gate: hierarchy/rest validation, quaternion continuity, exact ticks, foot
   drift, head seam transform, round-trip error, unsupported gesture failure.
 
-### Phase 5 — measured production appearance (attachment/runtime implemented; recovery open)
+### Phase 5 — measured production appearance (bounded 8K attachment/runtime implemented; recovery open)
 
 - Implemented: automatic multiview RGB baking decodes declared sRGB inputs to
   linear-sRGB before resampling, affine harmonization, blending and fill, then
@@ -714,9 +811,16 @@ adapters.
   derivatives, tangent export and base/normal/roughness/specular propagation
   through neutral, audio and video GLBs. Float normal encoding is explicit and
   atlas sampling is clamped rather than repeated.
+- Implemented: package-v2 decoded-byte/segment/depth/codec limits, safe-open and
+  unlinked scratch decoding, full chunked dtype/range/normal/alpha validation,
+  power-of-two linear-light/vector-aware at-most-4K projection, and
+  character-material-v3 source/derivative provenance. A complete synthetic
+  native 8192x8192 package passes the real decode/projection E2E; it makes no
+  pore or real-subject claim.
 - Remaining: calibrated polarized recovery, high-frequency residual geometry,
-  real consented 4K/8K fixture, MaterialX/OpenPBR authoring, displacement/SSS
-  renderer adapters and perceptual look-dev approval.
+  a real rights-cleared consented 4K/8K skin package, browser-selectable
+  1K/2K/4K external LODs and GPU-budget lifecycle, MaterialX/OpenPBR authoring,
+  displacement/SSS renderer adapters and perceptual look-dev approval.
 - Gate: held-out geometry/reprojection, diffuse/specular separation,
   relighting error, coverage, seam delta, color chart, pore-frequency
   validation and artist look-dev approval.
@@ -728,12 +832,13 @@ adapters.
 - Implemented: all-frame control and GLB structural reports for lips, tongue
   and teeth, including transfer activity, contact, proximity and reconstruction.
 - Implemented: the read-only timestamped Observation-v2 foundation specified
-  above, plus exact source-frame stepping and regional evidence readout in the
-  interactive viewer. Next implementation is exact audio-sample/video-PTS
-  joining, richer pixel/identity evidence, optional named
-  `audio_visual_repair`, visible-video ownership, conflict intervals, and the
-  remaining side-by-side/overlay review tools. It must not change default
-  `video_follow` behavior.
+  above, exact source-frame stepping and regional evidence readout in the
+  interactive viewer, and a hash-bound native-audio-sample/video-PTS join with
+  rational offset/drift and typed fail-closed evidence. The join is explicitly
+  not consumed by retargeting. Next implementation is richer pixel/identity
+  evidence, phone semantics, optional named `audio_visual_repair`, visible-video
+  ownership, conflict intervals, and the remaining side-by-side/overlay review
+  tools. It must not change default `video_follow` behavior.
 - Gate: rigid-teeth residual `<0.10 mm`, oral penetration p99 `<0.10 mm` / max
   `<0.25 mm`, tongue timing within one annotated frame, no false visibility,
   and the audio-visual acceptance gates defined in the video fidelity audit.

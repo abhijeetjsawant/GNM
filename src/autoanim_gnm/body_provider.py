@@ -14,8 +14,11 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import re
+import stat
 import subprocess
+import tomllib
 from typing import Any, Mapping
 from urllib.parse import urlparse
 import zipfile
@@ -33,6 +36,7 @@ from .body import (
 BODY_PROVIDER_REQUEST_SCHEMA = "autoanim.blender-body-request/1.0"
 BODY_PROVIDER_RESPONSE_SCHEMA = "autoanim.blender-body-response/1.0"
 BODY_ASSET_SCHEMA = "autoanim.skinned-body-asset/1.0"
+BODY_PROFILE_ATTESTATION_SCHEMA = "autoanim.body-profile-attestation/1.0"
 PROVIDER_ID = "makehuman_hm08_mpfb"
 
 PINNED_BLENDER_VERSION = "4.5.11"
@@ -56,6 +60,17 @@ PINNED_MPFB_EXTENSION_SHA256 = (
 MAKEHUMAN_SYSTEM_ASSETS_URL = (
     "https://files2.makehumancommunity.org/asset_packs/"
     "makehuman_system_assets/makehuman_system_assets_cc0.zip"
+)
+MAKEHUMAN_SYSTEM_ASSETS_MIRROR_URL = (
+    "https://files.makehumancommunity.org/asset_packs/"
+    "makehuman_system_assets/makehuman_system_assets_cc0.zip"
+)
+# MakeHuman publishes no checksum for this archive.  These bytes were fetched
+# independently from both official mirrors on 2026-07-19 and were identical.
+# This is a reproducibility lock, not a publisher signature; requests continue
+# to carry the caller's explicit digest so that limitation remains visible.
+CORROBORATED_MAKEHUMAN_SYSTEM_ASSETS_SHA256 = (
+    "b542127a8e25547c7c29c19f2d1d2adb9a664c80396ecd694095dbc8028a0107"
 )
 MPFB_RELEASE_URL = (
     "https://static.makehumancommunity.org/mpfb/releases/release_2016.html"
@@ -201,6 +216,245 @@ def sha256_file(path: str | os.PathLike[str]) -> str:
     return digest.hexdigest()
 
 
+def digest_body_profile_tree(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Hash every stable installed-profile file and relative path."""
+
+    root = Path(path).resolve()
+    if not root.is_dir():
+        raise BodyProviderError(f"Body profile tree is unavailable: {root.name}")
+    files: list[Path] = []
+    for candidate in root.rglob("*"):
+        relative = candidate.relative_to(root)
+        if "__pycache__" in relative.parts or candidate.suffix == ".pyc":
+            continue
+        metadata = candidate.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            raise BodyProviderError("Body profile tree contains a symbolic link")
+        if candidate.is_file():
+            if not stat.S_ISREG(metadata.st_mode):
+                raise BodyProviderError("Body profile tree contains a non-regular file")
+            files.append(candidate)
+        elif not candidate.is_dir():
+            raise BodyProviderError("Body profile tree contains an unsupported entry")
+    digest = sha256()
+    byte_count = 0
+    for candidate in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
+        relative = candidate.relative_to(root).as_posix().encode("utf-8")
+        size = candidate.stat().st_size
+        digest.update(len(relative).to_bytes(8, "little"))
+        digest.update(relative)
+        digest.update(size.to_bytes(8, "little"))
+        with candidate.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+                byte_count += len(block)
+    return {
+        "sha256": digest.hexdigest(),
+        "files": len(files),
+        "bytes": byte_count,
+    }
+
+
+def validate_body_profile_attestation(
+    path: str | os.PathLike[str],
+    *,
+    extension_root: str | os.PathLike[str],
+    system_assets_root: str | os.PathLike[str],
+    expected_mpfb_archive_sha256: str,
+    expected_system_assets_archive_sha256: str,
+) -> dict[str, Any]:
+    """Bind the loaded isolated profile to the archives audited by the worker."""
+
+    attestation_path = Path(path)
+    if (
+        not attestation_path.is_file()
+        or attestation_path.stat().st_size <= 0
+        or attestation_path.stat().st_size > MAX_JSON_BYTES
+    ):
+        raise BodyProviderError("Body-profile attestation is missing or exceeds 256 KiB")
+    try:
+        attestation = json.loads(
+            attestation_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                BodyProviderError(f"Non-finite attestation number: {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BodyProviderError("Body-profile attestation is not valid UTF-8 JSON") from exc
+    root = _exact_keys(
+        attestation,
+        {
+            "schema_version",
+            "mpfb_archive_sha256",
+            "system_assets_archive_sha256",
+            "extension_tree",
+            "system_assets_tree",
+        },
+        "body_profile_attestation",
+    )
+    if root["schema_version"] != BODY_PROFILE_ATTESTATION_SCHEMA:
+        raise BodyProviderError("Unsupported body-profile attestation schema")
+    if root["mpfb_archive_sha256"] != _sha(
+        expected_mpfb_archive_sha256,
+        "expected_mpfb_archive_sha256",
+    ):
+        raise BodyProviderError("Loaded profile is not bound to the audited MPFB archive")
+    if root["system_assets_archive_sha256"] != _sha(
+        expected_system_assets_archive_sha256,
+        "expected_system_assets_archive_sha256",
+    ):
+        raise BodyProviderError(
+            "Loaded profile is not bound to the audited MakeHuman archive"
+        )
+    for field, directory in (
+        ("extension_tree", extension_root),
+        ("system_assets_tree", system_assets_root),
+    ):
+        claimed = _exact_keys(
+            root[field],
+            {"sha256", "files", "bytes"},
+            f"body_profile_attestation.{field}",
+        )
+        _sha(claimed["sha256"], f"body_profile_attestation.{field}.sha256")
+        if (
+            not isinstance(claimed["files"], int)
+            or isinstance(claimed["files"], bool)
+            or claimed["files"] <= 0
+            or not isinstance(claimed["bytes"], int)
+            or isinstance(claimed["bytes"], bool)
+            or claimed["bytes"] <= 0
+        ):
+            raise BodyProviderError(f"body_profile_attestation.{field} has invalid counts")
+        observed = digest_body_profile_tree(directory)
+        if observed != claimed:
+            raise BodyProviderError(f"Loaded body profile {field} digest does not match")
+    return root
+
+
+def _audited_zip(path: str | os.PathLike[str]) -> tuple[zipfile.ZipFile, list[zipfile.ZipInfo]]:
+    """Open a bounded archive after rejecting traversal, links and duplicates."""
+
+    archive_path = Path(path)
+    if not archive_path.is_file():
+        raise BodyProviderError("Dependency archive is missing")
+    try:
+        archive = zipfile.ZipFile(archive_path)
+        entries = archive.infolist()
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise BodyProviderError("Dependency archive is not a valid ZIP") from exc
+    if not entries or len(entries) > 100_000:
+        archive.close()
+        raise BodyProviderError("Dependency archive has an invalid entry count")
+    names: set[str] = set()
+    total_uncompressed = 0
+    for entry in entries:
+        name = entry.filename
+        pure = PurePosixPath(name)
+        mode = entry.external_attr >> 16
+        if (
+            not name
+            or "\\" in name
+            or pure.is_absolute()
+            or ".." in pure.parts
+            or name in names
+            or stat.S_ISLNK(mode)
+        ):
+            archive.close()
+            raise BodyProviderError(f"Dependency archive has an unsafe entry: {name!r}")
+        names.add(name)
+        total_uncompressed += entry.file_size
+        if entry.file_size > 512 * 1024 * 1024 or total_uncompressed > 4 * 1024 * 1024 * 1024:
+            archive.close()
+            raise BodyProviderError("Dependency archive exceeds extraction limits")
+    return archive, entries
+
+
+def audit_mpfb_extension_archive(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Verify the exact content-addressed MPFB extension and its manifest."""
+
+    observed_hash = sha256_file(path)
+    if observed_hash != PINNED_MPFB_EXTENSION_SHA256:
+        raise BodyProviderError("MPFB extension archive digest does not match the pin")
+    archive, entries = _audited_zip(path)
+    try:
+        try:
+            manifest = tomllib.loads(archive.read("blender_manifest.toml").decode("utf-8"))
+        except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+            raise BodyProviderError("MPFB extension manifest is missing or invalid") from exc
+    finally:
+        archive.close()
+    if (
+        manifest.get("id") != "mpfb"
+        or manifest.get("version") != PINNED_MPFB_VERSION
+        or manifest.get("type") != "add-on"
+        or "SPDX:GPL-3.0-or-later" not in manifest.get("license", [])
+    ):
+        raise BodyProviderError("MPFB extension manifest does not match the reviewed release")
+    return {
+        "sha256": observed_hash,
+        "bytes": Path(path).stat().st_size,
+        "entries": len(entries),
+        "id": "mpfb",
+        "version": PINNED_MPFB_VERSION,
+        "code_spdx": "GPL-3.0-or-later",
+    }
+
+
+def audit_makehuman_system_assets_archive(
+    path: str | os.PathLike[str], *, expected_sha256: str
+) -> dict[str, Any]:
+    """Verify the caller-pinned system pack and its per-asset CC0 metadata."""
+
+    expected = _sha(expected_sha256, "expected_sha256")
+    if expected != CORROBORATED_MAKEHUMAN_SYSTEM_ASSETS_SHA256:
+        raise BodyProviderError(
+            "Production MakeHuman system assets must match the corroborated "
+            "byte-identical official-mirror lock"
+        )
+    observed_hash = sha256_file(path)
+    if observed_hash != expected:
+        raise BodyProviderError("MakeHuman system-assets digest does not match the request")
+    archive, entries = _audited_zip(path)
+    try:
+        names = {entry.filename for entry in entries}
+        required = {
+            "packs/makehuman_system_assets.json",
+            "eyes/materials/brown.mhmat",
+        }
+        if not required.issubset(names):
+            raise BodyProviderError("MakeHuman system-assets archive is missing required files")
+        try:
+            metadata = json.loads(
+                archive.read("packs/makehuman_system_assets.json").decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_keys,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    BodyProviderError(f"Non-finite system-assets metadata: {value}")
+                ),
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BodyProviderError("MakeHuman system-assets metadata is invalid") from exc
+    finally:
+        archive.close()
+    if not isinstance(metadata, dict) or not metadata:
+        raise BodyProviderError("MakeHuman system-assets metadata is empty")
+    for asset_name, asset in metadata.items():
+        if (
+            not isinstance(asset_name, str)
+            or not isinstance(asset, dict)
+            or asset.get("license") != "CC0"
+            or asset.get("author") != "makehuman_system"
+        ):
+            raise BodyProviderError("MakeHuman system-assets metadata is not uniformly CC0")
+    return {
+        "sha256": observed_hash,
+        "bytes": Path(path).stat().st_size,
+        "entries": len(entries),
+        "asset_records": len(metadata),
+        "asset_spdx": "CC0-1.0",
+    }
+
+
 def default_body_provider_request(
     request_id: str,
     *,
@@ -208,7 +462,7 @@ def default_body_provider_request(
     asset_npz: str = "neutral-body.npz",
     manifest_json: str = "neutral-body.json",
 ) -> dict[str, Any]:
-    """Build the pinned hm08/MPFB request; caller must pin the asset-pack bytes."""
+    """Build the pinned hm08/MPFB request using the corroborated official pack."""
 
     request = {
         "schema_version": BODY_PROVIDER_REQUEST_SCHEMA,
@@ -283,7 +537,14 @@ def validate_body_provider_request(request: Any) -> dict[str, Any]:
     for key, expected in pinned.items():
         if provider[key] != expected:
             raise BodyProviderError(f"request.provider.{key} is not the pinned value")
-    _sha(provider["system_assets_sha256"], "request.provider.system_assets_sha256")
+    system_assets_sha256 = _sha(
+        provider["system_assets_sha256"],
+        "request.provider.system_assets_sha256",
+    )
+    if system_assets_sha256 != CORROBORATED_MAKEHUMAN_SYSTEM_ASSETS_SHA256:
+        raise BodyProviderError(
+            "request.provider.system_assets_sha256 is not the corroborated official-mirror lock"
+        )
 
     skeleton = _exact_keys(
         root["skeleton"], {"schema_version", "joint_map"}, "request.skeleton"
@@ -891,6 +1152,7 @@ def audit_body_provider_dependencies(
         expected_hash: str | None,
         missing_code: str,
         hash_code: str,
+        validator=None,
     ) -> None:
         if path_value is None or not Path(path_value).is_file():
             issues.append(
@@ -912,6 +1174,19 @@ def audit_body_provider_dependencies(
             issues.append(
                 DependencyIssue(hash_code, dependency, expected_hash, observed_hash, "Archive digest mismatch")
             )
+        elif validator is not None:
+            try:
+                validator(Path(path_value))
+            except BodyProviderError as exc:
+                issues.append(
+                    DependencyIssue(
+                        hash_code,
+                        dependency,
+                        expected_hash,
+                        observed_hash,
+                        str(exc),
+                    )
+                )
 
     audit_archive(
         mpfb_extension_zip,
@@ -919,6 +1194,7 @@ def audit_body_provider_dependencies(
         PINNED_MPFB_EXTENSION_SHA256,
         "MPFB_EXTENSION_MISSING",
         "MPFB_EXTENSION_HASH_MISMATCH",
+        audit_mpfb_extension_archive,
     )
     audit_archive(
         system_assets_zip,
@@ -926,5 +1202,12 @@ def audit_body_provider_dependencies(
         system_assets_sha256,
         "MAKEHUMAN_SYSTEM_ASSETS_MISSING",
         "MAKEHUMAN_SYSTEM_ASSETS_HASH_MISMATCH",
+        (
+            None
+            if system_assets_sha256 is None
+            else lambda path: audit_makehuman_system_assets_archive(
+                path, expected_sha256=system_assets_sha256
+            )
+        ),
     )
     return issues

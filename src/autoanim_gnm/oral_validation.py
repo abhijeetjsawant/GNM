@@ -100,6 +100,115 @@ class OralValidationResult:
         return copy.deepcopy(self.report)
 
 
+def classify_lip_landmarks(
+    landmarks: np.ndarray,
+    *,
+    contact_gap_interocular: float,
+    order_tolerance_interocular: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Classify inner-lip contact and signed ordering in authoritative float64."""
+
+    values = np.asarray(landmarks, dtype=np.float64)
+    if values.ndim != 3 or values.shape[1:] != (68, 3):
+        raise OralValidationError(
+            "INVALID_GEOMETRY",
+            "Lip semantic classification requires 68 three-dimensional landmarks",
+        )
+    if (
+        not np.isfinite(contact_gap_interocular)
+        or contact_gap_interocular <= 0.0
+        or not np.isfinite(order_tolerance_interocular)
+        or order_tolerance_interocular <= 0.0
+    ):
+        raise OralValidationError(
+            "INVALID_THRESHOLDS",
+            "Lip semantic thresholds must be finite and positive",
+        )
+    interocular = np.linalg.norm(values[:, 36] - values[:, 45], axis=1)
+    face_up = values[:, 27] - values[:, 8]
+    face_up_norm = np.linalg.norm(face_up, axis=1)
+    if (
+        not np.isfinite(values).all()
+        or np.any(interocular <= 1.0e-6)
+        or np.any(face_up_norm <= 1.0e-6)
+    ):
+        raise OralValidationError(
+            "INVALID_GEOMETRY", "Face-local lip semantic axes are degenerate"
+        )
+    face_up /= face_up_norm[:, None]
+    pair_gap = np.stack(
+        [
+            np.linalg.norm(values[:, upper] - values[:, lower], axis=1)
+            / interocular
+            for upper, lower in _INNER_LIP_PAIRS
+        ],
+        axis=1,
+    )
+    signed_order = np.stack(
+        [
+            np.sum((values[:, upper] - values[:, lower]) * face_up, axis=1)
+            / interocular
+            for upper, lower in _INNER_LIP_PAIRS
+        ],
+        axis=1,
+    )
+    return (
+        pair_gap,
+        np.mean(pair_gap, axis=1) <= contact_gap_interocular,
+        np.min(signed_order, axis=1) < -order_tolerance_interocular,
+    )
+
+
+def require_glb_oral_semantic_preservation(
+    controls: OralValidationResult,
+    viewer: OralValidationResult,
+) -> None:
+    """Fail when reconstructed viewer geometry introduces an oral semantic risk."""
+
+    pairs = (
+        (
+            "lip contact",
+            controls.lip_contact_frames,
+            viewer.lip_contact_frames,
+            "changed",
+        ),
+        (
+            "lip-order inversion",
+            controls.lip_order_inversion_risk_frames,
+            viewer.lip_order_inversion_risk_frames,
+            "introduced",
+        ),
+        (
+            "tongue/teeth collision",
+            controls.tongue_teeth_collision_risk_frames,
+            viewer.tongue_teeth_collision_risk_frames,
+            "introduced",
+        ),
+    )
+    failures: list[str] = []
+    for label, source, reconstructed, policy in pairs:
+        source_values = np.asarray(source, dtype=bool)
+        reconstructed_values = np.asarray(reconstructed, dtype=bool)
+        if source_values.shape != reconstructed_values.shape:
+            raise OralValidationError(
+                "SEMANTIC_RECONSTRUCTION_FAILED",
+                "Control and viewer oral semantic timelines are not aligned",
+            )
+        failed = (
+            reconstructed_values != source_values
+            if policy == "changed"
+            else reconstructed_values & ~source_values
+        )
+        count = int(np.count_nonzero(failed))
+        if count:
+            failures.append(f"{label}: {count} frame(s) {policy}")
+    if failures:
+        raise OralValidationError(
+            "SEMANTIC_RECONSTRUCTION_FAILED",
+            "Viewer GLB changed source oral semantics (" + "; ".join(failures) + ")",
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class _OralTopology:
     required_native: np.ndarray
@@ -326,32 +435,16 @@ def _analyze_required_geometry_chunks(
                 "INVALID_GEOMETRY", "Interocular geometry scale is invalid"
             )
 
-        chunk_pair_gaps = np.stack(
-            [
-                np.linalg.norm(landmarks[:, upper] - landmarks[:, lower], axis=1)
-                / interocular
-                for upper, lower in _INNER_LIP_PAIRS
-            ],
-            axis=1,
+        chunk_pair_gaps, _, chunk_lip_order_risk = classify_lip_landmarks(
+            landmarks,
+            contact_gap_interocular=thresholds.lip_contact_gap_interocular,
+            order_tolerance_interocular=(
+                thresholds.lip_order_inversion_tolerance_interocular
+            ),
         )
         lip_pair_gaps[offset:stop] = chunk_pair_gaps
         lip_gap[offset:stop] = np.mean(chunk_pair_gaps, axis=1)
-        face_up = landmarks[:, 27] - landmarks[:, 8]
-        face_up_norm = np.linalg.norm(face_up, axis=1)
-        if np.any(face_up_norm <= 1.0e-6):
-            raise OralValidationError("INVALID_GEOMETRY", "Face-local up axis is degenerate")
-        face_up /= face_up_norm[:, None]
-        signed_pair_order = np.stack(
-            [
-                np.sum((landmarks[:, upper] - landmarks[:, lower]) * face_up, axis=1)
-                / interocular
-                for upper, lower in _INNER_LIP_PAIRS
-            ],
-            axis=1,
-        )
-        lip_order_risk[offset:stop] = np.min(signed_pair_order, axis=1) < (
-            -thresholds.lip_order_inversion_tolerance_interocular
-        )
+        lip_order_risk[offset:stop] = chunk_lip_order_risk
 
         upper_min, upper_p01 = _nearest_ratios(
             values,
@@ -1272,6 +1365,8 @@ __all__ = [
     "OralValidationError",
     "OralValidationResult",
     "OralValidationThresholds",
+    "classify_lip_landmarks",
+    "require_glb_oral_semantic_preservation",
     "validate_controls_npz",
     "validate_glb_oral_geometry",
     "validate_oral_frames",

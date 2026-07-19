@@ -45,6 +45,33 @@ Those are meaningful correctness tests, but they cannot support a production per
 
 Focused re-verification on 2026-07-19 ran the quality adversaries plus the three contact/continuity tests from the live tree: `13 passed, 21 deselected in 7.36s`. No audio motion code was changed in this audit.
 
+A later production-correction pass adds an explicitly authored neutral-relative
+mouth-aperture solve rather than increasing jaw/mouth coefficients globally.
+It hard-vetoes contact evidence, changes only GNM lower-face modes `200:350`,
+measures PCA leakage onto the tongue mesh, prevents new lip-order inversion and
+locally attenuates only edit deltas that would cross the exact face-local 0.04
+step gate. On the retained eight-second learned clip, gain `1.08` changes
+146/240 frames; two are locally continuity-limited, 98.63% reach the full
+target, and the maximum final step is `0.03995`. Tongue controls and isolated
+tongue geometry remain active on 238 frames, the maximum aperture-edit PCA
+tail is `7.54e-7` interocular, and the structural oral audit finds zero final
+lip-order or tongue/teeth proximity risk. These results fix a concrete
+under-opening/geometry defect. They do not change the conclusion above: the
+source is still a framewise Claire v2.3 model without independent phone timing
+or perceptual production approval.
+
+The animated GLB factorization now treats oral meaning as a hard export
+invariant instead of relying only on aggregate vertex error. Inner-lip/contact
+landmark supports are weighted during factorization; an accepted morph rank
+must preserve every source contact classification and introduce zero signed
+lip-order risks. The retained 67-frame video exposed why this is necessary:
+the former rank-13 export passed its 0.410 mm global maximum-error gate but
+created five viewer-only lip-order risks. The oral-semantic export selected
+rank 29, preserved all twelve contact frames, introduced zero risks, and reduced
+the measured oral maximum reconstruction error to 0.0933 mm. Result summaries
+now aggregate control-track and reconstructed-viewer risk instead of hiding a
+viewer-only defect.
+
 The first stop/go evidence foundation is now implemented separately from
 animation generation. `autoanim.lipsync-qualification/1.0` binds one existing
 controls track to the exact source audio, character manifest, identity

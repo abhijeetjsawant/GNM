@@ -16,6 +16,13 @@ from typing import Any
 
 import numpy as np
 
+from .audio_video_timing import (
+    AUDIO_VIDEO_TIMING_POLICY,
+    AUDIO_VIDEO_TIMING_SCHEMA_VERSION,
+    build_audio_video_timing_evidence,
+    load_verified_audio_video_timing_evidence,
+    write_audio_video_timing_evidence,
+)
 from .serialization import write_json
 from .video_capture import CaptureTrack
 
@@ -638,11 +645,16 @@ def load_verified_performance_evidence(
 
 
 __all__ = [
+    "AUDIO_VIDEO_TIMING_POLICY",
+    "AUDIO_VIDEO_TIMING_SCHEMA_VERSION",
     "GEOMETRY_ONLY_CONFIDENCE_CAP",
     "MAX_EVIDENCE_BYTES",
     "PERFORMANCE_EVIDENCE_SCHEMA_VERSION",
     "PROJECT_TICKS_PER_SECOND",
+    "build_audio_video_timing_evidence",
     "build_performance_evidence",
+    "load_verified_audio_video_timing_evidence",
     "load_verified_performance_evidence",
+    "write_audio_video_timing_evidence",
     "write_performance_evidence",
 ]

@@ -9,9 +9,12 @@ import cv2
 import numpy as np
 import pytest
 from PIL import Image
+import tifffile
 
 from autoanim_gnm.cli import build_parser
 from autoanim_gnm.materials import MaterialValidationError, validate_material_package
+import autoanim_gnm.materials as materials_module
+from autoanim_gnm.runtime_material import write_runtime_material_derivatives
 
 
 NOW = datetime(2026, 7, 19, tzinfo=timezone.utc)
@@ -152,7 +155,7 @@ def test_valid_package_is_deterministic_strict_json_with_file_evidence(
 
     assert first == second
     assert json.loads(json.dumps(first, allow_nan=False)) == first
-    assert first["schema_version"] == "autoanim.material-package.v1"
+    assert first["schema_version"] == "autoanim.material-package.v2"
     assert first["totals"]["file_count"] == 9
     assert first["totals"]["bytes"] > 0
     base = first["maps"]["base_color"]["files"]["atlas"]
@@ -164,6 +167,9 @@ def test_valid_package_is_deterministic_strict_json_with_file_evidence(
         (tmp_path / "base_color.png").read_bytes()
     ).hexdigest()
     assert base["bytes"] == (tmp_path / "base_color.png").stat().st_size
+    assert base["decoded_bytes"] == 16 * 16 * 3
+    assert base["decode_strategy"] == "bounded_resident_png"
+    assert first["totals"]["decoded_bytes"] > 0
     assert first["quality_evidence"]["pore_claim_gate_passed"] is False
     assert first["quality_evidence"]["relightable_claim_gate_passed"] is False
     assert first["quality_evidence"]["pore_frequency_validation_performed"] is False
@@ -378,6 +384,221 @@ def test_udim_sets_must_cover_identical_tiles(tmp_path: Path) -> None:
     with pytest.raises(MaterialValidationError) as raised:
         _validate(package)
     assert raised.value.code == "UDIM_TILE_MISMATCH"
+
+
+def test_decode_bomb_is_rejected_from_tiff_metadata_before_pixel_decode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = _package(tmp_path)
+    bomb = np.zeros((1024, 1024), dtype=np.uint16)
+    tifffile.imwrite(
+        tmp_path / "roughness.tiff",
+        bomb,
+        compression="deflate",
+        tile=(256, 256),
+        photometric="minisblack",
+    )
+    package["inventory"]["roughness"].update(
+        {"path": "roughness.tiff", "source_resolution": [1024, 1024]}
+    )
+    monkeypatch.setattr(
+        materials_module, "MAX_MATERIAL_DECODED_BYTES_PER_FILE", 512 * 1024
+    )
+    called = False
+
+    def forbidden_asarray(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("pixel decoder must not run")
+
+    monkeypatch.setattr(tifffile.TiffPage, "asarray", forbidden_asarray)
+    with pytest.raises(MaterialValidationError) as raised:
+        _validate(package)
+    assert raised.value.code == "RESOURCE_LIMIT_EXCEEDED"
+    assert called is False
+
+
+def test_tiff_volume_and_oversized_strip_are_rejected(tmp_path: Path) -> None:
+    package = _package(tmp_path)
+    tifffile.imwrite(
+        tmp_path / "roughness.tiff",
+        np.zeros((2, 16, 16), dtype=np.uint16),
+        photometric="minisblack",
+        metadata={"axes": "ZYX"},
+        volumetric=True,
+    )
+    package["inventory"]["roughness"]["path"] = "roughness.tiff"
+    with pytest.raises(MaterialValidationError) as volume:
+        _validate(package)
+    assert volume.value.code == "TIFF_DIMENSIONAL_LAYOUT_UNSUPPORTED"
+
+    package = _package(tmp_path)
+    tifffile.imwrite(
+        tmp_path / "roughness.tiff",
+        np.zeros((16, 16), dtype=np.uint16),
+        photometric="minisblack",
+        rowsperstrip=16,
+    )
+    package["inventory"]["roughness"]["path"] = "roughness.tiff"
+    previous = materials_module.MAX_TIFF_SEGMENT_DECODED_BYTES
+    materials_module.MAX_TIFF_SEGMENT_DECODED_BYTES = 64
+    try:
+        with pytest.raises(MaterialValidationError) as strip:
+            _validate(package)
+    finally:
+        materials_module.MAX_TIFF_SEGMENT_DECODED_BYTES = previous
+    assert strip.value.code == "TIFF_SEGMENT_LIMIT_EXCEEDED"
+
+
+def test_signed_integer_and_nonopaque_base_alpha_fail_closed(tmp_path: Path) -> None:
+    package = _package(tmp_path)
+    tifffile.imwrite(
+        tmp_path / "roughness.tiff",
+        np.zeros((16, 16), dtype=np.int16),
+        photometric="minisblack",
+    )
+    package["inventory"]["roughness"]["path"] = "roughness.tiff"
+    with pytest.raises(MaterialValidationError) as signed:
+        _validate(package)
+    assert signed.value.code == "PIXEL_DTYPE_MISMATCH"
+
+    package = _package(tmp_path)
+    rgba = np.full((16, 16, 4), 255, dtype=np.uint8)
+    rgba[7, 9, 3] = 128
+    Image.fromarray(rgba, mode="RGBA").save(tmp_path / "base_color.png")
+    with pytest.raises(MaterialValidationError) as alpha:
+        _validate(package)
+    assert alpha.value.code == "BASE_COLOR_ALPHA_MISMATCH"
+
+
+def test_partial_png_and_nested_symlink_fail_closed(tmp_path: Path) -> None:
+    package = _package(tmp_path)
+    normal = tmp_path / "normal.png"
+    normal.write_bytes(normal.read_bytes()[:24])
+    with pytest.raises(MaterialValidationError) as partial:
+        _validate(package)
+    assert partial.value.code == "IMAGE_DECODE_FAILED"
+
+    package = _package(tmp_path)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    target = nested / "base.png"
+    _write_rgb(target)
+    link = tmp_path / "linked"
+    link.symlink_to(nested, target_is_directory=True)
+    package["inventory"]["base_color"]["path"] = "linked/base.png"
+    with pytest.raises(MaterialValidationError) as symlink:
+        _validate(package)
+    assert symlink.value.code == "SYMLINK_FORBIDDEN"
+
+
+def _write_uniform_tiled_tiff(
+    path: Path,
+    *,
+    channels: int,
+    value: int | tuple[int, int, int],
+    dtype: np.dtype = np.dtype(np.uint8),
+) -> None:
+    shape = (8192, 8192, channels) if channels > 1 else (8192, 8192)
+    tile_shape = (256, 256, channels) if channels > 1 else (256, 256)
+    tile = np.empty(tile_shape, dtype=dtype)
+    tile[...] = value
+    tifffile.imwrite(
+        path,
+        data=(tile for _ in range(32 * 32)),
+        shape=shape,
+        dtype=dtype,
+        tile=(256, 256),
+        compression="deflate",
+        photometric="rgb" if channels > 1 else "minisblack",
+    )
+
+
+def test_native_8192_complete_package_validates_and_derives_bounded_browser_lod(
+    tmp_path: Path,
+) -> None:
+    package = _package(tmp_path)
+    rgb_values = {
+        "base_color": (96, 128, 160),
+        "normal": (128, 128, 255),
+        "specular_color": (64, 64, 64),
+        "subsurface_color": (120, 80, 64),
+        "subsurface_radius": (128, 96, 64),
+    }
+    for semantic, value in rgb_values.items():
+        filename = f"{semantic}.tiff"
+        _write_uniform_tiled_tiff(
+            tmp_path / filename, channels=3, value=value
+        )
+        package["inventory"][semantic].update(
+            {"path": filename, "source_resolution": [8192, 8192]}
+        )
+    for semantic, value in {
+        "roughness": 127,
+        "confidence": 255,
+    }.items():
+        filename = f"{semantic}.tiff"
+        _write_uniform_tiled_tiff(
+            tmp_path / filename, channels=1, value=value
+        )
+        package["inventory"][semantic].update(
+            {"path": filename, "source_resolution": [8192, 8192]}
+        )
+    _write_uniform_tiled_tiff(
+        tmp_path / "displacement.tiff",
+        channels=1,
+        value=32768,
+        dtype=np.dtype(np.uint16),
+    )
+    package["inventory"]["displacement"].update(
+        {"path": "displacement.tiff", "source_resolution": [8192, 8192]}
+    )
+    _write_uniform_tiled_tiff(
+        tmp_path / "mask_skin.tiff", channels=1, value=255
+    )
+    package["inventory"]["masks"]["skin"].update(
+        {"path": "mask_skin.tiff", "source_resolution": [8192, 8192]}
+    )
+    package["claims"].update(
+        {
+            "resolution_label": "8k",
+            "native_resolution": True,
+            "pore_resolved": False,
+            "relightable": False,
+        }
+    )
+
+    manifest = _validate(package)
+    assert manifest["quality_evidence"]["minimum_map_width"] == 8192
+    assert manifest["quality_evidence"]["all_maps_native"] is True
+    assert manifest["claims"]["pore_resolved"] is False
+    assert {
+        entry["decode_strategy"]
+        for material in manifest["maps"].values()
+        for entry in material["files"].values()
+    } == {"disk_memmap_tiff_segments"}
+
+    sources = {
+        semantic: tmp_path / manifest["maps"][semantic]["files"]["atlas"]["path"]
+        for semantic in (
+            "base_color",
+            "normal",
+            "roughness",
+            "specular_color",
+        )
+    }
+    derivatives = write_runtime_material_derivatives(
+        sources, tmp_path / "runtime", normal_encoding="unorm"
+    )
+    assert set(derivatives) == {
+        "base_color",
+        "normal",
+        "metallic_roughness",
+        "specular_color",
+    }
+    for path in derivatives.values():
+        with Image.open(path) as image:
+            assert image.size == (4096, 4096)
 
 
 def test_material_package_resource_limit_fails_before_acceptance(

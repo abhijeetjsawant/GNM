@@ -151,6 +151,9 @@ def create_app(
         dialog: str | None = Form(None),
         emotion: str = Form("auto"),
         emotion_strength: float = Form(0.65),
+        mouth_aperture_gain: float = Form(1.0),
+        mouth_aperture_author: str = Form(""),
+        mouth_aperture_reason: str = Form(""),
         backend: str = Form("auto"),
         fps: int = Form(30),
         character_id: str = Form(""),
@@ -167,6 +170,9 @@ def create_app(
                 fps=fps,
                 emotion=emotion,
                 emotion_strength=emotion_strength,
+                mouth_aperture_gain=mouth_aperture_gain,
+                mouth_aperture_author=mouth_aperture_author or None,
+                mouth_aperture_reason=mouth_aperture_reason or None,
                 backend=backend,
                 dialog=dialog,
                 input_name=file.filename,
@@ -261,6 +267,9 @@ def create_app(
         character_id: str = Form(""),
         character_revision_id: str = Form(""),
         usage_scope: str = Form("production"),
+        mouth_aperture_gain: float = Form(1.0),
+        mouth_aperture_author: str = Form(""),
+        mouth_aperture_reason: str = Form(""),
     ):
         if not operation_lock.acquire(blocking=False):
             return _error_response(
@@ -275,6 +284,9 @@ def create_app(
                 character_id=character_id or None,
                 character_revision_id=character_revision_id or None,
                 usage_scope=usage_scope,
+                mouth_aperture_gain=mouth_aperture_gain,
+                mouth_aperture_author=mouth_aperture_author or None,
+                mouth_aperture_reason=mouth_aperture_reason or None,
             )
         except AutoAnimError as exc:
             return _error_response(exc)
@@ -728,6 +740,9 @@ UI_HTML = r"""<!doctype html>
       <label for="backend">Motion backend</label><select id="backend" name="backend"><option value="auto">Auto · learned preferred</option><option value="learned">Learned · require Audio2Face</option><option value="fallback">Procedural fallback</option></select>
       <label for="emotion">Emotion</label><select id="emotion" name="emotion"><option>auto</option><option>neutral</option><option>joy</option><option>sad</option><option>anger</option><option>fear</option><option>disgust</option><option>surprise</option><option>contempt</option></select>
       <label for="emotion-strength">Acting strength</label><input id="emotion-strength" name="emotion_strength" type="range" min="0" max="1" step="0.05" value="0.65">
+      <label for="audio-mouth-aperture">Mouth opening correction · <output id="audio-mouth-aperture-value">1.00×</output></label><input id="audio-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.25" step="0.01" value="1"><small>1.00 is byte-exact off. Higher values request a bounded, contact-preserving geometry edit; they do not scale all mouth controls.</small>
+      <label for="audio-mouth-author">Edit author (required above 1.00)</label><input id="audio-mouth-author" name="mouth_aperture_author" maxlength="160" placeholder="Artist or operator">
+      <label for="audio-mouth-reason">Edit reason (required above 1.00)</label><textarea id="audio-mouth-reason" name="mouth_aperture_reason" maxlength="500" placeholder="Example: source performance reads too closed on this character"></textarea>
       <label for="dialog">Optional dialog</label><textarea id="dialog" name="dialog" placeholder="Helps Rhubarb and lexical emotion hints"></textarea><input name="fps" type="hidden" value="30">
       <button>Build animation</button><div class="status"></div><div class="result"></div>
     </form>
@@ -749,6 +764,9 @@ UI_HTML = r"""<!doctype html>
       <label for="video-file">Face performance video</label><input id="video-file" name="file" type="file" accept="video/*" required>
       <label for="video-character">Target character</label><select id="video-character" class="character-select" name="character_id"><option value="">Default neutral GNM</option></select>
       <label for="video-scope">Intended use</label><select id="video-scope" class="usage-scope" name="usage_scope"><option value="production">Production</option><option value="commercial">Commercial</option><option value="personal">Personal</option><option value="research">Research</option></select>
+      <label for="video-mouth-aperture">Mouth opening correction · <output id="video-mouth-aperture-value">1.00×</output></label><input id="video-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.25" step="0.01" value="1"><small>Video remains authoritative. Confirmed closures are protected, and 1.00 preserves the retarget byte-for-byte.</small>
+      <label for="video-mouth-author">Edit author (required above 1.00)</label><input id="video-mouth-author" name="mouth_aperture_author" maxlength="160" placeholder="Artist or operator">
+      <label for="video-mouth-reason">Edit reason (required above 1.00)</label><textarea id="video-mouth-reason" name="mouth_aperture_reason" maxlength="500" placeholder="Example: increase open vowels without weakening visible bilabials"></textarea>
       <button>Capture performance</button><div class="status"></div><div class="result"></div>
     </form>
     <form class="card" id="direction-form"><h2>Performance → acting beats</h2><p>Claude or Codex reads a bounded transcript plus measured audio/video motion windows and proposes editable intent. It cannot write visemes, rig coefficients, files, or commands.</p>
@@ -772,6 +790,7 @@ const characterList=document.querySelector('#character-list');
 const workspaceCharacter=document.querySelector('#workspace-character');
 const workspaceScope=document.querySelector('#workspace-scope');
 const workspacePerformance=document.querySelector('#workspace-performance');
+for(const prefix of ['audio','video']){const slider=document.querySelector(`#${prefix}-mouth-aperture`),value=document.querySelector(`#${prefix}-mouth-aperture-value`);const update=()=>value.textContent=`${Number(slider.value).toFixed(2)}×`;slider.addEventListener('input',update);update()}
 function syncWorkspaceCharacter(value){
  workspaceCharacter.value=value;
  for(const select of document.querySelectorAll('.character-select'))if([...select.options].some(option=>option.value===value))select.value=value;
