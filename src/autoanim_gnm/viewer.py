@@ -318,6 +318,14 @@ new GLTFLoader().load(assetUrl,gltf=>{{root=gltf.scene;let vertices=0,triangles=
 document.querySelector('#mode').addEventListener('change',applyMode);document.querySelector('#exposure').addEventListener('input',event=>renderer.toneMappingExposure=Number(event.target.value));document.querySelector('#reset').addEventListener('click',()=>{{camera.position.copy(homePosition);controls.target.copy(homeTarget);controls.update()}});
 // Sample the paused action directly: AnimationMixer.setTime() zeroes action-local
 // time, so a LoopOnce action that has reached the end cannot seek backward correctly.
-function resize(){{const width=stage.clientWidth,height=stage.clientHeight;renderer.setSize(width,height,false);camera.aspect=width/Math.max(height,1);camera.updateProjectionMatrix()}}new ResizeObserver(resize).observe(stage);resize();renderer.setAnimationLoop(()=>{{if(mixer&&animationAction&&media){{animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration);mixer.update(0);if(!media.paused)status.textContent=`Playing ${{media.currentTime.toFixed(2)}} s · media-clock synchronized`}}if(evidenceReady&&media)showEvidenceFrame(evidenceIndexAtOrBefore(media.currentTime));controls.update();renderer.render(scene,camera)}});
+function refreshPlaybackStatus(){{
+  if(!mixer||!animationAction||!media)return;
+  const time=media.currentTime.toFixed(2);
+  if(!media.paused&&!media.ended)status.textContent=`Playing ${{time}} s · media-clock synchronized`;
+  else if(media.ended)status.textContent=`Finished ${{time}} s · media-clock synchronized`;
+  else if(media.currentTime<=.01)status.textContent='Ready · media controls drive exact 3D time';
+  else status.textContent=`Paused ${{time}} s · media-clock synchronized`
+}}
+function resize(){{const width=stage.clientWidth,height=stage.clientHeight;renderer.setSize(width,height,false);camera.aspect=width/Math.max(height,1);camera.updateProjectionMatrix()}}new ResizeObserver(resize).observe(stage);resize();renderer.setAnimationLoop(()=>{{if(mixer&&animationAction&&media){{animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration);mixer.update(0);refreshPlaybackStatus()}}if(evidenceReady&&media)showEvidenceFrame(evidenceIndexAtOrBefore(media.currentTime));controls.update();renderer.render(scene,camera)}});
 window.addEventListener('pagehide',()=>{{renderer.setAnimationLoop(null);controls.dispose();if(mixer)mixer.stopAllAction();if(root)root.traverse(node=>{{if(!node.isMesh)return;node.geometry?.dispose();const materials=[].concat(node.material||[],node.userData.surfaceMaterial||[],node.userData.wireMaterial||[]);for(const material of new Set(materials)){{material.map?.dispose();material.dispose?.()}}}});renderer.dispose()}});
 </script></body></html>"""

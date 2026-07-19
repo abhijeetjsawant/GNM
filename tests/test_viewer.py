@@ -116,6 +116,9 @@ def test_animation_viewer_uses_allowlisted_media_clock(tmp_path: Path):
     assert page.status_code == 200
     assert f"/api/jobs/{job_id}/files/normalized.wav" in page.text
     assert "animationAction.time=Math.min(Math.max(media.currentTime,0),animationDuration)" in page.text
+    assert "else if(media.ended)status.textContent=`Finished ${time} s · media-clock synchronized`" in page.text
+    assert "else if(media.currentTime<=.01)status.textContent='Ready · media controls drive exact 3D time'" in page.text
+    assert "else status.textContent=`Paused ${time} s · media-clock synchronized`" in page.text
     assert "animationAction.paused=true" in page.text
     assert "mixer.setTime(media.currentTime)" not in page.text
     assert 'mediaKind="audio"' in page.text
