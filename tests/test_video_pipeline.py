@@ -231,11 +231,29 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert abs(result["metrics"]["proxy_video_start_ms"]) <= 0.001
     assert result["viewer"]["status"] == "ready"
     assert result["viewer"]["mode"] == "animation"
+    assert result["viewer"]["glb_covers_full_track"] is True
     assert result["viewer"]["clock_artifact"] == "viewer_media"
+    assert result["oral_validation"]["all_control_frames_evaluated"] is True
+    assert result["oral_validation"]["viewer_structural_reconstruction_validated"] is True
+    assert any(
+        "ORAL_TONGUE_SOURCE_UNAVAILABLE" in warning
+        for warning in result["warnings"]
+    )
     assert result["artifacts"]["retarget_calibration"]["media_type"] == (
         "application/octet-stream"
     )
     assert result["artifacts"]["viewer_media"]["media_type"] == "video/mp4"
+    assert result["artifacts"]["oral_validation"]["media_type"] == "application/json"
+    assert result["artifacts"]["oral_glb_validation"]["media_type"] == "application/json"
+
+    oral_report = json.loads((job_dir / "oral-validation.json").read_text(encoding="utf-8"))
+    assert oral_report["source"]["evaluation_mode"] == "provided_complete_gnm_frames"
+    glb_report = json.loads(
+        (job_dir / "oral-glb-validation.json").read_text(encoding="utf-8")
+    )
+    assert glb_report["structural_reconstruction"]["reference_evaluation_mode"] == (
+        "provided_complete_gnm_frames"
+    )
 
     with np.load(job_dir / "capture.npz", allow_pickle=False) as capture:
         with np.load(job_dir / "performance.npz", allow_pickle=False) as performance:

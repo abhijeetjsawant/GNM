@@ -27,6 +27,13 @@ STATUS_BY_CODE = {
     "CONSENT_REVOKED": 403,
     "CONSENT_EXPIRED": 403,
     "CONSENT_SCOPE_DENIED": 403,
+    "RIGHTS_EXPIRED": 403,
+    "MATERIAL_INVALID": 422,
+    "MATERIAL_BINDING_REQUIRED": 422,
+    "MATERIAL_BINDING_MISMATCH": 409,
+    "MATERIAL_LAYOUT_UNSUPPORTED": 422,
+    "MATERIAL_RUNTIME_UNSUPPORTED": 422,
+    "REVISION_CONFLICT": 409,
     "INTEGRITY_FAILED": 409,
     "INTEGRITY_UNSEALED": 409,
     "BUSY": 409,
@@ -383,6 +390,43 @@ def create_app(
             return _error_response(exc)
 
     @app.get(
+        "/api/characters/{character_id}/revisions/{revision_id}"
+    )
+    def character_revision(
+        character_id: str,
+        revision_id: str,
+        usage_scope: str = "personal",
+    ):
+        try:
+            revision = service.characters.resolve(
+                character_id, revision_id, usage_scope=usage_scope
+            )
+            return {
+                "character_id": revision.character_id,
+                "revision_id": revision.revision_id,
+                "name": revision.name,
+                "revision_manifest_sha256": revision.manifest_sha256,
+                "identity_sha256": revision.identity_sha256,
+                "texture_uvs_sha256": revision.texture_uvs_sha256,
+                "texture_uvs_array_sha256": revision.texture_uvs_array_sha256,
+                "material_descriptor_sha256": revision.material_manifest_sha256,
+                "material_map_sha256s": dict(revision.material_sha256s),
+                "runtime_material_sha256s": dict(
+                    revision.runtime_material_sha256s
+                ),
+                "appearance": revision.manifest.get("appearance"),
+                "production_validated": bool(
+                    revision.manifest.get("production_validated", False)
+                ),
+            }
+        except FileNotFoundError:
+            return _error_response(
+                AutoAnimError("CHARACTER_NOT_FOUND", "Character revision was not found")
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.get(
         "/api/characters/{character_id}/revisions/{revision_id}/files/{logical_name}"
     )
     def character_asset(
@@ -392,11 +436,15 @@ def create_app(
         usage_scope: str = "personal",
     ):
         try:
+            revision = service.characters.resolve(
+                character_id, revision_id, usage_scope=usage_scope
+            )
             path = service.characters.asset(
                 character_id,
                 revision_id,
                 logical_name,
                 usage_scope=usage_scope,
+                _resolved=revision,
             )
             return FileResponse(path)
         except FileNotFoundError:
@@ -421,7 +469,36 @@ def create_app(
                 f"/files/preview?usage_scope={usage_scope}"
             )
             return HTMLResponse(
-                viewer_html(asset_url=url, title=f"AutoAnim character · {revision.name}"),
+                viewer_html(
+                    asset_url=url,
+                    title=f"AutoAnim character · {revision.name}",
+                    metadata={
+                        "revision": revision.revision_id,
+                        "package": (
+                            revision.manifest.get("appearance", {}).get(
+                                "material_package_id"
+                            )
+                            if isinstance(
+                                revision.manifest.get("appearance"), dict
+                            )
+                            else None
+                        ),
+                        "resolution_claim": (
+                            revision.manifest.get("appearance", {}).get(
+                                "resolution_label"
+                            )
+                            if isinstance(
+                                revision.manifest.get("appearance"), dict
+                            )
+                            else None
+                        ),
+                        "runtime_maps": sorted(revision.runtime_material_sha256s),
+                        "retained_maps": sorted(revision.material_sha256s),
+                        "pore_frequency_validated": False,
+                        "unseen_light_validated": False,
+                        "production_validated": False,
+                    },
+                ),
                 headers={
                     "Content-Security-Policy": (
                         "default-src 'none'; script-src 'self' 'unsafe-inline'; "
@@ -496,6 +573,17 @@ def create_app(
                         if isinstance(clock.get("media_type"), str)
                         else None
                     )
+            model_document = manifest.get("model")
+            character_document = (
+                model_document.get("character")
+                if isinstance(model_document, dict)
+                else None
+            )
+            runtime_hashes = (
+                character_document.get("runtime_material_sha256s")
+                if isinstance(character_document, dict)
+                else None
+            )
             return HTMLResponse(
                 viewer_html(
                     asset_url=f"/api/jobs/{job_id}/files/{name}",
@@ -506,6 +594,21 @@ def create_app(
                     ),
                     media_url=media_url,
                     media_type=media_type,
+                    metadata=(
+                        {
+                            "character_revision": character_document.get(
+                                "revision_id"
+                            ),
+                            "runtime_maps": (
+                                sorted(runtime_hashes)
+                                if isinstance(runtime_hashes, dict)
+                                else []
+                            ),
+                            "production_validated": False,
+                        }
+                        if isinstance(character_document, dict)
+                        else None
+                    ),
                 ),
                 headers={
                     "Content-Security-Policy": (
@@ -573,7 +676,7 @@ UI_HTML = r"""<!doctype html>
       <label for="consent-note">Consent note (optional)</label><textarea id="consent-note" name="consent_note" maxlength="500" placeholder="Release, project, or rights reference"></textarea>
       <button>Save character revision</button><div class="status"></div>
     </form>
-    <div class="card"><h2>Reusable characters</h2><p>Pick one below in Audio or Video. Identity and the texture's exact sealed UV layout are applied to every interactive GLB; the audio MP4 remains an untextured diagnostic preview. Complete 2K/4K/8K PBR packages can pass structural, provenance, and rights gates with the local <code>material</code> CLI, but recovery, perceptual validation, and character attachment are not yet implemented.</p><div id="character-list" class="character-list" aria-live="polite"><p class="empty">Loading characters…</p></div></div>
+    <div class="card"><h2>Reusable characters</h2><p>Pick one below in Audio or Video. Identity, the exact sealed UV layout, and any imported PBR runtime maps are applied to every interactive GLB; the audio MP4 remains an untextured diagnostic preview. Large 2K/4K/8K material packages are imported locally with <code>character material-template</code> then <code>character import-material</code>. The immutable revision retains source-precision maps while the viewer renders sealed base-color, normal, roughness, and specular derivatives. Browser upload is intentionally disabled until streamed archive limits are implemented.</p><div id="character-list" class="character-list" aria-live="polite"><p class="empty">Loading characters…</p></div></div>
   </div></section>
   <section class="grid">
     <form class="card" id="audio-form"><h2>Audio → animation</h2><p>Learned Audio2Face motion is preferred, solved through named ARKit controls, then retargeted into GNM with a transparent procedural fallback.</p>
@@ -642,14 +745,14 @@ async function refreshCharacters(){try{
  const selected=workspaceCharacter.value;characterList.innerHTML='';
  for(const select of [workspaceCharacter,...document.querySelectorAll('.character-select')]){
   select.innerHTML='<option value="">Default neutral GNM</option>';
-  for(const item of data.characters){if(item.consent_status!=='active')continue;const option=document.createElement('option');option.value=item.character_id;option.textContent=`${item.name} · ${item.appearance_status}`;select.append(option)}
+  for(const item of data.characters){if(item.consent_status!=='active'||!['active','not_applicable'].includes(item.material_rights_status))continue;const option=document.createElement('option');option.value=item.character_id;option.textContent=`${item.name} · ${item.appearance_status}`;select.append(option)}
  }
  syncWorkspaceCharacter([...workspaceCharacter.options].some(option=>option.value===selected)?selected:'');
  if(!data.characters.length){characterList.innerHTML='<p class="empty">No saved characters yet. Run Image or Multi-view, then promote its job ID.</p>';return}
  for(const item of data.characters){
-  const row=document.createElement('article');row.className='character-row';const copy=document.createElement('div');const title=document.createElement('strong');title.textContent=item.name;const detail=document.createElement('small');detail.textContent=`${item.appearance_status} · ${item.consent_scope} rights ${item.consent_status} · body ${item.body_status} · production ${item.production_validated?'approved':'not validated'}`;copy.append(title,detail);
+  const row=document.createElement('article');row.className='character-row';const copy=document.createElement('div');const title=document.createElement('strong');title.textContent=item.name;const detail=document.createElement('small');detail.textContent=`${item.appearance_status} · ${item.consent_scope} consent ${item.consent_status} · material rights ${item.material_rights_status} · body ${item.body_status} · production ${item.production_validated?'approved':'not validated'}`;copy.append(title,detail);
   const actions=document.createElement('div');actions.className='job-actions';
-  if(item.consent_status==='active'){const use=document.createElement('button');use.type='button';use.className='inline-action';use.textContent='Use';use.addEventListener('click',()=>syncWorkspaceCharacter(item.character_id));actions.append(use)}
+  if(item.consent_status==='active'&&['active','not_applicable'].includes(item.material_rights_status)){const use=document.createElement('button');use.type='button';use.className='inline-action';use.textContent='Use';use.addEventListener('click',()=>syncWorkspaceCharacter(item.character_id));actions.append(use)}
   const link=document.createElement('a');link.href=`/api/characters/${item.character_id}/viewer?usage_scope=${encodeURIComponent(item.consent_scope)}`;link.target='_blank';link.textContent='Open 3D';actions.append(link);row.append(copy,actions);characterList.append(row)
  }
 }catch(error){characterList.innerHTML='<p class="empty">Character library unavailable.</p>'}}

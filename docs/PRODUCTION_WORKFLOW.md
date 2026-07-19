@@ -100,13 +100,13 @@ character" is resolved to an exact revision before a job starts.
 |---|---|---|
 | Single image to GNM | MediaPipe landmarks, bounded visible-geometry identity fit, neutral GLB/OBJ/overlay | Working estimate; not metric depth or hidden anatomy |
 | Multiple images to GNM | Shared identity solve, optional calibrated cameras and held-out view, UV bake | Working research pipeline; ordinary photos cannot prove perfect likeness |
-| Texture | Up to 1024 RGBA color atlas with coverage/confidence/provenance; separate CLI structural/attestation gate for complete base/normal/displacement/specular/roughness/SSS/radius/confidence/mask packages and 2K/4K/8K claims | Package structure/lineage/rights gating works, but map recovery, perceptual pore/relighting validation and attachment to a character revision are not implemented; current character reuse renders base color only |
+| Texture | Up to 1024 RGB reconstruction atlas plus a CLI import path for complete base/normal/displacement/specular/roughness/SSS/radius/confidence/mask packages; exact subject/revision/identity/UV binding; immutable material revisions; glTF base/normal/roughness/specular runtime projection | Attachment and audio/video rendering work; calibrated map recovery, true 4K/8K evidence, pore/relighting validation, SSS/displacement runtime rendering and artist look-dev approval remain open |
 | Audio animation | Rhubarb timing plus native Claire MLX learned motion, 52 skin/16 tongue controls, dense GNM retarget, character contact solve | Working; independent phoneme/perceptual approval and physical oral rig remain open |
 | Video animation | Exact source PTS, MediaPipe face/expression/head/translation/gaze, direct inner-lip geometry, identity-calibrated contact and aperture | Follows the video visually, not its audio; microexpression/FACS ground truth remains open |
 | Character reuse | Versioned identity/preview/material revision, exact revision transport, consent scope/expiry/revocation, content hashes and HMAC trust root | Working local trust boundary; hosted deployment should move signing to KMS/HSM |
 | LLM acting | Codex and Claude terminal adapters, no tools, strict schema and semantic validator, trusted envelope, measured performance windows | Produces an editable proposal; its body/gaze portion is deterministically compiled, but artist approval still follows |
 | Full body | 25-joint canonical humanoid, 48 kHz integer-tick sampled body/gaze track, OpenUSD/glTF/VRM mappings, contact constraints and GNM attachment ownership | Foundation works; no body mesh, mocap reconstruction, locomotion, USD/glTF skin writer, or production capture is shipped |
-| Tongue | Real learned-audio motion reaches GNM and animated GLB | Computationally verified; camera visibility, phoneme timing and collision are not yet approved |
+| Tongue | Real learned-audio motion reaches GNM and animated GLB; every job now emits all-frame lip/tongue/teeth geometry and GLB reconstruction audits | Structural transfer is measured; exact surface collision, camera visibility, phoneme timing and perceptual approval remain open |
 
 ## Character library specification
 
@@ -146,6 +146,36 @@ layout instead of falling back to GNM's original UVs; using the right PNG with
 the wrong atlas coordinates is therefore an integrity failure, not a visual
 warning.
 
+Complete material imports create a new immutable child revision. Before any
+copy occurs, a versioned `autoanim.material-attachment.v1` envelope binds the
+validated package digest to the exact character ID, revision-manifest digest,
+identity digest, GNM topology, triangle count, canonical float32 UV-array
+digest, UV/normal convention, material semantics and same-subject evidence.
+The operator must name the package subject and explicitly attest both
+same-subject identity and exact-revision authorship; the template never infers
+those claims merely from the character's existing consent record.
+The current specular semantic is explicitly a linear RGB multiplier over
+glTF's dielectric F0, not an absolute measured F0 map; an absolute-F0 package
+needs a future `KHR_materials_ior` conversion before it can attach.
+Imports use a per-character filesystem lock and compare-and-swap against the
+current revision. Source files are opened without following symlinks, rehashed
+while copied, and retained at source precision. Deterministic PNG derivatives
+are generated once for glTF: RGBA base color, reflected tangent-normal green
+for the UV-origin conversion, 16/float-safe roughness packed into the glTF
+green channel, and linear specular converted to sRGB for
+`KHR_materials_specular`. Source displacement, SSS/radius, confidence and masks
+remain sealed but are honestly reported as not rendered by the web viewer.
+The current realtime attachment profile accepts source maps up to native 8K
+and deterministically derives at most 4K viewer textures; larger validated
+packages require an explicit offline LOD bake instead of risking multi-gigabyte
+decode memory or an unusable browser GLB.
+
+The browser does not accept archive uploads yet. Complete packages can be many
+gigabytes, so the first safe interface is local CLI import with file-count,
+byte, dimension, pixel and path-depth limits. A future hosted uploader needs
+streaming extraction into a quarantine volume, the same safe-open validation,
+quota enforcement and an explicit publish transaction.
+
 ## Appearance and the "8K pores" requirement
 
 ### What ordinary images can do
@@ -175,6 +205,11 @@ The recommended capture tier is a calibrated neutral-performance session:
 5. Bake color-managed UDIM maps: diffuse/base color, specular color or weight,
    roughness, tangent/object-space normal, scalar displacement, thickness/
    subsurface inputs, masks, and confidence/observed coverage.
+   Normal-map representation is mandatory metadata: `unorm` for `[0,1]`
+   integer/float pixels or `signed_float` for float `[-1,1]` pixels. AutoAnim
+   does not guess this from image minima. The attached GNM contract is tangent
+   space, positive Y, lower-left UV; the glTF derivative reflects green once
+   when V is converted and clamps atlas sampling at its edges.
 6. Author a MaterialX/OpenPBR master and derive a glTF preview material. OpenPBR
    is a practical interchange baseline, but its own specification notes that
    specialized high-end skin may still need a renderer-specific network.
@@ -296,6 +331,17 @@ Production oral work therefore needs a virtual jaw hinge, rigid lower teeth,
 tongue-root/tip ownership, mouth-sock/palate collision SDFs, an oral preview,
 and annotated `/p b m f v t d n l s z th r w/` plus open-vowel tests.
 
+The integrated validator now evaluates all required GNM lip, tongue, upper- and
+lower-teeth vertices for every control frame. It reports interocular-normalized
+lip gaps, lip-order inversion risk, tongue/teeth nearest-distance risk,
+face-local tongue displacement, target-contact attainment and isolated
+tongue-control transfer. A second report reconstructs the actual GLB and, when
+the viewer is animated, compares it with the source controls at every frame.
+GNM's oral meshes are open surfaces, so these are proximity and ordering
+proxies, not signed penetration tests. The report deliberately keeps
+`phoneme_correctness_validated`, `perceptual_correctness_validated`,
+`penetration_free_validated` and `production_validated` false.
+
 ## Body choice and head connection
 
 GNM Head has no released body. Do not silently call SMPL-X or MetaHuman an
@@ -311,6 +357,28 @@ open, drop-in GNM body:
 - Rigify is a GPL Blender add-on that can generate an artist control rig; its
   generated asset workflow is useful for correction, but Rigify is not a body
   identity model.
+
+The selected production-open baseline is MakeHuman's hm08 core mesh and CC0
+system/body targets, authored through a pinned Blender 4.5 LTS + MPFB + Rigify
+worker. MediaPipe Pose Heavy and Hand Landmarker provide timestamped video
+observations; AutoAnim owns calibration, confidence filtering, constrained IK,
+root/camera separation, contact solving and retargeting. OpenUSD/UsdSkel is the
+editable master and glTF 2.0 plus VRM 1.0 is the runtime form. This choice gives
+the project a commercially auditable parametric starting body, not film-quality
+deformation: shoulders, hips, elbows, knees, wrinkles and muscle effects still
+need corrective shapes and artist review.
+
+Blender, MPFB and Rigify remain a separate GPL authoring process. AutoAnim
+writes a versioned request and reads neutral mesh, deform bones, weights, morph
+targets and baked motion through files; it does not import GPL Python modules
+or depend on Rigify control-bone names at runtime. A desktop distribution that
+bundles the worker must include applicable licenses, notices and corresponding
+source. Community MakeHuman assets remain deny-by-default unless their
+individual license is recorded. SMPL-X is a future premium provider only after
+a written commercial agreement covers inference, storage, generated outputs
+and redistribution. WHAM is excluded from the production baseline because its
+MIT code still depends on separately restricted SMPL/SMPLify data and external
+checkpoints.
 
 The open core should accept a rights-cleared humanoid mesh/skeleton and motion,
 with these contracts:
@@ -343,6 +411,26 @@ treat it as an approved compilation. Takes are preflight-limited to 30 minutes
 before invoking the LLM. It is upper-body procedural direction only: there is
 still no body mesh, motion estimation from the source video, skin export,
 locomotion, or performer-approved body performance.
+
+The stable 25-joint schema may be extended, without renumbering the core, by 15
+VRM finger bones per hand. Body owns root through macro head pose; GNM owns
+expression, lipsync, oral anatomy and face-local eye rotation. Final local
+rotation is `normalize(Qbody_base * Qgnm_additive * Qartist_additive)`, and the
+macro source head pose must be written exactly once. A production character
+revision also needs a measured GNM/body bind calibration, matched or hidden
+neck seam, partitioned weights and material/normal blending.
+
+Body implementation gates are intentionally real-input gates: three distinct
+MakeHuman proportions must round-trip with bind/inverse-bind error `<=1e-6`,
+normalized quaternions within `1e-5`, weights summing to `1+/-1e-4`, neutral
+vertex RMS `<=0.1 mm` and maximum `<=0.5 mm`, zero USD/glTF/VRM validator
+errors, neck seam gap `<=0.25 mm`, and unchanged GNM lipsync coefficients. A
+consented video set covering walking, sitting, turning, fast/crossed-limb
+gestures, occlusion and planted feet must then meet p95 reprojection `<=2%` of
+body height, MPJPE `<=60 mm` where truth exists, bone-length variation `<=0.5%`,
+contact precision/recall `>=0.90`, planted-foot drift p95 `<=20 mm` and ground
+penetration p99 `<=10 mm`. Moving-camera takes stay review-required until a
+separately validated camera/root solve passes equivalent ground truth.
 
 ## Application workspace specification
 
@@ -403,33 +491,41 @@ adapters.
 - Gate: prompt injection, tool attempt, malformed/oversized/timeout/refusal,
   overlap and forbidden-field tests; one real successful run per provider.
 
-### Phase 4 — editable body foundation (partially implemented)
+### Phase 4 — editable body foundation (contract selected; mesh/capture open)
 
 - Implemented: canonical skeleton, inverse binds, integer-tick body/gaze track,
   GNM neck/head/eye ownership, foot contacts and deterministic tag compiler.
 - Remaining: rights-cleared body mesh/capture, USD/UsdSkel writer, glTF/VRM
-  skinned runtime adapter and Rigify round-trip.
+  skinned runtime adapter, MakeHuman provider/Blender worker, Pose/Hands IK,
+  locomotion/contact solve and Rigify correction round-trip.
 - Gate: hierarchy/rest validation, quaternion continuity, exact ticks, foot
   drift, head seam transform, round-trip error, unsupported gesture failure.
 
-### Phase 5 — measured production appearance (validator implemented; recovery/attachment open)
+### Phase 5 — measured production appearance (attachment/runtime implemented; recovery open)
 
 - Implemented: fail-closed CLI structural/attestation gating for complete aligned atlas/UDIM map
   inventories, lossless decode, channel/depth/normal semantics, source/native
   resolution, lineage, commercial rights, hashes, and evidence-backed
   native/pore/relightable claims. The output calls these claim gates, never
   perceptual validation; pore-frequency and unseen-light tests remain false.
+- Implemented: revision/identity/UV/subject attachment envelope, locked
+  compare-and-swap immutable import, source-map retention, deterministic glTF
+  derivatives, tangent export and base/normal/roughness/specular propagation
+  through neutral, audio and video GLBs. Float normal encoding is explicit and
+  atlas sampling is clamped rather than repeated.
 - Remaining: calibrated polarized recovery, high-frequency residual geometry,
-  package signing/attachment to character revisions, 4K/8K bake,
-  MaterialX/OpenPBR authoring and renderer adapters.
+  real consented 4K/8K fixture, MaterialX/OpenPBR authoring, displacement/SSS
+  renderer adapters and perceptual look-dev approval.
 - Gate: held-out geometry/reprojection, diffuse/specular separation,
   relighting error, coverage, seam delta, color chart, pore-frequency
   validation and artist look-dev approval.
 
-### Phase 6 — oral anatomy and audiovisual fusion (partially measured)
+### Phase 6 — oral anatomy and audiovisual fusion (structural audit implemented)
 
 - Visible oral preview, virtual jaw/rigid teeth, tongue attachment and SDF
   collision; phone-aligned corpus.
+- Implemented: all-frame control and GLB structural reports for lips, tongue
+  and teeth, including transfer activity, contact, proximity and reconstruction.
 - Optional named audio-visual fusion policy with conflict diagnostics.
 - Gate: rigid-teeth residual `<0.10 mm`, oral penetration p99 `<0.10 mm` / max
   `<0.25 mm`, tongue timing within one annotated frame and no false visibility.
@@ -476,6 +572,14 @@ artist gates pass.
 - [SMPL-X model/software license](https://github.com/vchoutas/smplx/blob/main/LICENSE)
   and the separate [SMPL-X Body CC BY 4.0 license](https://smpl-x.is.tue.mpg.de/bodylicense.html).
 - [Blender Rigify manual](https://docs.blender.org/manual/en/4.1/addons/rigging/rigify/index.html).
+- [MakeHuman licensing](https://static.makehumancommunity.org/about/license.html),
+  [base-mesh contract](https://static.makehumancommunity.org/about/concepts/basemesh.html)
+  and [MPFB Rigify workflow](https://static.makehumancommunity.org/mpfb/docs/rigging_posing/rigify.html).
+- [MediaPipe repository](https://github.com/google-ai-edge/mediapipe),
+  [BlazePose GHUM model card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20BlazePose%20GHUM%203D.pdf)
+  and [hand-tracking model card](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Hand%20Tracking%20%28Lite_Full%29%20with%20Fairness%20Oct%202021.pdf).
+- [WHAM repository and dependency setup](https://github.com/yohanshin/WHAM)
+  for the license-boundary decision.
 - [MetaHuman licensing](https://www.metahuman.com/license?lang=en-US) for the
   optional Unreal adapter decision.
 - [Meta Multiface repository and data format](https://github.com/facebookresearch/multiface)

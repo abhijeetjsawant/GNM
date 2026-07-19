@@ -671,6 +671,21 @@ def test_real_ravdess_angry_end_to_end(tmp_path: Path) -> None:
     assert result["metrics"]["mouth_aperture_range"] > 0.005
     assert result["metrics"]["audio_video_offset_frames"] <= 1.0
     assert "COEFFICIENT_SATURATED" not in result["warnings"]
+    assert result["viewer"]["glb_covers_full_track"] is True
+    assert result["oral_validation"]["all_control_frames_evaluated"] is True
+    assert result["oral_validation"]["viewer_structural_reconstruction_validated"] is True
+    assert not any(
+        "ORAL_GLB_NOT_STRUCTURALLY_VALIDATED" in warning
+        for warning in result["warnings"]
+    )
+    oral_report = json.loads((tmp_path / "oral-validation.json").read_text(encoding="utf-8"))
+    assert oral_report["source"]["evaluation_mode"] == "provided_complete_gnm_frames"
+    glb_report = json.loads(
+        (tmp_path / "oral-glb-validation.json").read_text(encoding="utf-8")
+    )
+    assert glb_report["structural_reconstruction"]["reference_evaluation_mode"] == (
+        "provided_complete_gnm_frames"
+    )
     av = probe_av(tmp_path / "preview.mp4")
     assert av["has_audio"] and av["has_video"]
     assert av["video_frames"] == result["animation"]["frames"]

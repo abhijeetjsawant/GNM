@@ -49,6 +49,7 @@ def test_viewer_resolves_only_allowlisted_glb(tmp_path: Path):
     assert "controls.maxDistance=radius*8" in page.text
     assert "window.addEventListener('pagehide'" in page.text
     assert "WebGL is unavailable" in page.text
+    assert "lines.join('\\n')" in page.text
     asset = client.get(f"/api/jobs/{job_id}/files/fitted.glb")
     assert asset.status_code == 200
     assert asset.headers["content-type"].startswith("model/gltf-binary")

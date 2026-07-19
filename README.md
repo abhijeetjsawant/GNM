@@ -55,7 +55,25 @@ autoanim-gnm video performance.mp4 --out artifacts/jobs
 
 # Validate a complete commercial PBR facial-material package. The JSON spec
 # carries map inventory, capture/provenance, rights, and evidence-backed claims.
+# Its normal inventory entry must declare normal_encoding as unorm or
+# signed_float; pixel-value inference is intentionally forbidden.
 autoanim-gnm material /path/to/material-package --spec material-package.json
+
+# Bind that validated package to an exact saved character revision. The first
+# command emits a subject/revision/identity/UV attachment envelope; the second
+# atomically publishes a new immutable PBR character revision. Complete package
+# import is local/CLI-first because production atlases can be many gigabytes.
+autoanim-gnm character --artifacts artifacts/jobs material-template CHARACTER_ID \
+  --character-revision REVISION_ID --package-root /path/to/material-package \
+  --spec material-package.json --attester "Lookdev supervisor" \
+  --evidence-ref release://lookdev/shot-001 --evidence binding-evidence.pdf \
+  --package-subject "Performer legal name" --same-subject-attested \
+  --authored-for-attested \
+  --displacement-midpoint 0.5 --displacement-scale-m 0.002 \
+  --out material-attachment.json
+autoanim-gnm character --artifacts artifacts/jobs import-material CHARACTER_ID \
+  --character-revision REVISION_ID --package-root /path/to/material-package \
+  --spec material-package.json --attachment material-attachment.json
 
 # A successful audio/video take can be directed by a tool-disabled terminal LLM;
 # the result includes editable beats plus a deterministic humanoid body/gaze track.
@@ -63,6 +81,12 @@ autoanim-gnm direct JOB_ID --artifacts artifacts/jobs --provider codex \
   --instructions "Restrained, reassuring; one small open-palm beat"
 autoanim-gnm serve --host 127.0.0.1 --port 8000 --artifacts artifacts/jobs
 ```
+
+Audio and video jobs now emit `oral-validation.json` and
+`oral-glb-validation.json`. These audit every frame of GNM lip, tongue and
+teeth geometry plus viewer reconstruction. They are structural reports, not
+claims of phone accuracy, visibility, penetration-free geometry or artist
+approval.
 
 The global `--model-path`, `--rhubarb-bin`, `--a2f-runner`, and `--a2f-assets`
 options may be placed before the subcommand when using non-default locations.

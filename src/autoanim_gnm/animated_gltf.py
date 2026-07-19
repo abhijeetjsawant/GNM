@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import struct
 import tempfile
+from typing import Mapping
 
 import numpy as np
 from PIL import Image
@@ -17,6 +18,10 @@ from gnm.shape.visualization import vertex_colors as vertex_colors_module
 
 from .gltf_export import split_triangle_corner_uvs
 from .gnm_adapter import GNMAdapter
+from .runtime_material import (
+    load_runtime_material_derivatives,
+    prepare_runtime_material,
+)
 from .serialization import write_npz
 
 
@@ -216,6 +221,69 @@ def _vertex_normals(vertices: np.ndarray, triangles: np.ndarray) -> np.ndarray:
     return normals
 
 
+def _vertex_tangents(
+    vertices: np.ndarray,
+    normals: np.ndarray,
+    triangles: np.ndarray,
+    uvs: np.ndarray,
+) -> np.ndarray:
+    """Compute deterministic glTF-compatible accumulated tangent frames.
+
+    The accumulation and Gram-Schmidt step follow glTF's tangent convention;
+    the fourth component stores bitangent handedness.  Degenerate UV faces get
+    a stable normal-orthogonal fallback rather than NaN tangents.
+    """
+
+    positions = np.asarray(vertices, dtype=np.float32)
+    normal_values = np.asarray(normals, dtype=np.float32)
+    faces = np.asarray(triangles, dtype=np.int32)
+    coordinates = np.asarray(uvs, dtype=np.float32)
+    tangent_sum = np.zeros_like(positions)
+    bitangent_sum = np.zeros_like(positions)
+    p0, p1, p2 = (positions[faces[:, corner]] for corner in range(3))
+    uv0, uv1, uv2 = (coordinates[faces[:, corner]] for corner in range(3))
+    edge1 = p1 - p0
+    edge2 = p2 - p0
+    delta1 = uv1 - uv0
+    delta2 = uv2 - uv0
+    determinant = delta1[:, 0] * delta2[:, 1] - delta1[:, 1] * delta2[:, 0]
+    valid = np.abs(determinant) > 1e-12
+    reciprocal = np.zeros_like(determinant)
+    reciprocal[valid] = 1.0 / determinant[valid]
+    face_tangent = (
+        edge1 * delta2[:, 1, None] - edge2 * delta1[:, 1, None]
+    ) * reciprocal[:, None]
+    face_bitangent = (
+        edge2 * delta1[:, 0, None] - edge1 * delta2[:, 0, None]
+    ) * reciprocal[:, None]
+    face_tangent[~valid] = 0.0
+    face_bitangent[~valid] = 0.0
+    for corner in range(3):
+        np.add.at(tangent_sum, faces[:, corner], face_tangent)
+        np.add.at(bitangent_sum, faces[:, corner], face_bitangent)
+
+    tangent_xyz = tangent_sum - normal_values * np.sum(
+        normal_values * tangent_sum, axis=1, keepdims=True
+    )
+    length = np.linalg.norm(tangent_xyz, axis=1)
+    fallback = length <= 1e-12
+    if np.any(fallback):
+        normals_fallback = normal_values[fallback]
+        axis = np.zeros_like(normals_fallback)
+        choose_x = np.abs(normals_fallback[:, 0]) < 0.9
+        axis[choose_x, 0] = 1.0
+        axis[~choose_x, 1] = 1.0
+        tangent_xyz[fallback] = np.cross(axis, normals_fallback)
+        length[fallback] = np.linalg.norm(tangent_xyz[fallback], axis=1)
+    tangent_xyz /= np.maximum(length[:, None], 1e-12)
+    handedness = np.where(
+        np.sum(np.cross(normal_values, tangent_xyz) * bitangent_sum, axis=1) < 0.0,
+        -1.0,
+        1.0,
+    ).astype(np.float32)
+    return np.column_stack((tangent_xyz, handedness)).astype(np.float32)
+
+
 class _GLBBuilder:
     def __init__(self) -> None:
         self.data = bytearray()
@@ -322,6 +390,9 @@ def export_animated_gnm_glb(
     mapping_path: str | Path | None = None,
     texture_path: str | Path | None = None,
     triangle_uvs: np.ndarray | None = None,
+    material_paths: Mapping[str, str | Path] | None = None,
+    material_normal_encoding: str | None = None,
+    runtime_material_paths: Mapping[str, str | Path] | None = None,
 ) -> AnimatedGLBExport:
     """Compress and export exact evaluated GNM frames as glTF morph animation."""
 
@@ -331,6 +402,31 @@ def export_animated_gnm_glb(
         raise ValueError("timestamps must be one finite value per frame")
     if len(times) > 1 and np.any(np.diff(times) <= 0):
         raise ValueError("timestamps must be strictly increasing")
+    selected_material_paths = dict(material_paths or {})
+    selected_runtime_paths = dict(runtime_material_paths or {})
+    if selected_runtime_paths and (selected_material_paths or texture_path is not None):
+        raise ValueError(
+            "runtime_material_paths cannot be combined with source material paths"
+        )
+    if texture_path is not None:
+        existing_base = selected_material_paths.get("base_color")
+        if existing_base is not None and Path(existing_base) != Path(texture_path):
+            raise ValueError("texture_path conflicts with material_paths.base_color")
+        selected_material_paths["base_color"] = texture_path
+    if "normal" in selected_material_paths:
+        if material_normal_encoding not in {"unorm", "signed_float"}:
+            raise ValueError(
+                "material_normal_encoding must explicitly be 'unorm' or "
+                "'signed_float' when material_paths includes a normal map"
+            )
+    elif material_normal_encoding is not None:
+        raise ValueError(
+            "material_normal_encoding requires a normal source material path"
+        )
+    has_material = bool(selected_material_paths or selected_runtime_paths)
+    has_normal_texture = (
+        "normal" in selected_material_paths or "normal" in selected_runtime_paths
+    )
     factor = factor_vertex_animation(
         values,
         max_targets=max_targets,
@@ -351,17 +447,31 @@ def export_animated_gnm_glb(
     base_normals = _vertex_normals(factor.base_vertices, adapter.triangles)
     split_normals = base_normals[source_map]
     morph_positions = factor.morph_positions[:, source_map]
-    morph_normals = np.empty_like(morph_positions)
-    for index, direction in enumerate(factor.morph_positions):
-        target_normals = _vertex_normals(
-            factor.base_vertices + direction, adapter.triangles
-        )
-        morph_normals[index] = target_normals[source_map] - split_normals
-
     # GNM stores triangle-corner UVs in lower-left convention. glTF samples
     # image rows from the upper-left, so flip V exactly once at export.
     gltf_uvs = split.uvs.copy()
     gltf_uvs[:, 1] = 1.0 - gltf_uvs[:, 1]
+    base_tangents = (
+        _vertex_tangents(split.positions, split_normals, split.triangles, gltf_uvs)
+        if has_normal_texture
+        else None
+    )
+    morph_normals = np.empty_like(morph_positions)
+    morph_tangents = np.empty_like(morph_positions) if has_normal_texture else None
+    for index, direction in enumerate(factor.morph_positions):
+        target_normals = _vertex_normals(
+            factor.base_vertices + direction, adapter.triangles
+        )
+        split_target_normals = target_normals[source_map]
+        morph_normals[index] = split_target_normals - split_normals
+        if morph_tangents is not None and base_tangents is not None:
+            target_tangents = _vertex_tangents(
+                split.positions + morph_positions[index],
+                split_target_normals,
+                split.triangles,
+                gltf_uvs,
+            )
+            morph_tangents[index] = target_tangents[:, :3] - base_tangents[:, :3]
     builder = _GLBBuilder()
     position_accessor = builder.accessor(
         split.positions,
@@ -382,6 +492,16 @@ def export_animated_gnm_glb(
         accessor_type="VEC2",
         target=34962,
     )
+    tangent_accessor = (
+        builder.accessor(
+            base_tangents,
+            component_type=5126,
+            accessor_type="VEC4",
+            target=34962,
+        )
+        if base_tangents is not None
+        else None
+    )
     index_type = np.uint16 if len(split.positions) <= np.iinfo(np.uint16).max else np.uint32
     index_component = 5123 if index_type is np.uint16 else 5125
     index_accessor = builder.accessor(
@@ -392,24 +512,32 @@ def export_animated_gnm_glb(
         bounds=True,
     )
     targets: list[dict[str, int]] = []
-    for positions, normals in zip(morph_positions, morph_normals, strict=True):
-        targets.append(
-            {
-                "POSITION": builder.accessor(
-                    positions,
-                    component_type=5126,
-                    accessor_type="VEC3",
-                    target=34962,
-                    bounds=True,
-                ),
-                "NORMAL": builder.accessor(
-                    normals,
-                    component_type=5126,
-                    accessor_type="VEC3",
-                    target=34962,
-                ),
-            }
-        )
+    for index, (positions, normals) in enumerate(
+        zip(morph_positions, morph_normals, strict=True)
+    ):
+        target = {
+            "POSITION": builder.accessor(
+                positions,
+                component_type=5126,
+                accessor_type="VEC3",
+                target=34962,
+                bounds=True,
+            ),
+            "NORMAL": builder.accessor(
+                normals,
+                component_type=5126,
+                accessor_type="VEC3",
+                target=34962,
+            ),
+        }
+        if morph_tangents is not None:
+            target["TANGENT"] = builder.accessor(
+                morph_tangents[index],
+                component_type=5126,
+                accessor_type="VEC3",
+                target=34962,
+            )
+        targets.append(target)
     time_accessor: int | None = None
     weight_accessor: int | None = None
     if factor.rank:
@@ -426,11 +554,13 @@ def export_animated_gnm_glb(
         )
 
     attributes: dict[str, int] = {
-            "POSITION": position_accessor,
-            "NORMAL": normal_accessor,
-            "TEXCOORD_0": uv_accessor,
+        "POSITION": position_accessor,
+        "NORMAL": normal_accessor,
+        "TEXCOORD_0": uv_accessor,
     }
-    if texture_path is None:
+    if tangent_accessor is not None:
+        attributes["TANGENT"] = tangent_accessor
+    if not has_material:
         colors = np.asarray(
             vertex_colors_module.get_vertex_colors(gnm_np=adapter.model),
             dtype=np.float32,
@@ -466,7 +596,7 @@ def export_animated_gnm_glb(
     if factor.rank:
         mesh["weights"] = [0.0] * factor.rank
     material: dict[str, object] = {
-        "name": "GNM character material" if texture_path is not None else "GNM anatomical preview",
+        "name": "GNM character material" if has_material else "GNM anatomical preview",
         "pbrMetallicRoughness": {
             "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
             "metallicFactor": 0.0,
@@ -477,19 +607,91 @@ def export_animated_gnm_glb(
     images: list[dict[str, object]] | None = None
     textures: list[dict[str, object]] | None = None
     samplers: list[dict[str, object]] | None = None
-    if texture_path is not None:
-        source_texture = Path(texture_path)
-        if not source_texture.is_file():
-            raise FileNotFoundError(source_texture)
-        with Image.open(source_texture) as opened:
-            image = opened.convert("RGBA")
+    extensions_used: list[str] = []
+    if has_material:
+        runtime = (
+            load_runtime_material_derivatives(selected_runtime_paths)
+            if selected_runtime_paths
+            else prepare_runtime_material(
+                selected_material_paths,
+                normal_encoding=material_normal_encoding or "unorm",
+            )
+        )
+        images = []
+        # Facial atlases do not tile. Clamping prevents linear/mipmap samples
+        # near an island or atlas boundary from bleeding the opposite edge.
+        samplers = [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}]
+        textures = []
+
+        def add_texture(name: str, image: Image.Image) -> int:
             encoded = BytesIO()
             image.save(encoded, format="PNG", optimize=False, compress_level=9)
-        image_view = builder.blob(encoded.getvalue())
-        images = [{"name": "Character base color", "bufferView": image_view, "mimeType": "image/png"}]
-        samplers = [{"magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497}]
-        textures = [{"name": "Character base color", "sampler": 0, "source": 0}]
-        material["pbrMetallicRoughness"]["baseColorTexture"] = {"index": 0}
+            image_view = builder.blob(encoded.getvalue())
+            source_index = len(images)
+            images.append(
+                {
+                    "name": name,
+                    "bufferView": image_view,
+                    "mimeType": "image/png",
+                }
+            )
+            texture_index = len(textures)
+            textures.append({"name": name, "sampler": 0, "source": source_index})
+            return texture_index
+
+        base_index = add_texture("Character base color", runtime.base_color)
+        material["pbrMetallicRoughness"]["baseColorTexture"] = {
+            "index": base_index
+        }
+        if runtime.normal is not None:
+            material["normalTexture"] = {
+                "index": add_texture("Character tangent-space normal", runtime.normal)
+            }
+        if runtime.metallic_roughness is not None:
+            material["pbrMetallicRoughness"]["metallicRoughnessTexture"] = {
+                "index": add_texture(
+                    "Character metallic-roughness", runtime.metallic_roughness
+                )
+            }
+            material["pbrMetallicRoughness"]["roughnessFactor"] = 1.0
+        if runtime.specular_color is not None:
+            specular_index = add_texture(
+                "Character specular color", runtime.specular_color
+            )
+            material["extensions"] = {
+                "KHR_materials_specular": {
+                    "specularFactor": 1.0,
+                    "specularColorFactor": [1.0, 1.0, 1.0],
+                    "specularColorTexture": {"index": specular_index},
+                }
+            }
+            extensions_used.append("KHR_materials_specular")
+        material["extras"] = {
+            "autoanim_runtime_projection": {
+                "source_map_semantics": sorted(selected_material_paths),
+                "runtime_derivative_semantics": sorted(selected_runtime_paths),
+                "rendered_map_semantics": (
+                    sorted(selected_runtime_paths)
+                    if selected_runtime_paths
+                    else sorted(
+                        name
+                        for name in selected_material_paths
+                        if name
+                        in {"base_color", "normal", "roughness", "specular_color"}
+                    )
+                ),
+                "preserved_but_not_rendered": (
+                    []
+                    if selected_runtime_paths
+                    else sorted(
+                        set(selected_material_paths)
+                        - {"base_color", "normal", "roughness", "specular_color"}
+                    )
+                ),
+                "runtime_resolution": list(runtime.runtime_size),
+                "source_normal_encoding": material_normal_encoding,
+            }
+        }
 
     document: dict[str, object] = {
         "asset": {
@@ -520,6 +722,8 @@ def export_animated_gnm_glb(
         document["images"] = images
         document["textures"] = textures
         document["samplers"] = samplers
+    if extensions_used:
+        document["extensionsUsed"] = extensions_used
     if factor.rank and time_accessor is not None and weight_accessor is not None:
         document["animations"] = [
             {
@@ -544,6 +748,7 @@ def export_animated_gnm_glb(
         glb_vertex_to_gnm_vertex=source_map,
         triangles=split.triangles,
         uvs=split.uvs,
+        uvs_lower_left=split.uvs,
         internal_uvs_lower_left=split.uvs,
         gltf_uvs_upper_left=gltf_uvs,
         timestamps=times,

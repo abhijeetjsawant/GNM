@@ -369,7 +369,10 @@ def _provider_version(executable: str) -> str:
             check=True,
             capture_output=True,
             text=True,
-            timeout=10,
+            # macOS may spend several seconds verifying a newly-created CLI
+            # executable under concurrent media tests. Keep the capability
+            # probe independent from the user-configured inference deadline.
+            timeout=30,
         )
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise AutoAnimError("LLM_UNAVAILABLE", f"Acting provider executable is unavailable: {executable}") from exc

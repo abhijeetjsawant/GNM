@@ -29,9 +29,21 @@ from typing import Any, Mapping
 import cv2
 import numpy as np
 from PIL import Image, UnidentifiedImageError
+from tifffile import TiffFile, TiffFileError
 
 
 SCHEMA_VERSION = "autoanim.material-package.v1"
+ATTACHMENT_SCHEMA_VERSION = "autoanim.material-attachment.v1"
+
+MAX_MATERIAL_FILES = 128
+MAX_MATERIAL_MASKS = 32
+MAX_UDIM_TILES_PER_MAP = 100
+MAX_MATERIAL_FILE_BYTES = 2 * 1024 * 1024 * 1024
+MAX_MATERIAL_TOTAL_BYTES = 16 * 1024 * 1024 * 1024
+MAX_MATERIAL_DIMENSION = 16_384
+MAX_MATERIAL_PIXELS_PER_FILE = 268_435_456
+MAX_MATERIAL_AGGREGATE_PIXELS = 1_200_000_000
+MAX_MATERIAL_PATH_DEPTH = 8
 
 _MATERIAL_SEMANTICS = (
     "base_color",
@@ -176,6 +188,11 @@ def validate_material_package(
         {"layout": "atlas", "path": "base.png", "color_space": "srgb",
          "source_resolution": [4096, 4096], "resampling": "none"}
 
+    The normal entry additionally requires ``"normal_encoding": "unorm"``
+    for integer or normalized-float pixels, or ``"signed_float"`` for a
+    floating-point ``[-1, 1]`` representation.  The representation is never
+    inferred from pixel values.
+
         {"layout": "udim", "tiles": {"1001": "base.1001.png"},
          "color_space": "srgb", "source_resolution": [4096, 4096],
          "resampling": "none"}
@@ -193,6 +210,231 @@ def validate_material_package(
         rights=rights,
         claims=claims,
     )
+
+
+def validate_material_attachment(
+    attachment: Mapping[str, Any],
+    *,
+    material_manifest: Mapping[str, Any],
+    character_id: str,
+    revision_id: str,
+    revision_manifest_sha256: str,
+    identity_sha256: str,
+    triangle_corner_uv_f32le_sha256: str,
+    character_subject: str,
+) -> dict[str, Any]:
+    """Validate the subject and exact-UV envelope for package attachment."""
+
+    if not isinstance(attachment, Mapping):
+        raise MaterialValidationError(
+            "INVALID_ATTACHMENT", "Material attachment must be a JSON object."
+        )
+    _require_json_value(attachment, "attachment")
+    required = frozenset(
+        {
+            "schema_version",
+            "package_id",
+            "material_manifest_payload_sha256",
+            "authored_for",
+            "subject_binding",
+            "material_semantics",
+        }
+    )
+    actual_attachment = set(attachment)
+    if (
+        actual_attachment != set(required)
+        and actual_attachment != set(required) | {"attachment_payload_sha256"}
+    ):
+        missing = sorted(set(required) - actual_attachment)
+        extra = sorted(actual_attachment - set(required) - {"attachment_payload_sha256"})
+        raise MaterialValidationError(
+            "INVALID_SCHEMA",
+            f"attachment keys do not match schema; missing={missing}, extra={extra}.",
+            field="attachment",
+        )
+    if attachment["schema_version"] != ATTACHMENT_SCHEMA_VERSION:
+        raise MaterialValidationError(
+            "INVALID_ATTACHMENT",
+            f"Attachment schema must be {ATTACHMENT_SCHEMA_VERSION!r}.",
+            field="attachment.schema_version",
+        )
+    if attachment["package_id"] != material_manifest.get("package_id"):
+        raise MaterialValidationError(
+            "ATTACHMENT_PACKAGE_MISMATCH",
+            "Attachment package_id does not match the validated material package.",
+            field="attachment.package_id",
+        )
+    if attachment["material_manifest_payload_sha256"] != material_manifest.get(
+        "manifest_payload_sha256"
+    ):
+        raise MaterialValidationError(
+            "ATTACHMENT_PACKAGE_MISMATCH",
+            "Attachment package manifest digest does not match the validated package.",
+            field="attachment.material_manifest_payload_sha256",
+        )
+
+    authored = attachment["authored_for"]
+    if not isinstance(authored, Mapping):
+        raise MaterialValidationError(
+            "INVALID_ATTACHMENT", "authored_for must be an object.", field="attachment.authored_for"
+        )
+    authored_fields = frozenset(
+        {
+            "character_id",
+            "revision_id",
+            "revision_manifest_sha256",
+            "identity_sha256",
+            "gnm_version",
+            "topology",
+            "triangle_count",
+            "uv_layout",
+            "uv_origin",
+            "triangle_corner_uv_f32le_sha256",
+            "normal_space",
+            "normal_y",
+            "tangent_basis",
+            "authored_for_attested",
+        }
+    )
+    _expect_keys(authored, required=authored_fields, field="attachment.authored_for")
+    expected_authored = {
+        "character_id": character_id,
+        "revision_id": revision_id,
+        "revision_manifest_sha256": revision_manifest_sha256,
+        "identity_sha256": identity_sha256,
+        "gnm_version": "3.0",
+        "topology": "GNM_Head_3_0",
+        "triangle_count": 35_324,
+        "uv_layout": "atlas",
+        "uv_origin": "lower_left",
+        "triangle_corner_uv_f32le_sha256": triangle_corner_uv_f32le_sha256,
+        "normal_space": "tangent",
+        "normal_y": "positive",
+        "tangent_basis": "autoanim_gltf_tangent_v1",
+        "authored_for_attested": True,
+    }
+    mismatched = [
+        key for key, expected in expected_authored.items() if authored.get(key) != expected
+    ]
+    if mismatched:
+        raise MaterialValidationError(
+            "MATERIAL_BINDING_MISMATCH",
+            f"Material was not authored for the selected character revision: {mismatched}.",
+            field="attachment.authored_for",
+        )
+
+    subject = attachment["subject_binding"]
+    if not isinstance(subject, Mapping):
+        raise MaterialValidationError(
+            "INVALID_ATTACHMENT",
+            "subject_binding must be an object.",
+            field="attachment.subject_binding",
+        )
+    subject_fields = frozenset(
+        {
+            "package_subject",
+            "character_subject",
+            "same_subject_attested",
+            "attester",
+            "evidence_ref",
+            "evidence_sha256",
+        }
+    )
+    _expect_keys(subject, required=subject_fields, field="attachment.subject_binding")
+    if (
+        subject.get("same_subject_attested") is not True
+        or subject.get("package_subject") != character_subject
+        or subject.get("character_subject") != character_subject
+    ):
+        raise MaterialValidationError(
+            "MATERIAL_SUBJECT_MISMATCH",
+            "Material and character must have an explicit same-subject attestation.",
+            field="attachment.subject_binding",
+        )
+    for key in ("attester", "evidence_ref"):
+        if not isinstance(subject.get(key), str) or not subject[key].strip():
+            raise MaterialValidationError(
+                "INVALID_ATTACHMENT",
+                f"subject_binding.{key} is required.",
+                field=f"attachment.subject_binding.{key}",
+            )
+    _require_sha(subject.get("evidence_sha256"), "attachment.subject_binding.evidence_sha256")
+
+    semantics = attachment["material_semantics"]
+    if not isinstance(semantics, Mapping):
+        raise MaterialValidationError(
+            "INVALID_ATTACHMENT",
+            "material_semantics must be an object.",
+            field="attachment.material_semantics",
+        )
+    semantic_fields = frozenset(
+        {
+            "specular_model",
+            "normal_encoding",
+            "displacement_unit",
+            "displacement_midpoint",
+            "displacement_scale_m",
+            "subsurface_radius_unit",
+            "base_color_alpha",
+        }
+    )
+    _expect_keys(
+        semantics, required=semantic_fields, field="attachment.material_semantics"
+    )
+    expected_values = {
+        "specular_model": "gltf_dielectric_f0_multiplier_rgb_linear",
+        "normal_encoding": material_manifest.get("maps", {})
+        .get("normal", {})
+        .get("normal_encoding"),
+        "displacement_unit": "meters",
+        "subsurface_radius_unit": "millimeters",
+        "base_color_alpha": "unused_opaque",
+    }
+    bad_semantics = [
+        key for key, expected in expected_values.items() if semantics.get(key) != expected
+    ]
+    if expected_values["normal_encoding"] not in {"unorm", "signed_float"}:
+        bad_semantics.append("normal_encoding")
+    midpoint = semantics.get("displacement_midpoint")
+    scale = semantics.get("displacement_scale_m")
+    if (
+        isinstance(midpoint, bool)
+        or not isinstance(midpoint, (int, float))
+        or not math.isfinite(float(midpoint))
+        or not 0.0 <= float(midpoint) <= 1.0
+    ):
+        bad_semantics.append("displacement_midpoint")
+    if (
+        isinstance(scale, bool)
+        or not isinstance(scale, (int, float))
+        or not math.isfinite(float(scale))
+        or float(scale) <= 0.0
+    ):
+        bad_semantics.append("displacement_scale_m")
+    if bad_semantics:
+        raise MaterialValidationError(
+            "UNSUPPORTED_MATERIAL_SEMANTICS",
+            f"Material semantics are unsupported or incomplete: {sorted(set(bad_semantics))}.",
+            field="attachment.material_semantics",
+        )
+
+    validated = copy.deepcopy(dict(attachment))
+    supplied_payload_sha256 = validated.pop("attachment_payload_sha256", None)
+    attachment_payload_sha256 = hashlib.sha256(
+        _canonical_json(validated)
+    ).hexdigest()
+    if (
+        supplied_payload_sha256 is not None
+        and supplied_payload_sha256 != attachment_payload_sha256
+    ):
+        raise MaterialValidationError(
+            "ATTACHMENT_INTEGRITY_FAILED",
+            "Attachment payload digest does not match its content.",
+            field="attachment.attachment_payload_sha256",
+        )
+    validated["attachment_payload_sha256"] = attachment_payload_sha256
+    _canonical_json(validated)
+    return validated
 
 
 class MaterialPackageValidator:
@@ -226,6 +468,9 @@ class MaterialPackageValidator:
                 "INVALID_TIME", "Validation time must be timezone-aware."
             )
         self.now = current.astimezone(timezone.utc)
+        self._decoded_file_count = 0
+        self._encoded_bytes = 0
+        self._declared_pixels = 0
 
     def validate(
         self,
@@ -237,6 +482,12 @@ class MaterialPackageValidator:
         rights: Mapping[str, Any],
         claims: Mapping[str, Any],
     ) -> dict[str, Any]:
+        # Validator instances are reusable; every invocation receives a fresh
+        # streaming resource budget and aborts before decoding the first file
+        # that would exceed it.
+        self._decoded_file_count = 0
+        self._encoded_bytes = 0
+        self._declared_pixels = 0
         if not isinstance(package_id, str) or not _PACKAGE_ID_RE.fullmatch(package_id):
             raise MaterialValidationError(
                 "INVALID_PACKAGE_ID", "package_id contains unsupported characters.", field="package_id"
@@ -287,6 +538,8 @@ class MaterialPackageValidator:
                     for tile, decoded in sorted(entry["files"].items())
                 },
             }
+            if entry["semantic"] == "normal":
+                maps_manifest[name]["normal_encoding"] = entry["normal_encoding"]
 
         unique_files = {
             decoded.path: decoded
@@ -323,6 +576,12 @@ class MaterialPackageValidator:
             raise MaterialValidationError(
                 "INVALID_MASKS", "inventory.masks must be a non-empty JSON object.", field="inventory.masks"
             )
+        if len(masks) > MAX_MATERIAL_MASKS:
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                f"Material packages may contain at most {MAX_MATERIAL_MASKS} masks.",
+                field="inventory.masks",
+            )
 
         flattened: list[tuple[str, str, Any]] = [
             (semantic, semantic, inventory[semantic]) for semantic in _MATERIAL_SEMANTICS
@@ -342,6 +601,27 @@ class MaterialPackageValidator:
             output[name] = self._validate_map_entry(
                 name, semantic, entry, used_paths=used_paths
             )
+        decoded = [
+            item for entry in output.values() for item in entry["files"].values()
+        ]
+        if len(decoded) > MAX_MATERIAL_FILES:
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                f"Material packages may contain at most {MAX_MATERIAL_FILES} files.",
+                field="inventory",
+            )
+        if sum(item.byte_count for item in decoded) > MAX_MATERIAL_TOTAL_BYTES:
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                "Material package encoded bytes exceed the import limit.",
+                field="inventory",
+            )
+        if sum(item.width * item.height for item in decoded) > MAX_MATERIAL_AGGREGATE_PIXELS:
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                "Material package decoded pixels exceed the import limit.",
+                field="inventory",
+            )
         return output
 
     def _validate_map_entry(
@@ -358,16 +638,23 @@ class MaterialPackageValidator:
                 "INVALID_MAP_ENTRY", f"{field} must be a JSON object.", field=field
             )
         common = frozenset(("layout", "color_space", "source_resolution", "resampling"))
+        semantic_fields = common | ({"normal_encoding"} if semantic == "normal" else set())
         layout = entry.get("layout")
         if layout == "atlas":
-            _expect_keys(entry, required=common | {"path"}, field=field)
+            _expect_keys(entry, required=semantic_fields | {"path"}, field=field)
             raw_files = {"atlas": entry["path"]}
         elif layout == "udim":
-            _expect_keys(entry, required=common | {"tiles"}, field=field)
+            _expect_keys(entry, required=semantic_fields | {"tiles"}, field=field)
             raw_tiles = entry["tiles"]
             if not isinstance(raw_tiles, Mapping) or not raw_tiles:
                 raise MaterialValidationError(
                     "INVALID_UDIM", f"{field}.tiles must be a non-empty object.", field=f"{field}.tiles"
+                )
+            if len(raw_tiles) > MAX_UDIM_TILES_PER_MAP:
+                raise MaterialValidationError(
+                    "RESOURCE_LIMIT_EXCEEDED",
+                    f"A material semantic may contain at most {MAX_UDIM_TILES_PER_MAP} UDIM tiles.",
+                    field=f"{field}.tiles",
                 )
             raw_files = {}
             for tile, path in raw_tiles.items():
@@ -388,6 +675,15 @@ class MaterialPackageValidator:
                 f"{name} must declare {expected_space!r} color space.",
                 field=f"{field}.color_space",
             )
+        normal_encoding: str | None = None
+        if semantic == "normal":
+            normal_encoding = entry.get("normal_encoding")
+            if normal_encoding not in {"unorm", "signed_float"}:
+                raise MaterialValidationError(
+                    "INVALID_NORMAL_ENCODING",
+                    f"{field}.normal_encoding must be 'unorm' or 'signed_float'.",
+                    field=f"{field}.normal_encoding",
+                )
         source_resolution = entry.get("source_resolution")
         if (
             not isinstance(source_resolution, list)
@@ -418,7 +714,11 @@ class MaterialPackageValidator:
                 )
             used_paths.add(relative)
             decoded_files[tile] = self._decode_image(
-                safe_path, relative=relative, semantic=semantic, field=field
+                safe_path,
+                relative=relative,
+                semantic=semantic,
+                field=field,
+                normal_encoding=normal_encoding,
             )
 
         source_size = tuple(source_resolution)
@@ -451,7 +751,7 @@ class MaterialPackageValidator:
                     field=f"{field}.resampling",
                 )
 
-        return {
+        validated_entry = {
             "semantic": semantic,
             "layout": layout,
             "color_space": expected_space,
@@ -459,6 +759,9 @@ class MaterialPackageValidator:
             "resampling": resampling,
             "files": decoded_files,
         }
+        if semantic == "normal":
+            validated_entry["normal_encoding"] = normal_encoding
+        return validated_entry
 
     def _safe_file(self, raw_path: Any, *, field: str) -> tuple[Path, str]:
         if not isinstance(raw_path, str) or not raw_path or "\\" in raw_path or "\x00" in raw_path:
@@ -469,6 +772,12 @@ class MaterialPackageValidator:
         if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
             raise MaterialValidationError(
                 "UNSAFE_PATH", f"Unsafe material path {raw_path!r}.", field=field
+            )
+        if len(pure.parts) > MAX_MATERIAL_PATH_DEPTH:
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                f"Material paths may contain at most {MAX_MATERIAL_PATH_DEPTH} components.",
+                field=field,
             )
 
         cursor = self.root
@@ -504,7 +813,13 @@ class MaterialPackageValidator:
         return resolved, pure.as_posix()
 
     def _decode_image(
-        self, path: Path, *, relative: str, semantic: str, field: str
+        self,
+        path: Path,
+        *,
+        relative: str,
+        semantic: str,
+        field: str,
+        normal_encoding: str | None,
     ) -> _DecodedFile:
         suffix = path.suffix.lower()
         expected_format = _EXPECTED_FORMAT.get(suffix)
@@ -516,17 +831,73 @@ class MaterialPackageValidator:
             )
         file_descriptor, file_info = self._open_regular_file(relative, field=field)
         try:
+            if file_info.st_size > MAX_MATERIAL_FILE_BYTES:
+                raise MaterialValidationError(
+                    "RESOURCE_LIMIT_EXCEEDED",
+                    f"{relative} exceeds the per-file encoded byte limit.",
+                    field=field,
+                )
+            self._decoded_file_count += 1
+            self._encoded_bytes += int(file_info.st_size)
+            if self._decoded_file_count > MAX_MATERIAL_FILES:
+                raise MaterialValidationError(
+                    "RESOURCE_LIMIT_EXCEEDED",
+                    f"Material packages may contain at most {MAX_MATERIAL_FILES} files.",
+                    field="inventory",
+                )
+            if self._encoded_bytes > MAX_MATERIAL_TOTAL_BYTES:
+                raise MaterialValidationError(
+                    "RESOURCE_LIMIT_EXCEEDED",
+                    "Material package encoded bytes exceed the import limit.",
+                    field="inventory",
+                )
             with os.fdopen(os.dup(file_descriptor), "rb") as image_file:
-                image = Image.open(image_file)
-                actual_format = image.format
-                frame_count = getattr(image, "n_frames", 1)
-                image.verify()
+                if expected_format == "TIFF":
+                    with TiffFile(image_file, name=relative) as tiff:
+                        frame_count = len(tiff.pages)
+                        if frame_count < 1:
+                            raise TiffFileError("TIFF has no image pages")
+                        first_page = tiff.pages[0]
+                        declared_width = int(first_page.imagewidth)
+                        declared_height = int(first_page.imagelength)
+                    actual_format = "TIFF"
+                else:
+                    image = Image.open(image_file)
+                    actual_format = image.format
+                    frame_count = getattr(image, "n_frames", 1)
+                    declared_width, declared_height = image.size
+                    image.verify()
+                if (
+                    declared_width > MAX_MATERIAL_DIMENSION
+                    or declared_height > MAX_MATERIAL_DIMENSION
+                    or declared_width * declared_height > MAX_MATERIAL_PIXELS_PER_FILE
+                ):
+                    raise MaterialValidationError(
+                        "RESOURCE_LIMIT_EXCEEDED",
+                        f"{relative} exceeds the decoded dimension or pixel limit.",
+                        field=field,
+                    )
+                self._declared_pixels += int(declared_width * declared_height)
+                if self._declared_pixels > MAX_MATERIAL_AGGREGATE_PIXELS:
+                    raise MaterialValidationError(
+                        "RESOURCE_LIMIT_EXCEEDED",
+                        "Material package decoded pixels exceed the import limit.",
+                        field="inventory",
+                    )
             with mmap.mmap(file_descriptor, length=0, access=mmap.ACCESS_READ) as encoded_map:
                 encoded = np.frombuffer(encoded_map, dtype=np.uint8)
                 decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
                 file_sha256 = hashlib.sha256(encoded_map).hexdigest()
                 del encoded
-        except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
+        except MaterialValidationError:
+            raise
+        except (
+            TiffFileError,
+            UnidentifiedImageError,
+            OSError,
+            SyntaxError,
+            ValueError,
+        ) as exc:
             raise MaterialValidationError(
                 "IMAGE_DECODE_FAILED", f"Image decode failed for {relative}.", field=field
             ) from exc
@@ -571,6 +942,16 @@ class MaterialPackageValidator:
                 f"{relative} has {channels} channels; {semantic} requires {expected}.",
                 field=field,
             )
+        if (
+            width > MAX_MATERIAL_DIMENSION
+            or height > MAX_MATERIAL_DIMENSION
+            or width * height > MAX_MATERIAL_PIXELS_PER_FILE
+        ):
+            raise MaterialValidationError(
+                "RESOURCE_LIMIT_EXCEEDED",
+                f"{relative} exceeds the decoded dimension or pixel limit.",
+                field=field,
+            )
         bit_depth = _dtype_depth(decoded.dtype)
         if bit_depth not in _ALLOWED_DEPTHS[semantic]:
             raise MaterialValidationError(
@@ -595,10 +976,14 @@ class MaterialPackageValidator:
             elif semantic == "normal":
                 minimum = float(decoded.min())
                 maximum = float(decoded.max())
-                if not ((0.0 <= minimum and maximum <= 1.0) or (-1.0 <= minimum and maximum <= 1.0)):
+                expected_range = (
+                    (0.0, 1.0) if normal_encoding == "unorm" else (-1.0, 1.0)
+                )
+                if minimum < expected_range[0] or maximum > expected_range[1]:
                     raise MaterialValidationError(
                         "PIXEL_RANGE_MISMATCH",
-                        f"Float normal map {relative} must use [0,1] or [-1,1].",
+                        f"Float normal map {relative} does not match declared "
+                        f"{normal_encoding!r} range {list(expected_range)}.",
                         field=field,
                     )
             else:
@@ -607,6 +992,17 @@ class MaterialPackageValidator:
         else:
             minimum = float(decoded.min())
             maximum = float(decoded.max())
+
+        if (
+            semantic == "normal"
+            and normal_encoding == "signed_float"
+            and not np.issubdtype(decoded.dtype, np.floating)
+        ):
+            raise MaterialValidationError(
+                "NORMAL_ENCODING_DTYPE_MISMATCH",
+                f"{relative} declares signed_float but has integer pixels.",
+                field=field,
+            )
 
         if semantic == "normal":
             # Inspect a bounded, deterministic sample so an 8K/16-bit map does
@@ -617,7 +1013,7 @@ class MaterialPackageValidator:
             if np.issubdtype(decoded.dtype, np.integer):
                 vectors = vectors / float(np.iinfo(decoded.dtype).max)
                 vectors = vectors * 2.0 - 1.0
-            elif minimum >= 0.0:
+            elif normal_encoding == "unorm":
                 vectors = vectors * 2.0 - 1.0
             lengths = np.linalg.norm(vectors, axis=2)
             plausible = np.logical_and(lengths >= 0.5, lengths <= 1.5)
@@ -1043,8 +1439,10 @@ def _canonical_json(value: Any) -> bytes:
 
 
 __all__ = [
+    "ATTACHMENT_SCHEMA_VERSION",
     "MaterialPackageValidator",
     "MaterialValidationError",
     "SCHEMA_VERSION",
+    "validate_material_attachment",
     "validate_material_package",
 ]

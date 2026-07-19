@@ -18,6 +18,7 @@ dependencies = [
   "mediapipe==0.10.35",
   "opencv-contrib-python==5.0.0.93",
   "pillow==12.3.0",
+  "tifffile==2026.7.14",
   "fastapi==0.139.2",
   "uvicorn==0.51.0",
   "python-multipart==0.0.32",

@@ -6,7 +6,7 @@ from fractions import Fraction
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -17,6 +17,11 @@ from .calibrated_retarget import CalibratedRetargetError, CalibratedRetargeter
 from .errors import AutoAnimError
 from .gltf_export import export_gnm_glb
 from .gnm_adapter import GNMAdapter
+from .oral_validation import (
+    OralValidationError,
+    validate_controls_npz,
+    validate_glb_oral_geometry,
+)
 from .rig import ControlRig
 from .semantic_decoder import ExpressionDecoder
 from .serialization import write_json
@@ -488,10 +493,21 @@ def _export_static_performance_glb(
     frame: np.ndarray,
     *,
     texture_path: str | Path | None,
-    texture_triangle_uvs: np.ndarray | None,
+    runtime_material_paths: Mapping[str, str | Path] | None = None,
+    texture_triangle_uvs: np.ndarray | None = None,
 ):
     """Export the long-track/compression fallback with the character's exact atlas."""
 
+    if runtime_material_paths:
+        return export_animated_gnm_glb(
+            output / "performance.glb",
+            adapter,
+            frame[None, ...],
+            np.asarray([0.0], dtype=np.float32),
+            mapping_path=output / "performance-glb-mapping.npz",
+            triangle_uvs=texture_triangle_uvs,
+            runtime_material_paths=runtime_material_paths,
+        )
     return export_gnm_glb(
         output / "performance.glb",
         adapter,
@@ -510,6 +526,7 @@ def run_video_pipeline(
     identity: np.ndarray | None = None,
     a2f_asset_dir: str | Path | None = None,
     texture_path: str | Path | None = None,
+    runtime_material_paths: Mapping[str, str | Path] | None = None,
     texture_triangle_uvs: np.ndarray | None = None,
     character_ref: dict[str, Any] | None = None,
 ) -> dict:
@@ -628,6 +645,8 @@ def run_video_pipeline(
         )
     viewer_status = "ready"
     viewer_mode = "animation"
+    glb_covers_full_track = False
+    evaluated_full_track_frames: np.ndarray | None = None
     viewer_reconstruction: dict[str, float | int | str] = {}
     if performance.frame_count <= MAX_INTERACTIVE_FRAMES:
         frames = np.stack(
@@ -646,6 +665,7 @@ def run_video_pipeline(
                 )
             ]
         )
+        evaluated_full_track_frames = frames
         try:
             exported = export_animated_gnm_glb(
                 output / "performance.glb",
@@ -655,7 +675,12 @@ def run_video_pipeline(
                 mapping_path=output / "performance-glb-mapping.npz",
                 texture_path=texture_path,
                 triangle_uvs=texture_triangle_uvs,
+                runtime_material_paths=runtime_material_paths,
             )
+            glb_covers_full_track = True
+            if not exported.rank:
+                viewer_status = "static_only"
+                viewer_mode = "static"
             viewer_reconstruction = {
                 "expression_pose_rank": exported.rank,
                 "validation_scope": "all_frames",
@@ -670,6 +695,7 @@ def run_video_pipeline(
                 adapter,
                 frames[0],
                 texture_path=texture_path,
+                runtime_material_paths=runtime_material_paths,
                 texture_triangle_uvs=texture_triangle_uvs,
             )
             viewer_status = "static_only"
@@ -692,6 +718,7 @@ def run_video_pipeline(
             adapter,
             first,
             texture_path=texture_path,
+            runtime_material_paths=runtime_material_paths,
             texture_triangle_uvs=texture_triangle_uvs,
         )
         viewer_status = "static_only"
@@ -701,6 +728,33 @@ def run_video_pipeline(
             "validation_scope": "not_run",
             "reason": f"Interactive morph export is limited to {MAX_INTERACTIVE_FRAMES} frames",
         }
+
+    try:
+        oral_controls = validate_controls_npz(
+            output / "performance.npz",
+            adapter=adapter,
+            identity=identity_value,
+            evaluated_frames=evaluated_full_track_frames,
+        )
+        oral_glb = validate_glb_oral_geometry(
+            output / "performance.glb",
+            output / "performance-glb-mapping.npz",
+            adapter=adapter,
+            reference_controls_path=(
+                output / "performance.npz" if glb_covers_full_track else None
+            ),
+            reference_frames=(
+                evaluated_full_track_frames if glb_covers_full_track else None
+            ),
+            identity=identity_value,
+        )
+    except OralValidationError as exc:
+        raise AutoAnimError(
+            "INTERNAL_ERROR",
+            f"Required oral geometry validation failed ({exc.code}): {exc}",
+        ) from exc
+    write_json(output / "oral-validation.json", oral_controls.as_dict())
+    write_json(output / "oral-glb-validation.json", oral_glb.as_dict())
 
     quality = performance.effective_quality
     duration = (
@@ -754,6 +808,27 @@ def run_video_pipeline(
             "the 0.85-1.15 source/output review band; artist correction or a "
             "subject-calibrated jaw solve is required."
         )
+    oral_control_report = oral_controls.report
+    oral_glb_report = oral_glb.report
+    if oral_control_report["lip_contact"]["order_inversion_risk_frames"]:
+        warnings.append(
+            "ORAL_LIP_ORDER_RISK: structurally inverted inner-lip landmark ordering was "
+            "measured; inspect those frames before approval."
+        )
+    if oral_control_report["tongue_teeth"]["collision_risk_frames"]:
+        warnings.append(
+            "ORAL_TONGUE_TEETH_PROXIMITY_RISK: tongue vertices entered the conservative "
+            "teeth-proximity risk band; exact surface penetration is not established."
+        )
+    warnings.append(
+        "ORAL_TONGUE_SOURCE_UNAVAILABLE: monocular RGB does not provide a dedicated tongue "
+        "motion signal, so this pipeline does not infer or validate tongue articulation."
+    )
+    if not oral_glb_report["claims"]["structural_reconstruction_validated"]:
+        warnings.append(
+            "ORAL_GLB_NOT_STRUCTURALLY_VALIDATED: the viewer fallback is static or its "
+            "oral reconstruction has not passed the source-control comparison."
+        )
     result = {
         "kind": "video_performance",
         "status": "succeeded",
@@ -762,7 +837,10 @@ def run_video_pipeline(
             "identity_dim": adapter.identity_dim,
             "expression_dim": adapter.expression_dim,
             "character": character_ref,
-            "character_texture_applied_to_glb": texture_path is not None,
+            "character_texture_applied_to_glb": (
+                texture_path is not None or bool(runtime_material_paths)
+            ),
+            "character_pbr_runtime_applied_to_glb": bool(runtime_material_paths),
             "source_proxy_is_character_render": False,
         },
         "capture": {
@@ -822,7 +900,31 @@ def run_video_pipeline(
             "clock_artifact": "viewer_media",
             "duration_s": duration,
             "coordinate_system": "+Y_up_+Z_forward_meters",
+            "glb_covers_full_track": glb_covers_full_track,
             "reconstruction": viewer_reconstruction,
+        },
+        "oral_validation": {
+            "schema_version": oral_control_report["schema_version"],
+            "status": oral_control_report["status"],
+            "all_control_frames_evaluated": oral_control_report["source"][
+                "all_frames_evaluated"
+            ],
+            "tongue_control_active_frames": oral_control_report["control_evidence"][
+                "tongue_control_active_frames"
+            ],
+            "isolated_tongue_geometry_active_frames": oral_control_report[
+                "control_evidence"
+            ]["isolated_tongue_geometry_active_frames"],
+            "tongue_teeth_collision_risk_frames": oral_control_report[
+                "tongue_teeth"
+            ]["collision_risk_frames"],
+            "lip_order_inversion_risk_frames": oral_control_report["lip_contact"][
+                "order_inversion_risk_frames"
+            ],
+            "viewer_structural_reconstruction_validated": oral_glb_report["claims"][
+                "structural_reconstruction_validated"
+            ],
+            "production_validated": False,
         },
         "metrics": {
             "face_presence_fraction": detected_count / performance.frame_count,
@@ -880,6 +982,8 @@ def run_video_pipeline(
             "controls_jsonl": "performance.jsonl",
             "glb": "performance.glb",
             "glb_mapping": "performance-glb-mapping.npz",
+            "oral_validation": "oral-validation.json",
+            "oral_glb_validation": "oral-glb-validation.json",
             "viewer_media": proxy.name,
             **retarget_artifacts,
         },

@@ -97,6 +97,8 @@ def test_animated_glb_embeds_character_texture(tmp_path, adapter: GNMAdapter):
     document = json.loads(payload[20 : 20 + json_length].decode("utf-8"))
     assert document["images"][0]["mimeType"] == "image/png"
     assert document["textures"][0]["source"] == 0
+    assert document["samplers"][0]["wrapS"] == 33071
+    assert document["samplers"][0]["wrapT"] == 33071
     assert document["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] == {
         "index": 0
     }
@@ -118,10 +120,41 @@ def test_animated_glb_embeds_character_texture(tmp_path, adapter: GNMAdapter):
     ).reshape(-1, 2)
     with np.load(exported.mapping_path) as mapping:
         internal = mapping["internal_uvs_lower_left"]
+        np.testing.assert_array_equal(mapping["uvs_lower_left"], internal)
         np.testing.assert_allclose(mapping["gltf_uvs_upper_left"], gltf_uvs)
         np.testing.assert_allclose(internal[mapping["triangles"]], packed_uvs)
     np.testing.assert_allclose(gltf_uvs[:, 0], internal[:, 0])
     np.testing.assert_allclose(gltf_uvs[:, 1], 1.0 - internal[:, 1])
+
+
+def test_source_normal_export_requires_explicit_encoding(
+    tmp_path, adapter: GNMAdapter
+):
+    base = tmp_path / "base.png"
+    normal = tmp_path / "normal.png"
+    Image.new("RGB", (4, 4), (96, 128, 160)).save(base)
+    Image.new("RGB", (4, 4), (128, 128, 255)).save(normal)
+    frames = adapter.mesh()[None, ...]
+    paths = {"base_color": base, "normal": normal}
+
+    with pytest.raises(ValueError, match="material_normal_encoding"):
+        export_animated_gnm_glb(
+            tmp_path / "ambiguous.glb",
+            adapter,
+            frames,
+            np.asarray([0.0], dtype=np.float32),
+            material_paths=paths,
+        )
+
+    exported = export_animated_gnm_glb(
+        tmp_path / "explicit.glb",
+        adapter,
+        frames,
+        np.asarray([0.0], dtype=np.float32),
+        material_paths=paths,
+        material_normal_encoding="unorm",
+    )
+    assert exported.path.is_file()
 
 
 def test_seam_split_rejects_mismatched_uvs():

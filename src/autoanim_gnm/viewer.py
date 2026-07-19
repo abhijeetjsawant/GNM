@@ -52,6 +52,7 @@ def viewer_html(
     title: str,
     media_url: str | None = None,
     media_type: str | None = None,
+    metadata: dict | None = None,
     vendor_base_url: str = f"/api/viewer/vendor/{VIEWER_THREE_VERSION}",
 ) -> str:
     """Return a self-contained shell that loads a job's allowlisted GLB."""
@@ -61,6 +62,12 @@ def viewer_html(
     encoded_media_url = json.dumps(media_url)
     encoded_media_kind = json.dumps(
         "video" if media_type is not None and media_type.startswith("video/") else "audio"
+    )
+    encoded_metadata = (
+        json.dumps(metadata, sort_keys=True, ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
     )
     encoded_three_url = json.dumps(f"{vendor_base_url}/three.module.js")
     encoded_addons_url = json.dumps(f"{vendor_base_url}/addons/")
@@ -80,7 +87,7 @@ def viewer_html(
     button{{margin-top:12px;background:var(--accent);color:#111500;border:0;font-weight:800;cursor:pointer}}
     #stage{{min-width:0;min-height:0;position:relative}}canvas{{display:block;width:100%;height:100%}}
     #status{{position:absolute;left:18px;bottom:16px;padding:8px 11px;background:#080a0cdd;border:1px solid var(--line);border-radius:8px;color:var(--muted)}}
-    .legend{{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);font-size:12px}}
+    .legend{{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);font-size:12px}}#metadata{{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}}
     @media(max-width:720px){{main{{grid-template-columns:1fr;grid-template-rows:auto 1fr}}aside{{padding:14px;border-right:0;border-bottom:1px solid var(--line)}}aside p,.legend{{display:none}}h1{{font-size:20px}}label{{display:inline-block;margin:6px 6px 4px 0}}select,input,button{{width:auto}}}}
   </style>
   <script type="importmap">{{"imports":{{"three":{encoded_three_url},"three/addons/":{encoded_addons_url}}}}}</script>
@@ -89,7 +96,7 @@ def viewer_html(
     <label for="mode">Display</label><select id="mode"><option value="surface">Surface / texture</option><option value="surface-wire">Surface + topology</option><option value="wire">Topology only</option></select>
     <label for="exposure">Exposure</label><input id="exposure" type="range" min="0.35" max="2.25" step="0.05" value="1.0">
     <button id="reset" type="button">Reset camera</button><div id="media-slot"></div>
-    <div class="legend"><strong>GNM Head 3.0</strong><p id="metrics">Loading geometry…</p><p>Texture seams are split into duplicate render vertices that retain a mapping to the original GNM topology.</p></div>
+    <div class="legend"><strong>GNM Head 3.0</strong><p id="metrics">Loading geometry…</p><p>Texture seams are split into duplicate render vertices that retain a mapping to the original GNM topology.</p><div id="metadata"></div></div>
   </aside>
   <section id="stage" aria-label="Interactive 3D GNM head"><div id="status" role="status" aria-live="polite">Loading 3D asset…</div></section>
 </main>
@@ -98,7 +105,8 @@ import * as THREE from 'three';
 import {{OrbitControls}} from 'three/addons/controls/OrbitControls.js';
 import {{GLTFLoader}} from 'three/addons/loaders/GLTFLoader.js';
 
-const assetUrl={encoded_url},mediaUrl={encoded_media_url},mediaKind={encoded_media_kind},stage=document.querySelector('#stage'),status=document.querySelector('#status');
+const assetUrl={encoded_url},mediaUrl={encoded_media_url},mediaKind={encoded_media_kind},metadata={encoded_metadata},stage=document.querySelector('#stage'),status=document.querySelector('#status');
+if(metadata){{const lines=[];for(const [label,value] of Object.entries(metadata))lines.push(`${{label.replaceAll('_',' ')}}: ${{Array.isArray(value)?value.join(', '):String(value)}}`);document.querySelector('#metadata').textContent=lines.join('\\n')}}
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x0b0e10);
 const camera=new THREE.PerspectiveCamera(28,1,.005,20);
 let renderer;try{{renderer=new THREE.WebGLRenderer({{antialias:true,alpha:false}})}}catch(error){{status.textContent='WebGL is unavailable. Download the GLB from the job result to inspect it in another viewer.';status.style.color='#ff7d7d';throw error}}renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;renderer.domElement.setAttribute('role','img');renderer.domElement.setAttribute('aria-label','Interactive 3D GNM head');renderer.domElement.tabIndex=0;stage.prepend(renderer.domElement);

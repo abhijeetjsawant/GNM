@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from pathlib import Path
 import os
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 from scipy.signal import savgol_filter
@@ -33,6 +33,11 @@ from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .gltf_export import export_gnm_glb
 from .lipsync_quality import evaluate_lipsync_quality
+from .oral_validation import (
+    OralValidationError,
+    validate_controls_npz,
+    validate_glb_oral_geometry,
+)
 from .rig import ControlRig
 from .semantic_decoder import ExpressionDecoder
 from .serialization import write_json, write_npz
@@ -545,6 +550,7 @@ def run_audio_pipeline(
     emotion_strength: float = 0.65,
     identity: np.ndarray | None = None,
     texture_path: str | Path | None = None,
+    runtime_material_paths: Mapping[str, str | Path] | None = None,
     texture_triangle_uvs: np.ndarray | None = None,
     character_ref: dict[str, Any] | None = None,
 ) -> dict:
@@ -975,6 +981,7 @@ def run_audio_pipeline(
     )
     viewer_warning: str | None = None
     viewer_artifacts: dict[str, str] = {}
+    glb_covers_full_track = False
     try:
         viewer_export = export_animated_gnm_glb(
             output_dir / "animation.glb",
@@ -984,7 +991,9 @@ def run_audio_pipeline(
             mapping_path=output_dir / "animation-glb-mapping.npz",
             texture_path=texture_path,
             triangle_uvs=texture_triangle_uvs,
+            runtime_material_paths=runtime_material_paths,
         )
+        glb_covers_full_track = True
         viewer_status = "ready" if viewer_export.rank else "static_only"
         viewer_reconstruction = {
             "expression_pose_rank": viewer_export.rank,
@@ -1000,14 +1009,25 @@ def run_audio_pipeline(
             "normalized_audio": "normalized.wav",
         }
     except AnimationCompressionError as exc:
-        static_export = export_gnm_glb(
-            output_dir / "animation.glb",
-            adapter,
-            viewer_frames[0],
-            mapping_path=output_dir / "animation-glb-mapping.npz",
-            texture_path=texture_path,
-            triangle_uvs=texture_triangle_uvs,
-        )
+        if runtime_material_paths:
+            static_export = export_animated_gnm_glb(
+                output_dir / "animation.glb",
+                adapter,
+                viewer_frames[:1],
+                np.asarray([0.0], dtype=np.float32),
+                mapping_path=output_dir / "animation-glb-mapping.npz",
+                triangle_uvs=texture_triangle_uvs,
+                runtime_material_paths=runtime_material_paths,
+            )
+        else:
+            static_export = export_gnm_glb(
+                output_dir / "animation.glb",
+                adapter,
+                viewer_frames[0],
+                mapping_path=output_dir / "animation-glb-mapping.npz",
+                texture_path=texture_path,
+                triangle_uvs=texture_triangle_uvs,
+            )
         viewer_status = "static_only"
         viewer_warning = "VIEWER_RECONSTRUCTION_LIMIT"
         viewer_reconstruction = {
@@ -1024,6 +1044,30 @@ def run_audio_pipeline(
             "glb_mapping": "animation-glb-mapping.npz",
             "normalized_audio": "normalized.wav",
         }
+    try:
+        oral_controls = validate_controls_npz(
+            output_dir / "controls.npz",
+            adapter=adapter,
+            identity=identity_value,
+            evaluated_frames=viewer_frames,
+        )
+        oral_glb = validate_glb_oral_geometry(
+            output_dir / "animation.glb",
+            output_dir / "animation-glb-mapping.npz",
+            adapter=adapter,
+            reference_controls_path=(
+                output_dir / "controls.npz" if glb_covers_full_track else None
+            ),
+            reference_frames=viewer_frames if glb_covers_full_track else None,
+            identity=identity_value,
+        )
+    except OralValidationError as exc:
+        raise AutoAnimError(
+            "INTERNAL_ERROR",
+            f"Required oral geometry validation failed ({exc.code}): {exc}",
+        ) from exc
+    write_json(output_dir / "oral-validation.json", oral_controls.as_dict())
+    write_json(output_dir / "oral-glb-validation.json", oral_glb.as_dict())
     sample_indices = np.unique(
         np.linspace(0, len(track.expression) - 1, min(12, len(track.expression)), dtype=int)
     )
@@ -1063,10 +1107,37 @@ def run_audio_pipeline(
         warnings.append("COEFFICIENT_SATURATED")
     if viewer_warning is not None:
         warnings.append(viewer_warning)
-    if texture_path is not None:
+    character_material_applied = texture_path is not None or bool(
+        runtime_material_paths
+    )
+    if character_material_applied:
         warnings.append(
-            "CHARACTER_TEXTURE_GLTF_ONLY: the interactive GLB uses the saved texture; "
+            "CHARACTER_MATERIAL_GLTF_ONLY: the interactive GLB uses the saved character material; "
             "the downloadable MP4 remains an untextured diagnostic preview."
+        )
+    oral_control_report = oral_controls.report
+    oral_glb_report = oral_glb.report
+    if oral_control_report["lip_contact"]["order_inversion_risk_frames"]:
+        warnings.append(
+            "ORAL_LIP_ORDER_RISK: structurally inverted inner-lip landmark ordering was "
+            "measured; inspect those frames before approval."
+        )
+    if oral_control_report["tongue_teeth"]["collision_risk_frames"]:
+        warnings.append(
+            "ORAL_TONGUE_TEETH_PROXIMITY_RISK: tongue vertices entered the conservative "
+            "teeth-proximity risk band; exact surface penetration is not established."
+        )
+    if not oral_control_report["control_evidence"][
+        "isolated_tongue_geometry_active_frames"
+    ]:
+        warnings.append(
+            "ORAL_TONGUE_INACTIVE: this performance contains no measurable isolated GNM "
+            "tongue-control deformation."
+        )
+    if not oral_glb_report["claims"]["structural_reconstruction_validated"]:
+        warnings.append(
+            "ORAL_GLB_NOT_STRUCTURALLY_VALIDATED: the viewer fallback is static or its "
+            "oral reconstruction has not passed the source-control comparison."
         )
     result = {
         "kind": "audio_animation",
@@ -1076,7 +1147,8 @@ def run_audio_pipeline(
             "identity_dim": adapter.identity_dim,
             "expression_dim": adapter.expression_dim,
             "character": character_ref,
-            "character_texture_applied_to_glb": texture_path is not None,
+            "character_texture_applied_to_glb": character_material_applied,
+            "character_pbr_runtime_applied_to_glb": bool(runtime_material_paths),
             "preview_texture_applied": False,
         },
         "audio": {"duration_s": round(duration, 8), "sample_rate": 16000},
@@ -1125,9 +1197,33 @@ def run_audio_pipeline(
             "duration_s": round(duration, 8),
             "fps": track.fps,
             "coordinate_system": "+Y_up_+Z_forward_meters",
+            "glb_covers_full_track": glb_covers_full_track,
             "reconstruction": viewer_reconstruction,
         },
         "quality": quality.as_dict(),
+        "oral_validation": {
+            "schema_version": oral_control_report["schema_version"],
+            "status": oral_control_report["status"],
+            "all_control_frames_evaluated": oral_control_report["source"][
+                "all_frames_evaluated"
+            ],
+            "tongue_control_active_frames": oral_control_report["control_evidence"][
+                "tongue_control_active_frames"
+            ],
+            "isolated_tongue_geometry_active_frames": oral_control_report[
+                "control_evidence"
+            ]["isolated_tongue_geometry_active_frames"],
+            "tongue_teeth_collision_risk_frames": oral_control_report[
+                "tongue_teeth"
+            ]["collision_risk_frames"],
+            "lip_order_inversion_risk_frames": oral_control_report["lip_contact"][
+                "order_inversion_risk_frames"
+            ],
+            "viewer_structural_reconstruction_validated": oral_glb_report["claims"][
+                "structural_reconstruction_validated"
+            ],
+            "production_validated": False,
+        },
         "metrics": {
             "cue_coverage": sum(cue.end - cue.start for cue in cues) / duration,
             "max_abs_coefficient": float(np.max(np.abs(track.expression))),
@@ -1150,6 +1246,8 @@ def run_audio_pipeline(
             "cues": "cues.json",
             "preview": "preview.mp4",
             "timeline": "timeline.json",
+            "oral_validation": "oral-validation.json",
+            "oral_glb_validation": "oral-glb-validation.json",
             **viewer_artifacts,
             **learned_artifacts,
         },

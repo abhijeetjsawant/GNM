@@ -11,8 +11,33 @@ from .api import create_app
 from .artifacts import sha256
 from .errors import AutoAnimError
 from .materials import MaterialValidationError, validate_material_package
+from .serialization import write_json
 from .service import ApplicationService, default_model_path
 from .viewer import default_viewer_vendor_root
+
+
+MATERIAL_SPEC_FIELDS = frozenset(
+    {"package_id", "inventory", "capture", "provenance", "rights", "claims"}
+)
+
+
+def _read_json_object(path: Path, *, label: str) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AutoAnimError("INPUT_INVALID", f"{label} is not readable JSON") from exc
+    if not isinstance(value, dict):
+        raise AutoAnimError("INPUT_INVALID", f"{label} must be a JSON object")
+    return value
+
+
+def _required_file_sha256(path: Path, *, label: str) -> str:
+    try:
+        return sha256(path)
+    except OSError as exc:
+        raise AutoAnimError(
+            "INPUT_INVALID", f"{label} file is missing or unreadable"
+        ) from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -99,6 +124,44 @@ def build_parser() -> argparse.ArgumentParser:
     character_promote.add_argument("--consent-evidence", type=Path, required=True)
     character_promote.add_argument("--consent-expires-at")
     character_promote.add_argument("--consent-note")
+    character_material_template = character_actions.add_parser("material-template")
+    character_material_template.add_argument("character_id")
+    character_material_template.add_argument("--character-revision", required=True)
+    character_material_template.add_argument("--package-root", type=Path, required=True)
+    character_material_template.add_argument("--spec", type=Path, required=True)
+    character_material_template.add_argument("--attester", required=True)
+    character_material_template.add_argument("--evidence-ref", required=True)
+    character_material_template.add_argument("--evidence", type=Path, required=True)
+    character_material_template.add_argument("--package-subject", required=True)
+    character_material_template.add_argument(
+        "--same-subject-attested", action="store_true", required=True
+    )
+    character_material_template.add_argument(
+        "--authored-for-attested", action="store_true", required=True
+    )
+    character_material_template.add_argument(
+        "--usage-scope",
+        choices=("personal", "production", "commercial", "research"),
+        default="production",
+    )
+    character_material_template.add_argument(
+        "--displacement-midpoint", type=float, required=True
+    )
+    character_material_template.add_argument(
+        "--displacement-scale-m", type=float, required=True
+    )
+    character_material_template.add_argument("--out", type=Path, required=True)
+    character_material_import = character_actions.add_parser("import-material")
+    character_material_import.add_argument("character_id")
+    character_material_import.add_argument("--character-revision", required=True)
+    character_material_import.add_argument("--package-root", type=Path, required=True)
+    character_material_import.add_argument("--spec", type=Path, required=True)
+    character_material_import.add_argument("--attachment", type=Path, required=True)
+    character_material_import.add_argument(
+        "--usage-scope",
+        choices=("personal", "production", "commercial", "research"),
+        default="production",
+    )
     character_revoke = character_actions.add_parser("revoke")
     character_revoke.add_argument("character_id")
     character_revoke.add_argument("--reason", required=True)
@@ -145,7 +208,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    artifact_root = getattr(args, "out", None) or getattr(args, "artifacts", Path("artifacts/jobs"))
+    # Character subcommands can have both the job-store --artifacts directory
+    # and a file-valued --out (for example material-template). Prefer the
+    # explicit artifact store so an attachment output path is never created as
+    # a directory by ApplicationService initialization.
+    artifact_root = (
+        getattr(args, "artifacts", None)
+        or getattr(args, "out", None)
+        or Path("artifacts/jobs")
+    )
     service = ApplicationService(
         artifact_root,
         model_path=args.model_path,
@@ -218,9 +289,59 @@ def main(argv: list[str] | None = None) -> int:
                     consent_attester=args.consent_attester,
                     consent_scope=args.consent_scope,
                     consent_evidence_ref=args.consent_evidence_ref,
-                    consent_evidence_sha256=sha256(args.consent_evidence),
+                    consent_evidence_sha256=_required_file_sha256(
+                        args.consent_evidence, label="Consent evidence"
+                    ),
                     consent_expires_at=args.consent_expires_at,
                     consent_note=args.consent_note,
+                )
+            elif args.character_command == "material-template":
+                specification = _read_json_object(
+                    args.spec, label="Material specification"
+                )
+                prepared = service.prepare_character_material_attachment(
+                    args.character_id,
+                    args.package_root,
+                    specification=specification,
+                    base_revision_id=args.character_revision,
+                    usage_scope=args.usage_scope,
+                    attester=args.attester,
+                    evidence_ref=args.evidence_ref,
+                    evidence_sha256=_required_file_sha256(
+                        args.evidence, label="Material binding evidence"
+                    ),
+                    package_subject=args.package_subject,
+                    same_subject_attested=args.same_subject_attested,
+                    authored_for_attested=args.authored_for_attested,
+                    displacement_midpoint=args.displacement_midpoint,
+                    displacement_scale_m=args.displacement_scale_m,
+                )
+                write_json(args.out, prepared["attachment"])
+                result = {
+                    "status": "validated",
+                    "attachment": str(args.out),
+                    "attachment_sha256": sha256(args.out),
+                    "attachment_payload_sha256": prepared["attachment"][
+                        "attachment_payload_sha256"
+                    ],
+                    "material_manifest_payload_sha256": prepared[
+                        "material_manifest"
+                    ]["manifest_payload_sha256"],
+                }
+            elif args.character_command == "import-material":
+                specification = _read_json_object(
+                    args.spec, label="Material specification"
+                )
+                attachment = _read_json_object(
+                    args.attachment, label="Material attachment"
+                )
+                result = service.import_character_material(
+                    args.character_id,
+                    args.package_root,
+                    specification=specification,
+                    attachment=attachment,
+                    base_revision_id=args.character_revision,
+                    usage_scope=args.usage_scope,
                 )
             else:
                 result = service.characters.revoke(
@@ -258,20 +379,10 @@ def main(argv: list[str] | None = None) -> int:
                 reason=args.reason,
             )
         elif args.command == "material":
-            try:
-                specification = json.loads(args.spec.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
-                raise AutoAnimError(
-                    "INPUT_INVALID", "Material specification is not readable JSON"
-                ) from exc
-            if not isinstance(specification, dict) or set(specification) != {
-                "package_id",
-                "inventory",
-                "capture",
-                "provenance",
-                "rights",
-                "claims",
-            }:
+            specification = _read_json_object(
+                args.spec, label="Material specification"
+            )
+            if set(specification) != set(MATERIAL_SPEC_FIELDS):
                 raise AutoAnimError(
                     "INPUT_INVALID", "Material specification fields are missing or unknown"
                 )

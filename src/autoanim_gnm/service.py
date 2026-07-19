@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any
+from typing import Any, Mapping
 
 import cv2
 import mediapipe
@@ -208,7 +208,14 @@ class ApplicationService:
                 a2f_asset_dir=self.a2f_asset_dir,
                 a2f_offline=self.a2f_offline,
                 identity=character.identity if character is not None else None,
-                texture_path=character.texture_path if character is not None else None,
+                texture_path=(
+                    character.texture_path
+                    if character is not None and not character.runtime_material_paths
+                    else None
+                ),
+                runtime_material_paths=(
+                    character.runtime_material_paths if character is not None else None
+                ),
                 texture_triangle_uvs=(
                     character.triangle_uvs if character is not None else None
                 ),
@@ -289,7 +296,14 @@ class ApplicationService:
                 model_path=self.model_path,
                 a2f_asset_dir=self.a2f_asset_dir,
                 identity=character.identity if character is not None else None,
-                texture_path=character.texture_path if character is not None else None,
+                texture_path=(
+                    character.texture_path
+                    if character is not None and not character.runtime_material_paths
+                    else None
+                ),
+                runtime_material_paths=(
+                    character.runtime_material_paths if character is not None else None
+                ),
                 texture_triangle_uvs=(
                     character.triangle_uvs if character is not None else None
                 ),
@@ -329,6 +343,58 @@ class ApplicationService:
             consent_evidence_sha256=consent_evidence_sha256,
             consent_expires_at=consent_expires_at,
             consent_note=consent_note,
+        )
+
+    def import_character_material(
+        self,
+        character_id: str,
+        package_root: str | Path,
+        *,
+        specification: Mapping[str, Any],
+        attachment: Mapping[str, Any],
+        base_revision_id: str,
+        usage_scope: str = "production",
+    ) -> dict:
+        return self.characters.attach_material(
+            character_id,
+            package_root,
+            specification=specification,
+            attachment=attachment,
+            base_revision_id=base_revision_id,
+            usage_scope=usage_scope,
+        )
+
+    def prepare_character_material_attachment(
+        self,
+        character_id: str,
+        package_root: str | Path,
+        *,
+        specification: Mapping[str, Any],
+        base_revision_id: str,
+        usage_scope: str,
+        attester: str,
+        evidence_ref: str,
+        evidence_sha256: str,
+        package_subject: str,
+        same_subject_attested: bool,
+        authored_for_attested: bool,
+        displacement_midpoint: float,
+        displacement_scale_m: float,
+    ) -> dict:
+        return self.characters.prepare_material_attachment(
+            character_id,
+            package_root,
+            specification=specification,
+            base_revision_id=base_revision_id,
+            usage_scope=usage_scope,
+            attester=attester,
+            evidence_ref=evidence_ref,
+            evidence_sha256=evidence_sha256,
+            package_subject=package_subject,
+            same_subject_attested=same_subject_attested,
+            authored_for_attested=authored_for_attested,
+            displacement_midpoint=displacement_midpoint,
+            displacement_scale_m=displacement_scale_m,
         )
 
     def direct(
@@ -636,6 +702,24 @@ class ApplicationService:
         if character is None:
             return None
         consent = character.manifest.get("consent", {})
+        appearance = character.manifest.get("appearance", {})
+        appearance_summary = (
+            {
+                key: appearance.get(key)
+                for key in (
+                    "material_package_id",
+                    "capture_class",
+                    "resolution_label",
+                    "material_rights_expires_at",
+                    "pore_claim_gate_passed",
+                    "relightable_claim_gate_passed",
+                    "production_validated",
+                )
+                if key in appearance
+            }
+            if isinstance(appearance, dict)
+            else {}
+        )
         return {
             "character_id": character.character_id,
             "revision_id": character.revision_id,
@@ -644,6 +728,13 @@ class ApplicationService:
             "identity_sha256": character.identity_sha256,
             "base_color_sha256": character.texture_sha256,
             "texture_uvs_sha256": character.texture_uvs_sha256,
+            "texture_uvs_array_sha256": character.texture_uvs_array_sha256,
+            "material_descriptor_sha256": character.material_manifest_sha256,
+            "material_map_sha256s": dict(character.material_sha256s),
+            "runtime_material_sha256s": dict(character.runtime_material_sha256s),
+            # Job manifests need reproducibility hashes and coarse claims, not
+            # the full UV attestation/evidence envelope from the character.
+            "appearance": appearance_summary,
             "consent_scope": consent.get("scope") if isinstance(consent, dict) else None,
             "consent_evidence_sha256": (
                 consent.get("evidence_sha256") if isinstance(consent, dict) else None

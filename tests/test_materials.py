@@ -72,6 +72,8 @@ def _package(tmp_path: Path) -> dict[str, object]:
         else:
             _write_rgb(tmp_path / filename)
         inventory[semantic] = _entry(filename, color_space)
+        if semantic == "normal":
+            inventory[semantic]["normal_encoding"] = "unorm"
     for semantic, color_space in gray.items():
         filename = f"{semantic}.png"
         _write_gray(tmp_path / filename)
@@ -166,6 +168,36 @@ def test_valid_package_is_deterministic_strict_json_with_file_evidence(
     assert first["quality_evidence"]["relightable_claim_gate_passed"] is False
     assert first["quality_evidence"]["pore_frequency_validation_performed"] is False
     assert first["quality_evidence"]["unseen_light_validation_performed"] is False
+
+
+def test_normal_encoding_is_explicit_and_signed_float_is_not_inferred(
+    tmp_path: Path,
+) -> None:
+    package = _package(tmp_path)
+    normal_entry = package["inventory"]["normal"]
+    del normal_entry["normal_encoding"]
+    with pytest.raises(MaterialValidationError) as missing:
+        _validate(package)
+    assert missing.value.code == "INVALID_SCHEMA"
+
+    signed = np.empty((16, 16, 3), dtype=np.float32)
+    signed[..., 0] = 0.99
+    signed[..., 1] = 0.10
+    signed[..., 2] = 0.10
+    assert cv2.imwrite(str(tmp_path / "normal.tiff"), signed)
+    normal_entry.update(
+        {
+            "path": "normal.tiff",
+            "normal_encoding": "signed_float",
+        }
+    )
+    manifest = _validate(package)
+    assert manifest["maps"]["normal"]["normal_encoding"] == "signed_float"
+
+    normal_entry["path"] = "normal.png"
+    with pytest.raises(MaterialValidationError) as integer_signed:
+        _validate(package)
+    assert integer_signed.value.code == "NORMAL_ENCODING_DTYPE_MISMATCH"
 
 
 def test_symlink_asset_is_rejected_even_when_target_is_a_valid_image(
@@ -346,3 +378,13 @@ def test_udim_sets_must_cover_identical_tiles(tmp_path: Path) -> None:
     with pytest.raises(MaterialValidationError) as raised:
         _validate(package)
     assert raised.value.code == "UDIM_TILE_MISMATCH"
+
+
+def test_material_package_resource_limit_fails_before_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = _package(tmp_path)
+    monkeypatch.setattr("autoanim_gnm.materials.MAX_MATERIAL_FILES", 8)
+    with pytest.raises(MaterialValidationError) as raised:
+        _validate(package)
+    assert raised.value.code == "RESOURCE_LIMIT_EXCEEDED"
