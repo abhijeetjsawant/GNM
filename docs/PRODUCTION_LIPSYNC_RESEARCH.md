@@ -1,7 +1,7 @@
 # Production audio-driven GNM facial animation
 
 Status: working learned prototype; production temporal-model upgrade specified, not yet validated
-Date: 2026-07-19
+Date: 2026-07-20
 GNM revision studied: `3de70dfca5f3244620f44103c24b7cedc0dcb8b6`
 
 ## Executive decision
@@ -96,6 +96,22 @@ profile, retained controls, exact source/character/identity artifacts, and one
 `--evidence ARTIFACT_ID=PATH` argument for every declared annotation/prototype
 artifact. The resulting scoped report keeps its canonical report digest and is
 also HMAC-sealed by the selected local job-store trust root.
+
+The A1 job-level evidence lane now adds
+`autoanim.phone-articulation-report/1.0`. It records bilabial closure plus coarse
+labiodental, tongue/upper-teeth and rounded-width diagnostics against ordinary
+phone spans. It reconstructs with bounded GNM mesh batches from sealed controls during
+readiness, binds the exact controls/identity/GNM/decoder assets, and never drives
+motion. The proxy-run boundaries are measured globally rather than clipped to
+the phone window. Independent review established that a phone interval is not
+articulatory onset/contact/release truth and that the current full-surface F/V
+and tongue distances do not separate the intended GNM prototypes. Consequently
+the schema can only pass a synthetic `phone_span_proxy_gate`; its production
+gate is always false. A reviewed articulation-state tier, anatomical target
+surfaces, protrusion, verified character profile and corpus/perceptual evidence
+must be added in a later schema. The 2026-07-20 cross-track decision and current
+v3 worker blockers are in
+`PRODUCTION_RESEARCH_UPDATE_2026-07-20.md`.
 
 ## Research convergence after the implementation audit
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,12 +11,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from typing import Any, Mapping
 import wave
+import zipfile
 
 import cv2
 import mediapipe
 import numpy as np
+import scipy
 
 from . import __version__
 from .a2f import resolve_a2f_runner
@@ -43,11 +47,21 @@ from .phone_events import (
     evaluate_bilabial_timing,
     load_textgrid_phone_events,
 )
+from .phone_articulation import (
+    PHONE_ARTICULATION_REPORT_SCHEMA_VERSION,
+    PHONE_ARTICULATION_VERIFIER_ALGORITHM,
+    articulation_evidence_bindings,
+    diagnostic_articulation_calibration,
+    evaluate_phone_articulation,
+    measure_articulation_geometry_from_controls,
+    summarize_phone_articulation,
+)
 from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .image import validate_model
 from .image_pipeline import run_image_pipeline
 from .multiview_pipeline import run_multiview_pipeline
+from .oral_validation import validate_controls_npz
 from .video_pipeline import run_video_pipeline
 from .video_capture import load_capture_npz, load_verified_capture_jsonl
 from .video_evidence import load_verified_performance_evidence
@@ -64,9 +78,64 @@ from .semantic_decoder import ExpressionDecoder
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+_AUDIO_CONTROL_NPZ_MEMBERS = frozenset(
+    {
+        "expression.npy",
+        "rotations.npy",
+        "translation.npy",
+        "timestamps.npy",
+        "fps.npy",
+        "viseme_weights.npy",
+        "speech_activity.npy",
+        "energy.npy",
+        "pitch_semitones.npy",
+        "accent.npy",
+        "phrase_id.npy",
+        "emotion_intensity.npy",
+        "mouth_speed_limited.npy",
+        "lip_contact_confidence.npy",
+        "lip_contact_target_gap.npy",
+        "contact_correction_applied.npy",
+        "lip_contact_attained.npy",
+        "contact_continuity_restored.npy",
+        "contact_corrected.npy",
+        "lip_order_repaired.npy",
+        "mouth_aperture_edit_eligible.npy",
+        "mouth_aperture_edit_protected_contact.npy",
+        "mouth_aperture_edit_applied.npy",
+        "mouth_aperture_edit_target_attained.npy",
+    }
+)
+
 
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _preflight_audio_controls_npz(path: Path, *, maximum_frames: int) -> None:
+    """Reject archive amplification before NumPy materializes control arrays."""
+
+    if maximum_frames < 2:
+        raise ValueError("Audio control frame bound is invalid")
+    maximum_uncompressed_bytes = maximum_frames * 2048 + 2 * 1024 * 1024
+    if path.stat().st_size <= 0 or path.stat().st_size > maximum_uncompressed_bytes:
+        raise ValueError("Audio controls archive exceeds its compressed byte bound")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            members = archive.infolist()
+            names = [member.filename for member in members]
+            if (
+                len(names) != len(set(names))
+                or set(names) != _AUDIO_CONTROL_NPZ_MEMBERS
+                or any(member.flag_bits & 0x1 for member in members)
+                or sum(member.file_size for member in members)
+                > maximum_uncompressed_bytes
+            ):
+                raise ValueError(
+                    "Audio controls archive members or expanded bytes exceed the schema"
+                )
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise ValueError("Audio controls are not a safe numeric NPZ") from exc
 
 
 def default_model_path() -> Path:
@@ -80,6 +149,7 @@ def runtime_versions() -> dict[str, str]:
         "gnm": "3.0",
         "python": platform.python_version(),
         "numpy": np.__version__,
+        "scipy": scipy.__version__,
         "opencv": cv2.__version__,
         "mediapipe": mediapipe.__version__,
     }
@@ -87,8 +157,20 @@ def runtime_versions() -> dict[str, str]:
         versions["git"] = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT, check=True, capture_output=True, text=True
         ).stdout.strip()
+        versions["git_dirty"] = str(
+            bool(
+                subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=PROJECT_ROOT,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            )
+        ).lower()
     except Exception:
         versions["git"] = "unknown"
+        versions["git_dirty"] = "unknown"
     try:
         versions["ffmpeg"] = subprocess.run(
             ["ffmpeg", "-version"], check=True, capture_output=True, text=True
@@ -130,6 +212,7 @@ class ApplicationService:
             if viewer_vendor_root is not None
             else default_viewer_vendor_root()
         )
+        self._readiness_lock = threading.Lock()
 
     def health(self) -> dict:
         checks: dict[str, dict[str, str | bool]] = {}
@@ -483,6 +566,34 @@ class ApplicationService:
     ) -> dict[str, Any]:
         """Consolidate release evidence without mutating or approving a job."""
 
+        if not self._readiness_lock.acquire(blocking=False):
+            raise AutoAnimError(
+                "BUSY",
+                "Production evidence verification is already running",
+                retryable=True,
+            )
+        try:
+            return self._production_readiness_unlocked(
+                performance_job_id,
+                direction_job_id=direction_job_id,
+                require_acting=require_acting,
+                require_body=require_body,
+                require_pbr=require_pbr,
+            )
+        finally:
+            self._readiness_lock.release()
+
+    def _production_readiness_unlocked(
+        self,
+        performance_job_id: str,
+        *,
+        direction_job_id: str | None = None,
+        require_acting: bool = False,
+        require_body: bool = False,
+        require_pbr: bool = True,
+    ) -> dict[str, Any]:
+        """Perform one single-flight verification with bounded GNM mesh batches."""
+
         try:
             performance = self.store.read(performance_job_id)
         except FileNotFoundError as exc:
@@ -659,13 +770,27 @@ class ApplicationService:
                 pass
 
         phone_evidence_artifacts_verified = False
-        if performance.get("kind") == "audio_animation":
+        phone_evidence_artifact_failure_reason: str | None = None
+        if (
+            performance.get("kind") == "audio_animation"
+            and not performance_manifest_verified
+        ):
+            phone_evidence_artifact_failure_reason = "legacy_unsealed_phone_evidence"
+        if (
+            performance.get("kind") == "audio_animation"
+            and performance_manifest_verified
+        ):
+            phone_evidence_artifact_failure_reason = (
+                "phone_evidence_missing_tampered_or_unreconstructable"
+            )
             try:
+                self.store.require_sealed(performance_job_id)
                 phone_paths: dict[str, Path] = {}
                 for logical_name in (
                     "phone_annotations",
                     "phone_events",
                     "phone_timing_report",
+                    "phone_articulation_report",
                     "normalized_audio",
                     "controls",
                 ):
@@ -682,12 +807,69 @@ class ApplicationService:
                 timing_document = json.loads(
                     phone_paths["phone_timing_report"].read_text(encoding="utf-8")
                 )
+                articulation_document = json.loads(
+                    phone_paths["phone_articulation_report"].read_text(
+                        encoding="utf-8"
+                    )
+                )
                 event_bindings = _mapping(
                     _mapping(event_document).get("bindings")
                 )
                 timing_bindings = _mapping(
                     _mapping(timing_document).get("annotation_bindings")
                 )
+                articulation_bindings = _mapping(
+                    _mapping(articulation_document).get("annotation_bindings")
+                )
+                articulation_evidence = _mapping(
+                    _mapping(articulation_document).get("evidence_bindings")
+                )
+                verifier_bundle = hashlib.sha256()
+                for verifier_source_name in (
+                    "gnm_adapter.py",
+                    "oral_validation.py",
+                    "phone_articulation.py",
+                    "phone_events.py",
+                ):
+                    verifier_bundle.update(verifier_source_name.encode("utf-8"))
+                    verifier_bundle.update(
+                        bytes.fromhex(
+                            sha256(
+                                PROJECT_ROOT
+                                / "src/autoanim_gnm"
+                                / verifier_source_name
+                            )
+                        )
+                    )
+                current_verifier = {
+                    "verifier_algorithm": PHONE_ARTICULATION_VERIFIER_ALGORITHM,
+                    "verifier_source_sha256": sha256(
+                        PROJECT_ROOT / "src/autoanim_gnm/phone_articulation.py"
+                    ),
+                    "verifier_bundle_sha256": verifier_bundle.hexdigest(),
+                    "numpy_version": np.__version__,
+                    "scipy_version": scipy.__version__,
+                    "gnm_head_asset_sha256": sha256(
+                        PROJECT_ROOT / "gnm/shape/data/versions/v3_0/gnm_head.npz"
+                    ),
+                    "landmark_regressor_sha256": sha256(
+                        PROJECT_ROOT / "gnm/shape/data/landmarks/head_sparse_68.txt"
+                    ),
+                    "expression_decoder_sha256": sha256(
+                        PROJECT_ROOT
+                        / "gnm/shape/data/semantic_sampler/expression_decoder_model.h5"
+                    ),
+                }
+                if any(
+                    articulation_evidence.get(name) != value
+                    for name, value in current_verifier.items()
+                ):
+                    phone_evidence_artifact_failure_reason = (
+                        "historical_phone_articulation_verifier_unavailable"
+                    )
+                    raise ValueError(
+                        "Phone articulation verifier or numerical runtime differs"
+                    )
                 phone_analysis = _mapping(
                     _mapping(performance.get("analysis")).get("phone_evidence")
                 )
@@ -741,6 +923,10 @@ class ApplicationService:
                     ):
                         raise ValueError("Normalized phone-evidence clock is invalid")
                     normalized_duration = audio.getnframes() / audio.getframerate()
+                _preflight_audio_controls_npz(
+                    phone_paths["controls"],
+                    maximum_frames=int(np.ceil(normalized_duration * 60.0)) + 1,
+                )
                 annotations = load_textgrid_phone_events(
                     phone_paths["phone_annotations"],
                     audio_path=retained_inputs[0],
@@ -753,6 +939,7 @@ class ApplicationService:
                 expected_event_document = annotations.as_dict()
 
                 identity = np.zeros(253, dtype=np.float32)
+                resolved_character_manifest_sha256: str | None = None
                 character_ref = _mapping(
                     _mapping(performance.get("model")).get("character")
                 )
@@ -764,7 +951,7 @@ class ApplicationService:
                     usage_scope = _mapping(performance.get("configuration")).get(
                         "usage_scope", "production"
                     )
-                    identity = self.characters.resolve(
+                    resolved_character = self.characters.resolve(
                         character_id,
                         character_revision_id,
                         usage_scope=(
@@ -772,7 +959,11 @@ class ApplicationService:
                             if isinstance(usage_scope, str)
                             else "production"
                         ),
-                    ).identity
+                    )
+                    identity = resolved_character.identity
+                    resolved_character_manifest_sha256 = (
+                        resolved_character.manifest_sha256
+                    )
                 with np.load(phone_paths["controls"], allow_pickle=False) as controls:
                     expression = np.asarray(controls["expression"], dtype=np.float32)
                     timestamps = np.asarray(controls["timestamps"], dtype=np.float64)
@@ -816,6 +1007,62 @@ class ApplicationService:
                         ),
                     ),
                 )
+                articulation_geometry = measure_articulation_geometry_from_controls(
+                    expression,
+                    identity,
+                    landmarks,
+                    adapter=adapter,
+                )
+                oral_geometry = validate_controls_npz(
+                    phone_paths["controls"],
+                    adapter=adapter,
+                    identity=identity,
+                )
+                articulation_calibration = diagnostic_articulation_calibration(
+                    bilabial_gap_interocular=min(
+                        contact_calibration.neutral_gap_interocular,
+                        max(
+                            0.006,
+                            contact_calibration.seal_gap_interocular + 0.003,
+                        ),
+                    ),
+                    neutral_landmarks=rig.compact_landmarks(rig.viseme("X")),
+                    rounded_landmarks=rig.compact_landmarks(rig.viseme("F")),
+                )
+                expected_articulation_document = evaluate_phone_articulation(
+                    annotations,
+                    timestamps_seconds=timestamps,
+                    lip_gap_interocular=oral_geometry.lip_gap_interocular,
+                    labiodental_gap_interocular=(
+                        articulation_geometry.labiodental_gap_interocular
+                    ),
+                    tongue_upper_teeth_gap_interocular=(
+                        oral_geometry.tongue_upper_teeth_gap_interocular
+                    ),
+                    mouth_width_interocular=(
+                        articulation_geometry.mouth_width_interocular
+                    ),
+                    calibration=articulation_calibration,
+                    evidence_bindings=articulation_evidence_bindings(
+                        controls_path=phone_paths["controls"],
+                        identity=identity,
+                        gnm_asset_path=(
+                            PROJECT_ROOT
+                            / "gnm/shape/data/versions/v3_0/gnm_head.npz"
+                        ),
+                        landmark_regressor_path=(
+                            PROJECT_ROOT
+                            / "gnm/shape/data/landmarks/head_sparse_68.txt"
+                        ),
+                        expression_decoder_path=(
+                            PROJECT_ROOT
+                            / "gnm/shape/data/semantic_sampler/expression_decoder_model.h5"
+                        ),
+                        character_revision_manifest_sha256=(
+                            resolved_character_manifest_sha256
+                        ),
+                    ),
+                )
                 phone_evidence_artifacts_verified = bool(
                     attachment_verified
                     and _mapping(event_document).get("schema_version")
@@ -824,19 +1071,28 @@ class ApplicationService:
                     and _mapping(timing_document).get("schema_version")
                     == PHONE_TIMING_REPORT_SCHEMA_VERSION
                     and timing_document == expected_timing_document
+                    and _mapping(articulation_document).get("schema_version")
+                    == PHONE_ARTICULATION_REPORT_SCHEMA_VERSION
+                    and articulation_document == expected_articulation_document
                     and isinstance(expected_audio_sha256, str)
                     and event_bindings.get("audio_sha256")
                     == expected_audio_sha256
                     and timing_bindings.get("audio_sha256")
                     == expected_audio_sha256
+                    and articulation_bindings.get("audio_sha256")
+                    == expected_audio_sha256
                     and event_bindings.get("textgrid_sha256")
                     == textgrid_sha256
                     and timing_bindings.get("textgrid_sha256")
+                    == textgrid_sha256
+                    and articulation_bindings.get("textgrid_sha256")
                     == textgrid_sha256
                     and phone_configuration.get("source_sha256")
                     == textgrid_sha256
                     and phone_configuration.get("motion_authority") is False
                     and timing_document == performance.get("phone_timing")
+                    and summarize_phone_articulation(articulation_document)
+                    == performance.get("phone_articulation")
                     and phone_analysis.get("present") is True
                     and phone_analysis.get("motion_authored_by_annotations")
                     is False
@@ -847,6 +1103,8 @@ class ApplicationService:
                     and phone_analysis.get("independently_reviewed")
                     == phone_review.get("independently_reviewed")
                 )
+                if phone_evidence_artifacts_verified:
+                    phone_evidence_artifact_failure_reason = None
             except (
                 AutoAnimError,
                 FileNotFoundError,
@@ -980,6 +1238,9 @@ class ApplicationService:
             ),
             phone_evidence_artifacts_verified=(
                 phone_evidence_artifacts_verified
+            ),
+            phone_evidence_artifact_failure_reason=(
+                phone_evidence_artifact_failure_reason
             ),
             audio_visual_repair_artifacts_verified=(
                 audio_visual_repair_artifacts_verified

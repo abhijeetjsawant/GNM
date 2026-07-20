@@ -11,6 +11,7 @@ from __future__ import annotations
 from bisect import bisect_right
 from dataclasses import dataclass
 from hashlib import sha256 as sha256_digest
+import json
 import math
 from pathlib import Path
 import re
@@ -28,6 +29,10 @@ TICKS_PER_SECOND = 48_000
 MAX_TEXTGRID_BYTES = 8 * 1024 * 1024
 MAX_PHONE_EVENTS = 100_000
 MAX_DURATION_SECONDS = 6 * 60 * 60
+MAX_PHONE_LABEL_BYTES = 64
+MAX_WORD_LABEL_BYTES = 256
+MAX_COPIED_WORD_BYTES = 1 * 1024 * 1024
+MAX_SERIALIZED_PHONE_EVENT_BYTES = 32 * 1024 * 1024
 
 _ITEM_RE = re.compile(
     r"(?ms)^\s*item\s*\[\d+\]\s*:\s*(.*?)(?=^\s*item\s*\[\d+\]\s*:|\Z)"
@@ -148,6 +153,20 @@ class PhoneEvent:
     voiced: bool | None
     rounded: bool | None
 
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.source_label, str)
+            or len(self.source_label.encode("utf-8")) > MAX_PHONE_LABEL_BYTES
+            or not isinstance(self.phone, str)
+            or len(self.phone.encode("utf-8")) > MAX_PHONE_LABEL_BYTES
+        ):
+            raise _invalid("Phone event label exceeds the bounded evidence schema")
+        if self.word is not None and (
+            not isinstance(self.word, str)
+            or len(self.word.encode("utf-8")) > MAX_WORD_LABEL_BYTES
+        ):
+            raise _invalid("Phone event word exceeds the bounded evidence schema")
+
     @property
     def is_silence(self) -> bool:
         return self.phone in _SILENCE or self.manner == "silence"
@@ -189,6 +208,21 @@ class PhoneAnnotationSet:
     apex_tier: str | None
     independently_reviewed: bool
     reviewer: str | None
+
+    def __post_init__(self) -> None:
+        if len(self.events) > MAX_PHONE_EVENTS:
+            raise _invalid("Phone annotation set contains too many events")
+        copied_word_bytes = sum(
+            len(event.word.encode("utf-8"))
+            for event in self.events
+            if event.word is not None
+        )
+        if copied_word_bytes > MAX_COPIED_WORD_BYTES:
+            raise _invalid(
+                "Phone annotation words exceed the bounded copied-label budget",
+                bytes=copied_word_bytes,
+                maximum=MAX_COPIED_WORD_BYTES,
+            )
 
     @property
     def production_review_complete(self) -> bool:
@@ -490,7 +524,23 @@ def _sha256_file(path: Path) -> str:
 
 
 def write_phone_events(path: str | Path, annotations: PhoneAnnotationSet) -> Path:
-    return write_json(path, annotations.as_dict())
+    document = annotations.as_dict()
+    payload_bytes = len(
+        json.dumps(
+            document,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ) + 1
+    if payload_bytes > MAX_SERIALIZED_PHONE_EVENT_BYTES:
+        raise _invalid(
+            "Serialized phone-event evidence exceeds the bounded artifact size",
+            bytes=payload_bytes,
+            maximum=MAX_SERIALIZED_PHONE_EVENT_BYTES,
+        )
+    return write_json(path, document)
 
 
 def evaluate_bilabial_timing(
@@ -636,6 +686,10 @@ def evaluate_bilabial_timing(
 
 
 __all__ = [
+    "MAX_COPIED_WORD_BYTES",
+    "MAX_PHONE_LABEL_BYTES",
+    "MAX_SERIALIZED_PHONE_EVENT_BYTES",
+    "MAX_WORD_LABEL_BYTES",
     "PHONE_EVENT_SCHEMA_VERSION",
     "PHONE_TIMING_REPORT_SCHEMA_VERSION",
     "PhoneAnnotationSet",

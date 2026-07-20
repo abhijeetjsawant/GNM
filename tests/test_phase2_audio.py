@@ -46,6 +46,9 @@ from autoanim_gnm.audio_pipeline import (
 )
 from autoanim_gnm.errors import AutoAnimError
 from autoanim_gnm.lipsync_quality import evaluate_lipsync_quality
+from autoanim_gnm.phone_articulation import (
+    PHONE_ARTICULATION_REPORT_SCHEMA_VERSION,
+)
 from autoanim_gnm.rig import ControlRig
 
 
@@ -1159,6 +1162,24 @@ def test_real_audio_phone_evidence_is_retained_scored_and_motion_inert(
     }
     assert evidence["phone_timing"]["bilabial_event_count"] == 6
     assert evidence["phone_timing"]["production_gate"]["passed"] is False
+    articulation = evidence["phone_articulation"]
+    assert articulation["schema_version"] == PHONE_ARTICULATION_REPORT_SCHEMA_VERSION
+    assert set(articulation["families"]) == {
+        "bilabial",
+        "labiodental",
+        "tongue_upper_teeth",
+        "rounded",
+    }
+    assert articulation["families"]["bilabial"]["event_count"] == 6
+    assert "events" not in articulation["families"]["bilabial"]
+    assert articulation["families"]["bilabial"]["event_detail_count"] == 6
+    assert articulation["calibration"]["production_eligible"] is False
+    assert articulation["production_gate"]["passed"] is False
+    assert "independent_articulation_state_annotations_not_implemented" in (
+        articulation["production_gate"]["failures"]
+    )
+    assert articulation["claims"]["phone_articulation_gate_passed"] is False
+    assert articulation["claims"]["production_validated"] is False
     assert (evidence_dir / "phone-annotations.TextGrid").read_bytes() == (
         LIBRISPEECH_MFA.read_bytes()
     )
@@ -1175,6 +1196,17 @@ def test_real_audio_phone_evidence_is_retained_scored_and_motion_inert(
         "production_review_complete": False,
     }
     assert (evidence_dir / "phone-timing-report.json").is_file()
+    articulation_document = json.loads(
+        (evidence_dir / "phone-articulation-report.json").read_text(encoding="utf-8")
+    )
+    assert len(articulation_document["families"]["bilabial"]["events"]) == 6
+    assert articulation_document["evidence_bindings"]["controls_sha256"]
+    assert articulation_document["evidence_bindings"]["identity_f32le_sha256"]
+    assert articulation_document["evidence_bindings"]["gnm_head_asset_sha256"]
+    assert articulation_document["evidence_bindings"]["landmark_regressor_sha256"]
+    assert articulation_document["evidence_bindings"]["expression_decoder_sha256"]
+    assert articulation_document["evidence_bindings"]["verifier_source_sha256"]
+    assert articulation_document["evidence_bindings"]["verifier_bundle_sha256"]
     with np.load(baseline_dir / "controls.npz", allow_pickle=False) as before:
         with np.load(evidence_dir / "controls.npz", allow_pickle=False) as after:
             assert before.files == after.files

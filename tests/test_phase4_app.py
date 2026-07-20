@@ -106,6 +106,9 @@ def test_home_and_health(tmp_path: Path) -> None:
     assert "mouth_aperture" in home.text
     assert 'id="audio-phone-textgrid"' in home.text
     assert "phone_annotations_reviewed" in home.text
+    assert "Phone-span proxy diagnostics" in home.text
+    assert "production blocked by schema" in home.text
+    assert "Performance evidence:" in home.text
     assert "audio_visual_repair" in home.text
     assert "Conservative learned audio repair" in home.text
     assert 'id="audio-visual-repair"' in home.text
@@ -415,6 +418,17 @@ def test_api_and_cli_real_audio_parity(tmp_path: Path) -> None:
     assert readiness.json()["gates"]["performance"]["evidence"][
         "phone_evidence_artifacts_verified"
     ] is True
+    articulation_path = api_job / api_result["artifacts"][
+        "phone_articulation_report"
+    ]["name"]
+    articulation_path.write_text("{}\n", encoding="utf-8")
+    tampered_readiness = client.get(
+        f"/api/jobs/{api_result['job_id']}/production-readiness"
+    )
+    assert tampered_readiness.status_code == 200
+    assert tampered_readiness.json()["gates"]["performance"]["evidence"][
+        "phone_evidence_artifacts_verified"
+    ] is False
     assert _reference_frame_hashes(api_preview) == _reference_frame_hashes(cli_preview)
 
 

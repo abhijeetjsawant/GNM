@@ -6,9 +6,35 @@ Date: 2026-07-19
 
 GNM revision: `3de70dfca5f3244620f44103c24b7cedc0dcb8b6`
 
-AutoAnim baseline: `0ad5cb95ecfe932b2046b7fbdc7df4ba3b82e86c`
+AutoAnim baseline: `1b9b8f18b211c9ee7b45af39668daacd32fd70fc`
 
 ## Implementation ledger
+
+- **A1 multi-articulator diagnostic foundation — implemented, reviewed, and
+  regression-green.** `autoanim.phone-articulation-report/1.0` records bilabial inner-lip
+  closure, coarse lower-lip/upper-teeth and tongue/upper-teeth proximity, and
+  rounded-mouth width against contextual phone spans. It measures un-clipped
+  global proxy-run boundaries, uses exact 30/60 fps ticks, binds exact controls,
+  identity, GNM, 68-point regressor and decoder assets, and is reconstructed in bounded GNM mesh
+  batches from a sealed job. It never changes animation. Independent review found that
+  normal phone intervals are not articulatory contact-state labels and that the
+  current F/V and tongue full-surface distances do not separate intended GNM
+  prototypes. The report therefore exposes only a `phone_span_proxy_gate`; its
+  `production_gate` is structurally false. A separate reviewed articulation
+  tier, anatomical target surfaces, protrusion measurement, a verified
+  character profile, speaker-balanced corpus and perceptual study remain
+  mandatory. The full current research and dependency decision is recorded in
+  `PRODUCTION_RESEARCH_UPDATE_2026-07-20.md`. Final verification after the last
+  source change: `562 passed, 1 skipped` in the complete Python suite and `12
+  passed` in the release-mode macOS package. Retained real learned-audio job
+  `01kxyj1bydcsm1r8w0sjcwnhcn` processed eight seconds of checksum-pinned
+  LibriSpeech with its MFA TextGrid into 240 animation frames, a playable GLB
+  and preview, sealed oral reports, and a reconstructable articulation report.
+  All 240 oral frames were evaluated with zero reported tongue-collision or
+  lip-inversion risk. Its coarse diagnostic F1 values remain poor or unavailable
+  (bilabial/labiodental unavailable, rounded `0.1143`, tongue `0.1468`), so this
+  run validates the evidence path and simultaneously confirms that the current
+  motion is not production-qualified.
 
 - **E0 phone-evidence slice — implemented, reviewed, and regression-green.** The app
   imports bounded long-format Praat/MFA TextGrid phone, word and optional apex

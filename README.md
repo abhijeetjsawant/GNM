@@ -151,6 +151,7 @@ Research and implementation evidence:
 - [production lipsync research, benchmark, and executed plan](docs/PRODUCTION_LIPSYNC_RESEARCH.md)
 - [current audio production audit and remaining gates](docs/AUDIO_PRODUCTION_RESEARCH.md)
 - [integrated production capture execution plan and implementation ledger](docs/PRODUCTION_CAPTURE_EXECUTION_PLAN.md)
+- [2026-07-20 production audio, identity/texture, video-follow, and native-UX research update](docs/PRODUCTION_RESEARCH_UPDATE_2026-07-20.md)
 - [expanded multiview, texture, video, viewer research and phased plan](docs/EXPANDED_RESEARCH_AND_PLAN.md)
 - [calibrated multiview camera contract and held-out evaluation](docs/CALIBRATED_MULTIVIEW.md)
 - [interactive viewer design and validation contract](docs/VIEWER_RESEARCH.md)

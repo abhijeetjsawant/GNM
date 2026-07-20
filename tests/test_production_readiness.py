@@ -1,10 +1,16 @@
 import hashlib
 import json
 from pathlib import Path
+import zipfile
 
 from fastapi.testclient import TestClient
+import pytest
 
 from autoanim_gnm.api import create_app
+from autoanim_gnm.errors import AutoAnimError
+from autoanim_gnm.phone_articulation import (
+    PHONE_ARTICULATION_REPORT_SCHEMA_VERSION,
+)
 from autoanim_gnm.production_readiness import (
     SCHEMA_VERSION,
     evaluate_production_readiness,
@@ -12,6 +18,10 @@ from autoanim_gnm.production_readiness import (
 from autoanim_gnm.phone_events import (
     PHONE_EVENT_SCHEMA_VERSION,
     PHONE_TIMING_REPORT_SCHEMA_VERSION,
+)
+from autoanim_gnm.service import (
+    _AUDIO_CONTROL_NPZ_MEMBERS,
+    _preflight_audio_controls_npz,
 )
 
 
@@ -45,6 +55,10 @@ def _approved_fixture() -> tuple[dict, dict, dict]:
             },
         },
         "phone_timing": {"production_gate": {"passed": True, "failures": []}},
+        "phone_articulation": {
+            "schema_version": PHONE_ARTICULATION_REPORT_SCHEMA_VERSION,
+            "production_gate": {"passed": True, "failures": []}
+        },
         "animation": {"production_validated": True},
         "quality": {"production_gate": {"passed": True, "failures": []}},
         "oral_validation": {
@@ -195,6 +209,104 @@ def test_audio_release_gate_requires_hash_verified_phone_artifacts() -> None:
     assert report["gates"]["performance"]["evidence"][
         "phone_evidence_artifacts_verified"
     ] is False
+
+
+def test_audio_release_gate_requires_multi_articulator_qualification() -> None:
+    performance, character, _ = _approved_fixture()
+    performance.pop("phone_articulation")
+
+    report = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        phone_evidence_artifacts_verified=True,
+        character_revision=character,
+    )
+
+    evidence = report["gates"]["performance"]["evidence"]
+    assert report["publishable"] is False
+    assert evidence["phone_articulation_gate_passed"] is False
+    assert evidence["phone_articulation_failures"] == [
+        "phone_articulation_report_missing_or_legacy_schema"
+    ]
+
+
+def test_audio_release_gate_rejects_unknown_articulation_schema() -> None:
+    performance, character, _ = _approved_fixture()
+    performance["phone_articulation"]["schema_version"] = (
+        "autoanim.phone-articulation-report/999.0"
+    )
+
+    report = evaluate_production_readiness(
+        performance,
+        performance_manifest_verified=True,
+        source_input_verified=True,
+        delivery_artifact_verified=True,
+        phone_evidence_artifacts_verified=True,
+        character_revision=character,
+    )
+
+    evidence = report["gates"]["performance"]["evidence"]
+    assert report["publishable"] is False
+    assert evidence["phone_articulation_failures"] == [
+        "phone_articulation_report_missing_or_legacy_schema"
+    ]
+
+
+def test_readiness_verification_is_single_flight(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    service = app.state.service
+    assert service._readiness_lock.acquire(blocking=False)
+    try:
+        with pytest.raises(AutoAnimError) as error:
+            service.production_readiness("0" * 26)
+        assert error.value.code == "BUSY"
+        assert error.value.retryable is True
+    finally:
+        service._readiness_lock.release()
+
+
+def test_unsealed_legacy_audio_skips_phone_artifact_reconstruction(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    service = app.state.service
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"legacy source")
+    job_id, job_dir, _, manifest = service.store.start("audio_animation", source, {})
+    manifest.pop("integrity", None)
+    manifest.update(
+        {
+            "status": "succeeded",
+            "analysis": {"phone_evidence": {"present": True}},
+            "phone_articulation": {
+                "schema_version": "autoanim.phone-articulation-report/1.0",
+                "production_gate": {"passed": False, "failures": ["diagnostic"]},
+            },
+        }
+    )
+    (job_dir / "result.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = service.production_readiness(job_id)
+    evidence = report["gates"]["performance"]["evidence"]
+    assert evidence["phone_evidence_artifacts_verified"] is False
+    assert evidence["phone_evidence_artifact_failure_reason"] == (
+        "legacy_unsealed_phone_evidence"
+    )
+
+
+def test_audio_control_npz_preflight_rejects_expansion_before_numpy_load(
+    tmp_path: Path,
+) -> None:
+    archive_path = tmp_path / "controls.npz"
+    with zipfile.ZipFile(
+        archive_path, "w", compression=zipfile.ZIP_DEFLATED
+    ) as archive:
+        for name in sorted(_AUDIO_CONTROL_NPZ_MEMBERS):
+            archive.writestr(name, b"0" * 200_000)
+
+    assert archive_path.stat().st_size < 100_000
+    with pytest.raises(ValueError, match="expanded bytes"):
+        _preflight_audio_controls_npz(archive_path, maximum_frames=2)
 
 
 def test_service_rejects_schema_headers_with_missing_atomic_phone_evidence(

@@ -58,6 +58,13 @@ from .phone_events import (
     load_textgrid_phone_events,
     write_phone_events,
 )
+from .phone_articulation import (
+    articulation_evidence_bindings,
+    diagnostic_articulation_calibration,
+    evaluate_phone_articulation,
+    measure_articulation_geometry_from_controls,
+    summarize_phone_articulation,
+)
 from .rig import ControlRig
 from .semantic_decoder import ExpressionDecoder
 from .serialization import write_json, write_npz
@@ -1621,6 +1628,7 @@ def run_audio_pipeline(
         fps=track.fps,
     )
     phone_timing: dict[str, Any] | None = None
+    phone_articulation: dict[str, Any] | None = None
     if phone_annotations is not None:
         interocular = float(
             np.linalg.norm(quality_landmarks[0, 36] - quality_landmarks[0, 45])
@@ -1653,6 +1661,66 @@ def run_audio_pipeline(
         )
         write_json(output_dir / "phone-timing-report.json", phone_timing)
         phone_artifacts["phone_timing_report"] = "phone-timing-report.json"
+        articulation_oral_controls = validate_controls_npz(
+            output_dir / "controls.npz",
+            adapter=adapter,
+            identity=identity_value,
+        )
+        articulation_geometry = measure_articulation_geometry_from_controls(
+            track.expression,
+            identity_value,
+            quality_landmarks,
+            adapter=adapter,
+        )
+        articulation_calibration = diagnostic_articulation_calibration(
+            bilabial_gap_interocular=contact_threshold,
+            neutral_landmarks=rig.compact_landmarks(rig.viseme("X")),
+            rounded_landmarks=rig.compact_landmarks(rig.viseme("F")),
+        )
+        phone_articulation_report = evaluate_phone_articulation(
+            phone_annotations,
+            timestamps_seconds=track.timestamps,
+            lip_gap_interocular=articulation_oral_controls.lip_gap_interocular,
+            labiodental_gap_interocular=(
+                articulation_geometry.labiodental_gap_interocular
+            ),
+            tongue_upper_teeth_gap_interocular=(
+                articulation_oral_controls.tongue_upper_teeth_gap_interocular
+            ),
+            mouth_width_interocular=articulation_geometry.mouth_width_interocular,
+            calibration=articulation_calibration,
+            evidence_bindings=articulation_evidence_bindings(
+                controls_path=output_dir / "controls.npz",
+                identity=identity_value,
+                gnm_asset_path=(
+                    Path(__file__).resolve().parents[2]
+                    / "gnm/shape/data/versions/v3_0/gnm_head.npz"
+                ),
+                landmark_regressor_path=(
+                    Path(__file__).resolve().parents[2]
+                    / "gnm/shape/data/landmarks/head_sparse_68.txt"
+                ),
+                expression_decoder_path=(
+                    Path(__file__).resolve().parents[2]
+                    / "gnm/shape/data/semantic_sampler/expression_decoder_model.h5"
+                ),
+                character_revision_manifest_sha256=(
+                    character_ref.get("revision_manifest_sha256")
+                    if isinstance(character_ref, dict)
+                    else None
+                ),
+            ),
+        )
+        phone_articulation = summarize_phone_articulation(
+            phone_articulation_report
+        )
+        write_json(
+            output_dir / "phone-articulation-report.json",
+            phone_articulation_report,
+        )
+        phone_artifacts["phone_articulation_report"] = (
+            "phone-articulation-report.json"
+        )
     warnings: list[str] = []
     if has_external_face_controls:
         warnings.extend(
@@ -1679,6 +1747,17 @@ def run_audio_pipeline(
             "PHONE_EVIDENCE_NOT_PRODUCTION_QUALIFIED: the TextGrid is retained and "
             "geometry-scored, but reviewed apex coverage, event counts, or timing gates "
             "are incomplete. It does not alter the animation in this evidence phase."
+        )
+    if (
+        phone_articulation is not None
+        and not phone_articulation["production_gate"]["passed"]
+    ):
+        warnings.append(
+            "PHONE_ARTICULATION_DIAGNOSTIC_ONLY: bilabial, labiodental, tongue-"
+            "proximity, rounding-width, phone-context false-positive, and un-clipped "
+            "proxy-run metrics were recorded. Phone spans are not independent "
+            "articulation-state truth, and the unsigned target surfaces/protrusion "
+            "are unvalidated. This schema cannot approve production or alter motion."
         )
     if not analysis.validated:
         warnings.append(EMOTION_CAVEAT)
@@ -1913,6 +1992,7 @@ def run_audio_pipeline(
         },
         "quality": quality.as_dict(),
         "phone_timing": phone_timing,
+        "phone_articulation": phone_articulation,
         "oral_validation": {
             "schema_version": oral_control_report["schema_version"],
             "status": oral_control_report["status"],

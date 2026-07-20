@@ -6,8 +6,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import autoanim_gnm.phone_events as phone_events_module
 from autoanim_gnm.errors import AutoAnimError
 from autoanim_gnm.phone_events import (
+    MAX_COPIED_WORD_BYTES,
+    PhoneAnnotationSet,
+    PhoneEvent,
     TICKS_PER_SECOND,
     evaluate_bilabial_timing,
     load_textgrid_phone_events,
@@ -156,6 +160,60 @@ def test_textgrid_overlap_and_unreviewed_reviewer_claim_fail_closed(tmp_path: Pa
             duration_seconds=0.5,
             independently_reviewed=True,
         )
+
+
+def test_textgrid_and_copied_word_labels_are_bounded(tmp_path: Path) -> None:
+    audio, grid = _files(
+        tmp_path,
+        _textgrid(apex=False).replace('text = "pea"', f'text = "{"w" * 257}"'),
+    )
+    with pytest.raises(AutoAnimError, match="word exceeds"):
+        load_textgrid_phone_events(grid, audio_path=audio, duration_seconds=0.5)
+
+    event = PhoneEvent(
+        event_id="phone_000001",
+        phone="P",
+        source_label="P",
+        word="w" * 256,
+        start_tick=0,
+        apex_tick=1,
+        end_tick=2,
+        apex_reviewed=False,
+        stress=None,
+        manner="stop",
+        place="bilabial",
+        voiced=False,
+        rounded=False,
+    )
+    excessive_count = MAX_COPIED_WORD_BYTES // 256 + 1
+    with pytest.raises(AutoAnimError, match="copied-label budget"):
+        PhoneAnnotationSet(
+            events=(event,) * excessive_count,
+            duration_ticks=2,
+            source_textgrid_sha256="1" * 64,
+            source_audio_sha256="2" * 64,
+            phone_tier="phones",
+            word_tier="words",
+            apex_tier=None,
+            independently_reviewed=False,
+            reviewer=None,
+        )
+
+
+def test_serialized_phone_event_artifact_has_a_hard_byte_cap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    audio, grid = _files(tmp_path, _textgrid(apex=False))
+    annotations = load_textgrid_phone_events(
+        grid, audio_path=audio, duration_seconds=0.5
+    )
+    monkeypatch.setattr(
+        phone_events_module,
+        "MAX_SERIALIZED_PHONE_EVENT_BYTES",
+        64,
+    )
+    with pytest.raises(AutoAnimError, match="artifact size"):
+        write_phone_events(tmp_path / "events.json", annotations)
 
 
 def test_bilabial_evaluator_scores_geometry_but_withholds_production(tmp_path: Path) -> None:

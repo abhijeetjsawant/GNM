@@ -383,6 +383,34 @@ proximity risks. GNM tongue controls and isolated tongue geometry were active
 on 209/211 frames. This is structural evidence, not independent phoneme,
 surface-collision, visibility or perceptual approval.
 
+Audio jobs with a TextGrid now also emit
+`phone-articulation-report.json` (`autoanim.phone-articulation-report/1.0`).
+Unlike the older bilabial-only timing lane, it instruments four signals on the
+GNM geometry: inner-lip closure for P/B/M, lower-lip/upper-teeth proximity for
+F/V, tongue/upper-teeth proximity for selected alveolar/dental phones, and mouth
+width for rounded phones. Phone spans receive a one-frame contextual dilation;
+predicted proxy components are then measured with their un-clipped global
+boundaries. The report is bound to exact controls, identity, GNM and decoder
+assets (including the 68-point landmark regressor and verifier runtime), and rebuilt in bounded mesh batches from sealed controls during
+readiness. Full expression and 68-point landmark tracks remain materialized
+within the ten-minute audio input limit.
+
+These are diagnostic phone-context statistics, not contact labels. Ordinary
+phone intervals do not independently label articulatory onset/contact/release,
+and the current unsigned full-surface F/V and tongue distances do not separate
+the intended GNM targets. Rounded width does not measure protrusion. The schema
+therefore exposes a `phone_span_proxy_gate` for instrumentation but hard-codes
+`production_gate.passed=false`. Production requires a new evidence schema with
+reviewed articulation-state/negative intervals, anatomical character-bound
+surfaces, a verified approval record, held-out corpus calibration and perceptual
+readability evidence.
+
+TextGrid evidence is bounded before persistence: phone labels are at most 64
+UTF-8 bytes, word labels at most 256 bytes, copied word references have a 1 MiB
+job budget, and the serialized phone-event artifact has a 32 MiB ceiling. This
+prevents one long word span from being multiplied into an unbounded per-phone
+or per-articulation payload.
+
 The next audio backend is not another smoothing layer. It is an external,
 GPU-capable Audio2Face v3 sequence worker behind the already versioned sequence
 contract; the Mac service remains the evidence/retarget/orchestration host. An

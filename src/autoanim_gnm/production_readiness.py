@@ -13,9 +13,10 @@ from .audio_visual_repair import (
     AUDIO_VISUAL_REPAIR_POLICY,
     AUDIO_VISUAL_REPAIR_SCHEMA_VERSION,
 )
+from .phone_articulation import PHONE_ARTICULATION_REPORT_SCHEMA_VERSION
 
 
-SCHEMA_VERSION = "autoanim.production-readiness/1.1"
+SCHEMA_VERSION = "autoanim.production-readiness/1.2"
 _PERFORMANCE_KINDS = frozenset({"audio_animation", "video_performance"})
 _PBR_RUNTIME_MAPS = frozenset(
     {"base_color", "normal", "roughness", "specular_color"}
@@ -66,6 +67,7 @@ def evaluate_production_readiness(
     capture_session_artifact_verified: bool = False,
     capture_session_production_claims_verified: bool = False,
     phone_evidence_artifacts_verified: bool = False,
+    phone_evidence_artifact_failure_reason: str | None = None,
     audio_visual_repair_artifacts_verified: bool = False,
     audio_visual_repair_qualification_verified: bool = False,
     character_revision: dict[str, Any] | None = None,
@@ -239,6 +241,14 @@ def evaluate_production_readiness(
         phone_timing_gate = _mapping(
             _mapping(performance.get("phone_timing")).get("production_gate")
         )
+        phone_articulation = _mapping(performance.get("phone_articulation"))
+        phone_articulation_gate = _mapping(
+            phone_articulation.get("production_gate")
+        )
+        phone_articulation_present = bool(
+            phone_articulation.get("schema_version")
+            == PHONE_ARTICULATION_REPORT_SCHEMA_VERSION
+        )
         quality_gate = _mapping(_mapping(performance.get("quality")).get("production_gate"))
         animation = _mapping(performance.get("animation"))
         performance_passed = bool(
@@ -247,6 +257,8 @@ def evaluate_production_readiness(
             and phone_evidence.get("independently_reviewed")
             and phone_evidence.get("production_review_complete")
             and phone_timing_gate.get("passed")
+            and phone_articulation_present
+            and phone_articulation_gate.get("passed")
             and phone_evidence_artifacts_verified
             and quality_gate.get("passed")
             and animation.get("production_validated")
@@ -261,7 +273,24 @@ def evaluate_production_readiness(
             "phone_timing_failures": _string_list(
                 phone_timing_gate.get("failures")
             ),
+            "phone_articulation_gate_passed": phone_articulation_gate.get(
+                "passed", False
+            ),
+            "phone_articulation_failures": _string_list(
+                phone_articulation_gate.get("failures")
+            )
+            or (
+                []
+                if phone_articulation_present
+                else ["phone_articulation_report_missing_or_legacy_schema"]
+            ),
             "phone_evidence_artifacts_verified": phone_evidence_artifacts_verified,
+            "phone_evidence_artifact_failure_reason": (
+                None
+                if phone_evidence_artifacts_verified
+                else phone_evidence_artifact_failure_reason
+                or "phone_evidence_missing_or_invalid"
+            ),
             "independent_quality_gate_passed": quality_gate.get("passed", False),
             "quality_failures": _string_list(quality_gate.get("failures")),
             "animation_production_validated": animation.get(

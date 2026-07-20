@@ -1,13 +1,13 @@
 # Unified production-readiness contract
 
-Status: implemented fail-closed release evidence, 2026-07-19
+Status: implemented fail-closed release evidence, 2026-07-20
 
 ## Purpose
 
 AutoAnim's reconstruction, character, audio, video, oral, acting, body, and
 viewer stages can all produce useful artifacts before they are production
 validated. A successful job or a renderable GLB is therefore not a publish
-decision. `autoanim.production-readiness/1.1` collects the evidence for one
+decision. `autoanim.production-readiness/1.2` collects the evidence for one
 performance take into a single machine-readable report without mutating or
 approving any asset.
 
@@ -37,7 +37,7 @@ report; it does not falsify that capability's evidence.
 | `identity` | Independent identity/hidden-geometry validation recorded on the immutable source character revision. |
 | `appearance` | When PBR is required: exact runtime base color, normal, roughness and specular maps plus pore/detail, unseen-light, and appearance production approval. |
 | `oral_animation` | Every source frame and viewer reconstruction structurally validated, no reported lip-order or tongue/teeth risk, and separate phone/tongue/collision/perceptual approval. |
-| `performance` | Audio: learned source, independently reviewed phone/apex annotations, passing timing report, hash-verified evidence artifacts, independent prototype quality gate, and approved animation profile. Video: verified Observation-v2, regional Observation-v3 and CaptureSession artifacts, approved capture, subject calibration, and labeled-neutral calibration. Observation v3 remains diagnostic and cannot itself approve a take. |
+| `performance` | Audio: learned source, independently reviewed articulatory onset/contact/apex/release annotations, passing legacy timing and future qualified multi-articulator evidence, hash-verified artifacts, independent prototype quality, and an approved animation profile. The current A1 report has phone-span proxy diagnostics only and can never pass this release gate. Video: verified Observation-v2, regional Observation-v3 and CaptureSession artifacts, approved capture, subject calibration, and labeled-neutral calibration. Observation v3 remains diagnostic and cannot itself approve a take. |
 | `delivery` | Full-track, source-clocked animated GLB whose bytes match the signed artifact ledger. |
 | `acting` | When required: a sealed direction job linked to this exact performance, edited/compiled and explicitly artist-approved. An LLM proposal never passes this gate. |
 | `body` | When required: attached body/head seam plus approved body motion and contacts. A canonical skeleton or preview track alone never passes. |
@@ -64,6 +64,21 @@ path-free CaptureSession against all referenced sealed artifacts. Tampering
 after job completion therefore changes the relevant integrity or evidence gate
 to failed even if an old UI label says otherwise. Character consent and
 material-rights expiry are evaluated at request time.
+
+For audio with a retained TextGrid, readiness also re-parses the immutable
+annotation, re-evaluates complete GNM oral geometry in bounded mesh batches from
+the sealed control track, and byte-compares both timing reports with their
+artifact-ledger and result bindings. Exact controls, identity, GNM, 68-point
+regressor, decoder, verifier-source and NumPy/SciPy bindings are included. A
+runtime/verifier mismatch returns `historical_phone_articulation_verifier_unavailable`
+instead of being mislabeled as artifact tampering. One process-level verifier lock prevents concurrent GETs
+from multiplying reconstruction work. Unsealed legacy manifests are never
+opened for A1 reconstruction. Missing older-schema articulation evidence or any
+altered report fails the evidence gate; it is never inferred from a summary
+boolean. Expression controls and 68-point landmarks remain full-track arrays;
+their practical bound is the audio pipeline's ten-minute, 30/60 fps input cap.
+Before NumPy opens a control archive, readiness checks its exact member set and
+compressed/expanded byte ceiling derived from that duration cap.
 
 Readiness evaluation is read-only. Future approval operations must create a
 new immutable, signed evidence revision or review record; they must not rewrite
