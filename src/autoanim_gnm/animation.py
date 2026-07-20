@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
+from functools import lru_cache
 from hashlib import sha256
 import json
 import math
@@ -12,6 +13,11 @@ import subprocess
 
 import numpy as np
 
+from .artifacts import sha256 as artifact_sha256
+from .articulation_projection import (
+    articulation_array_sha256,
+    project_articulation_trajectory,
+)
 from .audio import MouthCue, ProsodyTrack
 from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
@@ -42,6 +48,9 @@ class AnimationTrack:
     contact_continuity_restored: np.ndarray
     contact_corrected: np.ndarray
     lip_order_repaired: np.ndarray
+    articulation_projection_report: dict[str, object] | None = None
+    articulation_projection_desired: np.ndarray | None = None
+    articulation_projection_output: np.ndarray | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +84,76 @@ def _smooth_alpha(value: float) -> float:
 CUE_ORDER = "XABCDEFGH"
 _CUE_INDEX = {cue: index for index, cue in enumerate(CUE_ORDER)}
 _DOMINANCE = {"X": 1.15, "A": 2.8, "B": 1.0, "C": 1.0, "D": 1.05, "E": 1.1, "F": 1.2, "G": 2.2, "H": 1.8}
+
+
+@lru_cache(maxsize=1)
+def _static_articulation_rig_binding() -> tuple[str, str]:
+    project_root = Path(__file__).resolve().parents[2]
+    return (
+        artifact_sha256(project_root / "gnm/shape/data/versions/v3_0/gnm_head.npz"),
+        artifact_sha256(project_root / "gnm/shape/data/landmarks/head_sparse_68.txt"),
+    )
+
+
+def _articulation_evidence_bindings(
+    rig: ControlRig,
+) -> tuple[dict[str, str], dict[str, str]]:
+    metric_contract = {
+        "mouth_step": "autoanim.face-local-mouth-20-landmarks-IOD/1.0",
+        "mouth_gap": "autoanim.inner-lip-3-pair-mean-IOD/1.0",
+        "lip_order": "autoanim.inner-lip-order-minimum-IOD/1.0",
+    }
+    gnm_head_sha256, landmark_regressor_sha256 = _static_articulation_rig_binding()
+    rig_binding = {
+        "gnm_head_sha256": gnm_head_sha256,
+        "landmark_regressor_sha256": landmark_regressor_sha256,
+        "identity_array_sha256": articulation_array_sha256(rig.identity),
+    }
+    return metric_contract, rig_binding
+
+
+def _articulation_projection_config(
+    *, external_face_controls: bool
+) -> dict[str, float]:
+    """Return the frozen compiler-specific oral projection contract."""
+
+    if external_face_controls:
+        maximum_step = 0.039
+        maximum_speed = 1.17
+        contact_horizon_seconds = 4.0 / 30.0
+    else:
+        maximum_step = 0.0365
+        maximum_speed = 1.095
+        contact_horizon_seconds = 8.0 / 30.0
+    return {
+        "maximum_step": maximum_step,
+        "maximum_speed": maximum_speed,
+        "contact_tolerance": 0.001,
+        "lip_order_floor": -0.0005,
+        "contact_horizon_seconds": contact_horizon_seconds,
+    }
+
+
+def _articulation_projection_compiler_metadata(
+    *, external_face_controls: bool, frame_count: int
+) -> dict[str, object]:
+    """Describe the exact authored stage captured by the desired snapshot."""
+
+    if external_face_controls:
+        snapshot_stage = (
+            "post_resample_post_affect_post_contact_post_lip_order_post_boundary_rest"
+        )
+        boundary_frames = [0, frame_count - 1]
+    else:
+        snapshot_stage = "post_resample_post_affect_post_contact_post_terminal_rest"
+        boundary_frames = [frame_count - 1]
+    return {
+        "desired_snapshot_stage": snapshot_stage,
+        "boundary_rest_frames": boundary_frames,
+        "boundary_rest_range": [200, 382],
+        "boundary_rest_included_before_desired_hash": True,
+        "lip_order_repair_included_before_desired_hash": external_face_controls,
+    }
 
 
 def _smooth_array(value: np.ndarray) -> np.ndarray:
@@ -358,154 +437,6 @@ def _mouth_step_quality_ratio(
             initial=0.0,
         )
     )
-
-
-def _limit_mouth_step_quality_space(
-    rig: ControlRig,
-    previous: np.ndarray,
-    target: np.ndarray,
-    *,
-    maximum_ratio: float,
-) -> tuple[np.ndarray, bool]:
-    """Cap motion in the exact face-local metric used by quality scoring.
-
-    ``ControlRig.limit_mouth_step`` measures raw landmark displacement against
-    a fixed neutral interocular distance. The production gate removes the
-    frame's in-plane pose and normalizes each frame independently, which made
-    the old 0.060 compiler cap report as 0.0608 after evaluation. This bounded
-    search makes the compiler and its gate share one geometric contract.
-    """
-
-    if not np.isfinite(maximum_ratio) or maximum_ratio <= 0.0:
-        raise AutoAnimError("INTERNAL_ERROR", "Mouth-step limit must be positive")
-    before = np.asarray(previous, dtype=np.float32)
-    desired = np.asarray(target, dtype=np.float32)
-    if before.shape != desired.shape or before.shape != (rig.adapter.expression_dim,):
-        raise AutoAnimError("INTERNAL_ERROR", "Mouth-step controls have invalid shapes")
-    def step(candidate: np.ndarray) -> float:
-        return _mouth_step_quality_ratio(rig, before, candidate)
-
-    if step(desired) <= maximum_ratio:
-        return desired.copy(), False
-
-    def lower_face_candidate(alpha: float) -> np.ndarray:
-        output = desired.copy()
-        output[200:382] = before[200:382] + np.float32(alpha) * (
-            desired[200:382] - before[200:382]
-        )
-        return output
-
-    candidate_factory = lower_face_candidate
-    # Normally upper-face modes are spatially local and the lower-face path
-    # begins below the limit. If upper-face PCA leakage alone exceeds it, fall
-    # back to interpolating the whole expression so the exported contract is
-    # still true instead of silently emitting an unfixable frame.
-    if step(lower_face_candidate(0.0)) > maximum_ratio:
-        def full_expression_candidate(alpha: float) -> np.ndarray:
-            return before + np.float32(alpha) * (desired - before)
-
-        candidate_factory = full_expression_candidate
-
-    lower = 0.0
-    upper = 1.0
-    for _ in range(16):
-        middle = 0.5 * (lower + upper)
-        if step(candidate_factory(middle)) <= maximum_ratio:
-            lower = middle
-        else:
-            upper = middle
-    return candidate_factory(lower).astype(np.float32), True
-
-
-def _restore_contact_anchors_quality_space(
-    rig: ControlRig,
-    desired: np.ndarray,
-    projected: np.ndarray,
-    *,
-    hard_contact_anchors: np.ndarray,
-    restore_needed: np.ndarray,
-    maximum_ratio: float,
-    horizon_frames: int = 4,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Repair lost contact locally without breaking the continuity contract.
-
-    The ordinary forward/reverse projection is contact-oblivious: when a seal
-    is one step beyond the velocity bound it changes the seal frame itself.
-    This repair holds a pre-limit, geometrically attained contact as an anchor
-    and moves its approach/release frames instead. The search is deliberately
-    bounded to ``horizon_frames`` so an isolated, incompatible target cannot
-    smear anticipation across the whole clip.
-    """
-
-    target = np.asarray(desired, dtype=np.float32)
-    output = np.asarray(projected, dtype=np.float32).copy()
-    anchors = np.asarray(hard_contact_anchors, dtype=bool)
-    needed = np.asarray(restore_needed, dtype=bool)
-    if (
-        target.ndim != 2
-        or target.shape != output.shape
-        or target.shape[1] != rig.adapter.expression_dim
-        or anchors.shape != (len(target),)
-        or needed.shape != (len(target),)
-        or not np.isfinite(target).all()
-        or not np.isfinite(output).all()
-    ):
-        raise AutoAnimError("INTERNAL_ERROR", "Contact-anchor trajectory arrays are invalid")
-    if not np.isfinite(maximum_ratio) or maximum_ratio <= 0.0:
-        raise AutoAnimError("INTERNAL_ERROR", "Contact-anchor step limit must be positive")
-    if horizon_frames < 1:
-        raise AutoAnimError("INTERNAL_ERROR", "Contact-anchor horizon must be positive")
-
-    frame_count = len(output)
-    tolerance = maximum_ratio + 1.0e-6
-    for anchor in np.flatnonzero(needed):
-        accepted: np.ndarray | None = None
-        for radius in range(1, horizon_frames + 1):
-            trial = output.copy()
-            trial[anchor] = target[anchor]
-            left = max(0, int(anchor) - radius)
-            right = min(frame_count - 1, int(anchor) + radius)
-            for frame in range(int(anchor) - 1, left - 1, -1):
-                if anchors[frame]:
-                    trial[frame] = target[frame]
-                else:
-                    trial[frame], _ = _limit_mouth_step_quality_space(
-                        rig,
-                        trial[frame + 1],
-                        output[frame],
-                        maximum_ratio=maximum_ratio,
-                    )
-            for frame in range(int(anchor) + 1, right + 1):
-                if anchors[frame]:
-                    trial[frame] = target[frame]
-                else:
-                    trial[frame], _ = _limit_mouth_step_quality_space(
-                        rig,
-                        trial[frame - 1],
-                        output[frame],
-                        maximum_ratio=maximum_ratio,
-                    )
-
-            check_left = max(0, left - 1)
-            check_right = min(frame_count - 2, right)
-            if all(
-                _mouth_step_quality_ratio(rig, trial[frame], trial[frame + 1])
-                <= tolerance
-                for frame in range(check_left, check_right + 1)
-            ):
-                accepted = trial
-                break
-        if accepted is not None:
-            output = accepted
-
-    restored = needed & np.asarray(
-        [
-            np.max(np.abs(output[frame] - target[frame]), initial=0.0) <= 1.0e-7
-            for frame in range(frame_count)
-        ],
-        dtype=bool,
-    )
-    return output, restored
 
 
 _INNER_LIP_PAIRS = ((61, 67), (62, 66), (63, 65))
@@ -980,66 +911,36 @@ def compose_animation(
     # relaxing early enough to reach it without a one-frame snap.
     expression[-1, 200:382] = 0.0
     desired_expression = expression.copy()
-    contact_candidates = lip_contact_target_gap > 0.0
-    prelimit_contact_attained = np.zeros(frame_count, dtype=bool)
-    if np.any(contact_candidates):
-        prelimit_gaps = np.asarray(
-            [_mouth_gap_interocular(rig, frame) for frame in desired_expression],
-            dtype=np.float32,
-        )
-        prelimit_contact_attained[contact_candidates] = (
-            prelimit_gaps[contact_candidates]
-            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
-        )
-    # Leave margin for the difference between the face-local projection metric
-    # and the raw-landmark export gate while contact anchors are redistributed.
-    # The absolute step bound remains active below 30 fps; the speed bound
-    # prevents higher delivery rates from silently permitting faster motion.
-    speed_limit = min(0.0365, 1.095 / float(fps))
-    mouth_speed_limited = np.zeros(frame_count, dtype=bool)
-    for frame in range(1, frame_count):
-        expression[frame], mouth_speed_limited[frame] = _limit_mouth_step_quality_space(
-            rig,
-            expression[frame - 1], expression[frame], maximum_ratio=speed_limit
-        )
-    for frame in range(frame_count - 2, -1, -1):
-        expression[frame], reverse_limited = _limit_mouth_step_quality_space(
-            rig,
-            expression[frame + 1], expression[frame], maximum_ratio=speed_limit
-        )
-        mouth_speed_limited[frame] |= reverse_limited
-    baseline_contact_attained = np.zeros(frame_count, dtype=bool)
-    if np.any(contact_candidates):
-        baseline_gaps = np.asarray(
-            [_mouth_gap_interocular(rig, frame) for frame in expression],
-            dtype=np.float32,
-        )
-        baseline_contact_attained[contact_candidates] = (
-            baseline_gaps[contact_candidates]
-            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
-        )
-    expression, contact_continuity_restored = _restore_contact_anchors_quality_space(
-        rig,
+    metric_contract, rig_binding = _articulation_evidence_bindings(rig)
+    projection_config = _articulation_projection_config(
+        external_face_controls=False
+    )
+    projection = project_articulation_trajectory(
         desired_expression,
-        expression,
-        hard_contact_anchors=prelimit_contact_attained,
-        restore_needed=prelimit_contact_attained & ~baseline_contact_attained,
-        maximum_ratio=speed_limit,
-        horizon_frames=max(1, int(math.ceil(8.0 * float(fps) / 30.0))),
+        timestamps,
+        mouth_step_metric=lambda left, right: _mouth_step_quality_ratio(
+            rig, left, right
+        ),
+        lip_order_metric=lambda frame: _mouth_lip_order_minimum_interocular(
+            rig, frame
+        ),
+        contact_target_gap=lip_contact_target_gap,
+        mouth_gap_metric=lambda frame: _mouth_gap_interocular(rig, frame),
+        **projection_config,
+        metric_contract=metric_contract,
+        rig_binding=rig_binding,
     )
-    mouth_speed_limited = (
-        np.max(np.abs(expression - desired_expression), axis=1) > np.float32(1.0e-7)
-    )
-    lip_contact_attained = np.zeros(frame_count, dtype=bool)
-    if np.any(contact_candidates):
-        final_gaps = np.asarray(
-            [_mouth_gap_interocular(rig, frame) for frame in expression],
-            dtype=np.float32,
-        )
-        lip_contact_attained[contact_candidates] = (
-            final_gaps[contact_candidates]
-            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
-        )
+    expression = projection.expression
+    mouth_speed_limited = projection.limited_frames
+    contact_continuity_restored = projection.contact_continuity_restored
+    lip_contact_attained = projection.contact_attained
+    projection_report = {
+        **projection.report,
+        **_articulation_projection_compiler_metadata(
+            external_face_controls=False,
+            frame_count=frame_count,
+        ),
+    }
     contact_corrected = contact_correction_applied & lip_contact_attained
     rotations = (
         _head_motion(timestamps, prosody, rig.adapter.model.num_joints)
@@ -1069,6 +970,9 @@ def compose_animation(
         contact_continuity_restored=contact_continuity_restored,
         contact_corrected=contact_corrected,
         lip_order_repaired=np.zeros(frame_count, dtype=bool),
+        articulation_projection_report=projection_report,
+        articulation_projection_desired=projection.desired_expression,
+        articulation_projection_output=projection.expression,
     )
 
 
@@ -1281,83 +1185,39 @@ def compose_learned_animation(
     expression[0, 200:382] = 0.0
     expression[-1, 200:382] = 0.0
     desired_expression = expression.copy()
-    contact_candidates = lip_contact_target_gap > 0.0
-    prelimit_contact_attained = np.zeros(frame_count, dtype=bool)
-    if np.any(contact_candidates):
-        prelimit_gaps = np.asarray(
-            [_mouth_gap_interocular(rig, frame) for frame in desired_expression],
-            dtype=np.float32,
-        )
-        prelimit_contact_attained[contact_candidates] = (
-            prelimit_gaps[contact_candidates]
-            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
-        )
-    # This is an emergency guard, not the primary temporal model. Enforce it
-    # in the same face-local geometry used by the production gate. The
-    # 1.17-interocular-units/s cap is the former 0.039 limit at 30 fps, expressed
-    # in time so a 60 fps delivery cannot silently double permitted speed. The
-    # absolute 0.039 safety bound still applies below 30 fps. Together they
-    # leave a small margin for viewer morph-target reconstruction error.
-    speed_limit = min(0.039, 1.17 / float(fps))
-    mouth_speed_limited = np.zeros(frame_count, dtype=bool)
-    for frame in range(1, frame_count):
-        expression[frame], limited = _limit_mouth_step_quality_space(
-            rig,
-            expression[frame - 1],
-            expression[frame],
-            maximum_ratio=speed_limit,
-        )
-        mouth_speed_limited[frame] |= limited
-    for frame in range(frame_count - 2, -1, -1):
-        expression[frame], limited = _limit_mouth_step_quality_space(
-            rig,
-            expression[frame + 1],
-            expression[frame],
-            maximum_ratio=speed_limit,
-        )
-        mouth_speed_limited[frame] |= limited
-
-    baseline_contact_attained = np.zeros(frame_count, dtype=bool)
-    if np.any(contact_candidates):
-        baseline_gaps = np.asarray(
-            [_mouth_gap_interocular(rig, frame) for frame in expression],
-            dtype=np.float32,
-        )
-        baseline_contact_attained[contact_candidates] = (
-            baseline_gaps[contact_candidates]
-            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
-        )
-    restore_needed = prelimit_contact_attained & ~baseline_contact_attained
-    expression, contact_continuity_restored = _restore_contact_anchors_quality_space(
-        rig,
+    # The learned sequence model owns dedicated tongue and upper-face motion.
+    # The emergency visible-mouth guard therefore projects only modes 200:350
+    # and uses each exact timestamp delta for its physical-speed bound.
+    metric_contract, rig_binding = _articulation_evidence_bindings(rig)
+    projection_config = _articulation_projection_config(
+        external_face_controls=True
+    )
+    projection = project_articulation_trajectory(
         desired_expression,
-        expression,
-        hard_contact_anchors=prelimit_contact_attained,
-        restore_needed=restore_needed,
-        maximum_ratio=speed_limit,
-        horizon_frames=max(1, int(math.ceil(4.0 * float(fps) / 30.0))),
+        timestamps,
+        mouth_step_metric=lambda left, right: _mouth_step_quality_ratio(
+            rig, left, right
+        ),
+        lip_order_metric=lambda frame: _mouth_lip_order_minimum_interocular(
+            rig, frame
+        ),
+        contact_target_gap=lip_contact_target_gap,
+        mouth_gap_metric=lambda frame: _mouth_gap_interocular(rig, frame),
+        **projection_config,
+        metric_contract=metric_contract,
+        rig_binding=rig_binding,
     )
-    # A successful repair deliberately returns the contact frame to its desired
-    # pose and moves the approach/release instead. Report the frames that still
-    # differ from the learned/contact-composed trajectory, not stale mutations
-    # made by the first projection pass.
-    mouth_speed_limited = (
-        np.max(np.abs(expression - desired_expression), axis=1) > np.float32(1.0e-7)
-    )
-
-    # The continuity guard may pull a corrected frame away from its contact
-    # target. Final status is therefore measured from the exported expression,
-    # after both limiter passes, rather than copied from the pre-limiter solve.
-    lip_contact_attained = np.zeros(frame_count, dtype=bool)
-    if np.any(contact_candidates):
-        final_gaps = np.asarray(
-            [_mouth_gap_interocular(rig, frame) for frame in expression],
-            dtype=np.float32,
-        )
-        lip_contact_attained[contact_candidates] = (
-            final_gaps[contact_candidates]
-            <= lip_contact_target_gap[contact_candidates] + np.float32(1.0e-3)
-        )
+    expression = projection.expression
+    mouth_speed_limited = projection.limited_frames
+    contact_continuity_restored = projection.contact_continuity_restored
+    lip_contact_attained = projection.contact_attained
+    projection_report = {
+        **projection.report,
+        **_articulation_projection_compiler_metadata(
+            external_face_controls=True,
+            frame_count=frame_count,
+        ),
+    }
     contact_corrected = contact_correction_applied & lip_contact_attained
 
     final_lip_order = np.asarray(
@@ -1438,6 +1298,9 @@ def compose_learned_animation(
         contact_continuity_restored=contact_continuity_restored,
         contact_corrected=contact_corrected,
         lip_order_repaired=lip_order_repaired,
+        articulation_projection_report=projection_report,
+        articulation_projection_desired=projection.desired_expression,
+        articulation_projection_output=projection.expression,
     )
 
 

@@ -431,9 +431,12 @@ animation approval.
   `1.20 IOD/s` speed gates. Float64 native clocks are emitted going forward;
   exact legacy float32 rational clocks remain verifiable past 64 seconds without
   admitting arbitrary timestamp drift.
-- Audiovisual repair schema/policy `v2`, mouth-aperture schema `v3`, animation
-  compiler versions `13`/`4`, and timeline version `12` prevent old and new
-  motion semantics from sharing public provenance identifiers.
+- Audiovisual repair schema/policy `v2`, mouth-aperture schema `v3`, authority-
+  preserving articulation projection schema `1.0`, animation compiler versions
+  `14`/`5`, and timeline version `13` prevent old and new motion semantics from
+  sharing public provenance identifiers. Compiler `14` projects only GNM lower-
+  face modes `200:350`; upper face, tongue `350:382`, pupils and timestamps are
+  exact authority-preserved channels with desired/projected/delivered hash evidence.
 - Focused cross-pipeline verification passed `175` tests in `325.19s`. The
   final exact-tree regression passed `529`, skipped one optional duplicate
   Claire-asset test, and retained one Starlette/httpx deprecation warning in
@@ -479,6 +482,46 @@ animation approval.
   claims remain false. Thirty-four adversarial I0 tests pass, but no real
   consented subject or independent metric scan is bundled, so I0 is not a
   production likeness qualification.
+
+## A2.0 oral-authority audit — 2026-07-20
+
+- Root cause: the former visible-mouth continuity guard measured only lip
+  landmarks but attenuated GNM modes `200:382`. That range accidentally included
+  the dedicated tongue block `350:382`, so a lip-only safety decision erased
+  independently authored tongue motion. The frozen v14/v5 compiler contract now
+  projects only lower-face modes `200:350`; eyes, tongue, pupils, and the exact
+  source clock are protected byte-level authority channels.
+- The retained genuine local-v3 LibriSpeech run
+  `artifacts/qualification/a2-authority-v14-jobs/01kxzghjfy6ew3q987ez7hsssw`
+  completed all 480 frames at 60 Hz. Twenty-five lower-face edges required
+  projection; the exact-time maximum was `0.019499997 IOD` and
+  `1.169999801 IOD/s`. The delivered controls exactly match the projected
+  controls, the projection-induced tongue delta is zero, no lip-order risk was
+  introduced, and the viewer export retained 37 morph targets.
+- Replaying the old `200:382` guard against the same desired v14 trajectory
+  proves the defect and the fix without changing the accepted lower-face result:
+  lower face, upper face, pupils, and visible-mouth steps remain byte-identical,
+  while 25 tongue frames recover up to `0.239803` coefficient and `1.902737 mm`
+  of tongue geometry (`0.573513 mm` p95 across nonzero displaced vertices).
+- `articulation-projection.json/.npz` retain desired, projected, delivered,
+  limiter, contact, and timestamp evidence bound to the GNM asset, sparse
+  landmark regressor, identity, metric contracts, and compiler-specific
+  thresholds. Validation deterministically replays the projection and requires
+  canonical JSON type equality plus byte-exact output and decision arrays. It
+  fails closed on a missing bundle, altered hashes/config/derived counts/masks,
+  invalid clocks, non-finite delivery, wrong compiler family, and protected
+  signed-zero changes.
+- The new projection contract passes 46 focused adversarial tests, 75 combined
+  projection/Phase-2 tests, 84 v3/oral/tongue/aperture regressions, a real
+  fallback LibriSpeech E2E, and the sealed real local-v3 job above. Independent
+  review has no remaining findings. The exact final source tree passes 792
+  Python tests with two documented opt-in skips; the native package passes 37
+  Swift tests, release build, strict signature verification, authenticated
+  helper health, GUI supervision, and clean-shutdown smoke. The job remains
+  explicitly non-production: two of 55 inferred preprojection contact anchors
+  are unreachable within the frozen continuity/horizon contract, and phone/
+  contact ground truth, official NVIDIA SDK parity, and blinded animator
+  approval are still absent.
 
 ## Known limitations and viable upgrades
 

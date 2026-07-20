@@ -22,9 +22,23 @@ from .a2f import (
 )
 from .animated_gltf import AnimationCompressionError, export_animated_gnm_glb
 from .artifacts import sha256
+from .articulation_projection import (
+    ARTICULATION_PROJECTION_ALGORITHM,
+    ARTICULATION_PROJECTION_SCHEMA_VERSION,
+    articulation_array_sha256,
+    articulation_arrays_byte_exact,
+    articulation_report_canonical_bytes,
+    project_articulation_trajectory,
+)
 from .animation import (
     AnimationTrack,
+    _articulation_evidence_bindings,
+    _articulation_projection_compiler_metadata,
+    _articulation_projection_config,
     _face_local_mouth,
+    _mouth_gap_interocular,
+    _mouth_lip_order_minimum_interocular,
+    _mouth_step_quality_ratio,
     calibrate_lip_contact,
     compose_animation,
     compose_learned_animation,
@@ -157,10 +171,175 @@ V3_LOCAL_SEQUENCE_CAVEAT = (
     "identical-noise SDK parity, phone/contact/FACS qualification, or blinded artist review. "
     "Jaw transforms are retained but not applied until their convention passes an official fixture."
 )
-LEARNED_CONDITIONER = "detail-preserving-articulation-v4-contact-anchored-quality-space"
-AUDIO_TIMELINE_VERSION = 12
-EXTERNAL_FACE_COMPILER_VERSION = 13
-FALLBACK_FACE_COMPILER_VERSION = 4
+LEARNED_CONDITIONER = "authority-preserving-oral-projection-v1"
+AUDIO_TIMELINE_VERSION = 13
+EXTERNAL_FACE_COMPILER_VERSION = 14
+FALLBACK_FACE_COMPILER_VERSION = 5
+
+
+def _validated_articulation_projection_evidence(
+    track: AnimationTrack,
+    rig: ControlRig,
+    *,
+    external_face_controls: bool,
+) -> tuple[dict[str, Any], np.ndarray, np.ndarray] | None:
+    """Fail closed on partial, stale, or unbound projection evidence."""
+
+    parts = (
+        track.articulation_projection_report,
+        track.articulation_projection_desired,
+        track.articulation_projection_output,
+    )
+    if any(value is None for value in parts):
+        raise AutoAnimError(
+            "ARTICULATION_PROJECTION_EVIDENCE_INCOMPLETE",
+            "Articulation projection report and arrays must be retained together",
+        )
+    report_value, desired_value, projected_value = parts
+    if not isinstance(report_value, dict):
+        raise AutoAnimError(
+            "ARTICULATION_PROJECTION_EVIDENCE_INCOMPLETE",
+            "Articulation projection report must be a JSON object",
+        )
+    report = dict(report_value)
+    desired = np.asarray(desired_value)
+    projected = np.asarray(projected_value)
+    delivered = np.asarray(track.expression)
+    clock = np.asarray(track.timestamps)
+    expected_shape = delivered.shape
+    if (
+        expected_shape != (len(track.timestamps), 383)
+        or delivered.dtype != np.float32
+        or not np.isfinite(delivered).all()
+        or clock.shape != (len(delivered),)
+        or clock.dtype != np.float64
+        or not np.isfinite(clock).all()
+        or (len(clock) > 1 and np.any(np.diff(clock) <= 0.0))
+        or desired.shape != expected_shape
+        or desired.dtype != np.float32
+        or projected.shape != expected_shape
+        or projected.dtype != np.float32
+        or not np.isfinite(desired).all()
+        or not np.isfinite(projected).all()
+    ):
+        raise AutoAnimError(
+            "ARTICULATION_PROJECTION_EVIDENCE_INCOMPLETE",
+            "Articulation projection arrays do not match the delivered GNM clock",
+        )
+    expected_hashes = {
+        "desired_expression_sha256": articulation_array_sha256(desired),
+        "projected_expression_sha256": articulation_array_sha256(projected),
+        "timestamps_sha256": articulation_array_sha256(clock),
+    }
+    if any(report.get(name) != value for name, value in expected_hashes.items()):
+        raise AutoAnimError(
+            "ARTICULATION_PROJECTION_EVIDENCE_HASH_MISMATCH",
+            "Articulation projection hashes do not match the retained arrays",
+        )
+    expected_config = _articulation_projection_config(
+        external_face_controls=external_face_controls
+    )
+    expected_report_config: dict[str, Any] = {
+        "schema_version": ARTICULATION_PROJECTION_SCHEMA_VERSION,
+        "algorithm": ARTICULATION_PROJECTION_ALGORITHM,
+        "projectable_range": [200, 350],
+        "protected_ranges": [[0, 200], [350, 383]],
+        "maximum_step_interocular": expected_config["maximum_step"],
+        "maximum_speed_interocular_per_second": expected_config["maximum_speed"],
+        "contact_tolerance_interocular": expected_config["contact_tolerance"],
+        "lip_order_floor_interocular": expected_config["lip_order_floor"],
+        "contact_horizon_seconds": expected_config["contact_horizon_seconds"],
+    }
+    if any(
+        report.get(name) != value
+        for name, value in expected_report_config.items()
+    ):
+        raise AutoAnimError(
+            "ARTICULATION_PROJECTION_EVIDENCE_CONFIG_MISMATCH",
+            "Articulation projection evidence does not match the active compiler contract",
+        )
+    expected_metrics, expected_rig_binding = _articulation_evidence_bindings(rig)
+    if (
+        report.get("frame_count") != len(track.expression)
+        or report.get("expression_dim") != 383
+        or report.get("protected_channels_exact") is not True
+        or report.get("metric_contract_bound") is not True
+        or report.get("production_validated") is not False
+        or report.get("projection_induced_tongue_max_abs_control_delta") != 0.0
+        or report.get("metric_contract") != expected_metrics
+        or report.get("rig_binding") != expected_rig_binding
+        or not articulation_arrays_byte_exact(desired[:, :200], projected[:, :200])
+        or not articulation_arrays_byte_exact(
+            desired[:, 350:383], projected[:, 350:383]
+        )
+    ):
+        raise AutoAnimError(
+            "ARTICULATION_PROJECTION_EVIDENCE_INCOMPLETE",
+            "Articulation projection evidence violates its authority contract",
+        )
+    decision_arrays = (
+        (track.mouth_speed_limited, np.bool_, "mouth_speed_limited"),
+        (track.lip_contact_target_gap, np.float32, "lip_contact_target_gap"),
+        (track.lip_contact_attained, np.bool_, "lip_contact_attained"),
+        (
+            track.contact_continuity_restored,
+            np.bool_,
+            "contact_continuity_restored",
+        ),
+    )
+    for value, dtype, label in decision_arrays:
+        array = np.asarray(value)
+        if (
+            array.shape != (len(delivered),)
+            or array.dtype != np.dtype(dtype)
+            or not np.isfinite(array).all()
+        ):
+            raise AutoAnimError(
+                "ARTICULATION_PROJECTION_EVIDENCE_INCOMPLETE",
+                f"Articulation projection {label} evidence is invalid",
+            )
+    replay = project_articulation_trajectory(
+        desired,
+        clock,
+        mouth_step_metric=lambda left, right: _mouth_step_quality_ratio(
+            rig, left, right
+        ),
+        lip_order_metric=lambda frame: _mouth_lip_order_minimum_interocular(
+            rig, frame
+        ),
+        contact_target_gap=np.asarray(track.lip_contact_target_gap),
+        mouth_gap_metric=lambda frame: _mouth_gap_interocular(rig, frame),
+        metric_contract=expected_metrics,
+        rig_binding=expected_rig_binding,
+        **expected_config,
+    )
+    expected_report = {
+        **replay.report,
+        **_articulation_projection_compiler_metadata(
+            external_face_controls=external_face_controls,
+            frame_count=len(delivered),
+        ),
+    }
+    if (
+        articulation_report_canonical_bytes(report)
+        != articulation_report_canonical_bytes(expected_report)
+        or not articulation_arrays_byte_exact(projected, replay.expression)
+        or not articulation_arrays_byte_exact(
+            np.asarray(track.mouth_speed_limited), replay.limited_frames
+        )
+        or not articulation_arrays_byte_exact(
+            np.asarray(track.lip_contact_attained), replay.contact_attained
+        )
+        or not articulation_arrays_byte_exact(
+            np.asarray(track.contact_continuity_restored),
+            replay.contact_continuity_restored,
+        )
+    ):
+        raise AutoAnimError(
+            "ARTICULATION_PROJECTION_EVIDENCE_DECISION_MISMATCH",
+            "Articulation projection evidence does not reproduce the retained decision",
+        )
+    return report, desired.copy(), projected.copy()
 
 
 def _local_v3_emotion_vector(
@@ -713,16 +892,42 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
             / max(iod, 1e-8)
         )
         mouth_speed = step / edge_seconds
-        lower_velocity = np.linalg.norm(np.diff(track.expression[:, 200:382], axis=0), axis=1)
+        lower_velocity = np.linalg.norm(
+            np.diff(track.expression[:, 200:350], axis=0), axis=1
+        )
+        tongue_velocity = np.linalg.norm(
+            np.diff(track.expression[:, 350:382], axis=0), axis=1
+        )
         stationary = lower_velocity <= 1e-7
+        tongue_stationary = tongue_velocity <= 1e-7
     else:
         step = np.zeros(0, dtype=np.float32)
         raw_step = np.zeros(0, dtype=np.float32)
         mouth_speed = np.zeros(0, dtype=np.float64)
         lower_velocity = np.zeros(0, dtype=np.float32)
+        tongue_velocity = np.zeros(0, dtype=np.float32)
         stationary = np.zeros(0, dtype=bool)
-    acceleration = np.diff(lower_velocity) if len(lower_velocity) > 1 else np.zeros(0, dtype=np.float32)
-    jerk = np.diff(acceleration) if len(acceleration) > 1 else np.zeros(0, dtype=np.float32)
+        tongue_stationary = np.zeros(0, dtype=bool)
+    acceleration = (
+        np.diff(lower_velocity)
+        if len(lower_velocity) > 1
+        else np.zeros(0, dtype=np.float32)
+    )
+    jerk = (
+        np.diff(acceleration)
+        if len(acceleration) > 1
+        else np.zeros(0, dtype=np.float32)
+    )
+    tongue_acceleration = (
+        np.diff(tongue_velocity)
+        if len(tongue_velocity) > 1
+        else np.zeros(0, dtype=np.float32)
+    )
+    tongue_jerk = (
+        np.diff(tongue_acceleration)
+        if len(tongue_acceleration) > 1
+        else np.zeros(0, dtype=np.float32)
+    )
     centered_expression = track.expression - np.mean(track.expression, axis=0, keepdims=True)
     singular = np.linalg.svd(centered_expression.astype(np.float64), compute_uv=False)
     singular_energy = singular * singular
@@ -763,10 +968,34 @@ def _temporal_metrics(track, rig: ControlRig) -> dict[str, float | int]:
         "mouth_step_raw_landmark_max_interocular": float(
             np.max(raw_step, initial=0.0)
         ),
-        "lower_face_stationary_fraction": float(np.mean(stationary)) if len(stationary) else 0.0,
-        "lower_face_velocity_p95": float(np.percentile(lower_velocity, 95)) if len(lower_velocity) else 0.0,
-        "lower_face_acceleration_p95": float(np.percentile(np.abs(acceleration), 95)) if len(acceleration) else 0.0,
-        "lower_face_jerk_p95": float(np.percentile(np.abs(jerk), 95)) if len(jerk) else 0.0,
+        "lower_face_stationary_fraction": (
+            float(np.mean(stationary)) if len(stationary) else 0.0
+        ),
+        "lower_face_velocity_p95": (
+            float(np.percentile(lower_velocity, 95)) if len(lower_velocity) else 0.0
+        ),
+        "lower_face_acceleration_p95": (
+            float(np.percentile(np.abs(acceleration), 95)) if len(acceleration) else 0.0
+        ),
+        "lower_face_jerk_p95": (
+            float(np.percentile(np.abs(jerk), 95)) if len(jerk) else 0.0
+        ),
+        "tongue_stationary_fraction": (
+            float(np.mean(tongue_stationary)) if len(tongue_stationary) else 0.0
+        ),
+        "tongue_velocity_p95": (
+            float(np.percentile(tongue_velocity, 95)) if len(tongue_velocity) else 0.0
+        ),
+        "tongue_acceleration_p95": (
+            float(np.percentile(np.abs(tongue_acceleration), 95))
+            if len(tongue_acceleration)
+            else 0.0
+        ),
+        "tongue_jerk_p95": (
+            float(np.percentile(np.abs(tongue_jerk), 95))
+            if len(tongue_jerk)
+            else 0.0
+        ),
         "mouth_speed_limited_frames": limited_count,
         "mouth_speed_limited_fraction": float(limited_count / max(len(track.expression), 1)),
         "lip_contact_confidence_peak": float(
@@ -1778,6 +2007,52 @@ def run_audio_pipeline(
         author=mouth_aperture_author,
         reason=mouth_aperture_reason,
     )
+    articulation_projection: dict[str, Any] | None = None
+    articulation_projection_artifacts: dict[str, str] = {}
+    validated_projection = _validated_articulation_projection_evidence(
+        track,
+        rig,
+        external_face_controls=has_external_face_controls,
+    )
+    if validated_projection is not None:
+        articulation_projection, projection_desired, projection_output = (
+            validated_projection
+        )
+        articulation_projection.update(
+            {
+                "delivery_expression_sha256": articulation_array_sha256(
+                    track.expression
+                ),
+                "delivery_matches_projection": articulation_arrays_byte_exact(
+                    track.expression, projection_output
+                ),
+                "authored_downstream_mouth_aperture_edit": bool(
+                    mouth_aperture_gain != 1.0
+                ),
+                "expression_delta_ledger_recomputable": True,
+                "projection_decision_recomputable": True,
+                "production_validated": False,
+            }
+        )
+        write_npz(
+            output_dir / "articulation-projection.npz",
+            desired_expression=projection_desired,
+            projected_expression=projection_output,
+            delivered_expression=track.expression,
+            timestamps=track.timestamps,
+            limited_frames=track.mouth_speed_limited,
+            contact_target_gap=track.lip_contact_target_gap,
+            contact_attained=track.lip_contact_attained,
+            contact_continuity_restored=track.contact_continuity_restored,
+        )
+        write_json(
+            output_dir / "articulation-projection.json",
+            articulation_projection,
+        )
+        articulation_projection_artifacts = {
+            "articulation_projection": "articulation-projection.json",
+            "articulation_projection_arrays": "articulation-projection.npz",
+        }
     apertures = [
         _mouth_aperture(rig.compact_landmarks(frame)) for frame in track.expression
     ]
@@ -1849,6 +2124,7 @@ def run_audio_pipeline(
                 mouth_aperture_edit.target_attained.tolist()
             ),
             "mouth_aperture": apertures,
+            "articulation_projection": articulation_projection,
         },
     )
     silent_path = render_silent_video(
@@ -2355,6 +2631,7 @@ def run_audio_pipeline(
                 else FALLBACK_FACE_COMPILER_VERSION
             ),
             "production_validated": False,
+            "articulation_projection": articulation_projection,
         },
         "viewer": {
             "schema_version": "1.0",
@@ -2438,6 +2715,18 @@ def run_audio_pipeline(
                     for report in mouth_aperture_edit.reports
                 )
             ),
+            "articulation_projection_induced_tongue_max_abs_control_delta": (
+                articulation_projection.get(
+                    "projection_induced_tongue_max_abs_control_delta", 0.0
+                )
+                if articulation_projection is not None
+                else 0.0
+            ),
+            "articulation_projection_contact_anchor_loss_frames": (
+                articulation_projection.get("contact_anchor_loss_frames", 0)
+                if articulation_projection is not None
+                else 0
+            ),
             **conditioning,
             **temporal,
         },
@@ -2450,6 +2739,7 @@ def run_audio_pipeline(
             "oral_glb_validation": "oral-glb-validation.json",
             "mouth_aperture_edit": "mouth-aperture-edit.json",
             "mouth_aperture_edit_arrays": "mouth-aperture-edit.npz",
+            **articulation_projection_artifacts,
             **viewer_artifacts,
             **learned_artifacts,
             **phone_artifacts,
