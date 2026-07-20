@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from fractions import Fraction
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -20,11 +21,13 @@ from autoanim_gnm.video_capture import (
     CaptureProvenance,
     CaptureTrack,
     MEDIAPIPE_BLENDSHAPE_NAMES,
+    VideoCaptureRun,
     VideoDecodeLimits,
     VideoProbe,
     _command_template,
     _run_bounded_text_command,
     capture_video,
+    capture_video_run,
     decoded_video_frames,
     load_capture_npz,
     load_verified_capture_jsonl,
@@ -128,6 +131,30 @@ def _capture_with_scores(track: CaptureTrack, scores: np.ndarray) -> CaptureTrac
         height=track.height,
         provenance=track.provenance,
     )
+
+
+def test_video_capture_run_rejects_invalid_detector_provenance() -> None:
+    track = _capture_track()
+    valid = {
+        "track": track,
+        "detector_ingress_rgb_sha256": tuple("a" * 64 for _ in range(track.frame_count)),
+        "num_faces": 1,
+        "confidence_thresholds": (0.5, 0.5, 0.5),
+    }
+    assert VideoCaptureRun(**valid).track is track
+    for replacement, match in (
+        ({"detector_ingress_rgb_sha256": ("a" * 64,)}, "provenance"),
+        ({"detector_ingress_rgb_sha256": tuple("A" * 64 for _ in range(track.frame_count))}, "provenance"),
+        ({"num_faces": 2}, "provenance"),
+        ({"num_faces": True}, "provenance"),
+        ({"confidence_thresholds": (0.5, float("nan"), 0.5)}, "provenance"),
+        ({"confidence_thresholds": (0.5, True, 0.5)}, "provenance"),
+        ({"confidence_thresholds": (0.5, "0.5", 0.5)}, "provenance"),
+        ({"confidence_thresholds": [0.5, 0.5, 0.5]}, "provenance"),
+        ({"hash_domain": "ambiguous"}, "provenance"),
+    ):
+        with pytest.raises(ValueError, match=match):
+            VideoCaptureRun(**(valid | replacement))
 
 
 class _FakeRetargeter:
@@ -490,7 +517,8 @@ def test_real_face_video_mediapipe_video_mode_integration(tmp_path: Path) -> Non
         ),
         check=True,
     )
-    track = capture_video(video, MODEL)
+    run = capture_video_run(video, MODEL)
+    track = run.track
     assert track.frame_count == 5
     assert np.count_nonzero(track.detected) == track.frame_count
     assert track.landmarks_xyz.shape == (5, 478, 3)
@@ -498,3 +526,20 @@ def test_real_face_video_mediapipe_video_mode_integration(tmp_path: Path) -> Non
     assert track.facial_transforms.shape == (5, 4, 4)
     assert np.all(track.tracking_quality > 0.95)
     assert track.provenance.source_sha256 != track.provenance.model_sha256
+    assert run.detector_configuration() == {
+        "num_faces": 1,
+        "min_face_detection_confidence": 0.5,
+        "min_face_presence_confidence": 0.5,
+        "min_tracking_confidence": 0.5,
+        "running_mode": "VIDEO",
+        "output_face_blendshapes": True,
+        "output_facial_transformation_matrices": True,
+        "detector_ingress_hash_domain": "rgb8_hwc_contiguous_exact_mp_image_input",
+    }
+    probe = probe_video(video)
+    with decoded_video_frames(probe) as frames:
+        decoded_hashes = tuple(
+            hashlib.sha256(np.ascontiguousarray(frame.rgb).tobytes()).hexdigest()
+            for frame in frames
+        )
+    assert run.detector_ingress_rgb_sha256 == decoded_hashes

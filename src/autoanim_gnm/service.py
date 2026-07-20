@@ -62,15 +62,21 @@ from .errors import AutoAnimError
 from .gnm_adapter import GNMAdapter
 from .image import validate_model
 from .image_pipeline import run_image_pipeline
+from .identity_qualification import (
+    IdentityQualificationError,
+    verify_identity_qualification_report_profile,
+)
 from .multiview_pipeline import run_multiview_pipeline
 from .oral_validation import validate_controls_npz
 from .video_pipeline import run_video_pipeline
 from .video_capture import load_capture_npz, load_verified_capture_jsonl
+from .video_capture_run import load_video_capture_run
 from .video_evidence import load_verified_performance_evidence
 from .video_observation import (
     load_pixel_observations,
     load_verified_observation_v3_summary,
 )
+from .visual_track import load_verified_visual_track_summary
 from .viewer import default_viewer_vendor_root, viewer_vendor_health
 from .serialization import write_json, write_npz
 from .sequence_provider import local_a2f_v3_worker_preflight
@@ -594,6 +600,7 @@ class ApplicationService:
         performance_job_id: str,
         *,
         direction_job_id: str | None = None,
+        identity_qualification_job_id: str | None = None,
         require_acting: bool = False,
         require_body: bool = False,
         require_pbr: bool = True,
@@ -610,6 +617,7 @@ class ApplicationService:
             return self._production_readiness_unlocked(
                 performance_job_id,
                 direction_job_id=direction_job_id,
+                identity_qualification_job_id=identity_qualification_job_id,
                 require_acting=require_acting,
                 require_body=require_body,
                 require_pbr=require_pbr,
@@ -622,6 +630,7 @@ class ApplicationService:
         performance_job_id: str,
         *,
         direction_job_id: str | None = None,
+        identity_qualification_job_id: str | None = None,
         require_acting: bool = False,
         require_body: bool = False,
         require_pbr: bool = True,
@@ -690,6 +699,8 @@ class ApplicationService:
                 pass
 
         observation_v3_artifacts_verified = False
+        video_capture_run_artifact_verified = False
+        visual_track_artifacts_verified = False
         capture_session_artifact_verified = False
         capture_session_production_claims_verified = False
         if (
@@ -705,6 +716,9 @@ class ApplicationService:
                     "performance_evidence",
                     "pixel_observations",
                     "observation_v3",
+                    "video_capture_run",
+                    "visual_track",
+                    "visual_track_summary",
                     "capture_session",
                 ):
                     entry = _mapping(_mapping(artifact_ledger).get(logical_name))
@@ -762,6 +776,19 @@ class ApplicationService:
                     expected_observations=pixel_observations,
                 )
                 observation_v3_artifacts_verified = source_input_verified
+                capture_run = load_video_capture_run(
+                    video_paths["video_capture_run"],
+                    expected_capture=capture_track,
+                )
+                video_capture_run_artifact_verified = source_input_verified
+                load_verified_visual_track_summary(
+                    video_paths["visual_track_summary"],
+                    visual_track_path=video_paths["visual_track"],
+                    expected_capture=capture_track,
+                    expected_observations=pixel_observations,
+                    expected_capture_run=capture_run,
+                )
+                visual_track_artifacts_verified = source_input_verified
                 capture_session = load_verified_video_capture_session(
                     video_paths["capture_session"],
                     expected_capture=capture_track,
@@ -774,6 +801,9 @@ class ApplicationService:
                             "performance_evidence",
                             "pixel_observations",
                             "observation_v3",
+                            "video_capture_run",
+                            "visual_track",
+                            "visual_track_summary",
                         )
                     },
                 )
@@ -1253,6 +1283,21 @@ class ApplicationService:
                         exc.code if isinstance(exc, AutoAnimError) else "CHARACTER_NOT_FOUND"
                     )
 
+        identity_qualification: dict[str, Any] | None = None
+        identity_qualification_resolution_error: str | None = None
+        supplied_qualification_job_id = (
+            identity_qualification_job_id.strip()
+            if isinstance(identity_qualification_job_id, str)
+            else ""
+        )
+        if supplied_qualification_job_id:
+            try:
+                identity_qualification = self.identity_qualification(
+                    supplied_qualification_job_id
+                )
+            except AutoAnimError as exc:
+                identity_qualification_resolution_error = exc.code
+
         return evaluate_production_readiness(
             performance,
             performance_manifest_verified=performance_manifest_verified,
@@ -1264,6 +1309,10 @@ class ApplicationService:
             observation_v3_artifacts_verified=(
                 observation_v3_artifacts_verified
             ),
+            video_capture_run_artifact_verified=(
+                video_capture_run_artifact_verified
+            ),
+            visual_track_artifacts_verified=visual_track_artifacts_verified,
             capture_session_artifact_verified=(
                 capture_session_artifact_verified
             ),
@@ -1284,12 +1333,137 @@ class ApplicationService:
             ),
             character_revision=character_revision,
             character_resolution_error=character_resolution_error,
+            identity_qualification=identity_qualification,
+            identity_qualification_job_id=(
+                supplied_qualification_job_id or None
+            ),
+            identity_qualification_resolution_error=(
+                identity_qualification_resolution_error
+            ),
             direction=direction,
             direction_manifest_verified=direction_manifest_verified,
             require_acting=require_acting,
             require_body=require_body,
             require_pbr=require_pbr,
         )
+
+    def identity_qualification(self, qualification_job_id: str) -> dict[str, Any]:
+        """Verify and summarize one sealed I0 qualification job without mutation."""
+
+        try:
+            manifest = self.store.require_sealed(qualification_job_id)
+        except FileNotFoundError as exc:
+            raise AutoAnimError(
+                "JOB_NOT_FOUND", "Identity-qualification job was not found"
+            ) from exc
+        if (
+            manifest.get("kind") != "identity_qualification"
+            or manifest.get("status") != "succeeded"
+        ):
+            raise AutoAnimError(
+                "IDENTITY_QUALIFICATION_INVALID",
+                "Identity qualification must be a successful sealed identity_qualification job",
+            )
+
+        artifact_ledger = _mapping(manifest.get("artifacts"))
+        verified_artifacts: dict[str, dict[str, Any]] = {}
+        artifact_paths: dict[str, Path] = {}
+        for logical_name in (
+            "identity_qualification_profile",
+            "identity_qualification_report",
+        ):
+            entry = _mapping(artifact_ledger.get(logical_name))
+            name = entry.get("name")
+            if not isinstance(name, str):
+                raise AutoAnimError(
+                    "IDENTITY_QUALIFICATION_INVALID",
+                    f"Identity qualification is missing {logical_name}",
+                )
+            try:
+                artifact_paths[logical_name] = self.store.artifact(
+                    qualification_job_id, name
+                )
+            except FileNotFoundError as exc:
+                raise AutoAnimError(
+                    "INTEGRITY_FAILED",
+                    f"Identity qualification artifact {logical_name} does not match its ledger",
+                ) from exc
+            verified_artifacts[logical_name] = {
+                "name": name,
+                "bytes": entry.get("bytes"),
+                "sha256": entry.get("sha256"),
+                "media_type": entry.get("media_type"),
+            }
+
+        try:
+            profile, report = verify_identity_qualification_report_profile(
+                artifact_paths["identity_qualification_profile"],
+                artifact_paths["identity_qualification_report"],
+            )
+        except IdentityQualificationError as exc:
+            if exc.code == "REPORT_PROFILE_BINDING_MISMATCH":
+                raise AutoAnimError(
+                    "INTEGRITY_FAILED",
+                    str(exc),
+                    details={"qualification_code": exc.code, "field": exc.field},
+                ) from exc
+            raise AutoAnimError(
+                "IDENTITY_QUALIFICATION_INVALID",
+                str(exc),
+                details={"qualification_code": exc.code, "field": exc.field},
+            ) from exc
+
+        profile_sessions = tuple(session.session_id for session in profile.sessions)
+
+        return {
+            "schema_version": "autoanim.identity-qualification-inspection/1.0",
+            "qualification_job_id": qualification_job_id,
+            "artifacts_verified": True,
+            "artifacts": verified_artifacts,
+            "profile": {
+                "schema_version": profile.schema_version,
+                "threshold_version": profile.threshold_version,
+                "profile_sha256": profile.profile_sha256,
+                "declared_fixture_class": profile.declared_fixture_class,
+                "fixture_class_resolved": False,
+                "created_at": profile.created_at,
+                "session_ids": list(profile_sessions),
+                "session_count": len(profile.sessions),
+                "independent_scan_declared": True,
+                "independent_reviewer_count": len(profile.reviewers),
+            },
+            "report": {
+                "schema_version": report["schema_version"],
+                "threshold_version": report["threshold_version"],
+                "report_sha256": report["report_sha256"],
+                "qualification_scope": report["qualification_scope"],
+                "declared_fixture_class": report["declared_fixture_class"],
+                "fixture_class_resolved": False,
+                "reported_contract_gate_passed": report[
+                    "contract_gate_passed"
+                ],
+                "contract_gate_independently_recomputed": False,
+                "raw_calibration_recomputed": report[
+                    "raw_calibration_recomputed"
+                ],
+                "scan_metrics_recomputed": report["scan_metrics_recomputed"],
+                "repeat_geometry_recomputed": report[
+                    "repeat_geometry_recomputed"
+                ],
+                "asset_identity_validated": report[
+                    "asset_identity_validated"
+                ],
+                "production_validated": report["production_validated"],
+                "failures": list(report["failures"]),
+                "remediation": list(report["remediation"]),
+                "sessions": list(report["sessions"]),
+            },
+            "claim_authorizing": False,
+            "claim": (
+                "Verified I0 declaration and camera-coverage evidence only; identity, "
+                "scan accuracy, PBR, texture, and production approval remain blocked."
+            ),
+        }
 
     def promote_character(
         self,

@@ -54,9 +54,12 @@ canonical mapping; `index` and `filename` must agree with it exactly.
 }
 ```
 
-The abbreviated example shows one view; a valid bundle requires at least three
-`fit` views, at least one `held_out` view, and a nonzero baseline between fit
-cameras. Every view requires exactly five OpenCV radial-tangential distortion
+The abbreviated example shows one view. The legacy research fitter accepts at
+least three `fit` views and one `held_out` view; that threshold is not a
+production identity qualification. I0 production evidence requires two
+independent sessions with at least five fit and two held-out views per session,
+at least 120 degrees of recomputed camera-center yaw coverage, and a nonzero
+baseline between fit cameras. Every view requires exactly five OpenCV radial-tangential distortion
 coefficients and 68 finite visibility weights in `[0,1]`, with at least 24
 visible points.
 
@@ -71,7 +74,7 @@ The loader rejects the bundle before fitting when any of these invariants fail:
 - exactly five finite `D` values;
 - finite rigid `world_to_camera`, proper rotation, determinant `+1`, canonical last row;
 - positive `meters_per_world_unit` and nonzero fit-camera baseline;
-- at least three fit views and one held-out view;
+- at least three fit views and one held-out view for the legacy research fitter;
 - requester-declared calibration RMS at most 0.40 px, pose error at most 2 degrees, and
   scale error at most 1 percent.
 

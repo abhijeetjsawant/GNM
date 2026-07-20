@@ -116,6 +116,17 @@ def test_camera_bundle_parser_is_strict_and_ordered(tmp_path: Path) -> None:
     assert bundle.views[0].distortion.shape == (5,)
 
 
+def test_camera_bundle_parser_rejects_duplicate_members(tmp_path: Path) -> None:
+    source = tmp_path / "calibration.json"
+    source.write_text(
+        '{"schema_version":"autoanim.calibrated_multiview.v1",'
+        '"schema_version":"autoanim.calibrated_multiview.v1"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(AutoAnimError, match="duplicate JSON member"):
+        load_camera_bundle(source, input_names=(), image_sizes=())
+
+
 @pytest.mark.parametrize(
     ("mutator", "message"),
     (

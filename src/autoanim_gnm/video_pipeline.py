@@ -52,9 +52,13 @@ from .serialization import write_json, write_npz
 from .video_capture import (
     MONOCULAR_SCALE_CAVEAT,
     VideoProbe,
-    capture_video,
+    capture_video_run,
     probe_video,
     serialize_capture,
+)
+from .video_capture_run import (
+    VIDEO_CAPTURE_RUN_SCHEMA_VERSION,
+    write_video_capture_run,
 )
 from .video_evidence import (
     AUDIO_VIDEO_TIMING_POLICY,
@@ -70,6 +74,15 @@ from .video_observation import (
     analyze_video_pixels,
     write_observation_v3_summary,
     write_pixel_observations,
+)
+from .visual_track import (
+    MOTION_AUTHORITY,
+    VISUAL_TRACK_POLICY,
+    VISUAL_TRACK_SCHEMA_VERSION,
+    VISUAL_TRACK_SUMMARY_SCHEMA_VERSION,
+    build_visual_track,
+    write_visual_track,
+    write_visual_track_summary,
 )
 from .video_retarget import (
     FAST_CONTACT_CONTROLS,
@@ -919,11 +932,15 @@ def _run_video_pipeline_impl(
                 "DEPENDENCY_MISSING",
                 f"Learned audio-visual repair dependencies are unavailable: {exc}",
             ) from exc
-    capture = capture_video(source, model_path)
+    capture_run = capture_video_run(source, model_path)
+    capture = capture_run.track
     detected_count = int(np.count_nonzero(capture.detected))
     if detected_count == 0:
         raise AutoAnimError("FACE_NOT_FOUND", "No face was detected in the video")
     capture_path, capture_jsonl_path = serialize_capture(output, capture)
+    capture_run_path = write_video_capture_run(
+        output / "video-capture-run.json", capture_run
+    )
     performance_evidence_path = write_performance_evidence(
         output / "performance-evidence.json", capture
     )
@@ -940,6 +957,15 @@ def _run_video_pipeline_impl(
         pixel_observations_sha256=_file_sha256(pixel_observations_path),
         pixel_observations_bytes=pixel_observations_path.stat().st_size,
     )
+    visual_track = build_visual_track(
+        capture,
+        pixel_observations,
+        capture_run=capture_run,
+    )
+    visual_track_path = write_visual_track(output / "visual-track.npz", visual_track)
+    visual_track_summary_path = write_visual_track_summary(
+        output / "visual-track.json", visual_track
+    )
     capture_session_path = write_video_capture_session(
         output / "capture-session.json",
         capture,
@@ -950,7 +976,11 @@ def _run_video_pipeline_impl(
             "performance_evidence": performance_evidence_path,
             "pixel_observations": pixel_observations_path,
             "observation_v3": observation_v3_path,
+            "video_capture_run": capture_run_path,
+            "visual_track": visual_track_path,
+            "visual_track_summary": visual_track_summary_path,
         },
+        capture_run=capture_run,
     )
     if require_audio_visual_repair and not audio_video_timing_evidence:
         raise AutoAnimError(
@@ -1343,6 +1373,9 @@ def _run_video_pipeline_impl(
         NEUTRAL_CALIBRATION_CAVEAT,
         retarget_caveat,
         VIDEO_TRACKING_CAVEAT,
+        "VISUAL_TRACK_SHADOW_ONLY: exact source PTS and detector-ingress frame hashes "
+        "are retained for review, but VisualTrack has no motion authority and specialized "
+        "regional confidence remains unknown until calibrated providers are qualified.",
     ]
     if audio_video_timing is not None and audio_visual_repair is None:
         timing_status = str(audio_video_timing["status"])
@@ -1746,6 +1779,15 @@ def _run_video_pipeline_impl(
             ),
             "observation_v3_policy": OBSERVATION_V3_POLICY,
             "observation_v3_consumed_by_retargeting": False,
+            "visual_track_schema_version": VISUAL_TRACK_SCHEMA_VERSION,
+            "visual_track_summary_schema_version": (
+                VISUAL_TRACK_SUMMARY_SCHEMA_VERSION
+            ),
+            "visual_track_policy": VISUAL_TRACK_POLICY,
+            "visual_track_motion_authority": MOTION_AUTHORITY,
+            "visual_track_consumed_by_retargeting": False,
+            "visual_track_detector_ingress_hashes_verified": True,
+            "video_capture_run_schema_version": VIDEO_CAPTURE_RUN_SCHEMA_VERSION,
             "capture_session_schema_version": CAPTURE_SESSION_SCHEMA_VERSION,
             "production_validated": False,
             **(
@@ -1990,6 +2032,9 @@ def _run_video_pipeline_impl(
             "performance_evidence": "performance-evidence.json",
             "pixel_observations": "pixel-observations.npz",
             "observation_v3": "observation-v3.json",
+            "video_capture_run": "video-capture-run.json",
+            "visual_track": "visual-track.npz",
+            "visual_track_summary": "visual-track.json",
             "capture_session": "capture-session.json",
             "controls": "performance.npz",
             "controls_jsonl": "performance.jsonl",

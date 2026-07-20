@@ -8,6 +8,7 @@ htmlcov/
 artifacts/
 tmp/
 .playwright-cli/
+.autoanim-integrity/
 output/
 *.egg-info/
 .DS_Store

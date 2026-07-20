@@ -532,6 +532,66 @@ class CaptureTrack:
         return float(self.timestamps_seconds[-1])
 
 
+@dataclass(frozen=True, slots=True)
+class VideoCaptureRun:
+    """Capture v1 plus provenance from the exact detector-ingress buffers."""
+
+    track: CaptureTrack
+    detector_ingress_rgb_sha256: tuple[str, ...]
+    num_faces: int
+    confidence_thresholds: tuple[float, float, float]
+    hash_domain: str = "rgb8_hwc_contiguous_exact_mp_image_input"
+
+    def __post_init__(self) -> None:
+        raw_hashes = self.detector_ingress_rgb_sha256
+        raw_thresholds = self.confidence_thresholds
+        if (
+            not isinstance(self.track, CaptureTrack)
+            or not isinstance(raw_hashes, tuple)
+            or not isinstance(raw_thresholds, tuple)
+            or type(self.num_faces) is not int
+            or self.num_faces != 1
+            or len(raw_thresholds) != 3
+            or any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not np.isfinite(value)
+                or not 0.0 <= float(value) <= 1.0
+                for value in raw_thresholds
+            )
+            or not isinstance(self.hash_domain, str)
+            or self.hash_domain != "rgb8_hwc_contiguous_exact_mp_image_input"
+        ):
+            raise ValueError("Video capture run detector-ingress provenance is invalid")
+        hashes = raw_hashes
+        thresholds = tuple(float(value) for value in raw_thresholds)
+        object.__setattr__(self, "detector_ingress_rgb_sha256", hashes)
+        object.__setattr__(self, "confidence_thresholds", thresholds)
+        if (
+            len(hashes) != self.track.frame_count
+            or any(
+                not isinstance(value, str)
+                or len(value) != 64
+                or value != value.lower()
+                or any(character not in "0123456789abcdef" for character in value)
+                for value in hashes
+            )
+        ):
+            raise ValueError("Video capture run detector-ingress provenance is invalid")
+
+    def detector_configuration(self) -> dict[str, Any]:
+        return {
+            "num_faces": self.num_faces,
+            "min_face_detection_confidence": self.confidence_thresholds[0],
+            "min_face_presence_confidence": self.confidence_thresholds[1],
+            "min_tracking_confidence": self.confidence_thresholds[2],
+            "running_mode": "VIDEO",
+            "output_face_blendshapes": True,
+            "output_facial_transformation_matrices": True,
+            "detector_ingress_hash_domain": self.hash_domain,
+        }
+
+
 def _parse_fraction(value: object, *, field: str) -> Fraction:
     try:
         fraction = Fraction(str(value))
@@ -872,7 +932,7 @@ def _optional_landmark_value(point: Any, name: str) -> float:
     return np.nan if value is None else float(value)
 
 
-def capture_video(
+def capture_video_run(
     video_path: str | Path,
     model_path: str | Path,
     *,
@@ -882,8 +942,8 @@ def capture_video(
     min_face_detection_confidence: float = 0.5,
     min_face_presence_confidence: float = 0.5,
     min_tracking_confidence: float = 0.5,
-) -> CaptureTrack:
-    """Capture one face in MediaPipe Face Landmarker ``VIDEO`` mode."""
+) -> VideoCaptureRun:
+    """Capture one face and hash every exact MediaPipe ingress RGB buffer."""
 
     thresholds = (
         min_face_detection_confidence,
@@ -913,6 +973,7 @@ def capture_video(
     detected = np.zeros(count, dtype=bool)
     face_confidence = np.full(count, np.nan, dtype=np.float32)
     tracking_quality = np.zeros(count, dtype=np.float32)
+    detector_ingress_hashes: list[str] = []
     options = mp.tasks.vision.FaceLandmarkerOptions(
         base_options=mp.tasks.BaseOptions(model_asset_path=str(model)),
         running_mode=mp.tasks.vision.RunningMode.VIDEO,
@@ -927,7 +988,11 @@ def capture_video(
     with mp.tasks.vision.FaceLandmarker.create_from_options(options) as detector:
         with decoded_video_frames(probe, ffmpeg_bin=ffmpeg_bin) as frames:
             for frame in frames:
-                media_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame.rgb)
+                ingress_rgb = np.ascontiguousarray(frame.rgb)
+                detector_ingress_hashes.append(
+                    hashlib.sha256(ingress_rgb.tobytes()).hexdigest()
+                )
+                media_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=ingress_rgb)
                 result = detector.detect_for_video(media_image, frame.mediapipe_timestamp_ms)
                 if not result.face_landmarks:
                     continue
@@ -1000,7 +1065,7 @@ def capture_video(
         ffprobe_command=_command_template(probe.ffprobe_command, probe.path),
         ffmpeg_command=_command_template(ffmpeg_command, probe.path),
     )
-    return CaptureTrack(
+    track = CaptureTrack(
         source_pts=probe.source_pts,
         timestamps_seconds=probe.timestamps_seconds,
         mediapipe_timestamps_ms=probe.mediapipe_timestamps_ms,
@@ -1017,6 +1082,37 @@ def capture_video(
         height=probe.height,
         provenance=provenance,
     )
+    return VideoCaptureRun(
+        track=track,
+        detector_ingress_rgb_sha256=tuple(detector_ingress_hashes),
+        num_faces=1,
+        confidence_thresholds=tuple(float(value) for value in thresholds),
+    )
+
+
+def capture_video(
+    video_path: str | Path,
+    model_path: str | Path,
+    *,
+    ffprobe_bin: str = "ffprobe",
+    ffmpeg_bin: str = "ffmpeg",
+    limits: VideoDecodeLimits = VideoDecodeLimits(),
+    min_face_detection_confidence: float = 0.5,
+    min_face_presence_confidence: float = 0.5,
+    min_tracking_confidence: float = 0.5,
+) -> CaptureTrack:
+    """Compatibility wrapper returning Capture v1 without the run envelope."""
+
+    return capture_video_run(
+        video_path,
+        model_path,
+        ffprobe_bin=ffprobe_bin,
+        ffmpeg_bin=ffmpeg_bin,
+        limits=limits,
+        min_face_detection_confidence=min_face_detection_confidence,
+        min_face_presence_confidence=min_face_presence_confidence,
+        min_tracking_confidence=min_tracking_confidence,
+    ).track
 
 
 def write_capture_npz(path: str | Path, track: CaptureTrack) -> Path:

@@ -409,6 +409,43 @@ animation approval.
   It is explicitly review-only; the software does not weaken the gate or alter
   rapid source-authoritative frames to manufacture a pass.
 
+## I0 and VisualTrack V1 shadow-evidence audit — 2026-07-20
+
+- `VideoCaptureRun` hashes the exact contiguous RGB bytes passed into each
+  MediaPipe `mp.Image`. The independently sealed
+  `autoanim.video-capture-run/1.0` artifact binds the ordered hashes to exact
+  source PTS, time base, source/model hashes, MediaPipe runtime, and detector
+  thresholds. It rejects duplicate JSON keys, non-finite values, unknown
+  members, bool-as-number values, altered PTS/config/hash order, and documents
+  that the local JobStore seal—not the document self-hash—is the authenticity
+  root.
+- `autoanim.visual-track/1.0` and its reconstructable summary require those
+  detector-ingress hashes to equal Observation v3's separately decoded frame
+  hashes. Unsupported mouth, eye, gaze, brow, cheek/silhouette, and tongue
+  evidence stays unknown. Covariance, reprojection residual, occlusion,
+  calibrated confidence, identity binding, and production status cannot be
+  inferred from MediaPipe's coarse observations.
+- `autoanim.capture-session.v2`, service readiness, and the bounded review API
+  verify the full sealed CaptureRun/VisualTrack chain. Tampering CaptureRun,
+  VisualTrack, Observation v3, or the session closes readiness and review.
+- The real CREMA-D 67-frame pipeline passes end to end with the new contracts.
+  Its frozen performance-expression and rotation array hashes remain unchanged,
+  proving the V1 lane has no motion effect. The combined video pipeline and
+  audiovisual-repair suite passes 23 tests; the combined I0/API/readiness and
+  V1 contract suite passes 143 tests. The final exact-tree regression passes
+  700 tests with two documented opt-in fixture skips and the existing
+  Starlette/httpx deprecation warning.
+- I0 report parsing re-derives its declared 5+2 view, 120-degree yaw, and
+  calibration gates and cross-binds every session back to the parsed profile;
+  consent-time, scan, repeat, and reviewer declarations are also checked.
+  Camera bundles are not yet reloaded to recompute those measurements, so the
+  gate remains reported rather than independently verified. Fixture reality
+  remains unresolved and all raw
+  calibration, independent scan, repeat geometry, identity, PBR, and production
+  claims remain false. Thirty-four adversarial I0 tests pass, but no real
+  consented subject or independent metric scan is bundled, so I0 is not a
+  production likeness qualification.
+
 ## Known limitations and viable upgrades
 
 - **Lipsync accuracy:** Audio2Face is now the preferred motion generator and

@@ -263,6 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
     job_seal.add_argument("job_id")
     job_seal.add_argument("--attested-by", required=True)
     job_seal.add_argument("--reason", required=True)
+    inspect_identity = subparsers.add_parser("inspect-identity-qualification")
+    inspect_identity.add_argument("job_id")
+    inspect_identity.add_argument(
+        "--artifacts", type=Path, default=Path("artifacts/jobs")
+    )
     material = subparsers.add_parser("material")
     material.add_argument("package_root", type=Path)
     material.add_argument(
@@ -507,6 +512,8 @@ def main(argv: list[str] | None = None) -> int:
                 attested_by=args.attested_by,
                 reason=args.reason,
             )
+        elif args.command == "inspect-identity-qualification":
+            result = service.identity_qualification(args.job_id)
         elif args.command == "material":
             specification = _read_json_object(
                 args.spec, label="Material specification"

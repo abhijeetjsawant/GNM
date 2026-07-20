@@ -452,7 +452,16 @@ def test_video_gate_requires_subject_and_labeled_neutral_calibration() -> None:
                 "observation_only_pixel_diagnostics_no_motion_effect_v1"
             ),
             "observation_v3_consumed_by_retargeting": False,
-            "capture_session_schema_version": "autoanim.capture-session.v1",
+            "video_capture_run_schema_version": "autoanim.video-capture-run/1.0",
+            "visual_track_schema_version": "autoanim.visual-track/1.0",
+            "visual_track_summary_schema_version": (
+                "autoanim.visual-track-summary/1.0"
+            ),
+            "visual_track_policy": "shadow_observation_only_no_motion_effect_v1",
+            "visual_track_motion_authority": "none",
+            "visual_track_consumed_by_retargeting": False,
+            "visual_track_detector_ingress_hashes_verified": True,
+            "capture_session_schema_version": "autoanim.capture-session.v2",
         }
     )
     structural_only = evaluate_production_readiness(
@@ -491,7 +500,20 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
                     "observation_only_pixel_diagnostics_no_motion_effect_v1"
                 ),
                 "observation_v3_consumed_by_retargeting": False,
-                "capture_session_schema_version": "autoanim.capture-session.v1",
+                "video_capture_run_schema_version": (
+                    "autoanim.video-capture-run/1.0"
+                ),
+                "visual_track_schema_version": "autoanim.visual-track/1.0",
+                "visual_track_summary_schema_version": (
+                    "autoanim.visual-track-summary/1.0"
+                ),
+                "visual_track_policy": (
+                    "shadow_observation_only_no_motion_effect_v1"
+                ),
+                "visual_track_motion_authority": "none",
+                "visual_track_consumed_by_retargeting": False,
+                "visual_track_detector_ingress_hashes_verified": True,
+                "capture_session_schema_version": "autoanim.capture-session.v2",
             },
             "retargeting": {
                 "subject_calibrated": True,
@@ -556,6 +578,8 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
         observation_v3_artifacts_verified=True,
+        video_capture_run_artifact_verified=True,
+        visual_track_artifacts_verified=True,
         capture_session_artifact_verified=True,
         capture_session_production_claims_verified=True,
         character_revision=character,
@@ -582,6 +606,8 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
         observation_v3_artifacts_verified=True,
+        video_capture_run_artifact_verified=True,
+        visual_track_artifacts_verified=True,
         capture_session_artifact_verified=True,
         capture_session_production_claims_verified=True,
         character_revision=character,
@@ -597,6 +623,8 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
         observation_v3_artifacts_verified=True,
+        video_capture_run_artifact_verified=True,
+        visual_track_artifacts_verified=True,
         capture_session_artifact_verified=True,
         capture_session_production_claims_verified=True,
         audio_visual_repair_artifacts_verified=True,
@@ -613,6 +641,8 @@ def test_enabled_audio_visual_repair_is_a_required_unqualified_gate() -> None:
         delivery_artifact_verified=True,
         performance_evidence_artifact_verified=True,
         observation_v3_artifacts_verified=True,
+        video_capture_run_artifact_verified=True,
+        visual_track_artifacts_verified=True,
         capture_session_artifact_verified=True,
         capture_session_production_claims_verified=True,
         audio_visual_repair_artifacts_verified=True,

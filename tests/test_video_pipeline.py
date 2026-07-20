@@ -27,6 +27,10 @@ from autoanim_gnm.video_capture import (
     load_capture_npz,
     probe_video,
 )
+from autoanim_gnm.video_capture_run import (
+    VIDEO_CAPTURE_RUN_SCHEMA_VERSION,
+    load_video_capture_run,
+)
 from autoanim_gnm.video_pipeline import (
     MAX_PROXY_PTS_ERROR_SECONDS,
     _apply_video_mouth_aperture_edit,
@@ -52,6 +56,14 @@ from autoanim_gnm.video_observation import (
     load_verified_observation_v3_summary,
 )
 from autoanim_gnm.video_retarget import retarget_capture
+from autoanim_gnm.visual_track import (
+    MOTION_AUTHORITY,
+    VISUAL_TRACK_POLICY,
+    VISUAL_TRACK_SCHEMA_VERSION,
+    VISUAL_TRACK_SUMMARY_SCHEMA_VERSION,
+    load_verified_visual_track_summary,
+    load_visual_track,
+)
 
 
 CACHE = Path(os.environ.get("AUTOANIM_CACHE_DIR", ".cache/autoanim_gnm"))
@@ -509,10 +521,26 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     )
     assert result["capture"]["observation_v3_policy"] == OBSERVATION_V3_POLICY
     assert result["capture"]["observation_v3_consumed_by_retargeting"] is False
+    assert result["capture"]["visual_track_schema_version"] == (
+        VISUAL_TRACK_SCHEMA_VERSION
+    )
+    assert result["capture"]["visual_track_summary_schema_version"] == (
+        VISUAL_TRACK_SUMMARY_SCHEMA_VERSION
+    )
+    assert result["capture"]["visual_track_policy"] == VISUAL_TRACK_POLICY
+    assert result["capture"]["visual_track_motion_authority"] == MOTION_AUTHORITY
+    assert result["capture"]["visual_track_consumed_by_retargeting"] is False
+    assert result["capture"]["visual_track_detector_ingress_hashes_verified"] is True
+    assert result["capture"]["video_capture_run_schema_version"] == (
+        VIDEO_CAPTURE_RUN_SCHEMA_VERSION
+    )
     assert result["capture"]["capture_session_schema_version"] == (
         CAPTURE_SESSION_SCHEMA_VERSION
     )
     assert result["capture"]["production_validated"] is False
+    assert any(
+        "VISUAL_TRACK_SHADOW_ONLY" in warning for warning in result["warnings"]
+    )
     assert result["retargeting"]["backend"] == (
         "geometry_calibrated_dense_contact_aperture_v3"
     )
@@ -576,6 +604,15 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
         "application/octet-stream"
     )
     assert result["artifacts"]["observation_v3"]["media_type"] == (
+        "application/json"
+    )
+    assert result["artifacts"]["visual_track"]["media_type"] == (
+        "application/octet-stream"
+    )
+    assert result["artifacts"]["visual_track_summary"]["media_type"] == (
+        "application/json"
+    )
+    assert result["artifacts"]["video_capture_run"]["media_type"] == (
         "application/json"
     )
     assert result["artifacts"]["capture_session"]["media_type"] == (
@@ -675,6 +712,25 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
         summary["strongFrames"] == 0
         for summary in observation_v3["summary"]["regions"].values()
     )
+    visual_track = load_visual_track(job_dir / "visual-track.npz")
+    expected_capture_run = load_video_capture_run(
+        job_dir / "video-capture-run.json",
+        expected_capture=capture_track,
+    )
+    visual_summary = load_verified_visual_track_summary(
+        job_dir / "visual-track.json",
+        visual_track_path=job_dir / "visual-track.npz",
+        expected_capture=capture_track,
+        expected_observations=pixel_observations,
+        expected_capture_run=expected_capture_run,
+    )
+    assert visual_summary["schemaVersion"] == VISUAL_TRACK_SUMMARY_SCHEMA_VERSION
+    assert visual_summary["policy"] == VISUAL_TRACK_POLICY
+    assert visual_summary["motionAuthority"] == MOTION_AUTHORITY
+    assert visual_summary["consumedByRetargeting"] is False
+    assert visual_track.evidence_rgb_sha256 == (
+        pixel_observations.decoded_pixel_sha256
+    )
     capture_session = load_verified_video_capture_session(
         job_dir / "capture-session.json",
         expected_capture=capture_track,
@@ -685,7 +741,11 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
             "performance_evidence": job_dir / "performance-evidence.json",
             "pixel_observations": job_dir / "pixel-observations.npz",
             "observation_v3": job_dir / "observation-v3.json",
+            "video_capture_run": job_dir / "video-capture-run.json",
+            "visual_track": job_dir / "visual-track.npz",
+            "visual_track_summary": job_dir / "visual-track.json",
         },
+        expected_capture_run=expected_capture_run,
     )
     assert capture_session["schema_version"] == CAPTURE_SESSION_SCHEMA_VERSION
     assert capture_session["subject_binding"]["state"] == "unbound"
@@ -702,6 +762,8 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     readiness_evidence = readiness.json()["gates"]["performance"]["evidence"]
     assert readiness_evidence["performance_evidence_artifact_verified"] is True
     assert readiness_evidence["observation_v3_artifacts_verified"] is True
+    assert readiness_evidence["video_capture_run_artifact_verified"] is True
+    assert readiness_evidence["visual_track_artifacts_verified"] is True
     assert readiness_evidence["capture_session_artifact_verified"] is True
     assert readiness_evidence["capture_session_production_claims_verified"] is False
 
@@ -870,6 +932,28 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert tampered_review_frame.status_code == 404
     assert tampered_review_frame.json()["code"] == "ARTIFACT_NOT_FOUND"
     proxy_path.write_bytes(proxy_bytes)
+
+    capture_run_path = job_dir / "video-capture-run.json"
+    capture_run_bytes = capture_run_path.read_bytes()
+    capture_run_path.write_text("{}\n", encoding="utf-8")
+    capture_run_tampered = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/production-readiness"
+    ).json()["gates"]["performance"]["evidence"]
+    assert capture_run_tampered["video_capture_run_artifact_verified"] is False
+    assert capture_run_tampered["visual_track_artifacts_verified"] is False
+    assert capture_run_tampered["capture_session_artifact_verified"] is False
+    capture_run_path.write_bytes(capture_run_bytes)
+
+    visual_summary_path = job_dir / "visual-track.json"
+    visual_summary_bytes = visual_summary_path.read_bytes()
+    visual_summary_path.write_text("{}\n", encoding="utf-8")
+    visual_tampered = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/production-readiness"
+    ).json()["gates"]["performance"]["evidence"]
+    assert visual_tampered["video_capture_run_artifact_verified"] is False
+    assert visual_tampered["visual_track_artifacts_verified"] is False
+    assert visual_tampered["capture_session_artifact_verified"] is False
+    visual_summary_path.write_bytes(visual_summary_bytes)
 
     (job_dir / "observation-v3.json").write_text("{}\n", encoding="utf-8")
     tampered_readiness = TestClient(app).get(

@@ -393,6 +393,35 @@ measurement authority.
 9. **Q1 release qualification** — rights, deletion, device/load recovery,
    automatic gates, animator/naive studies and signed approval.
 
+### Implementation status: I0 contract and V1.0 shadow lane
+
+The V1.0 shadow lane is now implemented without changing final animation
+motion. Each new video job seals three additional contracts:
+
+- `autoanim.video-capture-run/1.0` independently retains the ordered SHA-256
+  digest of the exact contiguous RGB buffer handed to MediaPipe, exact source
+  PTS/source/model bindings, and the detector configuration. It retains no
+  source pixels and makes no production claim.
+- `autoanim.visual-track/1.0` binds those detector-ingress hashes to the
+  independently re-decoded Observation v3 hashes, exact rational source PTS,
+  provisional shot/tracking epochs, unbound subject state, 478 point
+  observations, and explicit unknown covariance, residual, occlusion,
+  calibrated confidence, identity, and tongue evidence.
+- `autoanim.capture-session.v2` reconstructs the sealed Capture v1,
+  CaptureRun, Observation v2/v3, VisualTrack, and summary chain. VisualTrack's
+  motion authority is exactly `none` and the CREMA-D regression retains the
+  pre-existing performance-expression and rotation hashes byte-for-byte.
+
+I0 now has a strict `autoanim.identity-qualification-profile/1.0` and
+reconstructable report contract for two-session 5+2 capture, 120-degree yaw,
+consent scopes/times, independent scan declarations, repeat geometry, and two
+distinct reviewers. The current evaluator deliberately keeps raw-calibration,
+scan, repeat-geometry, asset-identity, measured-PBR, and production gates false.
+Fixture reality and consent/reviewer/scan authority remain declared and
+unresolved until their bytes are resolved by a future trusted evaluator.
+Therefore this milestone validates contracts and fail-closed application
+integration; it does not qualify a real person's likeness or video tracking.
+
 No phase may pass from unit tests alone. Each requires a real input, sealed
 artifact reconstruction, adversarial/tamper checks, an independent reference
 appropriate to the claim, and a full regression after the last source change.

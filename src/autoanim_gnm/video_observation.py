@@ -1445,14 +1445,24 @@ def build_observation_v3_view(
         or algorithm.get("arraysSchemaVersion") != observations.schema_version
     ):
         raise ValueError("Observation-v3 view source is not a verified evidence contract")
-    required_artifacts = {
-        "capture",
-        "capture_jsonl",
-        "performance_evidence",
-        "pixel_observations",
-        "observation_v3",
-        "capture_session",
-    }
+    legacy_required_artifacts = frozenset(
+        {
+            "capture",
+            "capture_jsonl",
+            "performance_evidence",
+            "pixel_observations",
+            "observation_v3",
+            "capture_session",
+        }
+    )
+    v2_required_artifacts = frozenset(
+        {
+            *legacy_required_artifacts,
+            "video_capture_run",
+            "visual_track",
+            "visual_track_summary",
+        }
+    )
     bound_artifacts = (
         evidence_binding.get("artifacts", {})
         if isinstance(evidence_binding, dict)
@@ -1470,7 +1480,8 @@ def build_observation_v3_view(
         or not isinstance(evidence_binding.get("sealSchema"), str)
         or not isinstance(evidence_binding.get("sealKeyId"), str)
         or not isinstance(bound_artifacts, dict)
-        or set(bound_artifacts) != required_artifacts
+        or frozenset(bound_artifacts)
+        not in {legacy_required_artifacts, v2_required_artifacts}
         or any(
             not isinstance(record, dict)
             or not isinstance(record.get("name"), str)

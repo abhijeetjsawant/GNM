@@ -64,6 +64,8 @@ def evaluate_production_readiness(
     delivery_artifact_verified: bool = False,
     performance_evidence_artifact_verified: bool = False,
     observation_v3_artifacts_verified: bool = False,
+    video_capture_run_artifact_verified: bool = False,
+    visual_track_artifacts_verified: bool = False,
     capture_session_artifact_verified: bool = False,
     capture_session_production_claims_verified: bool = False,
     phone_evidence_artifacts_verified: bool = False,
@@ -72,6 +74,9 @@ def evaluate_production_readiness(
     audio_visual_repair_qualification_verified: bool = False,
     character_revision: dict[str, Any] | None = None,
     character_resolution_error: str | None = None,
+    identity_qualification: dict[str, Any] | None = None,
+    identity_qualification_job_id: str | None = None,
+    identity_qualification_resolution_error: str | None = None,
     direction: dict[str, Any] | None = None,
     direction_manifest_verified: bool = False,
     require_acting: bool = False,
@@ -106,6 +111,42 @@ def evaluate_production_readiness(
         and resolved_identity_hash == expected_identity_hash
         and character_resolution_error is None
     )
+    identity_qualification_summary = _mapping(identity_qualification)
+    identity_qualification_report = _mapping(
+        identity_qualification_summary.get("report")
+    )
+    identity_qualification_evidence = {
+        "qualification_job_id": identity_qualification_job_id,
+        "artifacts_verified": bool(
+            identity_qualification_summary.get("artifacts_verified", False)
+        ),
+        "resolution_error": identity_qualification_resolution_error,
+        "declared_fixture_class": identity_qualification_report.get(
+            "declared_fixture_class"
+        ),
+        "fixture_class_resolved": False,
+        "reported_contract_gate_passed": identity_qualification_report.get(
+            "reported_contract_gate_passed", False
+        ),
+        "contract_gate_independently_recomputed": False,
+        "raw_calibration_recomputed": identity_qualification_report.get(
+            "raw_calibration_recomputed", False
+        ),
+        "scan_metrics_recomputed": identity_qualification_report.get(
+            "scan_metrics_recomputed", False
+        ),
+        "repeat_geometry_recomputed": identity_qualification_report.get(
+            "repeat_geometry_recomputed", False
+        ),
+        "asset_identity_validated": False,
+        "production_validated": False,
+        "pbr_validated": False,
+        "texture_validated": False,
+        "failures": _string_list(identity_qualification_report.get("failures")),
+        # I0 schema v1 is declaration/coverage evidence and never authorizes a
+        # likeness, material, texture, or production claim.
+        "claim_authorizing": False,
+    }
 
     gates: dict[str, dict[str, Any]] = {}
     gates["terminal_take"] = _gate(
@@ -153,6 +194,7 @@ def evaluate_production_readiness(
             "revision_production_validated": revision.get(
                 "production_validated", False
             ),
+            "identity_capture_i0": identity_qualification_evidence,
         },
         remediation=(
             "Validate the character against held-out calibrated views or an independent scan, "
@@ -322,8 +364,21 @@ def evaluate_production_readiness(
             == "observation_only_pixel_diagnostics_no_motion_effect_v1"
             and capture.get("observation_v3_consumed_by_retargeting") is False
             and observation_v3_artifacts_verified
+            and capture.get("video_capture_run_schema_version")
+            == "autoanim.video-capture-run/1.0"
+            and video_capture_run_artifact_verified
+            and capture.get("visual_track_schema_version")
+            == "autoanim.visual-track/1.0"
+            and capture.get("visual_track_summary_schema_version")
+            == "autoanim.visual-track-summary/1.0"
+            and capture.get("visual_track_policy")
+            == "shadow_observation_only_no_motion_effect_v1"
+            and capture.get("visual_track_motion_authority") == "none"
+            and capture.get("visual_track_consumed_by_retargeting") is False
+            and capture.get("visual_track_detector_ingress_hashes_verified") is True
+            and visual_track_artifacts_verified
             and capture.get("capture_session_schema_version")
-            == "autoanim.capture-session.v1"
+            == "autoanim.capture-session.v2"
             and capture_session_artifact_verified
             and capture_session_production_claims_verified
         )
@@ -350,6 +405,29 @@ def evaluate_production_readiness(
             "observation_v3_consumed_by_retargeting": capture.get(
                 "observation_v3_consumed_by_retargeting"
             ),
+            "video_capture_run_schema_version": capture.get(
+                "video_capture_run_schema_version"
+            ),
+            "video_capture_run_artifact_verified": (
+                video_capture_run_artifact_verified
+            ),
+            "visual_track_schema_version": capture.get(
+                "visual_track_schema_version"
+            ),
+            "visual_track_summary_schema_version": capture.get(
+                "visual_track_summary_schema_version"
+            ),
+            "visual_track_policy": capture.get("visual_track_policy"),
+            "visual_track_motion_authority": capture.get(
+                "visual_track_motion_authority"
+            ),
+            "visual_track_consumed_by_retargeting": capture.get(
+                "visual_track_consumed_by_retargeting"
+            ),
+            "visual_track_detector_ingress_hashes_verified": capture.get(
+                "visual_track_detector_ingress_hashes_verified"
+            ),
+            "visual_track_artifacts_verified": visual_track_artifacts_verified,
             "capture_session_schema_version": capture.get(
                 "capture_session_schema_version"
             ),

@@ -19,13 +19,16 @@ from autoanim_gnm.api import create_app
 from autoanim_gnm.artifacts import sha256
 from autoanim_gnm.capture_session import write_video_capture_session
 from autoanim_gnm.errors import AutoAnimError
+from autoanim_gnm.serialization import write_json
 from autoanim_gnm.video_capture import (
     CaptureProvenance,
     CaptureTrack,
     MEDIAPIPE_BLENDSHAPE_NAMES,
+    VideoCaptureRun,
     VideoProbe,
     serialize_capture,
 )
+from autoanim_gnm.video_capture_run import write_video_capture_run
 from autoanim_gnm.video_evidence import (
     REGION_LANDMARKS,
     write_performance_evidence,
@@ -42,6 +45,11 @@ from autoanim_gnm.video_observation import (
     load_verified_observation_v3_summary,
     write_observation_v3_summary,
     write_pixel_observations,
+)
+from autoanim_gnm.visual_track import (
+    build_visual_track,
+    write_visual_track,
+    write_visual_track_summary,
 )
 
 
@@ -158,6 +166,24 @@ def _write_bound_artifacts(
         pixel_observations_sha256=digest(arrays_path),
         pixel_observations_bytes=arrays_path.stat().st_size,
     )
+    capture_run = VideoCaptureRun(
+        track=capture,
+        detector_ingress_rgb_sha256=observations.decoded_pixel_sha256,
+        num_faces=1,
+        confidence_thresholds=(0.5, 0.5, 0.5),
+    )
+    capture_run_path = write_video_capture_run(
+        tmp_path / "video-capture-run.json", capture_run
+    )
+    visual_track = build_visual_track(
+        capture, observations, capture_run=capture_run
+    )
+    visual_track_path = write_visual_track(
+        tmp_path / "visual-track.npz", visual_track
+    )
+    visual_track_summary_path = write_visual_track_summary(
+        tmp_path / "visual-track.json", visual_track
+    )
     assert capture_jsonl_path.is_file() and evidence_path.is_file()
     write_video_capture_session(
         tmp_path / "capture-session.json",
@@ -169,6 +195,9 @@ def _write_bound_artifacts(
             "performance_evidence": evidence_path,
             "pixel_observations": arrays_path,
             "observation_v3": summary_path,
+            "video_capture_run": capture_run_path,
+            "visual_track": visual_track_path,
+            "visual_track_summary": visual_track_summary_path,
         },
     )
     return capture_path, capture_jsonl_path, arrays_path, summary_path
@@ -181,6 +210,9 @@ def _review_bindings(capture: CaptureTrack) -> tuple[dict, dict]:
         "performance_evidence": "performance-evidence.json",
         "pixel_observations": "pixel-observations.npz",
         "observation_v3": "observation-v3.json",
+        "video_capture_run": "video-capture-run.json",
+        "visual_track": "visual-track.npz",
+        "visual_track_summary": "visual-track.json",
         "capture_session": "capture-session.json",
     }
     generation_contract = {
@@ -532,6 +564,9 @@ def test_api_reconstructs_observation_v3_view_from_allowlisted_sealed_artifacts(
                 "performance_evidence": "performance-evidence.json",
                 "pixel_observations": "pixel-observations.npz",
                 "observation_v3": "observation-v3.json",
+                "video_capture_run": "video-capture-run.json",
+                "visual_track": "visual-track.npz",
+                "visual_track_summary": "visual-track.json",
                 "capture_session": "capture-session.json",
                 "viewer_media": "source-proxy.mp4",
             },
@@ -596,6 +631,143 @@ def test_api_reconstructs_observation_v3_view_from_allowlisted_sealed_artifacts(
     assert rejected.json()["code"] == "INTEGRITY_UNSEALED"
 
 
+def test_api_preserves_strict_read_only_review_for_sealed_capture_session_v1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(tmp_path / "jobs", model_path=tmp_path / "missing.task")
+    source = tmp_path / "source.mov"
+    source.write_bytes(b"source")
+    store = app.state.service.store
+    job_id, job_dir, _, manifest = store.start("video_performance", source, {})
+    capture = replace(
+        _capture(),
+        provenance=replace(
+            _capture().provenance,
+            source_name=source.name,
+            source_sha256=sha256(source),
+            source_bytes=source.stat().st_size,
+        ),
+    )
+    observations = analyze_rgb_frames(capture, _same_frames(capture.frame_count))
+    _write_bound_artifacts(job_dir, capture, observations)
+    legacy_artifact_paths = {
+        "capture": job_dir / "capture.npz",
+        "capture_jsonl": job_dir / "capture.jsonl",
+        "performance_evidence": job_dir / "performance-evidence.json",
+        "pixel_observations": job_dir / "pixel-observations.npz",
+        "observation_v3": job_dir / "observation-v3.json",
+    }
+    legacy_document = capture_session_module._build_legacy_video_capture_session_v1(
+        capture,
+        observations,
+        artifact_paths=legacy_artifact_paths,
+    )
+    write_json(job_dir / "capture-session.json", legacy_document)
+    (job_dir / "source-proxy.mp4").write_bytes(b"proxy")
+    (job_dir / "performance.glb").write_bytes(b"glb")
+    monkeypatch.setattr(
+        api_module,
+        "probe_video",
+        lambda path: VideoProbe(
+            path=Path(path),
+            width=capture.width,
+            height=capture.height,
+            codec="h264",
+            time_base_numerator=1,
+            time_base_denominator=30,
+            source_pts=np.arange(capture.frame_count, dtype=np.int64),
+            timestamps_seconds=capture.timestamps_seconds,
+            mediapipe_timestamps_ms=capture.mediapipe_timestamps_ms,
+            display_rotation_degrees=0,
+            ffprobe_command=("ffprobe",),
+        ),
+    )
+    display_geometry = {
+        "schema_version": "autoanim.viewer-display-binding/1.0",
+        "artifact": "viewer_media",
+        "source_frame_size": [capture.width, capture.height],
+        "proxy_frame_size": [capture.width, capture.height],
+        "display_rotation_degrees": 0,
+        "sample_aspect_ratio": [1, 1],
+        "clean_aperture_crop_ltrb": [0, 0, 0, 0],
+        "source_to_display_pixel_transform": [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        "transcode_policy": (
+            "ffmpeg_h264_pts_passthrough_no_geometry_filters_v1"
+        ),
+    }
+    store.finish(
+        manifest,
+        job_dir,
+        {
+            "kind": "video_performance",
+            "status": "succeeded",
+            "capture": {
+                "frames": capture.frame_count,
+                "width": capture.width,
+                "height": capture.height,
+            },
+            "artifacts": {
+                "glb": "performance.glb",
+                "capture": "capture.npz",
+                "capture_jsonl": "capture.jsonl",
+                "performance_evidence": "performance-evidence.json",
+                "pixel_observations": "pixel-observations.npz",
+                "observation_v3": "observation-v3.json",
+                "capture_session": "capture-session.json",
+                "viewer_media": "source-proxy.mp4",
+            },
+            "viewer": {
+                "clock_artifact": "viewer_media",
+                "display_geometry": display_geometry,
+            },
+        },
+        {},
+    )
+    client = TestClient(app)
+
+    response = client.get(f"/api/jobs/{job_id}/observation-v3-view")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload["evidenceBinding"]["artifacts"]) == {
+        "capture",
+        "capture_jsonl",
+        "performance_evidence",
+        "pixel_observations",
+        "observation_v3",
+        "capture_session",
+    }
+    assert payload["claims"]["changesFinalGNMMotion"] is False
+    viewer = client.get(f"/api/jobs/{job_id}/viewer")
+    assert viewer.status_code == 200
+    assert '"observation_review": "available"' in viewer.text
+
+    readiness = client.get(f"/api/jobs/{job_id}/production-readiness").json()
+    evidence = readiness["gates"]["performance"]["evidence"]
+    assert evidence["video_capture_run_artifact_verified"] is False
+    assert evidence["visual_track_artifacts_verified"] is False
+    assert evidence["capture_session_artifact_verified"] is False
+
+    result_path = job_dir / "result.json"
+    partial_v2 = store.read(job_id)
+    capture_run_path = job_dir / "video-capture-run.json"
+    partial_v2["artifacts"]["video_capture_run"] = {
+        "name": capture_run_path.name,
+        "sha256": sha256(capture_run_path),
+        "bytes": capture_run_path.stat().st_size,
+        "media_type": "application/json",
+    }
+    store._write_manifest(result_path, partial_v2)
+    downgrade_rejected = client.get(f"/api/jobs/{job_id}/observation-v3-view")
+    assert downgrade_rejected.status_code == 404
+    assert downgrade_rejected.json()["code"] == "ARTIFACT_NOT_FOUND"
+
+
 def test_duplicate_json_and_npz_schema_tampering_fail_closed(tmp_path: Path) -> None:
     capture = _capture()
     observations = analyze_rgb_frames(capture, _same_frames(capture.frame_count))
@@ -634,6 +806,9 @@ def test_observation_v3_view_rejects_oversized_take_before_dense_decode(
         "performance_evidence": "performance-evidence.json",
         "pixel_observations": "pixel-observations.npz",
         "observation_v3": "observation-v3.json",
+        "video_capture_run": "video-capture-run.json",
+        "visual_track": "visual-track.npz",
+        "visual_track_summary": "visual-track.json",
         "capture_session": "capture-session.json",
     }
     for name in artifact_names.values():
@@ -684,6 +859,9 @@ def test_interactive_review_accepts_exact_1800_frame_boundary(
         "performance_evidence": "performance-evidence.json",
         "pixel_observations": "pixel-observations.npz",
         "observation_v3": "observation-v3.json",
+        "video_capture_run": "video-capture-run.json",
+        "visual_track": "visual-track.npz",
+        "visual_track_summary": "visual-track.json",
         "capture_session": "capture-session.json",
         "viewer_media": "source-proxy.mp4",
     }

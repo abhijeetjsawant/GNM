@@ -16,7 +16,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .errors import AutoAnimError
 from .artifacts import sha256
-from .capture_session import load_verified_video_capture_session
+from .capture_session import (
+    load_verified_legacy_video_capture_session_v1,
+    load_verified_video_capture_session,
+)
 from .service import ApplicationService
 from .video_capture import (
     load_capture_npz,
@@ -62,6 +65,7 @@ STATUS_BY_CODE = {
     "MULTIPLE_FACES": 422,
     "FIT_REJECTED": 422,
     "PHONE_EVIDENCE_INVALID": 422,
+    "IDENTITY_QUALIFICATION_INVALID": 422,
     "INPUT_CHANGED": 409,
     "DEPENDENCY_MISSING": 424,
     "LLM_UNAVAILABLE": 424,
@@ -85,6 +89,32 @@ _IDENTITY_PIXEL_TRANSFORM = [
     [0.0, 1.0, 0.0],
     [0.0, 0.0, 1.0],
 ]
+_OBSERVATION_V3_LEGACY_CHAIN_NAMES = (
+    "capture",
+    "capture_jsonl",
+    "performance_evidence",
+    "pixel_observations",
+    "observation_v3",
+    "capture_session",
+)
+_OBSERVATION_V3_V2_EXTENSION_NAMES = (
+    "video_capture_run",
+    "visual_track",
+    "visual_track_summary",
+)
+_OBSERVATION_V3_V2_CHAIN_NAMES = (
+    *_OBSERVATION_V3_LEGACY_CHAIN_NAMES[:-1],
+    *_OBSERVATION_V3_V2_EXTENSION_NAMES,
+    "capture_session",
+)
+
+
+def _observation_v3_chain_names(artifacts: dict[str, object]) -> tuple[str, ...]:
+    """Select v2 if any v2 evidence is declared; never downgrade partial v2."""
+
+    if any(name in artifacts for name in _OBSERVATION_V3_V2_EXTENSION_NAMES):
+        return _OBSERVATION_V3_V2_CHAIN_NAMES
+    return _OBSERVATION_V3_LEGACY_CHAIN_NAMES
 
 
 def _review_display_geometry_compatible(
@@ -530,6 +560,7 @@ def create_app(
     def production_readiness(
         job_id: str,
         direction_job_id: str | None = None,
+        identity_qualification_job_id: str | None = None,
         require_acting: bool = False,
         require_body: bool = False,
         require_pbr: bool = True,
@@ -538,10 +569,18 @@ def create_app(
             return service.production_readiness(
                 job_id,
                 direction_job_id=direction_job_id,
+                identity_qualification_job_id=identity_qualification_job_id,
                 require_acting=require_acting,
                 require_body=require_body,
                 require_pbr=require_pbr,
             )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.get("/api/jobs/{job_id}/identity-qualification")
+    def identity_qualification(job_id: str):
+        try:
+            return service.identity_qualification(job_id)
         except AutoAnimError as exc:
             return _error_response(exc)
 
@@ -826,14 +865,8 @@ def create_app(
                     raise FileNotFoundError(logical_name)
                 return service.store.artifact(job_id, entry["name"])
 
-            chain_names = (
-                "capture",
-                "capture_jsonl",
-                "performance_evidence",
-                "pixel_observations",
-                "observation_v3",
-                "capture_session",
-            )
+            chain_names = _observation_v3_chain_names(artifacts)
+            is_v2_chain = chain_names == _OBSERVATION_V3_V2_CHAIN_NAMES
             paths = {name: artifact_path(name) for name in chain_names}
             capture_path = paths["capture"]
             pixels_path = paths["pixel_observations"]
@@ -876,22 +909,25 @@ def create_app(
                 expected_capture=capture,
                 expected_observations=observations,
             )
-            load_verified_video_capture_session(
-                paths["capture_session"],
-                expected_capture=capture,
-                expected_observations=observations,
-                artifact_paths={
-                    name: paths[name]
-                    for name in (
-                        "capture",
-                        "capture_jsonl",
-                        "performance_evidence",
-                        "pixel_observations",
-                        "observation_v3",
-                    )
-                },
-                artifact_contracts_preverified=True,
-            )
+            capture_session_artifact_paths = {
+                name: paths[name] for name in chain_names if name != "capture_session"
+            }
+            if is_v2_chain:
+                load_verified_video_capture_session(
+                    paths["capture_session"],
+                    expected_capture=capture,
+                    expected_observations=observations,
+                    artifact_paths=capture_session_artifact_paths,
+                    artifact_contracts_preverified=True,
+                )
+            else:
+                load_verified_legacy_video_capture_session_v1(
+                    paths["capture_session"],
+                    expected_capture=capture,
+                    expected_observations=observations,
+                    artifact_paths=capture_session_artifact_paths,
+                    artifact_contracts_preverified=True,
+                )
             viewer_contract = manifest.get("viewer")
             capture_summary = manifest.get("capture")
             if not _review_display_geometry_compatible(
@@ -1197,12 +1233,7 @@ def create_app(
                 observation_entries = tuple(
                     artifacts.get(name)
                     for name in (
-                        "capture",
-                        "capture_jsonl",
-                        "performance_evidence",
-                        "pixel_observations",
-                        "observation_v3",
-                        "capture_session",
+                        *_observation_v3_chain_names(artifacts),
                         "viewer_media",
                     )
                 )
@@ -1423,7 +1454,7 @@ UI_HTML = r"""<!doctype html>
     <form class="card" id="multiview-form"><h2>Multi-view → textured GNM</h2><p>One shared identity from ordered front, ¾, and profile captures, with directly observed texture clearly separated from filled regions.</p>
       <label for="multiview-files">Ordered face photos</label><input id="multiview-files" name="files" type="file" accept="image/png,image/jpeg,image/webp" multiple required>
       <label for="multiview-roles">Roles, in file order</label><input id="multiview-roles" name="roles" placeholder="front,left_3q,right_3q,left_profile,right_profile">
-      <label for="multiview-calibration">Calibrated camera bundle (optional)</label><input id="multiview-calibration" name="calibration" type="file" accept="application/json,.json"><small>Production audit mode requires at least 3 fit cameras and 1 held-out camera. Filenames and upload order must match exactly.</small>
+      <label for="multiview-calibration">Calibrated camera bundle (optional)</label><input id="multiview-calibration" name="calibration" type="file" accept="application/json,.json"><small>I0 identity-capture evidence requires two independent sessions, each with at least 5 fit and 2 held-out cameras spanning 120°. A bundle here establishes declaration and coverage evidence only; it cannot validate identity, scan accuracy, PBR, texture, or production readiness. Filenames and upload order must match exactly.</small>
       <label for="texture-size">Texture atlas</label><select id="texture-size" name="texture_size"><option value="256">256 · test / fast</option><option value="512">512 · review</option><option value="1024">1024 · high detail</option><option value="128">128 · diagnostic</option></select>
       <input name="focal_scale" type="hidden" value="1.25">
       <button>Build textured face</button><div class="status"></div><div class="result"></div>

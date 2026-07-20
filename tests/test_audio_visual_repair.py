@@ -565,7 +565,7 @@ def test_video_source_snapshot_is_removed_when_capture_fails(
     def fail_capture(_source: Path, _model: Path) -> None:
         raise RuntimeError("forced capture failure")
 
-    monkeypatch.setattr(video_pipeline_module, "capture_video", fail_capture)
+    monkeypatch.setattr(video_pipeline_module, "capture_video_run", fail_capture)
     with pytest.raises(RuntimeError, match="forced capture failure"):
         run_video_pipeline(
             source,
