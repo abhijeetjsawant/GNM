@@ -26,6 +26,7 @@ kiwisolver==1.5.0
 matplotlib==3.11.0
 mediapipe==0.10.35
 numpy==2.5.1
+onnxruntime==1.27.0
 opencv-contrib-python==5.0.0.93
 packaging==26.2
 parameterized==0.9.0
@@ -34,6 +35,7 @@ pluggy==1.6.0
 pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4
+protobuf==7.35.1
 pyparsing==3.3.2
 pytest==9.1.1
 python-dateutil==2.9.0.post0

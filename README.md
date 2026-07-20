@@ -4,9 +4,10 @@ This checkout pins Google's GNM repository at
 `3de70dfca5f3244620f44103c24b7cedc0dcb8b6` and adds a local Python/CLI/web
 application for four evaluated workflows:
 
-- real audio → Audio2Face-3D Claire on Apple Silicon → bounded 52-channel
-  ARKit plus 16-channel tongue solve → semantic 383-D GNM retarget → dense
-  mesh preview with audio, with a transparent Rhubarb procedural fallback;
+- real audio → genuine temporal Audio2Face-3D v3 ONNX inference at 60 Hz on
+  Apple Silicon CPU → pinned Claire skin/tongue/jaw/eye postprocess → semantic
+  383-D GNM retarget → validated animated GLB and preview with audio; the
+  established v2.3 MLX and transparent Rhubarb paths remain available;
 - one real photo → MediaPipe landmarks → confidence-gated GNM visible-geometry
   fit → neutral OBJ/GLB, overlay, parameters, and explicit uncertainty;
 - ordered front/three-quarter/profile photos → one shared perspective identity
@@ -14,9 +15,10 @@ application for four evaluated workflows:
 - moving face video → exact-PTS MediaPipe performance capture → dense
   geometry-calibrated GNM expression, head, translation, and gaze animation.
 
-The learned audio motion is materially smoother than the procedural baseline,
-but its initial ARKit-to-GNM map is not artist-calibrated and is deliberately
-reported as not production-approved. The fallback remains coarse viseme timing.
+The local v3 path is a genuine-model but unqualified candidate: it is not the
+supported NVIDIA SDK runtime and has not passed identical-noise SDK parity,
+reviewed phone/FACS qualification, or blinded artist review. The fallback
+remains coarse viseme timing.
 Automatic tone labels are an unvalidated acoustic/lexical heuristic. The photo
 result is a visible-geometry estimate, not a metric 3D clone. Multiview improves
 observability and texture coverage but cannot recover perfect hidden anatomy or
@@ -38,12 +40,20 @@ macOS/Linux can use the procedural fallback.
 ```bash
 scripts/bootstrap.sh
 scripts/bootstrap_a2f.sh
+scripts/bootstrap_a2f_v3.sh
 source .venv/bin/activate
 export RHUBARB_BIN="$PWD/.cache/autoanim_gnm/rhubarb/rhubarb"
 scripts/fetch_test_fixtures.sh
 
 autoanim-gnm health --json
 autoanim-gnm audio .cache/autoanim_gnm/fixtures/libri-human-speech-8s.wav --out artifacts/jobs --backend auto
+# Run the pinned genuine v3 temporal model locally at native 60 Hz. This is an
+# explicit no-fallback candidate and records its seed, model/runtime hashes,
+# recurrent chunks and non-production claims in a2f-v3-local-run.json.
+autoanim-gnm audio .cache/autoanim_gnm/fixtures/libri-human-speech-8s.wav \
+  --out artifacts/jobs --backend a2f-v3-local --fps 60 --v3-seed 0
+# Local-v3 application jobs are capped at 10 seconds until GNM rendering and
+# exact animated-GLB factorization become streaming/out-of-core.
 # Optional long-format Praat/MFA evidence is retained and geometry-scored.
 # It is diagnostic-only until the event-aware trajectory phase is enabled.
 autoanim-gnm audio speech.wav --out artifacts/jobs --backend auto \
@@ -115,7 +125,10 @@ neutrality, microexpression, or production-quality claims.
 The global `--model-path`, `--rhubarb-bin`, `--a2f-runner`, and `--a2f-assets`
 options may be placed before the subcommand when using non-default locations.
 Use `--backend learned` to require the neural path or `--backend fallback` for
-the deterministic compiler. `--backend a2f-v3` is an explicit, no-fallback
+the deterministic compiler. `--backend a2f-v3-local --fps 60` runs the exact
+pinned public v3 ONNX weights plus the local Claire postprocess candidate; it
+is explicit, no-fallback, and does not claim supported-SDK parity or production
+approval. `--backend a2f-v3` is an explicit, no-fallback
 offline import of a sealed external-worker result; it requires the exact pinned
 model/runtime/identity/schema/profile bindings shown above and never claims the
 worker is authenticated or production-qualified. The web app is then available

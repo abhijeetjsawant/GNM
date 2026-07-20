@@ -23,6 +23,8 @@ import scipy
 
 from . import __version__
 from .a2f import resolve_a2f_runner
+from .a2f_v3_local import default_local_v3_profile_directory
+from .a2f_v3_profile import load_official_v3_claire_profile
 from .acting import ActingDirector, TICKS_PER_SECOND
 from .animation import calibrate_lip_contact
 from .artifacts import JobStore, sha256
@@ -154,6 +156,12 @@ def runtime_versions() -> dict[str, str]:
         "mediapipe": mediapipe.__version__,
     }
     try:
+        import onnxruntime
+
+        versions["onnxruntime"] = onnxruntime.__version__
+    except ImportError:
+        versions["onnxruntime"] = "missing"
+    try:
         versions["git"] = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT, check=True, capture_output=True, text=True
         ).stdout.strip()
@@ -264,10 +272,32 @@ class ApplicationService:
             "ready": v3_preflight.can_execute_locally,
             "detail": v3_preflight.blocker,
         }
+        try:
+            import onnxruntime
+
+            providers = tuple(onnxruntime.get_available_providers())
+            profile_path = default_local_v3_profile_directory()
+            profile = load_official_v3_claire_profile(
+                profile_path, verify_network=True
+            )
+            network_path = profile.root / "network.onnx"
+            ready = "CPUExecutionProvider" in providers and network_path.is_file()
+            checks["a2f_v3_local"] = {
+                "ready": ready,
+                "detail": (
+                    f"{network_path} · onnxruntime {onnxruntime.__version__} · "
+                    f"providers {', '.join(providers)}"
+                    if ready
+                    else "Pinned network or CPUExecutionProvider is unavailable"
+                ),
+            }
+        except Exception as exc:
+            checks["a2f_v3_local"] = {"ready": False, "detail": str(exc)}
         checks["viewer_bundle"] = viewer_vendor_health(self.viewer_vendor_root)
         required = (
             "gnm", "ffmpeg", "ffprobe", "mediapipe_model", "rhubarb",
-            "a2f_runner", "a2f_assets", "a2f_provenance", "viewer_bundle",
+            "a2f_runner", "a2f_assets", "a2f_provenance", "a2f_v3_local",
+            "viewer_bundle",
         )
         return {
             "status": "ready" if all(bool(checks[name]["ready"]) for name in required) else "degraded",
@@ -298,6 +328,7 @@ class ApplicationService:
         a2f_v3_identity_path: str | Path | None = None,
         a2f_v3_schema_path: str | Path | None = None,
         a2f_v3_profile_dir: str | Path | None = None,
+        a2f_v3_local_seed: int = 0,
         phone_annotation_path: str | Path | None = None,
         phone_annotation_name: str | None = None,
         phone_annotations_independently_reviewed: bool = False,
@@ -335,6 +366,8 @@ class ApplicationService:
             "character_revision_id": character.revision_id if character is not None else None,
             "usage_scope": usage_scope,
             "a2f_v3_import": backend == "a2f-v3",
+            "a2f_v3_local": backend == "a2f-v3-local",
+            "a2f_v3_local_seed": a2f_v3_local_seed,
             "phone_evidence": (
                 {
                     "present": True,
@@ -437,6 +470,7 @@ class ApplicationService:
                 a2f_v3_identity_path=a2f_v3_identity_path,
                 a2f_v3_schema_path=a2f_v3_schema_path,
                 a2f_v3_profile_dir=a2f_v3_profile_dir,
+                a2f_v3_local_seed=a2f_v3_local_seed,
                 phone_annotation_path=retained_phone_annotation,
                 phone_annotations_independently_reviewed=(
                     phone_annotations_independently_reviewed

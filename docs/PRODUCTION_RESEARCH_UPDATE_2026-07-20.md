@@ -2,7 +2,7 @@
 
 Status: implementation-driving research; production approval is not claimed
 Date: 2026-07-20
-Repository baseline audited: AutoAnim `1b9b8f1`, Google GNM
+Repository baseline audited: AutoAnim `64f6ff27286f19aa12544828a762b1478cd9e7c6`, Google GNM
 `3de70dfca5f3244620f44103c24b7cedc0dcb8b6`
 
 This memo records the second independent research pass over the three requested
@@ -22,12 +22,18 @@ but cannot invent anticipatory/carry-over coarticulation or a coherent phrase-
 level performance.
 
 The strongest next motion prior is genuine Audio2Face v3 sequence inference at
-60 Hz. AutoAnim's current v3 path is only a strict importer for externally
-generated controls. The cached attestation says
-`fixture_transport_only_no_v3_inference`, and the retained v3 test adapts v2.3
-controls rather than running NVIDIA v3. No production v3 claim is therefore
-supported. A real v3 worker also requires NVIDIA/CUDA hardware that is not
-available in this Apple-Silicon workspace.
+60 Hz. The supported NVIDIA SDK deployment remains CUDA/TensorRT, but the pinned
+public `network.onnx` is portable. A direct Apple-Silicon CPU probe overturned
+the earlier hardware assumption: genuine v3 weights can run locally through
+ONNX Runtime even though that path is not NVIDIA's supported SDK runtime.
+
+Phase A3-L now implements that candidate. It verifies the exact public model and
+Claire profile hashes, checks the ONNX ABI, executes the official recurrent
+one-second/half-second schedule, retains the 15-30-15 center frames, ports the
+pinned MIT SDK skin/tongue/jaw/eye postprocess and regularized BVLS solvers, and
+retargets the 60 Hz controls into GNM without the v2.3 Savitzky-Golay pass. The
+external-worker importer remains separate and still cannot prove inference.
+Neither route is production-qualified.
 
 The executable prerequisite is A1 multi-articulator qualification. The first
 implementation pass exposed an important evidence error: normal phone intervals
@@ -40,15 +46,34 @@ asset bindings. Its production gate is structurally false. Qualification still
 requires separate reviewed articulation tiers, anatomical target surfaces,
 protrusion, a verified character profile, held-out data and perception evidence.
 
-That diagnostic foundation has completed its strict implementation loop. The
-complete Python repository passed `562` tests with one optional released-Claire
-asset test skipped, and the release-mode macOS package passed all `12` tests.
+That diagnostic foundation completed its strict implementation loop. Before
+A3-L, the complete Python repository passed `562` tests with one optional
+released-Claire asset test skipped, and the release-mode macOS package passed
+all `12` tests.
 Retained job `01kxyj1bydcsm1r8w0sjcwnhcn` ran eight seconds of real LibriSpeech
 plus its MFA TextGrid through the learned backend, GLB/preview export, oral
 geometry validation and sealed report reconstruction. Its weak coarse proxy
 scores are negative product evidence, not a hidden success: the run proves that
 the diagnostic path works while confirming the current articulation quality
-does not pass a production claim.
+does not pass a production claim. A3-L then ran the same eight-second normalized
+audio through 18 recurrent executions and emitted exactly 480 frames. On this
+Mac, model inference took 2.16 seconds, and the measured raw-consumer wall time
+(descriptor verification, session, inference and streamed postprocess) was
+6.09 seconds. The complete final-source service job took 86.63 seconds with
+peak resident memory 2,919,104,512 bytes (about 2.72 GiB). Retained job
+`01kxyptrggtgw7xypj6hp1g5t3` has a verified local HMAC seal and all 14 ledgered
+artifact sizes and SHA-256 hashes reconstruct exactly. The final viewer
+uses 38 bounded morph targets, passes the full-track reconstruction gate, keeps
+zero tongue/teeth collision-risk frames and changes no lip-contact
+classification. These are executable engineering results, not perceptual or
+SDK-parity approval.
+
+After the final A3-L source changes, the complete Python repository passed
+`616` tests with only the two explicitly opt-in released-asset/model tests
+skipped. The real cached v3 ONNX smoke test passed separately, the release-mode
+Audio2Face runner passed all `7` tests, and the release-mode native macOS package
+passed all `12` tests. The signed development bundle also passed token rejection,
+authenticated health, supervised-process shutdown and GUI-launch smoke checks.
 
 Identity realism must likewise be benchmark-first. AutoAnim currently offers an
 honest sparse initializer and provenance-aware RGB bake, not a measured person-
@@ -75,9 +100,19 @@ hide licensing and calibration problems rather than solve them.
   corrections.
 - `src/autoanim_gnm/sequence_provider.py` strictly validates the official v3
   60 Hz clock, window schedule, hashes and Claire control schema.
-- The v3 route does not execute NVIDIA inference, authenticate a worker, apply
-  the retained jaw matrix, bind the official emotion vocabulary, or expose a
-  usable API/native-app workflow.
+- `src/autoanim_gnm/a2f_v3_local.py` runs the exact hash-pinned v3 ONNX graph on
+  CPU with recurrent state, deterministic audited noise and bounded chunk
+  callbacks. `src/autoanim_gnm/a2f_v3_postprocess.py` ports the pinned Claire
+  interpolators, geometry composition, BVLS, five-point jaw solve and seeded
+  eye animator.
+- `a2f-v3-local` is exposed in the CLI, service and native-hosted web UI at
+  native 60 fps. It records genuine ONNX inference while explicitly setting
+  official SDK runtime, SDK parity, postprocess parity and production approval
+  to false. It does not silently fall back.
+- Jaw matrices are retained but not applied. Emotion conditioning uses the
+  official ten-channel order only for explicit manual affect; dialog/acoustic
+  heuristics fail closed to neutral and the later acting layer is disabled to
+  avoid double application.
 - `src/autoanim_gnm/phone_events.py` imports immutable MFA/Praat evidence, but
   its legacy report scores bilabials only and intentionally fails labiodental,
   tongue and false-contact gates.
@@ -109,7 +144,10 @@ hide licensing and calibration problems rather than solve them.
 ```text
 audio + transcript + optional director/LLM phrase plan
   -> normalized audio and input QA
-  -> genuine v3 sequence worker at 60 Hz (v2.3 remains labeled preview fallback)
+  -> genuine v3 sequence inference at 60 Hz
+       -> local ONNX candidate for iteration and evidence
+       -> authenticated supported-SDK worker for official parity/qualification
+     (v2.3 remains labeled preview fallback)
   -> independently reviewed phone/contact evidence
   -> phrase-level affect plan with authored > reviewed > inferred precedence
   -> character-calibrated jaw/lip/teeth/tongue trajectory solve
@@ -121,8 +159,40 @@ audio + transcript + optional director/LLM phrase plan
 An LLM may propose low-rate intent, emphasis, valence/arousal, gaze targets and
 acting beats. It must never author phone-frame timing or overwrite a reviewed
 contact. Exact plan bytes, timing, vocabulary, model/provider and approval state
-must be bound to the worker request. The current v3 ABI has no affect input and
-must be versioned rather than silently extended.
+must be bound to the worker request. The external worker ABI has no affect input
+and must be versioned rather than silently extended. The local runtime has an
+explicit audited ten-value vector; keyframed acting still requires its own
+versioned contract.
+
+### A3-L local sequence candidate — implemented gate
+
+- Exact model/profile hashes and ONNX tensor signatures are fail-closed.
+- Official padding, warm-up, recurrent latent chaining, generated/retained
+  frame hashes and exact 60 Hz target samples are retained as evidence.
+- CPU is the default provider. Core ML was slower in the direct probe because
+  the graph was split across providers; it is not selected by assumption.
+- Raw 88,831-value frames are streamed into stateful postprocessing rather than
+  retained for a long clip. The small solved controls, jaw diagnostics, eyes,
+  runtime evidence and retarget calibration are retained.
+- Application jobs are capped at ten seconds in this candidate because GNM
+  render frames and exact low-rank GLB factorization still materialize the full
+  track. The inference boundary alone has a 600-second bounded-streaming test;
+  that is not an end-to-end duration claim.
+- The same real eight-second input produces 480 frames with no timestamp drift.
+  Compared with the retained 30 Hz v2.3 job, v3 reduced lower-face acceleration
+  p95 from 1.111 to 0.586 and jerk p95 from 1.757 to 0.662, and reduced per-frame
+  mouth-step p95 from 0.0304 to 0.0195 interocular units. Mouth-speed p95 rose
+  from 0.911 to 1.170 IOD/s and limiter interventions rose from 8/240 to 25/480,
+  so this is evidence of smoother temporal derivatives, not yet a perceptual
+  win.
+- Tongue controls and reconstructed tongue geometry moved on 479/480 frames;
+  the full-track oral audit found no tongue/teeth collision risk or lip-order
+  inversion. Visibility, phoneme correctness and perceptual tongue quality are
+  still unverified.
+- The tested clip used 38 of the 40 permitted morph targets. Diverse real clips,
+  positive lip-contact examples, boundary-crossing oral cases and interpolated
+  between-key validation are required before animated-viewer availability can
+  be treated as general rather than clip-specific.
 
 ### V3-R1 worker requirements
 
@@ -302,18 +372,25 @@ measurement authority.
    state tiers and negatives, validated dental/alveolar/labiodental surfaces,
    protrusion, and a sealed character approval profile. Stop at diagnostic
    status until those exist and a real held-out set passes.
-2. **V3-R1 sequence worker** — requires a provisioned NVIDIA worker and genuine
-   v3 output. Do not accept adapted v2.3 controls as v3 evidence.
-3. **V1/V2 VisualTrack** — shadow-mode provider ABI and regional calibration,
-   then qualified ownership/fusion.
-4. **I1/I2 dense identity** — requires consented calibrated images plus an
-   independent scan; synthetic recovery cannot close the real-likeness gate.
-5. **U1 ReviewBundle/native correction** — build around versioned raw evidence
+2. **A3-L local v3** — implemented and real-input executable. It remains a
+   candidate until identical-noise supported-SDK parity, reviewed phone/FACS
+   evidence and blinded perception/edit-time studies pass.
+3. **V3-R1 supported-SDK parity** — requires a provisioned NVIDIA worker with
+   identical window, recurrent state, emotion and exact noise tensors. Do not
+   accept adapted v2.3 controls or matching seeds as parity evidence.
+4. **V1.0 VisualTrack shadow lane** — add the provider-neutral artifact,
+   shot/subject/tracking epochs, per-point uncertainty and regional unknowns.
+   It has no motion authority until a later calibration phase passes.
+5. **I0 verified identity capture** — one consented subject, calibrated camera
+   bundle with at least five fit and two held-out views, repeat capture and an
+   independent metric scan. Dense I1 fitting must wait for recomputable camera
+   evidence and a frozen two-reviewer qualification contract.
+6. **U1 ReviewBundle/native correction** — build around versioned raw evidence
    and corrections, not screenshots.
-6. **A2/A3 oral solve and acting** — add mandible/teeth/tongue correctives and
+7. **A2/A3 oral solve and acting** — add mandible/teeth/tongue correctives and
    compose editable performance layers without changing reviewed articulation.
-7. **I3 PBR/detail** — only after geometry and controlled capture pass.
-8. **Q1 release qualification** — rights, deletion, device/load recovery,
+8. **I3 PBR/detail** — only after geometry and controlled capture pass.
+9. **Q1 release qualification** — rights, deletion, device/load recovery,
    automatic gates, animator/naive studies and signed approval.
 
 No phase may pass from unit tests alone. Each requires a real input, sealed
@@ -331,9 +408,10 @@ appropriate to the claim, and a full regression after the last source change.
 - MICA, Metrical Tracker, DECA, SPECTRE, OpenFace, AV-HuBERT and common 4D face
   corpora are research references or separately restricted; none may silently
   become a shipping dependency.
-- Official v3 inference is currently an NVIDIA CUDA/TensorRT deployment, not a
-  supported Apple-Silicon runtime. The Mac app should use an authenticated
-  optional worker while retaining a clearly labeled local preview tier.
+- The official supported v3 SDK deployment is NVIDIA CUDA/TensorRT. The exact
+  public ONNX weights run on Apple Silicon CPU, but that local candidate must
+  remain labeled separately. Official parity and approval still require an
+  authenticated supported-SDK worker and identical causal tensors.
 - Faces, gaze, oral closeups, FACS and persistent subject identifiers are
   biometric/sensitive data. Capture needs explicit purpose, derivative/model
   rights, retention, deletion/export and revocation controls.

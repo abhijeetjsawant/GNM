@@ -13,6 +13,7 @@ from typing import Mapping
 
 import numpy as np
 from PIL import Image
+from scipy.spatial import cKDTree
 
 from gnm.shape.visualization import vertex_colors as vertex_colors_module
 
@@ -80,6 +81,31 @@ def _landmarks(
     return np.sum(selected * weights[..., None], axis=-2)
 
 
+def _tongue_teeth_collision_frames(
+    frames: np.ndarray,
+    landmarks: np.ndarray,
+    tongue_indices: np.ndarray,
+    teeth_indices: np.ndarray,
+    *,
+    threshold_interocular: float,
+) -> np.ndarray:
+    """Match the viewer gate's nearest-vertex tongue/teeth risk classifier."""
+
+    interocular = np.linalg.norm(landmarks[:, 36] - landmarks[:, 45], axis=1)
+    if not np.isfinite(interocular).all() or np.any(interocular <= 1.0e-6):
+        raise ValueError("Tongue/teeth semantics require valid interocular scale")
+    collision = np.empty(len(frames), dtype=bool)
+    for frame_index, frame in enumerate(frames):
+        distances, _ = cKDTree(frame[teeth_indices]).query(
+            frame[tongue_indices], k=1, workers=1
+        )
+        collision[frame_index] = (
+            float(np.min(distances)) / interocular[frame_index]
+            <= threshold_interocular
+        )
+    return collision
+
+
 def factor_vertex_animation(
     frames: np.ndarray,
     *,
@@ -93,6 +119,9 @@ def factor_vertex_animation(
     preserve_oral_semantics: bool = False,
     lip_contact_gap_interocular: float = 0.006,
     lip_order_inversion_tolerance_interocular: float = 0.0005,
+    tongue_vertex_indices: np.ndarray | None = None,
+    teeth_vertex_indices: np.ndarray | None = None,
+    tongue_teeth_collision_risk_interocular: float = 0.001,
 ) -> LowRankVertexAnimation:
     """Find the smallest deterministic morph basis that passes geometry gates.
 
@@ -124,6 +153,8 @@ def factor_vertex_animation(
         or lip_contact_gap_interocular <= 0.0
         or not np.isfinite(lip_order_inversion_tolerance_interocular)
         or lip_order_inversion_tolerance_interocular <= 0.0
+        or not np.isfinite(tongue_teeth_collision_risk_interocular)
+        or tongue_teeth_collision_risk_interocular <= 0.0
     ):
         raise ValueError("oral semantic thresholds must be finite and positive")
 
@@ -131,6 +162,9 @@ def factor_vertex_animation(
     coordinate_scale = np.ones((values.shape[1], 3), dtype=np.float32)
     observed_contact: np.ndarray | None = None
     observed_order_risk: np.ndarray | None = None
+    observed_tongue_teeth_collision: np.ndarray | None = None
+    tongue_indices: np.ndarray | None = None
+    teeth_indices: np.ndarray | None = None
     if preserve_oral_semantics:
         if observed_landmarks is None:
             raise ValueError(
@@ -165,6 +199,32 @@ def factor_vertex_animation(
                 lip_order_inversion_tolerance_interocular
             ),
         )
+        if (tongue_vertex_indices is None) != (teeth_vertex_indices is None):
+            raise ValueError(
+                "tongue and teeth vertex indices must be supplied together"
+            )
+        if tongue_vertex_indices is not None and teeth_vertex_indices is not None:
+            tongue_indices = np.asarray(tongue_vertex_indices, dtype=np.int64)
+            teeth_indices = np.asarray(teeth_vertex_indices, dtype=np.int64)
+            for label, indices in (
+                ("tongue", tongue_indices),
+                ("teeth", teeth_indices),
+            ):
+                if (
+                    indices.ndim != 1
+                    or len(indices) == 0
+                    or len(np.unique(indices)) != len(indices)
+                    or np.any(indices < 0)
+                    or np.any(indices >= values.shape[1])
+                ):
+                    raise ValueError(f"{label} semantic vertex indices are invalid")
+            observed_tongue_teeth_collision = _tongue_teeth_collision_frames(
+                values,
+                observed_semantic_landmarks,
+                tongue_indices,
+                teeth_indices,
+                threshold_interocular=tongue_teeth_collision_risk_interocular,
+            )
 
     base = values[0].copy()
     flattened = ((values - base) * coordinate_scale).reshape(len(values), -1)
@@ -245,6 +305,12 @@ def factor_vertex_animation(
             "landmark_p95_m": landmark_p95,
             "landmark_max_m": landmark_max,
         }
+        geometry_passed = bool(
+            mesh_p95 <= mesh_p95_limit_m
+            and mesh_max <= mesh_max_limit_m
+            and landmark_p95 <= landmark_p95_limit_m
+            and landmark_max <= landmark_max_limit_m
+        )
         oral_semantics_passed = True
         if preserve_oral_semantics:
             if (
@@ -273,18 +339,42 @@ def factor_vertex_animation(
             introduced_order_risks = int(
                 np.count_nonzero(predicted_order_risk & ~observed_order_risk)
             )
+            introduced_tongue_teeth_collision = np.zeros(len(values), dtype=bool)
+            if geometry_passed and observed_tongue_teeth_collision is not None:
+                assert tongue_indices is not None and teeth_indices is not None
+                predicted_collision = _tongue_teeth_collision_frames(
+                    reconstructed_frames,
+                    predicted_semantic_landmarks,
+                    tongue_indices,
+                    teeth_indices,
+                    threshold_interocular=(
+                        tongue_teeth_collision_risk_interocular
+                    ),
+                )
+                introduced_tongue_teeth_collision = (
+                    predicted_collision & ~observed_tongue_teeth_collision
+                )
+            introduced_collision_count = int(
+                np.count_nonzero(introduced_tongue_teeth_collision)
+            )
             final_metrics.update(
                 {
                     "lip_contact_classification_changed_frames": contact_changes,
                     "introduced_lip_order_risk_frames": introduced_order_risks,
+                    "introduced_tongue_teeth_collision_frames": (
+                        introduced_collision_count
+                    ),
                 }
             )
             oral_semantics_passed = (
-                contact_changes == 0 and introduced_order_risks == 0
+                contact_changes == 0
+                and introduced_order_risks == 0
+                and introduced_collision_count == 0
             )
             failed_semantic_frames = (
                 (predicted_contact != observed_contact)
                 | (predicted_order_risk & ~observed_order_risk)
+                | introduced_tongue_teeth_collision
             )
             corrective_count = int(np.count_nonzero(failed_semantic_frames))
             # A numerically tiny oral displacement can sit below the global
@@ -293,12 +383,6 @@ def factor_vertex_animation(
             # exact sparse residual target per affected sampled frame. This is
             # fail-closed and bounded by the caller's target cap; it does not
             # relax or relabel the oral semantic gate.
-            geometry_passed = bool(
-                mesh_p95 <= mesh_p95_limit_m
-                and mesh_max <= mesh_max_limit_m
-                and landmark_p95 <= landmark_p95_limit_m
-                and landmark_max <= landmark_max_limit_m
-            )
             if (
                 geometry_passed
                 and not oral_semantics_passed
@@ -372,6 +456,21 @@ def factor_vertex_animation(
                         lip_order_inversion_tolerance_interocular
                     ),
                 )
+                candidate_collision_passed = True
+                if observed_tongue_teeth_collision is not None:
+                    assert tongue_indices is not None and teeth_indices is not None
+                    candidate_collision = _tongue_teeth_collision_frames(
+                        candidate_frames,
+                        candidate_semantic_landmarks,
+                        tongue_indices,
+                        teeth_indices,
+                        threshold_interocular=(
+                            tongue_teeth_collision_risk_interocular
+                        ),
+                    )
+                    candidate_collision_passed = not np.any(
+                        candidate_collision & ~observed_tongue_teeth_collision
+                    )
                 candidate_passed = bool(
                     candidate_mesh_p95 <= mesh_p95_limit_m
                     and candidate_mesh_max <= mesh_max_limit_m
@@ -379,6 +478,7 @@ def factor_vertex_animation(
                     and candidate_landmark_max <= landmark_max_limit_m
                     and np.array_equal(candidate_contact, observed_contact)
                     and not np.any(candidate_order_risk & ~observed_order_risk)
+                    and candidate_collision_passed
                 )
                 if candidate_passed:
                     corrective = LowRankVertexAnimation(
@@ -659,6 +759,12 @@ def export_animated_gnm_glb(
         landmark_indices=adapter.landmark_indices,
         landmark_weights=adapter.landmark_weights,
         preserve_oral_semantics=True,
+        tongue_vertex_indices=np.flatnonzero(
+            adapter.vertex_group("tongue") > 0.5
+        ),
+        teeth_vertex_indices=np.flatnonzero(
+            adapter.vertex_group("teeth") > 0.5
+        ),
     )
     selected_uvs = (
         np.asarray(adapter.model.triangle_uvs, dtype=np.float32)

@@ -90,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audio.add_argument(
         "--backend",
-        choices=("auto", "learned", "fallback", "a2f-v3"),
+        choices=("auto", "learned", "fallback", "a2f-v3", "a2f-v3-local"),
         default="auto",
     )
     audio.add_argument("--v3-request", type=Path)
@@ -103,6 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--v3-profile",
         type=Path,
         help="Pinned public Claire v3 interpretation bundle (small rig/config assets)",
+    )
+    audio.add_argument(
+        "--v3-seed",
+        type=int,
+        default=0,
+        help="Unsigned deterministic noise seed for --backend a2f-v3-local",
     )
     audio.add_argument("--dialog")
     audio.add_argument("--character", help="Saved character ID to apply")
@@ -321,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
                 a2f_v3_identity_path=args.v3_identity,
                 a2f_v3_schema_path=args.v3_schema,
                 a2f_v3_profile_dir=args.v3_profile,
+                a2f_v3_local_seed=args.v3_seed,
                 phone_annotation_path=args.phone_textgrid,
                 phone_annotations_independently_reviewed=(
                     args.phone_annotations_reviewed

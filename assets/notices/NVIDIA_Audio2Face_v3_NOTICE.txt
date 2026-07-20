@@ -1,0 +1,18 @@
+NVIDIA Audio2Face-3D v3.0 model notice
+
+Model source and pinned revision:
+https://huggingface.co/nvidia/Audio2Face-3D-v3.0/tree/b74132732fd9a9d29b237bec193ded64c9745e91
+
+The model card identifies the governing terms as the NVIDIA Open Model License:
+https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
+
+The network weights, identity geometry, blendshape targets, configurations, and
+other model-package files are not relicensed by AutoAnim or by Google GNM's
+Apache-2.0 license. Review and satisfy the governing NVIDIA terms for the
+intended use, distribution method, geography, and product before release.
+
+The checksum-pinned model card is retained as README.md beside the local model
+assets (SHA-256
+cb824ad69b31f99e91f7f9b93ff0c19b5f00f296fdf0834ed359bb6191925905).
+This notice records provenance; it is not legal advice or a substitute for the
+governing license text.

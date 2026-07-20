@@ -101,7 +101,8 @@ def test_home_and_health(tmp_path: Path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert "Audio → animation" in home.text
-    assert "Learned Audio2Face motion is preferred" in home.text
+    assert "genuine temporal Audio2Face v3 weights locally at 60 Hz" in home.text
+    assert 'value="a2f-v3-local"' in home.text
     assert "Recent local runs" in home.text
     assert "mouth_aperture" in home.text
     assert 'id="audio-phone-textgrid"' in home.text
@@ -117,8 +118,106 @@ def test_home_and_health(tmp_path: Path) -> None:
     assert "baseline loss" in home.text
     health = client.get("/api/health")
     assert health.status_code == 200
-    assert health.json()["status"] == "ready"
-    assert health.json()["checks"]["a2f_provenance"]["ready"] is True
+    health_document = health.json()
+    assert health_document["checks"]["a2f_provenance"]["ready"] is True
+    assert "a2f_v3_local" in health_document["checks"]
+    assert health_document["status"] == (
+        "ready"
+        if health_document["checks"]["a2f_v3_local"]["ready"]
+        else "degraded"
+    )
+
+
+def test_local_v3_cli_api_and_service_boundaries_propagate_exact_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parser = build_parser()
+    parsed = parser.parse_args(
+        [
+            "audio",
+            "take.wav",
+            "--out",
+            "jobs",
+            "--backend",
+            "a2f-v3-local",
+            "--fps",
+            "60",
+            "--v3-profile",
+            "profile",
+            "--v3-seed",
+            str((1 << 64) - 1),
+        ]
+    )
+    assert parsed.backend == "a2f-v3-local"
+    assert parsed.fps == 60
+    assert parsed.v3_profile == Path("profile")
+    assert parsed.v3_seed == (1 << 64) - 1
+
+    app = create_app(tmp_path / "api-jobs", model_path=tmp_path / "missing.task")
+    api_observed: dict[str, object] = {}
+
+    def fake_audio(_path: Path, **kwargs: object) -> dict:
+        api_observed.update(kwargs)
+        return {"kind": "audio_animation", "status": "succeeded"}
+
+    monkeypatch.setattr(app.state.service, "audio", fake_audio)
+    response = TestClient(app).post(
+        "/api/audio",
+        files={"file": ("take.wav", b"audio", "audio/wav")},
+        data={
+            "backend": "a2f-v3-local",
+            "fps": "60",
+            "a2f_v3_local_seed": "73",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert api_observed["backend"] == "a2f-v3-local"
+    assert api_observed["fps"] == 60
+    assert api_observed["a2f_v3_local_seed"] == 73
+
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"pipeline is stubbed")
+    service = create_app(
+        tmp_path / "service-jobs", model_path=tmp_path / "missing.task"
+    ).state.service
+    pipeline_observed: dict[str, object] = {}
+
+    def fake_pipeline(
+        _input: Path, _output: Path, **kwargs: object
+    ) -> dict[str, object]:
+        pipeline_observed.update(kwargs)
+        return {"kind": "audio_animation", "artifacts": {}, "warnings": []}
+
+    monkeypatch.setattr(service_module, "run_audio_pipeline", fake_pipeline)
+    service.audio(
+        source,
+        backend="a2f-v3-local",
+        fps=60,
+        a2f_v3_profile_dir=tmp_path / "profile",
+        a2f_v3_local_seed=991,
+    )
+    assert pipeline_observed["backend"] == "a2f-v3-local"
+    assert pipeline_observed["fps"] == 60
+    assert pipeline_observed["a2f_v3_profile_dir"] == tmp_path / "profile"
+    assert pipeline_observed["a2f_v3_local_seed"] == 991
+
+
+def test_local_v3_health_fails_closed_and_ui_contains_automatic_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "tampered-profile"
+    monkeypatch.setattr(
+        service_module, "default_local_v3_profile_directory", lambda: missing
+    )
+    client = TestClient(
+        create_app(tmp_path / "jobs", model_path=MODEL, rhubarb_bin=RHUBARB)
+    )
+    health = client.get("/api/health").json()
+    assert health["status"] == "degraded"
+    assert health["checks"]["a2f_v3_local"]["ready"] is False
+    home = client.get("/").text
+    assert "localV3Option.disabled=!localV3Ready" in home
+    assert "audioBackend.value='auto'" in home
 
 
 def test_phone_evidence_is_optional_and_propagates_through_api_and_cli(
