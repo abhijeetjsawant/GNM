@@ -46,6 +46,13 @@ public struct LoopbackEndpoint: Equatable, Sendable {
         }
         return try url(path: "/api/jobs/\(jobID)/viewer")
     }
+
+    public func reviewBundleURL(jobID: String) throws -> URL {
+        guard JobSummary.validJobID(jobID) else {
+            throw LoopbackEndpointError.invalidPath
+        }
+        return try url(path: "/api/jobs/\(jobID)/review-bundle")
+    }
 }
 
 public enum LoopbackEndpointError: Error, Equatable {

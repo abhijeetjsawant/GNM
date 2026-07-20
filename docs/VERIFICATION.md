@@ -5,6 +5,38 @@ GNM commit: `3de70dfca5f3244620f44103c24b7cedc0dcb8b6`
 Application version: `0.1.0`
 Result: **working learned prototype; production approval intentionally withheld**
 
+## 2026-07-20 U1a native review addendum
+
+- Final post-review Python regression: **746 passed, 2 skipped, 0 failed** in
+  2,995.74 s. The skips are explicit opt-ins for the released Claire assets
+  and cached public Audio2Face v3 profile; neither skip is a silent fallback.
+- Strict ReviewBundle builder/loader: 29 adversarial tests pass, including
+  current audio-visual-repair v2 recognition and no-op revision handling.
+- API/viewer/Observation focused regression: 82 tests pass; the real 67-frame
+  CREMA-D API-to-GNM E2E, ReviewBundle response and tamper rejection pass.
+- Native release package: 37 tests in seven suites pass; the full app target
+  compiles with exact single-A and synchronized cross-bundle A/B controls,
+  generation-safe loading, byte-canonical duplicate-free bundle decoding and
+  bounded lossless FIFO bridge delivery.
+- The rebuilt ad-hoc development bundle passes signature verification and the
+  GUI source-runtime smoke: unauthenticated requests are rejected,
+  authenticated health succeeds, the helper is supervised, and shutdown is
+  clean. A fresh live launch loads the sealed 67-frame review at source PTS 27
+  with all seven layers and the unapproved/non-production warning visible.
+- A real 23,063-byte bundle regenerated from repaired job
+  `01kxyy53rgqamj8y7hddaqf385` strictly decodes in the compiled Swift core with
+  all 67 source-PTS frames, seven layers, bundle SHA-256
+  `fb1d7cf243c21b5bd418fb90b841f418e25fc8e37620820da2395ce006ccf94f`
+  and comparison key
+  `025363394c08717ce393d62e430317b633d9e098c27c1083b7df96297743500c`.
+- Live browser review renders the repaired real GLB, reports zero console
+  warnings/errors and moves from PTS 27 to PTS 60 through the server-decoded
+  exact-frame path.
+- The checksum-compatible A/B changes only the 32 dedicated tongue dimensions
+  on frames 10–47. Identity, source clock, pose, upper face, visible lower face,
+  lips and pupils are byte-exact. This is meaningful tongue augmentation, not a
+  production lipsync-quality pass; all promotion claims remain false.
+
 ## Verdict
 
 The four implemented workflows run through one local application service, CLI,
@@ -65,7 +97,9 @@ application-only CSP edit does not touch either codebase.
 
 | Scope | Result | Notes |
 |---|---:|---|
-| Complete AutoAnim suite | **164 passed, 1 skipped** in 239.40 s; skipped Claire test then **passed separately** in 3.48 s with its required asset environment | Post calibrated-sidecar run: real fallback + learned audio, image, legacy/calibrated multiview and texture, video, viewer, app, solver, contact-anchor, held-out leakage, nonzero-distortion, accepted-set stability, matrix provenance, and adversarial quality tests; the warning is a non-functional Starlette deprecation |
+| Complete AutoAnim suite | **746 passed, 2 skipped, 0 failed** in 2,995.74 s | Post-U1a run with real fallback + learned audio, image, multiview/texture, video, ReviewBundle, viewer, service, solver, authorship, provenance, and adversarial integrity coverage. The two skips require explicit released-Claire and cached-public-v3 opt-in environments; the warning is a non-functional Starlette deprecation. |
+| Native macOS package | **37 passed in seven suites** | Release-mode strict ReviewBundle/bridge/reducer/endpoint coverage; the complete application target compiles. |
+| Native macOS GUI lifecycle | **pass** | Final signed development bundle rejects unauthenticated access, serves authenticated health, supervises its helper, shuts down cleanly, and opens the real sealed 67-frame review workspace. |
 | Native Swift runner tests | **7 passed** | Exact speech-swift 0.0.23 pin, Claire default, typed arguments and emotion controls |
 | Google official `run_all_tests.py` | **278 passed** in 39.250 s | NumPy, JAX, PyTorch, TensorFlow, semantic sampler |
 | Nested GNM fitting tests | **60 passed** in 8.792 s | Not reached by Google's top-level discovery |

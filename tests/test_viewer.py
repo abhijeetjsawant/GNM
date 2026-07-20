@@ -376,8 +376,148 @@ def test_audio_and_static_viewer_leave_optional_evidence_lane_inactive() -> None
     assert "mediaUrl=null" in static
 
 
+def test_optional_wk_review_bridge_is_bounded_versioned_and_fail_closed() -> None:
+    job_id = "01kxwwdq8gqrsrzycjc3c3kjy9"
+    comparison_key = "a" * 64
+    revision_id = "final-candidate:01"
+    page = viewer_html(
+        asset_url=f"/api/jobs/{job_id}/files/performance.glb",
+        title="Native review",
+        media_url=f"/api/jobs/{job_id}/files/source-proxy.mp4",
+        media_type="video/mp4",
+        performance_evidence_url=(
+            f"/api/jobs/{job_id}/files/performance-evidence.json"
+        ),
+        observation_v3_url=f"/api/jobs/{job_id}/observation-v3-view",
+        review_bridge_job_id=job_id,
+        review_bridge_comparison_key=comparison_key,
+        review_bridge_revision_id=revision_id,
+    )
+
+    assert "autoanim.wk-review-bridge/1.0" in page
+    assert "window.webkit?.messageHandlers?.[handlerName]" in page
+    assert "handlerName=\"autoanimReview\"" in page
+    assert f'comparisonKey="{comparison_key}"' in page
+    assert f'revisionID="{revision_id}"' in page
+    assert "maximumBytes=64*1024" in page
+    assert "maximumSequence=Number.MAX_SAFE_INTEGER" in page
+    assert "new TextEncoder().encode(encoded).byteLength<=maximumBytes" in page
+    assert "exactKeys(envelope,['schemaVersion','sequence','type','jobID','payload'])" in page
+    assert "envelope.schemaVersion!==schemaVersion||envelope.jobID!==jobID" in page
+    assert "if(envelope.sequence<=lastInboundSequence)return false" in page
+    assert "Object.defineProperty(window,'autoanimReview'" in page
+    assert "if(!enabled)return false" in page
+
+    for outbound_type in (
+        "viewer.ready",
+        "cursor.changed",
+        "cursor.applied",
+        "layer.changed",
+        "selection.changed",
+        "revision.ready",
+        "viewer.error",
+    ):
+        assert f"'{outbound_type}'" in page
+    for inbound_type in (
+        "cursor.set",
+        "layer.set",
+        "selection.set",
+        "revision.set",
+    ):
+        assert f"envelope.type==='{inbound_type}'" in page
+    assert "correction.set" not in page
+    assert "Native review bridge message type is not allowed" in page
+
+    assert "exactKeys(payload,['frameIndex','expectedSourcePTS','operation'])" in page
+    assert "String(evidenceFrames[payload.frameIndex]?.sourcePTS)!==payload.expectedSourcePTS" in page
+    assert "media?.paused!==true" in page
+    assert "staticReviewFrameIndex!==index" in page
+    assert "presentationClockState!=='verified_static'" in page
+    assert "verification:'server_decoded'" in page
+    assert "projectTick:[String(tick[0]),String(tick[1])]" in page
+    assert "nativeReviewBridge.exactFrameDidLoad(index)" in page
+    assert "nativeReviewBridge.emitCursor(bounded" in page
+    assert "nativeReviewBridge.modeDidChange" in page
+    assert "post('viewer.ready',{comparisonKey,revisionID,frameCount:" in page
+    assert "exactKeys(payload,['comparisonKey','revisionID'])" in page
+    assert "payload.comparisonKey!==comparisonKey||payload.revisionID!==revisionID" in page
+    assert "post('revision.ready',{comparisonKey,revisionID})" in page
+    assert "validCameraSelections=new Set(['home','front'])" in page
+    assert "mouth','eyes" not in page.split("validCameraSelections=new Set(", 1)[1].split(");", 1)[0]
+
+
+def test_viewer_without_bridge_id_has_no_native_bridge_surface() -> None:
+    page = viewer_html(
+        asset_url="/api/jobs/01abc/files/performance.glb",
+        title="Portable viewer",
+    )
+    assert "autoanim.wk-review-bridge" not in page
+    assert "nativeReviewBridge" not in page
+    assert "window.autoanimReview" not in page
+
+
+@pytest.mark.parametrize(
+    "job_id",
+    (
+        "01abc",
+        "01KXWWDQ8GQRSRZYCJC3C3KJY9",
+        "01kxwwdq8gqrsrzycjc3c3kjyi",
+        "01kxwwdq8gqrsrzycjc3c3kjyl",
+        "01kxwwdq8gqrsrzycjc3c3kjyo",
+        "01kxwwdq8gqrsrzycjc3c3kjyu",
+        "../../etc/passwd</script>",
+        "01kxwwdq8gqrsrzycjc3c3kjy9</script>",
+    ),
+)
+def test_wk_review_bridge_rejects_noncanonical_or_scriptable_job_id(
+    job_id: str,
+) -> None:
+    with pytest.raises(ValueError, match="canonical AutoAnim job ID"):
+        viewer_html(
+            asset_url="/api/jobs/01abc/files/performance.glb",
+            title="Rejected bridge",
+            review_bridge_job_id=job_id,
+            review_bridge_comparison_key="a" * 64,
+            review_bridge_revision_id="final-candidate:01",
+        )
+
+
+@pytest.mark.parametrize(
+    ("comparison_key", "revision_id", "message"),
+    (
+        (None, None, "required together"),
+        ("A" * 64, "final-candidate:01", "lowercase SHA-256"),
+        ("a" * 63, "final-candidate:01", "lowercase SHA-256"),
+        ("a" * 64, "../final", "bounded canonical ID"),
+        ("a" * 64, "final</script>", "bounded canonical ID"),
+        ("a" * 64, "", "bounded canonical ID"),
+    ),
+)
+def test_wk_review_bridge_requires_canonical_comparison_and_revision_binding(
+    comparison_key: str | None,
+    revision_id: str | None,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        viewer_html(
+            asset_url="/api/jobs/01abc/files/performance.glb",
+            title="Rejected bridge binding",
+            review_bridge_job_id="01kxwwdq8gqrsrzycjc3c3kjy9",
+            review_bridge_comparison_key=comparison_key,
+            review_bridge_revision_id=revision_id,
+        )
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js unavailable")
-def test_viewer_generated_module_has_valid_javascript_syntax(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "review_bridge_job_id",
+    (None, "01kxwwdq8gqrsrzycjc3c3kjy9"),
+    ids=("portable", "wk-bridge"),
+)
+def test_viewer_generated_module_has_valid_javascript_syntax(
+    tmp_path: Path,
+    review_bridge_job_id: str | None,
+) -> None:
     page = viewer_html(
         asset_url="/api/jobs/01abc/files/performance.glb",
         title="Evidence review",
@@ -386,10 +526,17 @@ def test_viewer_generated_module_has_valid_javascript_syntax(tmp_path: Path) -> 
         performance_evidence_url=(
             "/api/jobs/01abc/files/performance-evidence.json"
         ),
+        review_bridge_job_id=review_bridge_job_id,
+        review_bridge_comparison_key=(
+            "a" * 64 if review_bridge_job_id is not None else None
+        ),
+        review_bridge_revision_id=(
+            "final-candidate:01" if review_bridge_job_id is not None else None
+        ),
     )
     match = re.search(r'<script type="module">(.*?)</script>', page, re.DOTALL)
     assert match is not None
-    module = tmp_path / "viewer.mjs"
+    module = tmp_path / f"viewer-{review_bridge_job_id or 'portable'}.mjs"
     module.write_text(match.group(1), encoding="utf-8")
     result = subprocess.run(
         (shutil.which("node") or "node", "--check", str(module)),

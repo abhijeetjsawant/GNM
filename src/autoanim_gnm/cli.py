@@ -3,30 +3,32 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 
-from .api import create_app
-from .artifacts import sha256
+from .authorship import validate_mouth_aperture_authorship
 from .errors import AutoAnimError
-from .gnm_adapter import GNMAdapter
-from .lipsync_qualification import (
-    LipsyncQualificationError,
-    evaluate_controls_qualification,
-    load_identity_artifact,
-)
-from .materials import MaterialValidationError, validate_material_package
-from .rig import ControlRig
-from .semantic_decoder import ExpressionDecoder
-from .serialization import write_json
-from .service import ApplicationService, default_model_path
 from .viewer import default_viewer_vendor_root
 
 
 MATERIAL_SPEC_FIELDS = frozenset(
     {"package_id", "inventory", "capture", "provenance", "rights", "claims"}
 )
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Optional injection seam retained for in-process CLI tests. Normal execution
+# resolves the real service lazily after lightweight argument validation.
+ApplicationService = None
+create_app = None
+
+
+def _default_model_path() -> Path:
+    configured = os.environ.get("AUTOANIM_FACE_LANDMARKER")
+    if configured:
+        return Path(configured)
+    return PROJECT_ROOT / ".cache/autoanim_gnm/face_landmarker.task"
 
 
 def _read_json_object(path: Path, *, label: str) -> dict:
@@ -41,7 +43,11 @@ def _read_json_object(path: Path, *, label: str) -> dict:
 
 def _required_file_sha256(path: Path, *, label: str) -> str:
     try:
-        return sha256(path)
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
     except OSError as exc:
         raise AutoAnimError(
             "INPUT_INVALID", f"{label} file is missing or unreadable"
@@ -50,7 +56,7 @@ def _required_file_sha256(path: Path, *, label: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="autoanim-gnm")
-    parser.add_argument("--model-path", type=Path, default=default_model_path())
+    parser.add_argument("--model-path", type=Path, default=_default_model_path())
     parser.add_argument("--rhubarb-bin", type=Path)
     parser.add_argument("--a2f-runner", type=Path)
     parser.add_argument("--a2f-assets", type=Path)
@@ -298,17 +304,52 @@ def main(argv: list[str] | None = None) -> int:
         or getattr(args, "out", None)
         or Path("artifacts/jobs")
     )
-    service = ApplicationService(
-        artifact_root,
-        model_path=args.model_path,
-        rhubarb_bin=args.rhubarb_bin,
-        a2f_runner=args.a2f_runner,
-        a2f_asset_dir=args.a2f_assets,
-        a2f_offline=args.a2f_offline,
-        viewer_vendor_root=args.viewer_vendor,
-        character_root=args.characters,
+    if args.command in {"audio", "video"}:
+        try:
+            validate_mouth_aperture_authorship(
+                gain=args.mouth_aperture_gain,
+                author=args.mouth_aperture_author,
+                reason=args.mouth_aperture_reason,
+            )
+        except AutoAnimError as exc:
+            print(json.dumps(exc.as_dict(), indent=2, sort_keys=True), file=sys.stderr)
+            return (
+                3
+                if exc.code == "DEPENDENCY_MISSING"
+                else (1 if exc.code == "INTERNAL_ERROR" else 2)
+            )
+
+    # Keep heavyweight image/audio/model runtimes out of argument-error paths.
+    # In particular, invalid authored edits terminate without importing
+    # MediaPipe or TensorFlow-backed dependencies.
+    from .api import create_app as default_create_app
+    from .artifacts import sha256
+    from .gnm_adapter import GNMAdapter
+    from .lipsync_qualification import (
+        LipsyncQualificationError,
+        evaluate_controls_qualification,
+        load_identity_artifact,
     )
+    from .materials import MaterialValidationError, validate_material_package
+    from .rig import ControlRig
+    from .semantic_decoder import ExpressionDecoder
+    from .serialization import write_json
+    from .service import ApplicationService as DefaultApplicationService
+
+    app_factory = create_app or default_create_app
+    service_type = ApplicationService or DefaultApplicationService
+
     try:
+        service = service_type(
+            artifact_root,
+            model_path=args.model_path,
+            rhubarb_bin=args.rhubarb_bin,
+            a2f_runner=args.a2f_runner,
+            a2f_asset_dir=args.a2f_assets,
+            a2f_offline=args.a2f_offline,
+            viewer_vendor_root=args.viewer_vendor,
+            character_root=args.characters,
+        )
         if args.command == "health":
             result = service.health()
         elif args.command == "audio":
@@ -535,7 +576,7 @@ def main(argv: list[str] | None = None) -> int:
             import uvicorn
 
             uvicorn.run(
-                create_app(
+                app_factory(
                     args.artifacts,
                     model_path=args.model_path,
                     rhubarb_bin=args.rhubarb_bin,

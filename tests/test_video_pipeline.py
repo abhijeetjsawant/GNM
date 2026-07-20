@@ -853,6 +853,27 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     )
     assert observation_view_url in viewer.text
     assert '"observation_review": "available"' in viewer.text
+    assert '"native_review_bundle": "available"' in viewer.text
+    assert "Object.defineProperty(window,'autoanimReview'" in viewer.text
+    review_bundle_response = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/review-bundle"
+    )
+    assert review_bundle_response.status_code == 200
+    review_bundle = review_bundle_response.json()
+    assert review_bundle["schema_version"] == "autoanim.review-bundle/1.0"
+    assert review_bundle["source_manifest"]["job_id"] == result["job_id"]
+    assert review_bundle["clock"]["source_pts"] == source_probe.source_pts.tolist()
+    assert review_bundle["claims"]["production_validated"] is False
+    assert review_bundle["claims"]["publishable"] is False
+    assert review_bundle_response.headers[
+        "x-autoanim-review-bundle-sha256"
+    ] == review_bundle["bundle_sha256"]
+    review_layers = {
+        layer["layer_id"]: layer for layer in review_bundle["layers"]
+    }
+    assert review_layers["visual_base"]["changes_motion_reported"] is True
+    assert review_layers["audio_repair"]["availability"] == "unavailable"
+    assert review_layers["audio_repair"]["changes_motion_reported"] is False
     assert "drawDiagnosticOverlay" in viewer.text
     observation_view_response = TestClient(app).get(observation_view_url)
     assert observation_view_response.status_code == 200
@@ -965,3 +986,8 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     tampered_observation_view = TestClient(app).get(observation_view_url)
     assert tampered_observation_view.status_code == 404
     assert tampered_observation_view.json()["code"] == "ARTIFACT_NOT_FOUND"
+    tampered_review_bundle = TestClient(app).get(
+        f"/api/jobs/{result['job_id']}/review-bundle"
+    )
+    assert tampered_review_bundle.status_code == 404
+    assert tampered_review_bundle.json()["code"] == "ARTIFACT_NOT_FOUND"

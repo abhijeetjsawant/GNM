@@ -10,6 +10,30 @@ AutoAnim baseline: `1b9b8f18b211c9ee7b45af39668daacd32fd70fc`
 
 ## Implementation ledger
 
+- **U1a sealed native performance review — implemented and focused-test
+  green.** Every eligible video-performance job can now be reconstructed as a
+  canonical `autoanim.review-bundle/1.0` document from the HMAC-sealed artifact
+  ledger. The bundle binds the retained input, exact rational source-PTS clock,
+  display proxy, GNM/Performance versions, identity, seven fail-closed motion
+  layers and the sole final renderable revision. It exposes no filesystem paths,
+  production approvals or correction writer. A native Swift decoder independently
+  checks the self-hash and structural contract; a bounded `autoanimReview` WK
+  bridge accepts only typed cursor/layer/selection/revision messages and exact
+  job/comparison/revision bindings. The SwiftUI workspace adds sealed layer
+  state, exact frame/PTS stepping, compatible cross-job A/B and a B gate that
+  remains locked until both viewers acknowledge the same server-decoded frame,
+  declared layer state and selection. Bridge commands use bounded lossless
+  per-viewer FIFO snapshots; camera-orbit equivalence remains unverified.
+  Real candidates `01kxz19xtk9aytx0rfjj0gddzk` (visual only) and
+  `01kxyy53rgqamj8y7hddaqf385` (audio repair) share comparison key
+  `025363394c08717ce393d62e430317b633d9e098c27c1083b7df96297743500c`.
+  The repair changes only 32 dedicated tongue controls on 38/67 frames; native
+  GNM evaluation changes only 933 tongue vertices (2.663 mm maximum). It does
+  not change lip or lower-face motion and therefore is not evidence that the
+  reported rigid/closed-mouth lipsync is fixed. Visible-tongue correctness,
+  signed collision freedom, phoneme timing, perceptual preference and artist
+  approval remain explicit blockers.
+
 - **A1 multi-articulator diagnostic foundation — implemented, reviewed, and
   regression-green.** `autoanim.phone-articulation-report/1.0` records bilabial inner-lip
   closure, coarse lower-lip/upper-teeth and tongue/upper-teeth proximity, and

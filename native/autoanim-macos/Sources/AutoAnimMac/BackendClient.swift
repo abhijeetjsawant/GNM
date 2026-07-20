@@ -5,6 +5,22 @@ struct BackendClient: Sendable {
     let endpoint: LoopbackEndpoint
     let token: String
 
+    private static let maximumReviewBundleBytes = 8 * 1_024 * 1_024
+
+    private func authenticatedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        let session = URLSession(
+            configuration: configuration,
+            delegate: RejectRedirectsDelegate(),
+            delegateQueue: nil
+        )
+        defer { session.finishTasksAndInvalidate() }
+        return try await session.data(for: request)
+    }
+
     private func request(path: String, queryItems: [URLQueryItem] = []) throws -> URLRequest {
         let base = try endpoint.url(path: path)
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
@@ -22,14 +38,12 @@ struct BackendClient: Sendable {
     }
 
     private func data(path: String, queryItems: [URLQueryItem] = []) async throws -> Data {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpCookieStorage = nil
-        configuration.urlCache = nil
-        let session = URLSession(configuration: configuration)
-        let (data, response) = try await session.data(
-            for: request(path: path, queryItems: queryItems)
-        )
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        let request = try request(path: path, queryItems: queryItems)
+        let (data, response) = try await authenticatedData(for: request)
+        guard let http = response as? HTTPURLResponse,
+              http.statusCode == 200,
+              responseMatchesRequest(http, request: request)
+        else {
             throw BackendClientError.invalidResponse
         }
         return data
@@ -46,6 +60,57 @@ struct BackendClient: Sendable {
                 queryItems: [URLQueryItem(name: "limit", value: "50")]
             )
         ).jobs
+    }
+
+    func reviewBundle(jobID: String) async throws -> ReviewBundle {
+        guard JobSummary.validJobID(jobID) else {
+            throw BackendClientError.invalidResponse
+        }
+        let request = try request(path: "/api/jobs/\(jobID)/review-bundle")
+        let (payload, response) = try await authenticatedData(for: request)
+        guard
+            let http = response as? HTTPURLResponse,
+            http.statusCode == 200,
+            responseMatchesRequest(http, request: request),
+            http.mimeType == "application/json",
+            http.expectedContentLength <= Int64(Self.maximumReviewBundleBytes),
+            !payload.isEmpty,
+            payload.count <= Self.maximumReviewBundleBytes
+        else {
+            throw BackendClientError.invalidResponse
+        }
+        let bundle = try ReviewBundle.decodeStrict(from: payload)
+        guard
+            bundle.sourceManifest.jobID == jobID,
+            http.value(
+                forHTTPHeaderField: "X-AutoAnim-Review-Bundle-SHA256"
+            ) == bundle.bundleSHA256
+        else {
+            throw BackendClientError.invalidResponse
+        }
+        return bundle
+    }
+
+    private func responseMatchesRequest(
+        _ response: HTTPURLResponse,
+        request: URLRequest
+    ) -> Bool {
+        guard let requestedURL = request.url, let responseURL = response.url else {
+            return false
+        }
+        return responseURL.absoluteString == requestedURL.absoluteString
+    }
+}
+
+private final class RejectRedirectsDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
 

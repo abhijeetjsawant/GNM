@@ -116,6 +116,20 @@ The implementation choices are grounded in:
 
 ## Target architecture
 
+### Implemented review boundary (U1a)
+
+The native shell now has a verified read-only performance workspace before the
+larger N2 authoring scheduler. It fetches a path-free, self-hashed ReviewBundle
+over the authenticated loopback service, validates it in Swift, and binds the
+embedded viewer to one job, comparison key and final renderable revision. Exact
+single-view stepping and cross-bundle A/B use source PTS; B is unavailable until
+both viewers return matching server-decoded acknowledgements and matching
+declared layer/selection state. Renderer layer and camera commands share one
+reducer-owned uint53 sequence per viewer and lossless bounded FIFO delivery;
+camera-orbit equivalence is still reported as unverified. There is deliberately
+no correction writer, physics-authoring message, material approval or production
+promotion surface in this slice.
+
 ```text
 AutoAnim.app
 ├── SwiftUI/AppKit host

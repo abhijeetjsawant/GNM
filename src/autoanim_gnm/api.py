@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .errors import AutoAnimError
 from .artifacts import sha256
+from .review_bundle import ReviewBundleError, build_review_bundle
 from .capture_session import (
     load_verified_legacy_video_capture_session_v1,
     load_verified_video_capture_session,
@@ -1074,6 +1075,68 @@ def create_app(
         except AutoAnimError as exc:
             return _error_response(exc)
 
+    @app.get("/api/jobs/{job_id}/review-bundle")
+    def review_bundle(job_id: str):
+        """Build one path-free ReviewBundle from fully verified video evidence.
+
+        Observation-v3 verification remains the fail-closed gate for this first
+        native review slice.  The bundle builder then independently rechecks
+        every manifest-ledger artifact before exposing only bounded metadata.
+        """
+
+        evidence_response = observation_v3_view(job_id)
+        if evidence_response.status_code != 200:
+            return evidence_response
+        try:
+            manifest = service.store.require_sealed(job_id)
+            artifacts = manifest.get("artifacts")
+            if not isinstance(artifacts, dict):
+                raise ReviewBundleError(
+                    "INVALID_MANIFEST", "Performance artifact ledger is invalid"
+                )
+            artifact_paths: dict[str, Path] = {}
+            for logical_name, entry in artifacts.items():
+                if (
+                    not isinstance(logical_name, str)
+                    or not isinstance(entry, dict)
+                    or not isinstance(entry.get("name"), str)
+                ):
+                    raise ReviewBundleError(
+                        "INVALID_MANIFEST", "Performance artifact ledger is invalid"
+                    )
+                artifact_paths[logical_name] = service.store.artifact(
+                    job_id, entry["name"]
+                )
+            document = build_review_bundle(
+                manifest,
+                artifact_paths=artifact_paths,
+            )
+            return JSONResponse(
+                document,
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                    "X-AutoAnim-Review-Bundle-SHA256": document["bundle_sha256"],
+                },
+            )
+        except FileNotFoundError:
+            return _error_response(
+                AutoAnimError(
+                    "ARTIFACT_NOT_FOUND",
+                    "This job has no complete ReviewBundle evidence",
+                )
+            )
+        except ReviewBundleError as exc:
+            return _error_response(
+                AutoAnimError(
+                    "INTEGRITY_FAILED",
+                    "ReviewBundle evidence did not verify",
+                    details={"review_code": exc.code, "field": exc.field},
+                )
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
     @app.get("/api/jobs/{job_id}/review-frames/{frame_index}.png")
     def review_frame(job_id: str, frame_index: int):
         """Decode one manifest-bound proxy frame for deterministic paused review.
@@ -1206,6 +1269,10 @@ def create_app(
             performance_evidence_url = None
             observation_v3_url = None
             observation_review_status = None
+            review_bundle_status = None
+            review_bridge_job_id = None
+            review_bridge_comparison_key = None
+            review_bridge_revision_id = None
             viewer_contract = manifest.get("viewer", {})
             clock_key = viewer_contract.get("clock_artifact")
             if isinstance(clock_key, str):
@@ -1270,10 +1337,59 @@ def create_app(
                 ):
                     for entry in observation_entries:
                         service.store.artifact(job_id, entry["name"])
-                    observation_v3_url = (
-                        f"/api/jobs/{job_id}/observation-v3-view"
-                    )
-                    observation_review_status = "available"
+                    verified_evidence = observation_v3_view(job_id)
+                    if verified_evidence.status_code == 200:
+                        observation_v3_url = (
+                            f"/api/jobs/{job_id}/observation-v3-view"
+                        )
+                        observation_review_status = "available"
+                        try:
+                            review_paths = {
+                                logical_name: service.store.artifact(
+                                    job_id, entry["name"]
+                                )
+                                for logical_name, entry in artifacts.items()
+                                if isinstance(logical_name, str)
+                                and isinstance(entry, dict)
+                                and isinstance(entry.get("name"), str)
+                            }
+                            if set(review_paths) != set(artifacts):
+                                raise ReviewBundleError(
+                                    "INVALID_MANIFEST",
+                                    "Performance artifact ledger is invalid",
+                                )
+                            review_document = build_review_bundle(
+                                manifest,
+                                artifact_paths=review_paths,
+                            )
+                            renderable_revisions = review_document[
+                                "revision_graph"
+                            ]["renderable_revisions"]
+                            if len(renderable_revisions) != 1:
+                                raise ReviewBundleError(
+                                    "INVALID_REVISION_GRAPH",
+                                    "ReviewBundle must expose one final renderable revision",
+                                )
+                            review_bridge_job_id = job_id
+                            review_bridge_comparison_key = review_document[
+                                "comparison_key"
+                            ]["comparison_key_sha256"]
+                            review_bridge_revision_id = renderable_revisions[0][
+                                "revision_id"
+                            ]
+                            review_bundle_status = "available"
+                        except (FileNotFoundError, ReviewBundleError):
+                            review_bundle_status = (
+                                "unavailable: "
+                                "artifact or comparison binding did not verify"
+                            )
+                    else:
+                        observation_review_status = (
+                            "unavailable: Observation-v3 evidence did not verify"
+                        )
+                        review_bundle_status = (
+                            "unavailable: Observation-v3 evidence did not verify"
+                        )
             model_document = manifest.get("model")
             character_document = (
                 model_document.get("character")
@@ -1299,6 +1415,8 @@ def create_app(
             )
             if observation_review_status is not None:
                 viewer_metadata["observation_review"] = observation_review_status
+            if review_bundle_status is not None:
+                viewer_metadata["native_review_bundle"] = review_bundle_status
             if manifest.get("kind") in {"audio_animation", "video_performance"}:
                 readiness = service.production_readiness(job_id)
                 viewer_metadata.update(
@@ -1359,6 +1477,9 @@ def create_app(
                     performance_evidence_url=performance_evidence_url,
                     observation_v3_url=observation_v3_url,
                     metadata=viewer_metadata or None,
+                    review_bridge_job_id=review_bridge_job_id,
+                    review_bridge_comparison_key=review_bridge_comparison_key,
+                    review_bridge_revision_id=review_bridge_revision_id,
                 ),
                 headers={
                     "Content-Security-Policy": (

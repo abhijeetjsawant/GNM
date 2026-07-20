@@ -98,16 +98,21 @@ if [[ "${AUTOANIM_GUI_SMOKE:-0}" == "1" ]]; then
   AUTOANIM_SOURCE_ROOT="$PROJECT_DIR" "$APP_PATH/Contents/MacOS/AutoAnimMac" \
     >"$SMOKE_DIR/app.stdout" 2>"$SMOKE_DIR/app.stderr" &
   GUI_PID=$!
-  sleep 2
-  if ! kill -0 "$GUI_PID" 2>/dev/null; then
-    cat "$SMOKE_DIR/app.stderr" >&2
-    echo "Native app exited during GUI smoke." >&2
-    exit 1
-  fi
-  GUI_CHILD_PID=$(pgrep -P "$GUI_PID" -f 'source_runtime_service.py' | sed -n '1p' || true)
+  for _ in $(seq 1 450); do
+    if ! kill -0 "$GUI_PID" 2>/dev/null; then
+      cat "$SMOKE_DIR/app.stderr" >&2
+      echo "Native app exited during GUI smoke." >&2
+      exit 1
+    fi
+    GUI_CHILD_PID=$(
+      pgrep -P "$GUI_PID" -f 'source_runtime_service.py' | sed -n '1p' || true
+    )
+    if [[ -n "$GUI_CHILD_PID" ]]; then break; fi
+    sleep 0.1
+  done
   if [[ -z "$GUI_CHILD_PID" ]]; then
     cat "$SMOKE_DIR/app.stderr" >&2
-    echo "Native app did not supervise its authenticated source runtime." >&2
+    echo "Native app did not supervise its authenticated source runtime within 45 seconds." >&2
     exit 1
   fi
   kill -TERM "$GUI_PID"

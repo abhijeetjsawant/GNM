@@ -35,6 +35,32 @@ retargets the 60 Hz controls into GNM without the v2.3 Savitzky-Golay pass. The
 external-worker importer remains separate and still cannot prove inference.
 Neither route is production-qualified.
 
+## U1a implementation result: review before promotion
+
+The first production-workflow slice is now a read-only native review system,
+not a correction or approval system. A strict ReviewBundle is regenerated from
+sealed job bytes and fixes the comparison identity to the retained input,
+rational PTS clock, proxy, GNM/Performance schemas and identity coefficients.
+The authenticated WK bridge has one fixed entrypoint and typed 64 KiB-bounded
+messages delivered through bounded per-viewer FIFO snapshots with exactly one
+JavaScript command in flight. Document generations, redirects, origin/path
+bindings and stale asynchronous service results fail closed. Arbitrary scripts,
+within-job A/B, correction commands and production commands are absent.
+Cross-job B stays disabled until both renderers acknowledge the same
+server-decoded frame and source PTS plus the same declared layers and selection;
+camera-orbit equivalence remains explicitly unverified.
+
+The retained visual/audio-repair A/B demonstrates why this boundary matters.
+The current conservative fusion leaves all visible lips and lower-face controls
+exactly under video authority and changes only the dedicated tongue block for 38
+speech frames. That produces real tongue motion, including a 2.663 mm maximum
+native displacement, but it cannot improve a rigid or overly closed mouth. The
+GLB reconstruction remains within its structural tolerances, while independent
+low-rank compression introduces up to 0.31 mm of non-authored viewer-space
+variation outside the tongue. Reviewers must therefore distinguish native GNM
+authority from export approximation and cannot infer production correctness
+from a visually plausible preview.
+
 The executable prerequisite is A1 multi-articulator qualification. The first
 implementation pass exposed an important evidence error: normal phone intervals
 cannot stand in for independently reviewed articulatory onset/contact/release or

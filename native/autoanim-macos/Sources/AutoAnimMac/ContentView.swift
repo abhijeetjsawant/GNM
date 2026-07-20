@@ -105,7 +105,7 @@ struct ContentView: View {
     @ViewBuilder
     private var detail: some View {
         if let job = model.selectedJob {
-            JobDetail(job: job, supervisor: model.supervisor)
+            JobDetail(job: job, model: model)
         } else if model.selectedSection == .diagnostics {
             DiagnosticsDetail(model: model)
         } else {
@@ -191,7 +191,7 @@ private struct JobRow: View {
 
 private struct JobDetail: View {
     let job: JobSummary
-    let supervisor: BackendSupervisor?
+    @ObservedObject var model: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -207,9 +207,21 @@ private struct JobDetail: View {
             .padding(12)
             .background(.bar)
             Divider()
-            if job.viewable, let endpoint = supervisor?.endpoint, let token = supervisor?.token {
-                AuthenticatedViewer(endpoint: endpoint, token: token, jobID: job.jobID)
-                    .id("\(endpoint.baseURL.absoluteString)-\(job.jobID)")
+            if job.viewable,
+               let endpoint = model.supervisor?.endpoint,
+               let token = model.supervisor?.token {
+                if job.kind == "video_performance" {
+                    ReviewWorkspaceView(
+                        job: job,
+                        model: model,
+                        endpoint: endpoint,
+                        token: token
+                    )
+                    .id("review-\(endpoint.baseURL.absoluteString)-\(job.jobID)")
+                } else {
+                    AuthenticatedViewer(endpoint: endpoint, token: token, jobID: job.jobID)
+                        .id("\(endpoint.baseURL.absoluteString)-\(job.jobID)")
+                }
             } else {
                 ContentUnavailableView(
                     "No viewable 3D artifact",

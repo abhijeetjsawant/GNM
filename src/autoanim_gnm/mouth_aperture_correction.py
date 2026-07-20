@@ -19,6 +19,7 @@ import math
 
 import numpy as np
 
+from .authorship import validate_mouth_aperture_authorship
 from .errors import AutoAnimError
 from .rig import ControlRig
 
@@ -143,34 +144,6 @@ def mouth_aperture_target_attainment(
 
 def _invalid(message: str, **details: object) -> AutoAnimError:
     return AutoAnimError("MOUTH_APERTURE_INVALID", message, details=details)
-
-
-def validate_mouth_aperture_authorship(
-    *,
-    gain: float,
-    author: str | None,
-    reason: str | None,
-) -> tuple[str | None, str | None]:
-    """Require accountable provenance for every non-default artist edit."""
-
-    if not np.isfinite(gain) or gain < 1.0:
-        raise AutoAnimError(
-            "INPUT_INVALID",
-            "Mouth-aperture gain must be finite and at least 1",
-        )
-    normalized_author = author.strip() if author is not None else ""
-    normalized_reason = reason.strip() if reason is not None else ""
-    if len(normalized_author) > 160 or len(normalized_reason) > 500:
-        raise AutoAnimError(
-            "INPUT_INVALID",
-            "Mouth-aperture author and reason are limited to 160 and 500 characters",
-        )
-    if gain != 1.0 and (not normalized_author or not normalized_reason):
-        raise AutoAnimError(
-            "INPUT_INVALID",
-            "A non-default mouth-aperture edit requires both an author and a reason",
-        )
-    return normalized_author or None, normalized_reason or None
 
 
 def _readonly(value: np.ndarray) -> np.ndarray:

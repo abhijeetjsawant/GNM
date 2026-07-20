@@ -50,8 +50,15 @@ struct LoopbackEndpointTests {
         )
         let valid = "01kxwwdq8gqrsrzycjc3c3kjy9"
         #expect(try endpoint.viewerURL(jobID: valid).path == "/api/jobs/\(valid)/viewer")
+        #expect(
+            try endpoint.reviewBundleURL(jobID: valid).path
+                == "/api/jobs/\(valid)/review-bundle"
+        )
         #expect(throws: LoopbackEndpointError.self) {
             _ = try endpoint.viewerURL(jobID: "../../etc/passwd")
+        }
+        #expect(throws: LoopbackEndpointError.self) {
+            _ = try endpoint.reviewBundleURL(jobID: "../../etc/passwd")
         }
     }
 }
