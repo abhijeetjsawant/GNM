@@ -6,21 +6,88 @@ OS: macOS 26.2 (`25C56`), arm64
 
 ## Result
 
-**Status: BLOCKED before inference. No real-video inference has completed, and
-this report does not claim that GEM-X works on this machine.**
+**Current status: Apple-Silicon CPU preview reproduced on two real videos;
+production approval remains blocked.**
 
-The official source checkout is pinned and the local fixture is verified. The
-documented macOS setup was inspected and partially exercised. A long-running
-submodule repair was stopped before completion, at which point further model
-downloads were explicitly halted. The environment therefore has no ONNX Runtime,
-no CoreML execution provider, no ONNX model files, and no inference output.
+The initial audit recorded later in this document was subsequently continued.
+Required submodules were repaired to the superproject pins, the official macOS
+setup completed, selected model assets were downloaded and hashed, and AutoAnim
+now has a quarantined CPU-only preview path. The official macOS/Core ML demo
+still does not work unchanged. Its YOLOX and VitPose graphs fail during Core ML
+execution due output-shape/rank mismatches, and its post-ONNX decoder
+unconditionally selects CUDA.
 
-No AutoAnim production code was changed. The GEM-X checkout and all attempted
-setup work live under the ignored project-local cache:
+AutoAnim therefore uses explicit `CPUExecutionProvider` adapters for detection,
+VitPose, and the GEM-X denoiser, followed by the official lightweight EnDecoder
+and SOMA-X layer on CPU. This path is named `apple_silicon_preview` and is
+structurally prevented from claiming production validation. NVIDIA modules and
+Torch pickle artifacts remain in the ignored provider cache:
 
 ```text
 /Users/abhi_macbook/Projects/apps/AutoAnim/.cache/autoanim_gnm/gem-x
 ```
+
+### Executed real-input results
+
+| Input | Scope | Frames | Detection | VitPose | Motion/export result |
+|---|---|---:|---|---|---|
+| AutoAnim retained real-person clip, transcoded from the verified FLV | Head and shoulders; smoke only | 67 | CPU, complete | CPU flip-test, complete | Superseded prototype before the final frame-identity/camera schema; diagnostic only |
+| `rishic3/DepthCheck` research squat demo, resized to 640×1138 | Full person performing a squat; research-only because the repository has no explicit license disposition | 70 | CPU, 51.25 s | CPU flip-test batch 4, 106.97 s; confidence mean `0.9458`, min `0.7434` | 70-frame final-schema SOMA-77 archive; FK max `6.14e-7 m`; root Y range `0.5486 m`; knee ranges left `51.33–165.04°`, right `37.55–164.72°` |
+
+The full-body result has meaningful non-static contact output: true-frame
+counts are `[32, 30, 26, 29, 8, 8]` for left foot, left toe, right foot,
+right toe, left hand, and right hand. Contact speed uses exact adjacent source
+PTS rather than GEM-X's hard-coded `0.033` seconds. It projects into the existing
+canonical-25 preview track for all 70 frames. These are execution and structural
+checks, not accuracy ground truth or animator approval.
+
+The squat source bytes are SHA-256
+`a990d1a2fa56079451c619a130ddaf6a71788990d3bfa57647e9a275b84ecce5`;
+the 640-pixel H.264 derivative is
+`2938548390425b72d5ff75316e464cbe3ed7a82c98e952f0fe3f29e2e1f25eee`.
+The source is used only as a local research fixture and must not ship.
+
+### Model/runtime evidence
+
+The installed environment reports MPS available and ONNX Runtime providers
+`CoreMLExecutionProvider`, `AzureExecutionProvider`, and
+`CPUExecutionProvider`. The working adapters require the last provider exactly.
+
+| Local artifact | SHA-256 |
+|---|---|
+| `inputs/onnx/gem_denoiser_no_imgfeat.onnx` | `65c576968bc9548b5c485522930b7985097b70a5e0154e5cd01241d6c806415f` |
+| `inputs/onnx/gem_denoiser_no_imgfeat.onnx.data` | `5ca91bdf443dc5139335ecef83139572d24ca7765e9cc6dfdd6441ed44bd6278` |
+| `inputs/onnx/vitpose.onnx` | `0982dbf4f1e8a48446a6fe35329711522b60210cce2a7499ca6ab93458c87f34` |
+| `inputs/onnx/vitpose.onnx.data` | `b20ba3077ba2341d76c16dde3e58d3b37c66c3b0ec8346901a8bac14319e20fe` |
+| `inputs/pretrained/gem_soma.ckpt` | `4c1f85ca8c1e11e6588aead49fbc024bf660708def670043e0b537c101ee298e` |
+| `inputs/soma_data/scale_comps.pth` | `4c4861384b176fbe3d3bd7480e87ff8161f19553bf6ec1b718bc9b6bbb559cd6` |
+| `inputs/soma_data/scale_mean.pth` | `f696a0793217f27fcf23fa1fd63e8a34aa74ef64580078698fb9ea7322ce2891` |
+
+### Coordinate/FK correction
+
+GEM-X/SOMA rotations are relative to T-pose joint axes. AutoAnim's common
+motion contract stores post-rest-local deltas. Directly copying the axis-angle
+rotations produced a measured maximum FK error of `0.814 m`. The provider
+export now applies, per joint,
+`delta_local = inverse(R_rest) × delta_provider × R_rest`. Independent
+application-side FK then agrees with native SOMA joints within `6.1e-7 m` on
+both real runs.
+
+### Remaining blockers
+
+- Model, training-data, transitive SOMA asset, hosted-inference, derived-motion,
+  and redistribution dispositions are incomplete. The preview is research-only.
+- `--no-imgfeat` omits SAM-3D-Body image-token conditioning, and this preview
+  explicitly assumes a static camera. A CUDA production worker still needs the
+  complete official path and an approved full-body evaluation cohort.
+- The current fixtures have no synchronized 3D ground truth, so MPJPE, contact
+  precision/recall, planted-foot drift, and ground penetration production gates
+  are unmeasured.
+- The official script's Core ML failures and duplicate OpenCV/PyAV FFmpeg
+  libraries remain upstream/runtime issues; the CPU adapter does not make the
+  official path supported.
+
+## Initial audit (superseded where noted above)
 
 ## Source pin
 

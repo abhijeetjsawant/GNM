@@ -10,22 +10,30 @@ Evidence root:
 
 ## Release decision
 
-**N0 status: BLOCKED. There is no production approval for this dependency
-set.**
+**N0 status: BLOCKED for production; local GEM-X research preview executed.**
 
-The current tree is suitable only as an incomplete research snapshot. Production
-use, packaging, redistribution, or deployment remains blocked because:
+After this ledger's initial snapshot, the required SAM-3D-Body and SOMA-X
+submodules were repaired to GEM-X's exact pins, the official macOS environment
+was installed, and selected GEM-X/VitPose/SOMA model artifacts were downloaded
+and locally hashed. A CPU-only `apple_silicon_preview` completed real-video
+inference; exact hashes and results are in `docs/GEM_X_REPRODUCTION.md`.
+SOMA Retargeter remains intentionally uninitialized because the executed path
+does not request `--retarget`, and Kimodo remains absent.
 
-1. the local SOMA-X revision does not match GEM-X's pinned submodule revision;
-2. the SAM 3D Body worktree has 105 tracked deletions and is not runnable;
-3. SOMA Retargeter is not initialized;
-4. no GEM-X or Kimodo inference checkpoint is present, so no exact model
-   revision, byte hash, or accepted model-license copy can be tied to a build;
-5. several transitive asset terms are not yet mapped and dispositioned,
+Production use, packaging, redistribution, or deployment remains blocked
+because:
+
+1. several transitive asset terms are not yet mapped and dispositioned,
    including the custom SAM License, SOMA-shape's "proprietary" description,
    SMPL/SMPL-X-derived assets, and GarmentMeasurements/CAESAR lineage; and
-6. the observed macOS environment has neither a usable CUDA backend nor a
-   usable PyTorch MPS backend and is missing the SOMA and ONNX runtime packages.
+2. the exact downloaded model bytes have hashes but do not yet have a complete
+   accepted-license, commercial-use, hosting, redistribution, and derived-motion
+   disposition;
+3. the Apple path is a separately named CPU preview that skips SAM image
+   features; the official Core ML path fails at runtime and no approved CUDA
+   production worker has been qualified; and
+4. Kimodo checkpoints, constraints runtime, and legal/security disposition are
+   not present.
 
 **No production approval may be issued until every unresolved model and
 transitive term in this ledger has an owner, a written disposition, and
@@ -36,9 +44,10 @@ grant.
 
 ## Evidence boundary
 
-This is a bounded, read-only snapshot of what was already on this machine. The
-audit did not download a model, alter a submodule, initialize a dependency, or
-accept a license.
+The detailed tables below preserve the bounded initial snapshot and must be
+read as historical evidence. Subsequent execution repaired two required
+submodules and downloaded only the selected model set documented in
+`GEM_X_REPRODUCTION.md`; it did not accept a license or grant production use.
 
 The status vocabulary is deliberately narrow:
 
