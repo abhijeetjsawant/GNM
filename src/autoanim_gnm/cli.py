@@ -141,6 +141,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Versioned OpenCV camera-bundle JSON with fit/held-out view assignments",
     )
     multiview.add_argument(
+        "--calibration-observations",
+        type=Path,
+        help=(
+            "Retained checkerboard/Charuco observations for independent "
+            "fit/held-out recomputation"
+        ),
+    )
+    multiview.add_argument(
         "--mirror-fill",
         action="store_true",
         help="Disabled for GNM: anatomical UV tiles are not horizontal mirror pairs",
@@ -399,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
                 focal_scale=args.focal_scale,
                 mirror_fill=args.mirror_fill,
                 camera_bundle_path=args.calibration,
+                calibration_observations_path=args.calibration_observations,
                 input_names=tuple(path.name for path in args.inputs),
             )
         elif args.command == "video":

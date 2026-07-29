@@ -433,8 +433,8 @@ animation approval.
   admitting arbitrary timestamp drift.
 - Audiovisual repair schema/policy `v2`, mouth-aperture schema `v3`, authority-
   preserving articulation projection schema `1.0`, animation compiler versions
-  `14`/`5`, and timeline version `13` prevent old and new motion semantics from
-  sharing public provenance identifiers. Compiler `14` projects only GNM lower-
+  `16`/`5`, and timeline version `15` prevent old and new motion semantics from
+  sharing public provenance identifiers. Compilers `14` through `16` project only GNM lower-
   face modes `200:350`; upper face, tongue `350:382`, pupils and timestamps are
   exact authority-preserved channels with desired/projected/delivered hash evidence.
 - Focused cross-pipeline verification passed `175` tests in `325.19s`. The
@@ -522,6 +522,54 @@ animation approval.
   are unreachable within the frozen continuity/horizon contract, and phone/
   contact ground truth, official NVIDIA SDK parity, and blinded animator
   approval are still absent.
+
+## A2.1 v3 absolute-neutral and aperture correction — 2026-07-20
+
+- Root cause: the v3 Claire post-solver emits absolute controls with calibrated
+  offsets, but the shared learned composer treated every clip as a relative
+  v2.3 delta and subtracted the median of low-activity frames. On the retained
+  8-second job that subtraction removed `2.325 mm` from the median retargeted
+  mouth gap and left active speech below the neutral GNM lip gap.
+- Compiler `16` gives local and imported v3 tracks an explicit absolute-control
+  contract. It retargets the pinned solver's zero-input offsets into a retained
+  383-mode provider-neutral expression, never infers neutral from clip content,
+  and blends oral modes `200:382` to that reference only inside contiguous
+  settled-rest runs of at least `200 ms`. A `125 ms` cosine shoulder remains
+  inside each rest run; short low-energy dips retain full source authority.
+  Upper-face controls are not speech-gated.
+- Bilabial correction now falls back to the audited character contact ray when
+  the local inverse solve stalls on a very open coarticulated pose. Every
+  fallback candidate is measured against a `0.002 IOD` non-mouth-displacement
+  cap after coefficient clipping. Absolute-v3 contact motion uses minimal
+  bidirectional edge projection over a bounded `266.7 ms` horizon: already-
+  reachable source poses remain byte-exact, contact runs are never replaced by
+  a common lower-face pose, and only a measured step/speed continuity violation
+  can change a frame. Tongue modes remain protected and byte-exact.
+- Fresh genuine local-v3 evidence is retained locally (the ignored
+  `artifacts/` tree is not a committed or durable artifact store) at
+  `artifacts/qualification/a2-neutral-v16-jobs/01ky09c7rzt949jarnah30nq0w`.
+  It uses the same `f298d9...` LibriSpeech audio and deterministic seed
+  `20260720`, runs all 480 frames at 60 Hz, and exports a full-track viewer GLB.
+  Compared with the v14 job, active-speech physical mouth aperture rises from
+  `3.081 mm` median / `4.986 mm` p95 / `5.368 mm` max to `5.422 mm` /
+  `7.358 mm` / `7.718 mm`. Settled rest is exactly the neutral `3.667 mm` gap.
+  All `55/55` soft-contact targets and `28/28` strong-contact targets are
+  retained with zero anchor loss. The preprojection changes only `22/480`
+  frames (`4` contact and `18` neighboring frames), versus `130` frames in the
+  rejected common-pose prototype; every contact run retains one distinct pose
+  per source frame. Lip-order and tongue/teeth risk counts are zero, and the
+  maximum mouth step remains `0.019500 IOD` (`1.170000 IOD/s`). The full GLB
+  reconstruction passes at `0.044 mm` oral p95 / `0.210 mm` oral maximum and
+  `0.054 mm` tongue p95 / `0.147 mm` tongue maximum. Tongue velocity, acceleration,
+  and jerk p95 are `0.597511`, `0.190764`, and `0.189076`, matching the protected
+  v14 authority envelope.
+- The focused v3/audio/profile/projection/export/oral matrix passes `157` tests
+  with one documented opt-in local-runtime skip. The output remains explicitly non-production. The
+  TextGrid has not been independently reviewed, the phone-span proxy gate is
+  diagnostic and fails, and the generic false-silence metric still counts a
+  sub-200-ms low-energy interval that this conservative policy deliberately
+  preserves. Official NVIDIA SDK parity and blinded animator approval are also
+  absent.
 
 ## Known limitations and viable upgrades
 

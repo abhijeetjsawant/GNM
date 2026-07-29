@@ -19,6 +19,11 @@ from gnm.shape.visualization import vertex_colors as vertex_colors_module
 
 from .gltf_export import split_triangle_corner_uvs
 from .gnm_adapter import GNMAdapter
+from .mouth_geometry import (
+    MouthBoundaryTopology,
+    discover_mouth_boundary,
+    measure_mouth_boundary,
+)
 from .oral_validation import classify_lip_landmarks
 from .runtime_material import (
     load_runtime_material_derivatives,
@@ -37,6 +42,12 @@ class AnimationCompressionError(ValueError):
 
 _ORAL_PRIORITY_LANDMARKS = (8, 27, 36, 45, 61, 62, 63, 65, 66, 67)
 _ORAL_PRIORITY_SCALE = 32.0
+_NORMAL_FRAME_P95_LIMIT_DEGREES = 0.5
+_LIP_NORMAL_FRAME_P95_LIMIT_DEGREES = 2.0
+_LIP_NORMAL_MAX_LIMIT_DEGREES = 5.0
+_MOUTH_BOUNDARY_NORMAL_MAX_LIMIT_DEGREES = 5.0
+_NORMAL_PRIORITY_SCALE = 4.0
+_NORMAL_FIT_CHUNK_FRAMES = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +79,25 @@ class AnimatedGLBExport:
     landmark_p95_mm: float
     landmark_max_mm: float
     oral_corrective_targets: int
+    normal_corrective_targets: int
+    normal_frame_p95_max_degrees: float
+    normal_max_degrees: float
+    lip_normal_frame_p95_max_degrees: float
+    lip_normal_max_degrees: float
+    mouth_boundary_normal_max_degrees: float
+
+
+@dataclass(frozen=True, slots=True)
+class _MorphNormalFit:
+    base_normals: np.ndarray
+    morph_normals: np.ndarray
+    weights: np.ndarray
+    corrective_targets: int
+    frame_p95_max_degrees: float
+    max_degrees: float
+    priority_frame_p95_max_degrees: float
+    priority_max_degrees: float
+    boundary_max_degrees: float
 
 
 def _landmarks(
@@ -79,6 +109,38 @@ def _landmarks(
         return None
     selected = vertices[..., indices, :]
     return np.sum(selected * weights[..., None], axis=-2)
+
+
+def _rendered_lip_contact_frames(
+    frames: np.ndarray,
+    landmarks: np.ndarray,
+    topology: MouthBoundaryTopology,
+    *,
+    gap_threshold_interocular: float,
+    area_threshold_interocular_squared: float,
+) -> np.ndarray:
+    """Classify contact in the rendered mouth-boundary metric used by QA."""
+
+    values = np.asarray(frames, dtype=np.float32)
+    compact = np.asarray(landmarks, dtype=np.float64)
+    if values.ndim != 3 or values.shape[2:] != (3,) or compact.shape != (
+        len(values),
+        68,
+        3,
+    ):
+        raise ValueError("Rendered lip-contact geometry has an invalid shape")
+    contact = np.empty(len(values), dtype=bool)
+    for frame_index, (frame, landmark_frame) in enumerate(
+        zip(values, compact, strict=True)
+    ):
+        measurement = measure_mouth_boundary(frame, landmark_frame, topology)
+        contact[frame_index] = bool(
+            measurement.signed_central_gap_interocular
+            <= gap_threshold_interocular
+            and measurement.opening_area_interocular_squared
+            <= area_threshold_interocular_squared
+        )
+    return contact
 
 
 def _tongue_teeth_collision_frames(
@@ -118,7 +180,9 @@ def factor_vertex_animation(
     landmark_max_limit_m: float = 0.00100,
     preserve_oral_semantics: bool = False,
     lip_contact_gap_interocular: float = 0.006,
+    lip_contact_area_interocular_squared: float = 0.0015,
     lip_order_inversion_tolerance_interocular: float = 0.0005,
+    mouth_boundary: MouthBoundaryTopology | None = None,
     tongue_vertex_indices: np.ndarray | None = None,
     teeth_vertex_indices: np.ndarray | None = None,
     tongue_teeth_collision_risk_interocular: float = 0.001,
@@ -126,9 +190,10 @@ def factor_vertex_animation(
     """Find the smallest deterministic morph basis that passes geometry gates.
 
     When ``preserve_oral_semantics`` is enabled, factorization prioritizes the
-    landmark-support vertices used for inner-lip contact and signed ordering.
-    A rank is accepted only when it preserves the source contact classification
-    and introduces no new lip-order inversion risks.
+    landmark-support vertices used for signed ordering and, when supplied, the
+    rendered mouth-boundary vertices used for contact. A rank is accepted only
+    when it preserves the source contact classification and introduces no new
+    lip-order inversion risks.
     """
 
     values = np.asarray(frames, dtype=np.float32)
@@ -151,6 +216,8 @@ def factor_vertex_animation(
     if (
         not np.isfinite(lip_contact_gap_interocular)
         or lip_contact_gap_interocular <= 0.0
+        or not np.isfinite(lip_contact_area_interocular_squared)
+        or lip_contact_area_interocular_squared <= 0.0
         or not np.isfinite(lip_order_inversion_tolerance_interocular)
         or lip_order_inversion_tolerance_interocular <= 0.0
         or not np.isfinite(tongue_teeth_collision_risk_interocular)
@@ -183,6 +250,17 @@ def factor_vertex_animation(
             or np.any(priority_vertices >= values.shape[1])
         ):
             raise ValueError("oral landmark regressor contains an invalid vertex index")
+        if mouth_boundary is not None:
+            boundary_vertices = np.asarray(mouth_boundary.cycle, dtype=np.int64)
+            if (
+                boundary_vertices.shape != (58,)
+                or np.any(boundary_vertices < 0)
+                or np.any(boundary_vertices >= values.shape[1])
+            ):
+                raise ValueError("rendered mouth-boundary indices are invalid")
+            priority_vertices = np.unique(
+                np.concatenate((priority_vertices, boundary_vertices))
+            )
         coordinate_scale[priority_vertices] = np.float32(_ORAL_PRIORITY_SCALE)
         semantic_weights = np.asarray(landmark_weights, dtype=np.float64)
         observed_semantic_landmarks = _landmarks(
@@ -192,12 +270,25 @@ def factor_vertex_animation(
         )
         if observed_semantic_landmarks is None:
             raise AssertionError("oral semantic landmark evaluation unexpectedly failed")
-        _, observed_contact, observed_order_risk = classify_lip_landmarks(
+        _, sparse_observed_contact, observed_order_risk = classify_lip_landmarks(
             observed_semantic_landmarks,
             contact_gap_interocular=lip_contact_gap_interocular,
             order_tolerance_interocular=(
                 lip_order_inversion_tolerance_interocular
             ),
+        )
+        observed_contact = (
+            _rendered_lip_contact_frames(
+                values,
+                observed_semantic_landmarks,
+                mouth_boundary,
+                gap_threshold_interocular=lip_contact_gap_interocular,
+                area_threshold_interocular_squared=(
+                    lip_contact_area_interocular_squared
+                ),
+            )
+            if mouth_boundary is not None
+            else sparse_observed_contact
         )
         if (tongue_vertex_indices is None) != (teeth_vertex_indices is None):
             raise ValueError(
@@ -328,12 +419,25 @@ def factor_vertex_animation(
                 raise AssertionError(
                     "oral semantic landmark evaluation unexpectedly failed"
                 )
-            _, predicted_contact, predicted_order_risk = classify_lip_landmarks(
+            _, sparse_predicted_contact, predicted_order_risk = classify_lip_landmarks(
                 predicted_semantic_landmarks,
                 contact_gap_interocular=lip_contact_gap_interocular,
                 order_tolerance_interocular=(
                     lip_order_inversion_tolerance_interocular
                 ),
+            )
+            predicted_contact = (
+                _rendered_lip_contact_frames(
+                    reconstructed_frames,
+                    predicted_semantic_landmarks,
+                    mouth_boundary,
+                    gap_threshold_interocular=lip_contact_gap_interocular,
+                    area_threshold_interocular_squared=(
+                        lip_contact_area_interocular_squared
+                    ),
+                )
+                if mouth_boundary is not None
+                else sparse_predicted_contact
             )
             contact_changes = int(np.count_nonzero(predicted_contact != observed_contact))
             introduced_order_risks = int(
@@ -449,12 +553,25 @@ def factor_vertex_animation(
                     raise AssertionError(
                         "oral corrective semantic evaluation unexpectedly failed"
                     )
-                _, candidate_contact, candidate_order_risk = classify_lip_landmarks(
+                _, sparse_candidate_contact, candidate_order_risk = classify_lip_landmarks(
                     candidate_semantic_landmarks,
                     contact_gap_interocular=lip_contact_gap_interocular,
                     order_tolerance_interocular=(
                         lip_order_inversion_tolerance_interocular
                     ),
+                )
+                candidate_contact = (
+                    _rendered_lip_contact_frames(
+                        candidate_frames,
+                        candidate_semantic_landmarks,
+                        mouth_boundary,
+                        gap_threshold_interocular=lip_contact_gap_interocular,
+                        area_threshold_interocular_squared=(
+                            lip_contact_area_interocular_squared
+                        ),
+                    )
+                    if mouth_boundary is not None
+                    else sparse_candidate_contact
                 )
                 candidate_collision_passed = True
                 if observed_tongue_teeth_collision is not None:
@@ -545,6 +662,338 @@ def _vertex_normals(vertices: np.ndarray, triangles: np.ndarray) -> np.ndarray:
     normals[valid] /= length[valid]
     normals[~valid] = np.asarray((0.0, 0.0, 1.0), dtype=np.float32)
     return normals
+
+
+def _fit_morph_normals(
+    base_vertices: np.ndarray,
+    morph_positions: np.ndarray,
+    weights: np.ndarray,
+    triangles: np.ndarray,
+    *,
+    priority_vertex_indices: np.ndarray,
+    boundary_vertex_indices: np.ndarray,
+    max_corrective_targets: int = 0,
+) -> _MorphNormalFit:
+    """Fit glTF normal deltas to the combined reconstructed frame sequence.
+
+    Vertex normals are nonlinear in position. Computing one normal delta for
+    each positional PCA target and then combining those deltas with arbitrary
+    weights can produce large lighting errors even when the positions are
+    accurate. This fit uses the final animation weights as the design matrix,
+    so glTF's linear normal blend approximates the exact normal of every
+    reconstructed frame instead of the unrelated unit-target surfaces.
+    """
+
+    base = np.asarray(base_vertices, dtype=np.float32)
+    positions = np.asarray(morph_positions, dtype=np.float32)
+    animation_weights = np.asarray(weights, dtype=np.float32)
+    faces = np.asarray(triangles, dtype=np.int32)
+    if base.ndim != 2 or base.shape[1:] != (3,):
+        raise ValueError("base_vertices must have shape [vertices,3]")
+    if positions.ndim != 3 or positions.shape[1:] != base.shape:
+        raise ValueError("morph_positions must have shape [targets,vertices,3]")
+    if (
+        animation_weights.ndim != 2
+        or animation_weights.shape[1] != len(positions)
+        or len(animation_weights) < 1
+    ):
+        raise ValueError("weights must have shape [frames,targets]")
+    if faces.ndim != 2 or faces.shape[1:] != (3,):
+        raise ValueError("triangles must have shape [triangles,3]")
+    if (
+        not np.isfinite(base).all()
+        or not np.isfinite(positions).all()
+        or not np.isfinite(animation_weights).all()
+    ):
+        raise ValueError("morph-normal inputs must be finite")
+    if np.any(faces < 0) or np.any(faces >= len(base)):
+        raise ValueError("triangles contain invalid vertex indices")
+    if (
+        not isinstance(max_corrective_targets, int)
+        or max_corrective_targets < 0
+    ):
+        raise ValueError("max_corrective_targets must be a nonnegative integer")
+
+    def checked_indices(label: str, values: np.ndarray) -> np.ndarray:
+        indices = np.asarray(values, dtype=np.int64)
+        if indices.ndim != 1 or not len(indices):
+            raise ValueError(f"{label} must contain vertex indices")
+        if np.any(indices < 0) or np.any(indices >= len(base)):
+            raise ValueError(f"{label} contains invalid vertex indices")
+        return np.unique(indices)
+
+    priority = checked_indices("priority_vertex_indices", priority_vertex_indices)
+    boundary = checked_indices("boundary_vertex_indices", boundary_vertex_indices)
+    base_normals = _vertex_normals(base, faces)
+    if not len(positions):
+        empty = np.empty((0, len(base), 3), dtype=np.float32)
+        return _MorphNormalFit(
+            base_normals=base_normals,
+            morph_normals=empty,
+            weights=animation_weights.copy(),
+            corrective_targets=0,
+            frame_p95_max_degrees=0.0,
+            max_degrees=0.0,
+            priority_frame_p95_max_degrees=0.0,
+            priority_max_degrees=0.0,
+            boundary_max_degrees=0.0,
+        )
+
+    # Pseudoinverse once, then accumulate in bounded frame chunks. This keeps
+    # memory independent of clip duration while solving the same least-squares
+    # system as a full frame-by-coordinate matrix.
+    pseudo = np.linalg.pinv(
+        animation_weights.astype(np.float64),
+        rcond=1.0e-8,
+    )
+    targets_flat = np.zeros(
+        (len(positions), int(np.prod(base.shape))),
+        dtype=np.float64,
+    )
+    for start in range(0, len(animation_weights), _NORMAL_FIT_CHUNK_FRAMES):
+        end = min(start + _NORMAL_FIT_CHUNK_FRAMES, len(animation_weights))
+        chunk_weights = animation_weights[start:end]
+        reconstructed = base[None] + np.einsum(
+            "fk,kvj->fvj",
+            chunk_weights,
+            positions,
+            optimize=True,
+        )
+        exact = np.stack(
+            [_vertex_normals(frame, faces) for frame in reconstructed]
+        )
+        residual = (exact - base_normals[None]).reshape(len(exact), -1)
+        targets_flat += pseudo[:, start:end] @ residual.astype(np.float64)
+    morph_normals = targets_flat.reshape(positions.shape).astype(np.float32)
+
+    frame_p95_max = 0.0
+    maximum = 0.0
+    priority_frame_p95_max = 0.0
+    priority_max = 0.0
+    boundary_max = 0.0
+    for start in range(0, len(animation_weights), _NORMAL_FIT_CHUNK_FRAMES):
+        end = min(start + _NORMAL_FIT_CHUNK_FRAMES, len(animation_weights))
+        chunk_weights = animation_weights[start:end]
+        reconstructed = base[None] + np.einsum(
+            "fk,kvj->fvj",
+            chunk_weights,
+            positions,
+            optimize=True,
+        )
+        exact = np.stack(
+            [_vertex_normals(frame, faces) for frame in reconstructed]
+        )
+        predicted = base_normals[None] + np.einsum(
+            "fk,kvj->fvj",
+            chunk_weights,
+            morph_normals,
+            optimize=True,
+        )
+        predicted /= np.maximum(
+            np.linalg.norm(predicted, axis=2, keepdims=True),
+            1.0e-12,
+        )
+        angle = np.degrees(
+            np.arccos(
+                np.clip(
+                    np.sum(exact.astype(np.float64) * predicted, axis=2),
+                    -1.0,
+                    1.0,
+                )
+            )
+        )
+        frame_p95_max = max(
+            frame_p95_max,
+            float(np.max(np.percentile(angle, 95, axis=1), initial=0.0)),
+        )
+        maximum = max(maximum, float(np.max(angle, initial=0.0)))
+        priority_frame_p95_max = max(
+            priority_frame_p95_max,
+            float(
+                np.max(
+                    np.percentile(angle[:, priority], 95, axis=1),
+                    initial=0.0,
+                )
+            ),
+        )
+        priority_max = max(
+            priority_max,
+            float(np.max(angle[:, priority], initial=0.0)),
+        )
+        boundary_max = max(
+            boundary_max,
+            float(np.max(angle[:, boundary], initial=0.0)),
+        )
+
+    corrective_targets = 0
+    corrected_weights = animation_weights
+    if (
+        max_corrective_targets
+        and (
+            frame_p95_max > _NORMAL_FRAME_P95_LIMIT_DEGREES
+            or priority_frame_p95_max
+            > _LIP_NORMAL_FRAME_P95_LIMIT_DEGREES
+            or priority_max > _LIP_NORMAL_MAX_LIMIT_DEGREES
+            or boundary_max > _MOUTH_BOUNDARY_NORMAL_MAX_LIMIT_DEGREES
+        )
+    ):
+        # Position morphs cannot, in general, linearly reproduce their own
+        # normals: vertex normals are normalized sums of cross products. Fit a
+        # bounded residual basis with zero POSITION deltas so the renderer gets
+        # accurate lighting without changing a single reconstructed vertex.
+        exact_normals = np.empty(
+            (len(animation_weights), len(base), 3),
+            dtype=np.float32,
+        )
+        predicted_raw = np.empty_like(exact_normals)
+        for start in range(0, len(animation_weights), _NORMAL_FIT_CHUNK_FRAMES):
+            end = min(start + _NORMAL_FIT_CHUNK_FRAMES, len(animation_weights))
+            chunk_weights = animation_weights[start:end]
+            reconstructed = base[None] + np.einsum(
+                "fk,kvj->fvj",
+                chunk_weights,
+                positions,
+                optimize=True,
+            )
+            exact_normals[start:end] = np.stack(
+                [_vertex_normals(frame, faces) for frame in reconstructed]
+            )
+            predicted_raw[start:end] = base_normals[None] + np.einsum(
+                "fk,kvj->fvj",
+                chunk_weights,
+                morph_normals,
+                optimize=True,
+            )
+
+        normal_coordinate_scale = np.ones(
+            (len(base), 1),
+            dtype=np.float32,
+        )
+        normal_coordinate_scale[priority] = np.float32(
+            _NORMAL_PRIORITY_SCALE
+        )
+        scaled_residual = (
+            (exact_normals - predicted_raw)
+            * normal_coordinate_scale[None]
+        ).reshape(
+            len(animation_weights),
+            -1,
+        )
+        gram = scaled_residual @ scaled_residual.T
+        eigenvalues, left = np.linalg.eigh(gram)
+        order = np.argsort(eigenvalues)[::-1]
+        eigenvalues = np.maximum(eigenvalues[order], 0.0)
+        left = left[:, order]
+        singular = np.sqrt(eigenvalues)
+        numerical = (
+            singular > max(float(singular[0]) * 1.0e-7, 1.0e-10)
+            if len(singular)
+            else np.zeros(0, dtype=bool)
+        )
+        available = min(
+            max_corrective_targets,
+            max(len(animation_weights) - 1, 0),
+            int(np.count_nonzero(numerical)),
+        )
+        if available:
+            scaled_corrective_normals = (
+                (left[:, :available].T @ scaled_residual)
+                / singular[:available, None]
+            )
+            corrective_normals = (
+                scaled_corrective_normals.reshape(
+                    available,
+                    len(base),
+                    3,
+                )
+                / normal_coordinate_scale[None]
+            ).reshape(available, -1)
+            corrective_weights = left[:, :available] * singular[:available]
+            for component in range(available):
+                pivot = int(np.argmax(np.abs(corrective_normals[component])))
+                if corrective_normals[component, pivot] < 0.0:
+                    corrective_normals[component] *= -1.0
+                    corrective_weights[:, component] *= -1.0
+            corrective_weights[0] = 0.0
+            corrected_raw = predicted_raw.copy()
+            for component in range(available):
+                corrected_raw += (
+                    corrective_weights[:, component, None, None]
+                    * corrective_normals[component].reshape(1, len(base), 3)
+                ).astype(np.float32)
+                predicted = corrected_raw / np.maximum(
+                    np.linalg.norm(corrected_raw, axis=2, keepdims=True),
+                    1.0e-12,
+                )
+                angle = np.degrees(
+                    np.arccos(
+                        np.clip(
+                            np.sum(
+                                exact_normals.astype(np.float64) * predicted,
+                                axis=2,
+                            ),
+                            -1.0,
+                            1.0,
+                        )
+                    )
+                )
+                frame_p95_max = float(
+                    np.max(np.percentile(angle, 95, axis=1), initial=0.0)
+                )
+                maximum = float(np.max(angle, initial=0.0))
+                priority_frame_p95_max = float(
+                    np.max(
+                        np.percentile(angle[:, priority], 95, axis=1),
+                        initial=0.0,
+                    )
+                )
+                priority_max = float(
+                    np.max(angle[:, priority], initial=0.0)
+                )
+                boundary_max = float(
+                    np.max(angle[:, boundary], initial=0.0)
+                )
+                corrective_targets = component + 1
+                if (
+                    frame_p95_max <= _NORMAL_FRAME_P95_LIMIT_DEGREES
+                    and priority_frame_p95_max
+                    <= _LIP_NORMAL_FRAME_P95_LIMIT_DEGREES
+                    and priority_max <= _LIP_NORMAL_MAX_LIMIT_DEGREES
+                    and boundary_max
+                    <= _MOUTH_BOUNDARY_NORMAL_MAX_LIMIT_DEGREES
+                ):
+                    break
+            morph_normals = np.concatenate(
+                (
+                    morph_normals,
+                    corrective_normals[:corrective_targets].reshape(
+                        corrective_targets,
+                        len(base),
+                        3,
+                    ).astype(np.float32),
+                ),
+                axis=0,
+            )
+            corrected_weights = np.concatenate(
+                (
+                    animation_weights,
+                    corrective_weights[:, :corrective_targets].astype(
+                        np.float32
+                    ),
+                ),
+                axis=1,
+            )
+    return _MorphNormalFit(
+        base_normals=base_normals,
+        morph_normals=morph_normals,
+        weights=corrected_weights,
+        corrective_targets=corrective_targets,
+        frame_p95_max_degrees=frame_p95_max,
+        max_degrees=maximum,
+        priority_frame_p95_max_degrees=priority_frame_p95_max,
+        priority_max_degrees=priority_max,
+        boundary_max_degrees=boundary_max,
+    )
 
 
 def _vertex_tangents(
@@ -753,12 +1202,14 @@ def export_animated_gnm_glb(
     has_normal_texture = (
         "normal" in selected_material_paths or "normal" in selected_runtime_paths
     )
+    mouth_boundary = discover_mouth_boundary(adapter)
     factor = factor_vertex_animation(
         values,
         max_targets=max_targets,
         landmark_indices=adapter.landmark_indices,
         landmark_weights=adapter.landmark_weights,
         preserve_oral_semantics=True,
+        mouth_boundary=mouth_boundary,
         tongue_vertex_indices=np.flatnonzero(
             adapter.vertex_group("tongue") > 0.5
         ),
@@ -766,6 +1217,50 @@ def export_animated_gnm_glb(
             adapter.vertex_group("teeth") > 0.5
         ),
     )
+    lip_support = np.maximum.reduce(
+        (
+            adapter.vertex_group("upper_lip_region"),
+            adapter.vertex_group("lower_lip_region"),
+            adapter.vertex_group("upper_lip"),
+            adapter.vertex_group("lower_lip"),
+        )
+    )
+    normal_fit = _fit_morph_normals(
+        factor.base_vertices,
+        factor.morph_positions,
+        factor.weights,
+        adapter.triangles,
+        priority_vertex_indices=np.flatnonzero(lip_support > 0.05),
+        boundary_vertex_indices=np.asarray(mouth_boundary.cycle, dtype=np.int64),
+        max_corrective_targets=max(0, max_targets - factor.rank),
+    )
+    export_rank = factor.rank + normal_fit.corrective_targets
+    normal_metrics: dict[str, float | int] = {
+        "rank": export_rank,
+        "position_rank": factor.rank,
+        "normal_corrective_targets": normal_fit.corrective_targets,
+        "normal_frame_p95_max_degrees": normal_fit.frame_p95_max_degrees,
+        "normal_max_degrees": normal_fit.max_degrees,
+        "lip_normal_frame_p95_max_degrees": (
+            normal_fit.priority_frame_p95_max_degrees
+        ),
+        "lip_normal_max_degrees": normal_fit.priority_max_degrees,
+        "mouth_boundary_normal_max_degrees": normal_fit.boundary_max_degrees,
+    }
+    if (
+        normal_fit.frame_p95_max_degrees
+        > _NORMAL_FRAME_P95_LIMIT_DEGREES
+        or normal_fit.priority_frame_p95_max_degrees
+        > _LIP_NORMAL_FRAME_P95_LIMIT_DEGREES
+        or normal_fit.priority_max_degrees
+        > _LIP_NORMAL_MAX_LIMIT_DEGREES
+        or normal_fit.boundary_max_degrees
+        > _MOUTH_BOUNDARY_NORMAL_MAX_LIMIT_DEGREES
+    ):
+        raise AnimationCompressionError(
+            "Animated GLB surface-normal fit exceeds viewer quality limits",
+            normal_metrics,
+        )
     selected_uvs = (
         np.asarray(adapter.model.triangle_uvs, dtype=np.float32)
         if triangle_uvs is None
@@ -777,9 +1272,24 @@ def export_animated_gnm_glb(
         selected_uvs,
     )
     source_map = split.source_vertices
-    base_normals = _vertex_normals(factor.base_vertices, adapter.triangles)
+    base_normals = normal_fit.base_normals
     split_normals = base_normals[source_map]
-    morph_positions = factor.morph_positions[:, source_map]
+    source_morph_positions = np.concatenate(
+        (
+            factor.morph_positions,
+            np.zeros(
+                (
+                    normal_fit.corrective_targets,
+                    len(factor.base_vertices),
+                    3,
+                ),
+                dtype=np.float32,
+            ),
+        ),
+        axis=0,
+    )
+    morph_positions = source_morph_positions[:, source_map]
+    morph_normals = normal_fit.morph_normals[:, source_map]
     # GNM stores triangle-corner UVs in lower-left convention. glTF samples
     # image rows from the upper-left, so flip V exactly once at export.
     gltf_uvs = split.uvs.copy()
@@ -789,15 +1299,17 @@ def export_animated_gnm_glb(
         if has_normal_texture
         else None
     )
-    morph_normals = np.empty_like(morph_positions)
     morph_tangents = np.empty_like(morph_positions) if has_normal_texture else None
-    for index, direction in enumerate(factor.morph_positions):
-        target_normals = _vertex_normals(
-            factor.base_vertices + direction, adapter.triangles
-        )
-        split_target_normals = target_normals[source_map]
-        morph_normals[index] = split_target_normals - split_normals
-        if morph_tangents is not None and base_tangents is not None:
+    if morph_tangents is not None and base_tangents is not None:
+        for index, direction in enumerate(source_morph_positions):
+            target_normals = normal_fit.base_normals + normal_fit.morph_normals[
+                index
+            ]
+            target_normals /= np.maximum(
+                np.linalg.norm(target_normals, axis=1, keepdims=True),
+                1.0e-12,
+            )
+            split_target_normals = target_normals[source_map]
             target_tangents = _vertex_tangents(
                 split.positions + morph_positions[index],
                 split_target_normals,
@@ -873,7 +1385,7 @@ def export_animated_gnm_glb(
         targets.append(target)
     time_accessor: int | None = None
     weight_accessor: int | None = None
-    if factor.rank:
+    if export_rank:
         time_accessor = builder.accessor(
             times,
             component_type=5126,
@@ -881,7 +1393,7 @@ def export_animated_gnm_glb(
             bounds=True,
         )
         weight_accessor = builder.accessor(
-            factor.weights,
+            normal_fit.weights,
             component_type=5126,
             accessor_type="SCALAR",
         )
@@ -923,11 +1435,18 @@ def export_animated_gnm_glb(
         "name": "GNM_Head_3_0",
         "primitives": [primitive],
         "extras": {
-            "targetNames": [f"autoanim_{index:02d}" for index in range(factor.rank)]
+            "targetNames": [
+                (
+                    f"autoanim_normal_{index - factor.rank:02d}"
+                    if index >= factor.rank
+                    else f"autoanim_{index:02d}"
+                )
+                for index in range(export_rank)
+            ]
         },
     }
-    if factor.rank:
-        mesh["weights"] = [0.0] * factor.rank
+    if export_rank:
+        mesh["weights"] = [0.0] * export_rank
     material: dict[str, object] = {
         "name": "GNM character material" if has_material else "GNM anatomical preview",
         "pbrMetallicRoughness": {
@@ -1034,12 +1553,29 @@ def export_animated_gnm_glb(
                 "gnm_version": "3.0",
                 "coordinate_system": "+Y_up_+Z_forward_meters",
                 "reconstruction": {
-                    "rank": factor.rank,
+                    "rank": export_rank,
+                    "position_rank": factor.rank,
                     "oral_corrective_targets": factor.oral_corrective_targets,
+                    "normal_corrective_targets": (
+                        normal_fit.corrective_targets
+                    ),
                     "mesh_p95_mm": factor.mesh_p95_m * 1000.0,
                     "mesh_max_mm": factor.mesh_max_m * 1000.0,
                     "landmark_p95_mm": factor.landmark_p95_m * 1000.0,
                     "landmark_max_mm": factor.landmark_max_m * 1000.0,
+                    "normal_frame_p95_max_degrees": (
+                        normal_fit.frame_p95_max_degrees
+                    ),
+                    "normal_max_degrees": normal_fit.max_degrees,
+                    "lip_normal_frame_p95_max_degrees": (
+                        normal_fit.priority_frame_p95_max_degrees
+                    ),
+                    "lip_normal_max_degrees": (
+                        normal_fit.priority_max_degrees
+                    ),
+                    "mouth_boundary_normal_max_degrees": (
+                        normal_fit.boundary_max_degrees
+                    ),
                 },
             },
         },
@@ -1058,7 +1594,7 @@ def export_animated_gnm_glb(
         document["samplers"] = samplers
     if extensions_used:
         document["extensionsUsed"] = extensions_used
-    if factor.rank and time_accessor is not None and weight_accessor is not None:
+    if export_rank and time_accessor is not None and weight_accessor is not None:
         document["animations"] = [
             {
                 "name": "autoanim",
@@ -1086,15 +1622,33 @@ def export_animated_gnm_glb(
         internal_uvs_lower_left=split.uvs,
         gltf_uvs_upper_left=gltf_uvs,
         timestamps=times,
-        morph_weights=factor.weights,
+        morph_weights=normal_fit.weights,
         oral_corrective_targets=np.asarray(
             factor.oral_corrective_targets, dtype=np.int32
+        ),
+        normal_corrective_targets=np.asarray(
+            normal_fit.corrective_targets, dtype=np.int32
+        ),
+        normal_frame_p95_max_degrees=np.asarray(
+            normal_fit.frame_p95_max_degrees, dtype=np.float32
+        ),
+        normal_max_degrees=np.asarray(
+            normal_fit.max_degrees, dtype=np.float32
+        ),
+        lip_normal_frame_p95_max_degrees=np.asarray(
+            normal_fit.priority_frame_p95_max_degrees, dtype=np.float32
+        ),
+        lip_normal_max_degrees=np.asarray(
+            normal_fit.priority_max_degrees, dtype=np.float32
+        ),
+        mouth_boundary_normal_max_degrees=np.asarray(
+            normal_fit.boundary_max_degrees, dtype=np.float32
         ),
     )
     return AnimatedGLBExport(
         path=output,
         mapping_path=mapping,
-        rank=factor.rank,
+        rank=export_rank,
         frame_count=len(values),
         vertex_count=len(split.positions),
         triangle_count=len(split.triangles),
@@ -1103,4 +1657,12 @@ def export_animated_gnm_glb(
         landmark_p95_mm=factor.landmark_p95_m * 1000.0,
         landmark_max_mm=factor.landmark_max_m * 1000.0,
         oral_corrective_targets=factor.oral_corrective_targets,
+        normal_corrective_targets=normal_fit.corrective_targets,
+        normal_frame_p95_max_degrees=normal_fit.frame_p95_max_degrees,
+        normal_max_degrees=normal_fit.max_degrees,
+        lip_normal_frame_p95_max_degrees=(
+            normal_fit.priority_frame_p95_max_degrees
+        ),
+        lip_normal_max_degrees=normal_fit.priority_max_degrees,
+        mouth_boundary_normal_max_degrees=normal_fit.boundary_max_degrees,
     )

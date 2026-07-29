@@ -87,6 +87,24 @@ class ExpressionDecoder:
         classes[index] = 1.0
         return self.decode(np.zeros(64, dtype=np.float32), classes)
 
+    def sample(
+        self,
+        name: str,
+        *,
+        rng: np.random.Generator | None = None,
+    ) -> np.ndarray:
+        """Sample one semantic expression using Google's CVAE latent prior."""
+
+        try:
+            index = EXPRESSION_NAMES.index(name)
+        except ValueError as exc:
+            raise KeyError(f"Unknown expression class: {name}") from exc
+        generator = rng if rng is not None else np.random.default_rng()
+        classes = np.zeros(20, dtype=np.float32)
+        classes[index] = 1.0
+        latent = generator.normal(size=64).astype(np.float32)
+        return self.decode(latent, classes)
+
     def blend(self, weights: Mapping[str, float]) -> np.ndarray:
         result = np.zeros(self.output_dim, dtype=np.float32)
         for name, weight in weights.items():

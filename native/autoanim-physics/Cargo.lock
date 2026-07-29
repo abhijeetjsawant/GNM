@@ -37,6 +37,7 @@ name = "autoanim-physics-capi"
 version = "0.1.0"
 dependencies = [
  "autoanim-physics-core",
+ "serde",
  "serde_json",
 ]
 

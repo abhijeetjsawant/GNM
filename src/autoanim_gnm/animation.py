@@ -16,6 +16,7 @@ import numpy as np
 from .artifacts import sha256 as artifact_sha256
 from .articulation_projection import (
     articulation_array_sha256,
+    limit_articulation_edge,
     project_articulation_trajectory,
 )
 from .audio import MouthCue, ProsodyTrack
@@ -51,6 +52,9 @@ class AnimationTrack:
     articulation_projection_report: dict[str, object] | None = None
     articulation_projection_desired: np.ndarray | None = None
     articulation_projection_output: np.ndarray | None = None
+    source_oral_gate: np.ndarray | None = None
+    source_neutral_handling: dict[str, object] | None = None
+    contact_run_stabilized: np.ndarray | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +88,22 @@ def _smooth_alpha(value: float) -> float:
 CUE_ORDER = "XABCDEFGH"
 _CUE_INDEX = {cue: index for index, cue in enumerate(CUE_ORDER)}
 _DOMINANCE = {"X": 1.15, "A": 2.8, "B": 1.0, "C": 1.0, "D": 1.05, "E": 1.1, "F": 1.2, "G": 2.2, "H": 1.8}
+LEARNED_SOURCE_NEUTRAL_POLICY_QUIET_MEDIAN = "clip_quiet_median_delta_v1"
+LEARNED_SOURCE_NEUTRAL_POLICY_ABSOLUTE_ORAL_GATE = (
+    "neutral_relative_absolute_oral_gate_v1"
+)
+_LEARNED_SOURCE_NEUTRAL_POLICIES = frozenset(
+    (
+        LEARNED_SOURCE_NEUTRAL_POLICY_QUIET_MEDIAN,
+        LEARNED_SOURCE_NEUTRAL_POLICY_ABSOLUTE_ORAL_GATE,
+    )
+)
+_ORAL_GATE_ZERO_ACTIVITY = 0.02
+_ORAL_GATE_FULL_ACTIVITY = 0.08
+_ORAL_GATE_MINIMUM_SILENCE_SECONDS = 0.20
+_ORAL_GATE_TRANSITION_SECONDS = 0.125
+_ABSOLUTE_CONTACT_PREPROJECTION_HORIZON_SECONDS = 8.0 / 30.0
+_ABSOLUTE_CONTACT_PREPROJECTION_METHOD = "minimal_bidirectional_edge_projection_v1"
 
 
 @lru_cache(maxsize=1)
@@ -135,15 +155,25 @@ def _articulation_projection_config(
 
 
 def _articulation_projection_compiler_metadata(
-    *, external_face_controls: bool, frame_count: int
+    *,
+    external_face_controls: bool,
+    frame_count: int,
+    boundary_rest_frames: list[int] | None = None,
 ) -> dict[str, object]:
     """Describe the exact authored stage captured by the desired snapshot."""
 
     if external_face_controls:
-        snapshot_stage = (
-            "post_resample_post_affect_post_contact_post_lip_order_post_boundary_rest"
-        )
-        boundary_frames = [0, frame_count - 1]
+        if boundary_rest_frames is None:
+            snapshot_stage = (
+                "post_resample_post_affect_post_contact_post_lip_order_post_boundary_rest"
+            )
+            boundary_frames = [0, frame_count - 1]
+        else:
+            snapshot_stage = (
+                "post_resample_post_affect_post_contact_post_lip_order_"
+                "post_conditional_provider_neutral_boundary"
+            )
+            boundary_frames = list(boundary_rest_frames)
     else:
         snapshot_stage = "post_resample_post_affect_post_contact_post_terminal_rest"
         boundary_frames = [frame_count - 1]
@@ -159,6 +189,72 @@ def _articulation_projection_compiler_metadata(
 def _smooth_array(value: np.ndarray) -> np.ndarray:
     value = np.clip(value, 0.0, 1.0)
     return 0.5 - 0.5 * np.cos(np.pi * value)
+
+
+def _learned_oral_source_gate(
+    speech_activity: np.ndarray,
+    timestamps: np.ndarray,
+) -> np.ndarray:
+    """Return a smooth, time-bounded oral silence gate.
+
+    Only contiguous, settled rest runs qualify. Short low-energy dips remain
+    fully source-authored so a quiet phone cannot be erased. Cosine shoulders
+    live inside each qualified rest run: adjoining speech and contact frames
+    therefore keep full authority while protected tongue modes return smoothly
+    to the provider's neutral pose.
+    """
+
+    activity = np.asarray(speech_activity, dtype=np.float32)
+    clock = np.asarray(timestamps, dtype=np.float64)
+    if (
+        activity.ndim != 1
+        or clock.shape != activity.shape
+        or not np.isfinite(activity).all()
+        or not np.isfinite(clock).all()
+        or np.any((activity < 0.0) | (activity > 1.0))
+        or (len(clock) > 1 and np.any(np.diff(clock) <= 0.0))
+    ):
+        raise AutoAnimError(
+            "INTERNAL_ERROR",
+            "Learned source oral gating requires finite speech activity in [0,1]",
+        )
+    if not len(activity):
+        return activity.copy()
+    gate = np.ones(len(activity), dtype=np.float64)
+    settled_rest = activity <= _ORAL_GATE_ZERO_ACTIVITY
+    run_start: int | None = None
+    runs: list[tuple[int, int]] = []
+    for index in range(len(settled_rest) + 1):
+        is_rest = bool(settled_rest[index]) if index < len(settled_rest) else False
+        if is_rest and run_start is None:
+            run_start = index
+        elif not is_rest and run_start is not None:
+            run_end = index - 1
+            sample_seconds = (
+                float(np.median(np.diff(clock))) if len(clock) > 1 else 0.0
+            )
+            run_seconds = float(clock[run_end] - clock[run_start] + sample_seconds)
+            if run_seconds + 1.0e-9 >= _ORAL_GATE_MINIMUM_SILENCE_SECONDS:
+                runs.append((run_start, run_end))
+            run_start = None
+
+    for start, end in runs:
+        gate[start : end + 1] = 0.0
+        if start > 0:
+            elapsed = clock[start : end + 1] - clock[start]
+            release = np.clip(elapsed / _ORAL_GATE_TRANSITION_SECONDS, 0.0, 1.0)
+            gate[start : end + 1] = np.maximum(
+                gate[start : end + 1], 1.0 - _smooth_array(release)
+            )
+        if end < len(gate) - 1:
+            until_speech = clock[end] - clock[start : end + 1]
+            attack = np.clip(
+                until_speech / _ORAL_GATE_TRANSITION_SECONDS, 0.0, 1.0
+            )
+            gate[start : end + 1] = np.maximum(
+                gate[start : end + 1], 1.0 - _smooth_array(attack)
+            )
+    return np.clip(gate, 0.0, 1.0).astype(np.float32)
 
 
 def _activation_matrix(cues: list[MouthCue], timestamps: np.ndarray) -> np.ndarray:
@@ -693,6 +789,110 @@ def _apply_lip_contact_correction(
     if onset <= 1e-6 or np.all(original_pair_gaps <= character_pair_targets):
         return original.copy(), False, float(target_gap)
 
+    original_lip_order = _mouth_lip_order_minimum_interocular(rig, original)
+    minimum_lip_order = min(original_lip_order, -5.0e-4)
+    vertex_basis = np.asarray(
+        rig.adapter.model.expression_basis[200:350],
+        dtype=np.float32,
+    )
+    lip_support = np.maximum.reduce(
+        (
+            rig.adapter.vertex_group("upper_lip_region"),
+            rig.adapter.vertex_group("lower_lip_region"),
+            rig.adapter.vertex_group("upper_lip"),
+            rig.adapter.vertex_group("lower_lip"),
+        )
+    )
+    exterior = rig.adapter.vertex_group("skin_exterior")
+    preserve_indices = np.flatnonzero((exterior > 0.20) & (lip_support < 0.05))
+
+    def nonmouth_displacement_interocular(candidate: np.ndarray) -> float:
+        delta_mesh = np.einsum(
+            "i,ijk->jk",
+            np.asarray(candidate[200:350] - original[200:350], dtype=np.float32),
+            vertex_basis,
+            optimize=True,
+        )
+        return float(
+            np.max(
+                np.linalg.norm(delta_mesh[preserve_indices], axis=1),
+                initial=0.0,
+            )
+            / interocular
+        )
+
+    def calibrated_ray_fallback() -> tuple[np.ndarray, bool, float]:
+        """Close along the audited character ray when the local solve stalls.
+
+        The local inverse solve is more pose-specific, but on a very open
+        coarticulated vowel it can become rank-limited. The calibration ray is
+        already bounded to the selected identity's first lip-gap minimum and
+        has a stricter measured non-mouth displacement than the dynamic cap.
+        """
+
+        static_direction = np.asarray(calibration.direction, dtype=np.float32)
+        # Clip coefficients individually. ``rig.compose`` rescales an entire
+        # expression region when any one coefficient is saturated, which can
+        # move unrelated lower-face modes and invalidate the measured spatial
+        # bound for this fallback.
+        bound = max(0.0, float(calibration.maximum_alpha))
+        if bound <= 1.0e-6:
+            return original.copy(), False, float(target_gap)
+
+        def candidate(alpha: float) -> np.ndarray:
+            return np.clip(
+                original + np.float32(alpha) * static_direction,
+                -3.0,
+                3.0,
+            ).astype(
+                np.float32,
+                copy=False,
+            )
+
+        samples = np.linspace(0.0, bound, 33, dtype=np.float32)
+        candidates = tuple(candidate(float(alpha)) for alpha in samples)
+        gaps = np.asarray(
+            [_mouth_gap_interocular(rig, value) for value in candidates]
+        )
+        lip_orders = np.asarray(
+            [_mouth_lip_order_minimum_interocular(rig, value) for value in candidates]
+        )
+        nonmouth_displacement = np.asarray(
+            [nonmouth_displacement_interocular(value) for value in candidates]
+        )
+        valid = (lip_orders >= minimum_lip_order - 1.0e-7) & (
+            nonmouth_displacement <= 2.0e-3 + 1.0e-7
+        )
+        reached = np.flatnonzero((gaps <= target_gap) & valid)
+        if len(reached):
+            upper_index = int(reached[0])
+            lower = float(samples[max(upper_index - 1, 0)])
+            upper = float(samples[upper_index])
+            for _ in range(8):
+                middle = 0.5 * (lower + upper)
+                value = candidate(middle)
+                if (
+                    _mouth_gap_interocular(rig, value) <= target_gap
+                    and _mouth_lip_order_minimum_interocular(rig, value)
+                    >= minimum_lip_order - 1.0e-7
+                    and nonmouth_displacement_interocular(value)
+                    <= 2.0e-3 + 1.0e-7
+                ):
+                    upper = middle
+                else:
+                    lower = middle
+            corrected_value = candidate(upper)
+        else:
+            valid_indices = np.flatnonzero(valid)
+            if not len(valid_indices):
+                return original.copy(), False, float(target_gap)
+            best_index = int(valid_indices[int(np.argmin(gaps[valid_indices]))])
+            corrected_value = candidates[best_index]
+        improved_gap = _mouth_gap_interocular(rig, corrected_value)
+        if improved_gap >= original_gap - 1.0e-5:
+            return original.copy(), False, float(target_gap)
+        return corrected_value, True, float(target_gap)
+
     desired = np.zeros((68, 3), dtype=np.float32)
     for pair_index, (upper, lower) in enumerate(_INNER_LIP_PAIRS):
         separation = original_landmarks[lower] - original_landmarks[upper]
@@ -706,7 +906,7 @@ def _apply_lip_contact_correction(
     inner_indices = np.asarray((61, 62, 63, 65, 66, 67), dtype=np.int64)
     solved = response @ desired[inner_indices].reshape(-1)
     if not np.isfinite(solved).all() or float(np.max(np.abs(solved), initial=0.0)) <= 1e-9:
-        return original.copy(), False, float(target_gap)
+        return calibrated_ray_fallback()
     direction = np.zeros(rig.adapter.expression_dim, dtype=np.float32)
     direction[200:350] = solved.astype(np.float32)
 
@@ -731,20 +931,6 @@ def _apply_lip_contact_correction(
             coefficient_alpha = min(coefficient_alpha, float((3.0 - value) / delta))
         elif delta < -1e-9:
             coefficient_alpha = min(coefficient_alpha, float((-3.0 - value) / delta))
-    vertex_basis = np.asarray(
-        rig.adapter.model.expression_basis[200:350],
-        dtype=np.float32,
-    )
-    lip_support = np.maximum.reduce(
-        (
-            rig.adapter.vertex_group("upper_lip_region"),
-            rig.adapter.vertex_group("lower_lip_region"),
-            rig.adapter.vertex_group("upper_lip"),
-            rig.adapter.vertex_group("lower_lip"),
-        )
-    )
-    exterior = rig.adapter.vertex_group("skin_exterior")
-    preserve_indices = np.flatnonzero((exterior > 0.20) & (lip_support < 0.05))
     dynamic_displacement = np.einsum(
         "i,ijk->jk",
         direction[200:350],
@@ -761,14 +947,12 @@ def _apply_lip_contact_correction(
     spatial_alpha = 2.0e-3 / max(unit_nonmouth_max, 1e-12)
     search_bound = float(max(0.0, min(1.5, coefficient_alpha, spatial_alpha)))
     if search_bound <= 1e-6:
-        return original.copy(), False, float(target_gap)
+        return calibrated_ray_fallback()
     samples = np.linspace(0.0, search_bound, 25, dtype=np.float32)
     sample_candidates = tuple(bounded_candidate(float(alpha)) for alpha in samples)
     gaps = np.asarray(
         [_mouth_gap_interocular(rig, candidate) for candidate in sample_candidates]
     )
-    original_lip_order = _mouth_lip_order_minimum_interocular(rig, original)
-    minimum_lip_order = min(original_lip_order, -5.0e-4)
     lip_order = np.asarray(
         [
             _mouth_lip_order_minimum_interocular(rig, candidate)
@@ -801,14 +985,22 @@ def _apply_lip_contact_correction(
         # character seal from the current coarticulated pose.
         valid_indices = np.flatnonzero(valid_lip_order)
         if not len(valid_indices):
-            return original.copy(), False, float(target_gap)
+            return calibrated_ray_fallback()
         minimum_index = int(valid_indices[int(np.argmin(gaps[valid_indices]))])
         if minimum_index == 0 or gaps[minimum_index] >= original_gap - 1e-5:
-            return original.copy(), False, float(target_gap)
+            return calibrated_ray_fallback()
         alpha = float(samples[minimum_index])
     corrected = bounded_candidate(alpha)
     if _mouth_lip_order_minimum_interocular(rig, corrected) < minimum_lip_order - 1.0e-7:
-        return original.copy(), False, float(target_gap)
+        return calibrated_ray_fallback()
+    if _mouth_gap_interocular(rig, corrected) > target_gap + 1.0e-7:
+        fallback, fallback_applied, _ = calibrated_ray_fallback()
+        if (
+            fallback_applied
+            and _mouth_gap_interocular(rig, fallback)
+            < _mouth_gap_interocular(rig, corrected) - 1.0e-7
+        ):
+            corrected = fallback
     return (
         corrected,
         bool(_mouth_gap_interocular(rig, corrected) < original_gap - 1e-5),
@@ -830,6 +1022,159 @@ def apply_lip_contact_correction(
     """
 
     return _apply_lip_contact_correction(rig, expression, calibration, confidence)
+
+
+def _stabilize_absolute_contact_runs(
+    rig: ControlRig,
+    expression: np.ndarray,
+    timestamps: np.ndarray,
+    contact_target_gap: np.ndarray,
+    *,
+    shoulder_seconds: float = _ABSOLUTE_CONTACT_PREPROJECTION_HORIZON_SECONDS,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Minimally pre-project attained v3 contacts onto the export speed bound.
+
+    The learned solver remains authoritative: no contact run is replaced by a
+    common pose. Only an edge that exceeds the exact-time visible-mouth limit
+    may change, and a changed contact frame is accepted only if its own seal is
+    retained. The smallest required adjustment is then propagated outward
+    until the original trajectory is reachable again or the bounded horizon is
+    exhausted. Protected upper-face, tongue, pupil, and timestamp channels are
+    copied byte-exactly from the learned source.
+    """
+
+    output = np.asarray(expression, dtype=np.float32).copy()
+    original = output.copy()
+    clock = np.asarray(timestamps, dtype=np.float64)
+    targets = np.asarray(contact_target_gap, dtype=np.float32)
+    if (
+        output.ndim != 2
+        or output.shape[1] != rig.adapter.expression_dim
+        or clock.shape != (len(output),)
+        or targets.shape != (len(output),)
+        or not np.isfinite(output).all()
+        or not np.isfinite(clock).all()
+        or not np.isfinite(targets).all()
+        or (len(clock) > 1 and np.any(np.diff(clock) <= 0.0))
+        or not np.isfinite(shoulder_seconds)
+        or shoulder_seconds <= 0.0
+    ):
+        raise AutoAnimError(
+            "INTERNAL_ERROR",
+            "Absolute contact preprojection requires finite aligned controls and timestamps",
+        )
+    changed = np.zeros(len(output), dtype=bool)
+    if len(output) < 2 or not np.any(targets > 0.0):
+        return output, changed
+    projection_config = _articulation_projection_config(
+        external_face_controls=True
+    )
+    edge_limits = np.minimum(
+        np.float64(projection_config["maximum_step"]),
+        np.float64(projection_config["maximum_speed"]) * np.diff(clock),
+    )
+
+    def limit_edge(
+        previous: np.ndarray,
+        target: np.ndarray,
+        edge_index: int,
+    ) -> tuple[np.ndarray, bool]:
+        return limit_articulation_edge(
+            previous,
+            target,
+            mouth_step_metric=lambda left, right: _mouth_step_quality_ratio(
+                rig, left, right
+            ),
+            maximum_ratio=float(edge_limits[edge_index]),
+        )
+
+    def contact_pose_is_valid(frame_index: int, candidate: np.ndarray) -> bool:
+        return bool(
+            _mouth_gap_interocular(rig, candidate)
+            <= float(targets[frame_index])
+            + float(projection_config["contact_tolerance"])
+            + 1.0e-7
+            and _mouth_lip_order_minimum_interocular(rig, candidate)
+            >= float(projection_config["lip_order_floor"]) - 1.0e-7
+        )
+
+    def noncontact_pose_is_valid(candidate: np.ndarray) -> bool:
+        return bool(
+            _mouth_lip_order_minimum_interocular(rig, candidate)
+            >= float(projection_config["lip_order_floor"]) - 1.0e-7
+        )
+
+    gaps = np.asarray(
+        [_mouth_gap_interocular(rig, frame) for frame in output],
+        dtype=np.float64,
+    )
+    attained = (targets > 0.0) & (gaps <= targets + np.float32(0.001))
+    runs: list[tuple[int, int]] = []
+    start: int | None = None
+    for index in range(len(attained) + 1):
+        active = bool(attained[index]) if index < len(attained) else False
+        if active and start is None:
+            start = index
+        elif not active and start is not None:
+            runs.append((start, index - 1))
+            start = None
+
+    for start, end in runs:
+        # First remove only violating edges inside the learned contact run.
+        # A forward and reverse pass avoids privileging attack over release.
+        for frame_index in range(start + 1, end + 1):
+            trial, limited = limit_edge(
+                output[frame_index - 1],
+                output[frame_index],
+                frame_index - 1,
+            )
+            if limited and contact_pose_is_valid(frame_index, trial):
+                output[frame_index] = trial
+        for frame_index in range(end - 1, start - 1, -1):
+            trial, limited = limit_edge(
+                output[frame_index + 1],
+                output[frame_index],
+                frame_index,
+            )
+            if limited and contact_pose_is_valid(frame_index, trial):
+                output[frame_index] = trial
+
+        # Extend the minimum reachable adjustment into the neighboring phones.
+        # Stop as soon as an untouched source pose is already reachable.
+        for frame_index in range(start - 1, -1, -1):
+            if targets[frame_index] > 0.0:
+                break
+            distance = float(clock[start] - clock[frame_index])
+            if distance > shoulder_seconds + 1.0e-9:
+                break
+            trial, limited = limit_edge(
+                output[frame_index + 1],
+                original[frame_index],
+                frame_index,
+            )
+            if not noncontact_pose_is_valid(trial):
+                break
+            output[frame_index] = trial
+            if not limited:
+                break
+        for frame_index in range(end + 1, len(output)):
+            if targets[frame_index] > 0.0:
+                break
+            distance = float(clock[frame_index] - clock[end])
+            if distance > shoulder_seconds + 1.0e-9:
+                break
+            trial, limited = limit_edge(
+                output[frame_index - 1],
+                original[frame_index],
+                frame_index - 1,
+            )
+            if not noncontact_pose_is_valid(trial):
+                break
+            output[frame_index] = trial
+            if not limited:
+                break
+    changed = np.max(np.abs(output - original), axis=1) > 1.0e-7
+    return output, changed
 
 
 def compose_animation(
@@ -991,16 +1336,19 @@ def compose_learned_animation(
     emotion_eye_delta_degrees: np.ndarray | None = None,
     source_lip_contact_confidence: np.ndarray | None = None,
     lip_contact_calibration: LipContactCalibration | None = None,
+    source_neutral_policy: str = LEARNED_SOURCE_NEUTRAL_POLICY_QUIET_MEDIAN,
+    source_neutral_expression: np.ndarray | None = None,
     head_motion: bool = True,
 ) -> AnimationTrack:
     """Compile continuous learned controls onto the exact export clock.
 
     Learned providers emit timestamped source clocks (30 fps for Audio2Face
     v2.3 and 60 fps for v3 diffusion) whose final timestamp is not necessarily
-    ``duration - 1/fps``. We interpolate by the supplied times,
-    remove the actor-specific rest bias from acoustically quiet frames, and
-    apply only a perceptual emergency step limit. No Rhubarb pose is mixed
-    into the learned mouth; its weights remain diagnostic timeline metadata.
+    ``duration - 1/fps``. Clip-relative v2.3 controls retain their quiet-frame
+    rest subtraction. Neutral-relative v3 post-solver controls remain absolute
+    and only their oral regions are smoothly returned to neutral in verified
+    silence. No Rhubarb pose is mixed into the learned mouth; its weights remain
+    diagnostic timeline metadata.
     """
 
     if not 12 <= fps <= 60:
@@ -1009,6 +1357,32 @@ def compose_learned_animation(
         raise AutoAnimError("CUE_INVALID", "At least one normalized mouth cue is required")
     source = np.asarray(source_expression, dtype=np.float32)
     source_time = np.asarray(source_timestamps, dtype=np.float64)
+    if source_neutral_policy not in _LEARNED_SOURCE_NEUTRAL_POLICIES:
+        raise AutoAnimError(
+            "INTERNAL_ERROR",
+            f"Unknown learned source neutral policy: {source_neutral_policy!r}",
+        )
+    provider_neutral: np.ndarray | None = None
+    if source_neutral_policy == LEARNED_SOURCE_NEUTRAL_POLICY_ABSOLUTE_ORAL_GATE:
+        if source_neutral_expression is None:
+            raise AutoAnimError(
+                "INTERNAL_ERROR",
+                "Neutral-relative learned controls require a provider neutral expression",
+            )
+        provider_neutral = np.asarray(source_neutral_expression, dtype=np.float32)
+        if (
+            provider_neutral.shape != (rig.adapter.expression_dim,)
+            or not np.isfinite(provider_neutral).all()
+        ):
+            raise AutoAnimError(
+                "INTERNAL_ERROR",
+                "Provider neutral expression must be a finite GNM expression vector",
+            )
+    elif source_neutral_expression is not None:
+        raise AutoAnimError(
+            "INTERNAL_ERROR",
+            "Provider neutral expression is only valid for neutral-relative learned controls",
+        )
     if source.ndim != 2 or source.shape[1] != rig.adapter.expression_dim:
         raise AutoAnimError(
             "INTERNAL_ERROR",
@@ -1090,6 +1464,7 @@ def compose_learned_animation(
         raise AutoAnimError("INPUT_INVALID", "Animation duration is too short")
     timestamps = np.arange(frame_count, dtype=np.float64) / float(fps)
     _validate_prosody(prosody, timestamps)
+    viseme_weights = _activation_matrix(cues, timestamps)
 
     source_activity = np.interp(
         source_time,
@@ -1098,20 +1473,81 @@ def compose_learned_animation(
         left=float(prosody.speech_activity[0]),
         right=float(prosody.speech_activity[-1]),
     )
-    quiet = source_activity <= 0.08
-    if np.count_nonzero(quiet) >= 3:
-        rest = np.median(source[quiet], axis=0)
+    quiet = source_activity <= _ORAL_GATE_FULL_ACTIVITY
+    if source_neutral_policy == LEARNED_SOURCE_NEUTRAL_POLICY_QUIET_MEDIAN:
+        if np.count_nonzero(quiet) >= 3:
+            rest = np.median(source[quiet], axis=0)
+        else:
+            rest = source[0]
+        prepared_source = source - rest.astype(np.float32)
+        source_oral_gate: np.ndarray | None = None
+        source_neutral_handling: dict[str, object] = {
+            "schema_version": "autoanim.learned-source-neutral-handling/1.0",
+            "policy": LEARNED_SOURCE_NEUTRAL_POLICY_QUIET_MEDIAN,
+            "source_control_semantics": "clip_relative_delta",
+            "rest_subtracted": True,
+            "quiet_source_frames": int(np.count_nonzero(quiet)),
+            "production_validated": False,
+        }
     else:
-        rest = source[0]
-    centered = source - rest.astype(np.float32)
+        assert provider_neutral is not None
+        prepared_source = source.copy()
+        source_oral_gate = _learned_oral_source_gate(
+            prosody.speech_activity,
+            timestamps,
+        )
+        zero_frames = int(np.count_nonzero(source_oral_gate <= 1.0e-7))
+        full_frames = int(np.count_nonzero(source_oral_gate >= 1.0 - 1.0e-7))
+        source_neutral_handling = {
+            "schema_version": "autoanim.learned-source-neutral-handling/1.0",
+            "policy": LEARNED_SOURCE_NEUTRAL_POLICY_ABSOLUTE_ORAL_GATE,
+            "source_control_semantics": "neutral_relative_absolute",
+            "rest_subtracted": False,
+            "provider_neutral_method": "pinned_post_solver_zero_input_offsets",
+            "provider_neutral_expression_sha256": articulation_array_sha256(
+                provider_neutral
+            ),
+            "oral_gate_expression_range": [200, 382],
+            "oral_gate_input": "audio_conditioned_speech_activity",
+            "oral_gate_minimum_silence_seconds": (
+                _ORAL_GATE_MINIMUM_SILENCE_SECONDS
+            ),
+            "oral_gate_transition_seconds": _ORAL_GATE_TRANSITION_SECONDS,
+            "oral_gate_maximum_observed_step": float(
+                np.max(np.abs(np.diff(source_oral_gate)), initial=0.0)
+            ),
+            "oral_gate_maximum_observed_speed_per_second": float(
+                np.max(
+                    np.abs(np.diff(source_oral_gate)) / np.diff(timestamps),
+                    initial=0.0,
+                )
+                if len(source_oral_gate) > 1
+                else 0.0
+            ),
+            "oral_gate_zero_activity": _ORAL_GATE_ZERO_ACTIVITY,
+            "oral_gate_full_activity": _ORAL_GATE_FULL_ACTIVITY,
+            "oral_gate_zero_frames": zero_frames,
+            "oral_gate_transition_frames": int(
+                len(source_oral_gate) - zero_frames - full_frames
+            ),
+            "oral_gate_full_frames": full_frames,
+            "quiet_source_frames": int(np.count_nonzero(quiet)),
+            "production_validated": False,
+        }
 
     expression = np.empty((frame_count, source.shape[1]), dtype=np.float32)
     for channel in range(source.shape[1]):
         expression[:, channel] = np.interp(
             timestamps.astype(np.float64),
             source_time,
-            centered[:, channel].astype(np.float64),
+            prepared_source[:, channel].astype(np.float64),
         ).astype(np.float32)
+    if source_oral_gate is not None:
+        assert provider_neutral is not None
+        oral_neutral = provider_neutral[200:382]
+        expression[:, 200:382] = oral_neutral[None, :] + source_oral_gate[
+            :, None
+        ] * (expression[:, 200:382] - oral_neutral[None, :])
 
     affect = np.zeros_like(expression)
     if affect_source is not None:
@@ -1122,7 +1558,6 @@ def compose_learned_animation(
                 affect_source[:, channel].astype(np.float64),
             ).astype(np.float32)
 
-    viseme_weights = _activation_matrix(cues, timestamps)
     lip_contact_confidence = np.zeros(frame_count, dtype=np.float32)
     if contact_source is not None:
         interpolated_contact = np.interp(
@@ -1180,10 +1615,46 @@ def compose_learned_animation(
         )
         saturated |= clipped or blink_clipped
 
+    contact_run_stabilized = np.zeros(frame_count, dtype=bool)
+    if provider_neutral is not None and contact_calibration is not None:
+        expression, contact_run_stabilized = _stabilize_absolute_contact_runs(
+            rig,
+            expression,
+            timestamps,
+            lip_contact_target_gap,
+        )
+        source_neutral_handling["contact_preprojection_method"] = (
+            _ABSOLUTE_CONTACT_PREPROJECTION_METHOD
+        )
+        source_neutral_handling["contact_preprojection_horizon_seconds"] = (
+            _ABSOLUTE_CONTACT_PREPROJECTION_HORIZON_SECONDS
+        )
+        source_neutral_handling["contact_preprojection_changed_frames"] = int(
+            np.count_nonzero(contact_run_stabilized)
+        )
+        for frame in np.flatnonzero(contact_run_stabilized):
+            expression[frame], repaired = _repair_lip_order_inversion(
+                rig,
+                expression[frame],
+            )
+            lip_order_repaired[frame] |= repaired
+
     # Exported clips have a deterministic rest boundary. The bidirectional
     # limiter distributes the release instead of introducing a terminal snap.
-    expression[0, 200:382] = 0.0
-    expression[-1, 200:382] = 0.0
+    if provider_neutral is None:
+        boundary_rest_frames = [0, frame_count - 1]
+    else:
+        assert source_oral_gate is not None
+        boundary_rest_frames = [
+            index
+            for index in (0, frame_count - 1)
+            if source_oral_gate[index] <= 1.0e-7
+        ]
+    boundary_oral_pose: float | np.ndarray = (
+        provider_neutral[200:382] if provider_neutral is not None else 0.0
+    )
+    for boundary_frame in boundary_rest_frames:
+        expression[boundary_frame, 200:382] = boundary_oral_pose
     desired_expression = expression.copy()
     # The learned sequence model owns dedicated tongue and upper-face motion.
     # The emergency visible-mouth guard therefore projects only modes 200:350
@@ -1216,6 +1687,9 @@ def compose_learned_animation(
         **_articulation_projection_compiler_metadata(
             external_face_controls=True,
             frame_count=frame_count,
+            boundary_rest_frames=(
+                boundary_rest_frames if provider_neutral is not None else None
+            ),
         ),
     }
     contact_corrected = contact_correction_applied & lip_contact_attained
@@ -1301,6 +1775,9 @@ def compose_learned_animation(
         articulation_projection_report=projection_report,
         articulation_projection_desired=projection.desired_expression,
         articulation_projection_output=projection.expression,
+        source_oral_gate=source_oral_gate,
+        source_neutral_handling=source_neutral_handling,
+        contact_run_stabilized=contact_run_stabilized,
     )
 
 

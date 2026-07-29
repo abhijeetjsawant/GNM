@@ -32,6 +32,7 @@ from .articulation_projection import (
 )
 from .animation import (
     AnimationTrack,
+    LEARNED_SOURCE_NEUTRAL_POLICY_ABSOLUTE_ORAL_GATE,
     _articulation_evidence_bindings,
     _articulation_projection_compiler_metadata,
     _articulation_projection_config,
@@ -159,6 +160,49 @@ def _require_v3_animation_frame_count(frame_count: int) -> None:
         )
 
 
+def _v3_provider_neutral_expression(
+    retargeter: CalibratedRetargeter,
+    profile: Any,
+) -> np.ndarray:
+    """Retarget the pinned v3 solver's published rest controls into GNM.
+
+    V3 post-solver values are absolute controls. Their neutral is therefore a
+    property of the pinned Claire profile, not a statistic inferred from each
+    clip. In particular, Claire's tongue ranges include a non-zero published
+    rest value, so replacing quiet frames with a zero GNM vector is incorrect.
+    """
+
+    skin_names = tuple(profile.skin_pose_names)
+    tongue_names = tuple(profile.tongue_pose_names)
+    skin = np.asarray(profile.skin_zero_input_offsets, dtype=np.float32)
+    tongue = np.asarray(profile.tongue_zero_input_offsets, dtype=np.float32)
+    if (
+        skin.shape != (len(skin_names),)
+        or tongue.shape != (len(tongue_names),)
+        or not np.isfinite(skin).all()
+        or not np.isfinite(tongue).all()
+    ):
+        raise SequenceProviderError(
+            "PROFILE_INVALID",
+            "Pinned v3 profile does not provide finite zero-input offsets for every control",
+        )
+    retargeted = np.asarray(
+        retargeter.retarget_post_solver_sequence(
+            skin[None, :],
+            skin_names,
+            tongue_weights=tongue[None, :],
+            tongue_pose_names=tongue_names,
+        ),
+        dtype=np.float32,
+    )
+    if retargeted.shape != (1, 383) or not np.isfinite(retargeted).all():
+        raise SequenceProviderError(
+            "RETARGET_INVALID",
+            "Pinned v3 provider neutral did not retarget to one finite GNM expression",
+        )
+    return retargeted[0].copy()
+
+
 V3_SEQUENCE_CAVEAT = (
     "Audio2Face v3 sequence controls were imported through an external-worker envelope "
     "and remain an unqualified candidate. The importer does not prove that v3 inference "
@@ -172,8 +216,8 @@ V3_LOCAL_SEQUENCE_CAVEAT = (
     "Jaw transforms are retained but not applied until their convention passes an official fixture."
 )
 LEARNED_CONDITIONER = "authority-preserving-oral-projection-v1"
-AUDIO_TIMELINE_VERSION = 13
-EXTERNAL_FACE_COMPILER_VERSION = 14
+AUDIO_TIMELINE_VERSION = 15
+EXTERNAL_FACE_COMPILER_VERSION = 16
 FALLBACK_FACE_COMPILER_VERSION = 5
 
 
@@ -318,6 +362,15 @@ def _validated_articulation_projection_evidence(
         **_articulation_projection_compiler_metadata(
             external_face_controls=external_face_controls,
             frame_count=len(delivered),
+            boundary_rest_frames=(
+                [
+                    index
+                    for index in (0, len(delivered) - 1)
+                    if np.asarray(track.source_oral_gate)[index] <= 1.0e-7
+                ]
+                if external_face_controls and track.source_oral_gate is not None
+                else None
+            ),
         ),
     }
     if (
@@ -500,6 +553,9 @@ def _apply_audio_mouth_aperture_edit(
             "reason": reason,
             "config": asdict(config),
             "bindings": {
+                "aperture_metric": "gnm_v3_58_vertex_exterior_mouth_boundary",
+                "mouth_boundary_set_sha256": correction.mouth_boundary_set_sha256,
+                "mouth_boundary_cycle_sha256": correction.mouth_boundary_cycle_sha256,
                 "identity_sha256": correction.identity_sha256,
                 "input_sha256": correction.input_sha256,
                 "output_sha256": correction.output_sha256,
@@ -1360,6 +1416,10 @@ def run_audio_pipeline(
                 tongue_weights=conditioned_tongue,
                 tongue_pose_names=official_profile.tongue_pose_names,
             )
+            provider_neutral_expression = _v3_provider_neutral_expression(
+                calibrated_retargeter,
+                official_profile,
+            )
             source_eyes = np.asarray(
                 postprocessed.eye_rotations_degrees, dtype=np.float32
             ).reshape(len(source_timestamps), 2, 2)
@@ -1375,6 +1435,10 @@ def run_audio_pipeline(
                 source_eye_rotations_degrees=source_eyes,
                 source_lip_contact_confidence=source_lip_contact_confidence,
                 lip_contact_calibration=lip_contact_calibration,
+                source_neutral_policy=(
+                    LEARNED_SOURCE_NEUTRAL_POLICY_ABSOLUTE_ORAL_GATE
+                ),
+                source_neutral_expression=provider_neutral_expression,
             )
             conditioning = {
                 **quarantine_metrics,
@@ -1419,6 +1483,7 @@ def run_audio_pipeline(
                 eye_rotations_degrees=source_eyes,
                 eye_rotations_raw_degrees=postprocessed.eye_rotations_raw_degrees,
                 source_lip_contact_confidence=source_lip_contact_confidence,
+                provider_neutral_expression=provider_neutral_expression,
             )
             v3_profile_document = _local_v3_evidence_document(local_execution)
             v3_profile_document.update(
@@ -1453,6 +1518,9 @@ def run_audio_pipeline(
                         "controls_sha256": sha256(output_dir / "arkit_controls.npz"),
                         "retarget_calibration_sha256": sha256(
                             output_dir / "retarget_calibration_a2f_v3_local_claire.npz"
+                        ),
+                        "provider_neutral_expression_sha256": (
+                            articulation_array_sha256(provider_neutral_expression)
                         ),
                     },
                 }
@@ -1556,6 +1624,10 @@ def run_audio_pipeline(
                 tongue_weights=conditioned_tongue,
                 tongue_pose_names=sequence_track.control_names.tongue,
             )
+            provider_neutral_expression = _v3_provider_neutral_expression(
+                calibrated_retargeter,
+                official_profile,
+            )
             source_eyes = np.asarray(sequence_track.eye, dtype=np.float32).reshape(
                 len(source_timestamps), 2, 2
             )
@@ -1571,6 +1643,10 @@ def run_audio_pipeline(
                 source_eye_rotations_degrees=source_eyes,
                 source_lip_contact_confidence=source_lip_contact_confidence,
                 lip_contact_calibration=lip_contact_calibration,
+                source_neutral_policy=(
+                    LEARNED_SOURCE_NEUTRAL_POLICY_ABSOLUTE_ORAL_GATE
+                ),
+                source_neutral_expression=provider_neutral_expression,
             )
             conditioning = {
                 **quarantine_metrics,
@@ -1606,6 +1682,7 @@ def run_audio_pipeline(
                 jaw_transform_row_major=sequence_track.jaw,
                 eye_rotations_degrees=source_eyes,
                 source_lip_contact_confidence=source_lip_contact_confidence,
+                provider_neutral_expression=provider_neutral_expression,
             )
             retained_sources = {
                 "a2f-v3-request.json": Path(a2f_v3_request_path),  # type: ignore[arg-type]
@@ -1639,7 +1716,7 @@ def run_audio_pipeline(
                     "Retained v3 request/response or artifact bindings changed after validation",
                 )
             v3_profile_document = {
-                "schema_version": "autoanim.a2f-v3-import/1.0",
+                "schema_version": "autoanim.a2f-v3-import/1.1",
                 "validation": official_validation.as_dict(),
                 "request_sha256": sequence_track.request_sha256,
                 "response_sha256": sequence_track.response_sha256,
@@ -1647,6 +1724,19 @@ def run_audio_pipeline(
                 "retained_request_file_sha256": request_source_sha256,
                 "retained_response_file_sha256": response_source_sha256,
                 "profile": official_profile.as_dict(),
+                "retargeter": "geometry_calibrated_dense_a2f_v3_claire_post_solver",
+                "retarget_calibration_hash": (
+                    calibrated_retargeter.calibration.calibration_hash
+                ),
+                "artifacts": {
+                    "controls_sha256": sha256(output_dir / "arkit_controls.npz"),
+                    "retarget_calibration_sha256": sha256(
+                        output_dir / "retarget_calibration_a2f_v3_claire.npz"
+                    ),
+                    "provider_neutral_expression_sha256": (
+                        articulation_array_sha256(provider_neutral_expression)
+                    ),
+                },
                 "worker_authentication_verified": False,
                 "sdk_recurrent_state_verified": False,
                 "jaw_matrix_applied": False,
@@ -2057,8 +2147,7 @@ def run_audio_pipeline(
         _mouth_aperture(rig.compact_landmarks(frame)) for frame in track.expression
     ]
     write_json(output_dir / "cues.json", {"duration": duration, "cues": [cue.as_dict() for cue in cues]})
-    write_npz(
-        output_dir / "controls.npz",
+    controls_arrays: dict[str, np.ndarray] = dict(
         expression=track.expression,
         rotations=track.rotations,
         translation=track.translation,
@@ -2084,6 +2173,15 @@ def run_audio_pipeline(
         mouth_aperture_edit_applied=mouth_aperture_edit.correction_applied,
         mouth_aperture_edit_target_attained=mouth_aperture_edit.target_attained,
     )
+    if track.source_oral_gate is not None:
+        controls_arrays["source_oral_gate"] = np.asarray(
+            track.source_oral_gate, dtype=np.float32
+        )
+    if track.contact_run_stabilized is not None:
+        controls_arrays["contact_run_stabilized"] = np.asarray(
+            track.contact_run_stabilized, dtype=bool
+        )
+    write_npz(output_dir / "controls.npz", **controls_arrays)
     write_json(
         output_dir / "timeline.json",
         {
@@ -2124,6 +2222,17 @@ def run_audio_pipeline(
                 mouth_aperture_edit.target_attained.tolist()
             ),
             "mouth_aperture": apertures,
+            "source_oral_gate": (
+                track.source_oral_gate.tolist()
+                if track.source_oral_gate is not None
+                else None
+            ),
+            "source_neutral_handling": track.source_neutral_handling,
+            "contact_run_stabilized": (
+                track.contact_run_stabilized.tolist()
+                if track.contact_run_stabilized is not None
+                else None
+            ),
             "articulation_projection": articulation_projection,
         },
     )
@@ -2495,7 +2604,7 @@ def run_audio_pipeline(
         )
     if lip_order_risk_frames:
         warnings.append(
-            "ORAL_LIP_ORDER_RISK: structurally inverted inner-lip landmark ordering was "
+            "ORAL_LIP_ORDER_RISK: structurally inverted rendered mouth-boundary or sparse-lip ordering was "
             "measured in the control track or reconstructed viewer; inspect those frames "
             "before approval."
         )
@@ -2582,6 +2691,12 @@ def run_audio_pipeline(
                 "output_sha256": mouth_aperture_edit.output_sha256,
                 "production_validated": False,
             },
+            "source_neutral_handling": track.source_neutral_handling,
+            "contact_run_stabilized_frames": int(
+                np.count_nonzero(track.contact_run_stabilized)
+                if track.contact_run_stabilized is not None
+                else 0
+            ),
             "quality_speech_mask": "vad_binary_symmetric_hangover_2_frames",
             "phone_evidence": (
                 {
@@ -2631,6 +2746,12 @@ def run_audio_pipeline(
                 else FALLBACK_FACE_COMPILER_VERSION
             ),
             "production_validated": False,
+            "source_neutral_handling": track.source_neutral_handling,
+            "contact_run_stabilized_frames": int(
+                np.count_nonzero(track.contact_run_stabilized)
+                if track.contact_run_stabilized is not None
+                else 0
+            ),
             "articulation_projection": articulation_projection,
         },
         "viewer": {
@@ -2697,6 +2818,23 @@ def run_audio_pipeline(
             ),
             "mouth_aperture_range": float(max(apertures) - min(apertures)),
             "neutral_mouth_aperture": neutral_aperture,
+            "rendered_mouth_boundary_gap_range_interocular": float(
+                np.ptp(oral_controls.lip_gap_interocular)
+            ),
+            "rendered_mouth_boundary_gap_median_interocular": float(
+                np.median(oral_controls.lip_gap_interocular)
+            ),
+            "rendered_mouth_boundary_gap_p95_interocular": float(
+                np.percentile(oral_controls.lip_gap_interocular, 95)
+            ),
+            "rendered_mouth_boundary_area_median_interocular_squared": float(
+                np.median(
+                    oral_controls.lip_opening_area_interocular_squared
+                )
+            ),
+            "neutral_rendered_mouth_boundary_gap_interocular": float(
+                mouth_aperture_edit.neutral_gap_interocular
+            ),
             "preview_duration_s": av["duration"],
             "preview_video_duration_s": av["video_duration"],
             "preview_audio_duration_s": av["audio_duration"],

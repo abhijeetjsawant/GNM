@@ -10,6 +10,7 @@ inference quality and the resulting metadata must keep that claim false.
 from __future__ import annotations
 
 from dataclasses import asdict
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,7 @@ import pytest
 
 from autoanim_gnm.a2f_v3_profile import load_official_v3_claire_profile
 from autoanim_gnm.artifacts import sha256
+from autoanim_gnm.articulation_projection import articulation_array_sha256
 from autoanim_gnm.audio import EmotionAnalysis, MouthCue, ProsodyTrack, normalize_audio
 from autoanim_gnm.audio_pipeline import (
     _require_v3_animation_frame_count,
@@ -381,3 +383,19 @@ def test_real_audio_sequence_import_reaches_animated_gnm_without_v3_quality_clai
     assert result["oral_validation"]["tongue_teeth_collision_risk_frames"] == 0
     assert (output / "animation.glb").is_file()
     assert (output / "a2f-v3-import.json").is_file()
+    import_evidence = json.loads(
+        (output / "a2f-v3-import.json").read_text(encoding="utf-8")
+    )
+    assert import_evidence["schema_version"] == "autoanim.a2f-v3-import/1.1"
+    assert import_evidence["artifacts"]["controls_sha256"] == sha256(
+        output / "arkit_controls.npz"
+    )
+    assert import_evidence["artifacts"]["retarget_calibration_sha256"] == sha256(
+        output / "retarget_calibration_a2f_v3_claire.npz"
+    )
+    with np.load(output / "arkit_controls.npz", allow_pickle=False) as controls:
+        provider_neutral = controls["provider_neutral_expression"]
+    assert provider_neutral.shape == (383,)
+    assert import_evidence["artifacts"][
+        "provider_neutral_expression_sha256"
+    ] == articulation_array_sha256(provider_neutral)

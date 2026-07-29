@@ -10,6 +10,8 @@ import trimesh
 
 from autoanim_gnm.animated_gltf import (
     AnimationCompressionError,
+    _fit_morph_normals,
+    _vertex_normals,
     export_animated_gnm_glb,
     factor_vertex_animation,
 )
@@ -118,6 +120,105 @@ def test_low_rank_factor_fails_closed_when_cap_is_too_small():
             mesh_max_limit_m=1e-9,
         )
     assert caught.value.metrics["rank"] == 1
+
+
+def test_morph_normals_are_fitted_to_combined_surface_motion():
+    base = np.asarray(
+        (
+            (-1.0, -1.0, 0.0),
+            (0.0, -1.0, 0.0),
+            (1.0, -1.0, 0.0),
+            (-1.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (-1.0, 1.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (1.0, 1.0, 0.0),
+        ),
+        dtype=np.float32,
+    )
+    triangles = np.asarray(
+        (
+            (0, 1, 4),
+            (0, 4, 3),
+            (1, 2, 5),
+            (1, 5, 4),
+            (3, 4, 7),
+            (3, 7, 6),
+            (4, 5, 8),
+            (4, 8, 7),
+        ),
+        dtype=np.int32,
+    )
+    morph_positions = np.zeros((2, len(base), 3), dtype=np.float32)
+    morph_positions[0, (1, 4, 7), 2] = (0.30, 0.55, 0.25)
+    morph_positions[1, (3, 4, 5), 2] = (-0.25, 0.45, -0.20)
+    weights = np.asarray(
+        (
+            (0.0, 0.0),
+            (0.5, 0.0),
+            (0.0, 0.6),
+            (0.8, 0.7),
+            (-0.4, 1.0),
+            (1.2, -0.5),
+            (0.3, 0.9),
+        ),
+        dtype=np.float32,
+    )
+
+    fitted = _fit_morph_normals(
+        base,
+        morph_positions,
+        weights,
+        triangles,
+        priority_vertex_indices=np.arange(len(base), dtype=np.int64),
+        boundary_vertex_indices=np.asarray((1, 3, 4, 5, 7), dtype=np.int64),
+        max_corrective_targets=2,
+    )
+    reconstructed = base + np.einsum(
+        "fk,kvj->fvj", weights, morph_positions, optimize=True
+    )
+    exact_normals = np.stack(
+        [_vertex_normals(frame, triangles) for frame in reconstructed]
+    )
+    predicted_normals = fitted.base_normals + np.einsum(
+        "fk,kvj->fvj", fitted.weights, fitted.morph_normals, optimize=True
+    )
+    predicted_normals /= np.maximum(
+        np.linalg.norm(predicted_normals, axis=2, keepdims=True),
+        1.0e-12,
+    )
+    angle = np.degrees(
+        np.arccos(
+            np.clip(np.sum(exact_normals * predicted_normals, axis=2), -1.0, 1.0)
+        )
+    )
+
+    assert float(np.percentile(angle, 95)) <= 2.0
+    assert fitted.corrective_targets == 1
+    assert fitted.weights.shape == (len(weights), 3)
+    expanded_positions = np.concatenate(
+        (
+            morph_positions,
+            np.zeros((fitted.corrective_targets, len(base), 3), dtype=np.float32),
+        ),
+        axis=0,
+    )
+    np.testing.assert_allclose(
+        base
+        + np.einsum(
+            "fk,kvj->fvj",
+            fitted.weights,
+            expanded_positions,
+            optimize=True,
+        ),
+        reconstructed,
+        atol=1.0e-7,
+    )
+    assert fitted.frame_p95_max_degrees <= 2.0
+    assert fitted.priority_frame_p95_max_degrees <= 2.0
+    assert fitted.priority_max_degrees <= 5.0
+    assert fitted.boundary_max_degrees <= 5.0
 
 
 def test_oral_corrective_prevents_rank_one_tongue_teeth_collision():

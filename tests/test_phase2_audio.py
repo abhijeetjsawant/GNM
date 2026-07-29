@@ -17,11 +17,13 @@ from autoanim_gnm.animation import (
     _mouth_lip_order_minimum_interocular,
     _mouth_step_quality_ratio,
     _repair_lip_order_inversion,
+    _stabilize_absolute_contact_runs,
     calibrate_lip_contact,
     compose_animation,
     compose_learned_animation,
     probe_av,
 )
+from autoanim_gnm.articulation_projection import project_articulation_trajectory
 from autoanim_gnm.audio import (
     MouthCue,
     PRIMARY_AUDIO_STREAM_SPECIFIER,
@@ -74,6 +76,12 @@ A2F_READY = A2F_RUNNER.exists() and all(
         "bs_tongue_config.json",
     )
 )
+
+
+def test_audio_compiler_and_timeline_versions_are_literal_provenance_contracts() -> None:
+    assert EXTERNAL_FACE_COMPILER_VERSION == 16
+    assert FALLBACK_FACE_COMPILER_VERSION == 5
+    assert AUDIO_TIMELINE_VERSION == 15
 
 
 def test_normalization_explicitly_selects_the_primary_audio_stream(
@@ -348,6 +356,11 @@ def test_audio_mouth_aperture_edit_is_audited_contact_safe_revision(
     assert payload["summary"]["introduced_lip_order_risk_frames"] == 0
     assert payload["claims"]["tongue_coefficients_byte_identical"] is True
     assert payload["claims"]["tongue_mesh_vertices_exactly_unchanged"] is False
+    assert (
+        payload["bindings"]["aperture_metric"]
+        == "gnm_v3_58_vertex_exterior_mouth_boundary"
+    )
+    assert len(payload["bindings"]["mouth_boundary_set_sha256"]) == 64
     assert (edit_dir / "mouth-aperture-edit.npz").is_file()
 
 
@@ -546,6 +559,73 @@ def test_soft_lip_contact_correction_closes_without_overapplying(rig: ControlRig
     assert target > 0.0
 
 
+def test_calibrated_contact_fallback_keeps_saturated_poses_spatially_local(
+    rig: ControlRig,
+) -> None:
+    calibration = calibrate_lip_contact(rig)
+    fallback_calibration = replace(
+        calibration,
+        inner_response=np.zeros((150, 18), dtype=np.float32),
+    )
+    vertex_basis = np.asarray(
+        rig.adapter.model.expression_basis[200:350],
+        dtype=np.float32,
+    )
+    lip_support = np.maximum.reduce(
+        tuple(
+            rig.adapter.vertex_group(name)
+            for name in (
+                "upper_lip_region",
+                "lower_lip_region",
+                "upper_lip",
+                "lower_lip",
+            )
+        )
+    )
+    exterior = rig.adapter.vertex_group("skin_exterior")
+    preserve_indices = np.flatnonzero((exterior > 0.20) & (lip_support < 0.05))
+    interocular = np.linalg.norm(
+        rig.neutral_landmarks[36] - rig.neutral_landmarks[45]
+    )
+    random = np.random.default_rng(20260720)
+    applied_count = 0
+    for sample in range(32):
+        pose = np.float32(0.40) * rig.viseme("D")
+        pose[200:350] += random.normal(0.0, 0.18, 150).astype(np.float32)
+        pose[200 + sample] = np.float32(3.0 if sample % 2 == 0 else -3.0)
+        pose = np.clip(pose, -3.0, 3.0).astype(np.float32)
+
+        corrected, applied, _ = _apply_lip_contact_correction(
+            rig,
+            pose,
+            fallback_calibration,
+            0.85,
+        )
+
+        np.testing.assert_array_equal(corrected[:200], pose[:200])
+        np.testing.assert_array_equal(corrected[350:], pose[350:])
+        assert np.max(np.abs(corrected)) <= 3.0
+        if not applied:
+            continue
+        applied_count += 1
+        delta_mesh = np.einsum(
+            "i,ijk->jk",
+            corrected[200:350] - pose[200:350],
+            vertex_basis,
+            optimize=True,
+        )
+        maximum_nonmouth_displacement = float(
+            np.max(
+                np.linalg.norm(delta_mesh[preserve_indices], axis=1),
+                initial=0.0,
+            )
+            / interocular
+        )
+        assert maximum_nonmouth_displacement <= 0.0020001
+
+    assert applied_count >= 24
+
+
 def test_lip_order_projection_is_lower_face_only_and_reaches_safe_boundary(
     rig: ControlRig,
 ) -> None:
@@ -713,6 +793,220 @@ def test_learned_composer_keeps_60hz_source_detail_only_when_delivery_can_repres
     assert np.max(np.abs(differences[30][:, 100])) < 1.0e-5
     assert np.max(differences[60][1::2, 100]) > 0.019
     assert np.max(np.abs(differences[60][::2, 100])) < 1.0e-5
+
+
+def test_neutral_relative_learned_controls_preserve_speech_and_gate_only_oral_silence(
+    rig: ControlRig,
+) -> None:
+    """V3 post-solver controls are absolute neutral-relative poses, not clip deltas."""
+
+    duration = 2.0
+    fps = 60
+    timestamps = np.arange(int(duration * fps), dtype=np.float64) / fps
+    cues = [
+        MouthCue(0.0, 0.4, "X"),
+        MouthCue(0.4, 1.6, "D"),
+        MouthCue(1.6, duration, "X"),
+    ]
+    prosody = _default_prosody(cues, timestamps.astype(np.float32))
+    absolute_pose = (
+        np.float32(0.45) * rig.viseme("D")
+        + np.float32(0.35) * rig.viseme("H")
+    )
+    source = np.repeat(absolute_pose[None, :], len(timestamps), axis=0)
+
+    legacy = compose_learned_animation(
+        source,
+        timestamps,
+        cues,
+        duration,
+        fps,
+        rig,
+        prosody,
+        head_motion=False,
+    )
+    neutral_relative = compose_learned_animation(
+        source,
+        timestamps,
+        cues,
+        duration,
+        fps,
+        rig,
+        prosody,
+        source_neutral_policy="neutral_relative_absolute_oral_gate_v1",
+        source_neutral_expression=np.zeros(383, dtype=np.float32),
+        head_motion=False,
+    )
+
+    quiet_frame = 12
+    speech_frame = 60
+    neutral_gap = _mouth_gap_interocular(rig, np.zeros(383, dtype=np.float32))
+    legacy_gap = _mouth_gap_interocular(rig, legacy.expression[speech_frame])
+    preserved_gap = _mouth_gap_interocular(
+        rig, neutral_relative.expression[speech_frame]
+    )
+
+    assert legacy_gap == pytest.approx(neutral_gap, abs=1.0e-7)
+    assert preserved_gap > neutral_gap + 0.005
+    np.testing.assert_array_equal(
+        neutral_relative.expression[quiet_frame, 200:382],
+        np.zeros(182, dtype=np.float32),
+    )
+    np.testing.assert_allclose(
+        neutral_relative.expression[speech_frame, 350:382],
+        absolute_pose[350:382],
+        atol=1.0e-7,
+    )
+    assert neutral_relative.source_oral_gate is not None
+    assert neutral_relative.source_oral_gate[quiet_frame] == 0.0
+    assert neutral_relative.source_oral_gate[speech_frame] == 1.0
+    handling = neutral_relative.source_neutral_handling
+    assert handling is not None
+    assert handling["schema_version"] == (
+        "autoanim.learned-source-neutral-handling/1.0"
+    )
+    assert handling["policy"] == "neutral_relative_absolute_oral_gate_v1"
+    assert handling["source_control_semantics"] == "neutral_relative_absolute"
+    assert handling["rest_subtracted"] is False
+    assert handling["provider_neutral_method"] == (
+        "pinned_post_solver_zero_input_offsets"
+    )
+    assert handling["oral_gate_input"] == "audio_conditioned_speech_activity"
+    assert handling["oral_gate_minimum_silence_seconds"] == 0.2
+    assert handling["oral_gate_transition_seconds"] == 0.125
+    assert handling["oral_gate_maximum_observed_speed_per_second"] < 13.0
+    assert handling["oral_gate_zero_frames"] > 30
+    assert handling["oral_gate_full_frames"] > 50
+    assert handling["oral_gate_transition_frames"] > 0
+    assert (
+        handling["oral_gate_zero_frames"]
+        + handling["oral_gate_transition_frames"]
+        + handling["oral_gate_full_frames"]
+        == len(timestamps)
+    )
+    assert handling["quiet_source_frames"] == 48
+
+
+def test_neutral_relative_gate_returns_only_oral_controls_to_provider_neutral(
+    rig: ControlRig,
+) -> None:
+    duration = 1.0
+    fps = 60
+    timestamps = np.arange(fps, dtype=np.float64) / fps
+    cues = [MouthCue(0.0, duration, "X")]
+    prosody = _default_prosody(cues, timestamps.astype(np.float32))
+    provider_neutral = np.zeros(383, dtype=np.float32)
+    provider_neutral[240] = np.float32(0.18)
+    provider_neutral[365] = np.float32(0.27)
+    source_pose = provider_neutral.copy()
+    source_pose[80] = np.float32(0.31)
+    source_pose[240] = np.float32(0.62)
+    source_pose[365] = np.float32(0.73)
+    source = np.repeat(source_pose[None, :], fps, axis=0)
+
+    track = compose_learned_animation(
+        source,
+        timestamps,
+        cues,
+        duration,
+        fps,
+        rig,
+        prosody,
+        source_neutral_policy="neutral_relative_absolute_oral_gate_v1",
+        source_neutral_expression=provider_neutral,
+        head_motion=False,
+    )
+
+    # Silence gating owns only the oral interval; upper-face source motion is
+    # preserved while lip and tongue modes return to the provider's true rest.
+    assert track.expression[20, 80] == pytest.approx(source_pose[80], abs=1.0e-7)
+    assert track.expression[20, 240] == pytest.approx(provider_neutral[240])
+    assert track.expression[20, 365] == pytest.approx(provider_neutral[365])
+    np.testing.assert_array_equal(
+        track.expression[[0, -1], 200:382],
+        np.repeat(provider_neutral[None, 200:382], 2, axis=0),
+    )
+
+
+def test_neutral_relative_gate_ignores_short_dips_and_slews_long_rest_tongue(
+    rig: ControlRig,
+) -> None:
+    duration = 2.0
+    fps = 60
+    timestamps = np.arange(int(duration * fps), dtype=np.float64) / fps
+    cues = [MouthCue(0.0, duration, "D")]
+    prosody = _default_prosody(cues, timestamps.astype(np.float32))
+    activity = np.ones(len(timestamps), dtype=np.float32)
+    activity[20:26] = 0.0  # 100 ms: too short to qualify as settled rest.
+    activity[50:80] = 0.0  # 500 ms: long enough for neutral interior.
+    prosody = replace(prosody, speech_activity=activity)
+    provider_neutral = np.zeros(383, dtype=np.float32)
+    provider_neutral[365] = np.float32(0.2)
+    source_pose = provider_neutral.copy()
+    source_pose[365] = np.float32(3.0)
+
+    track = compose_learned_animation(
+        np.repeat(source_pose[None, :], len(timestamps), axis=0),
+        timestamps,
+        cues,
+        duration,
+        fps,
+        rig,
+        prosody,
+        source_neutral_policy="neutral_relative_absolute_oral_gate_v1",
+        source_neutral_expression=provider_neutral,
+        head_motion=False,
+    )
+    assert track.source_oral_gate is not None
+    np.testing.assert_array_equal(
+        track.source_oral_gate[20:26], np.ones(6, dtype=np.float32)
+    )
+    assert track.source_oral_gate[49] == 1.0
+    assert track.source_oral_gate[64] == 0.0
+    assert track.source_oral_gate[80] == 1.0
+    assert np.max(np.abs(np.diff(track.source_oral_gate))) < 0.21
+    assert np.max(np.abs(np.diff(track.expression[:, 365]))) < 0.59
+
+
+def test_learned_composer_rejects_unknown_source_neutral_policy(
+    rig: ControlRig,
+) -> None:
+    duration = 0.5
+    fps = 60
+    timestamps = np.arange(int(duration * fps), dtype=np.float64) / fps
+    cues = [MouthCue(0.0, duration, "D")]
+    source = np.zeros((len(timestamps), 383), dtype=np.float32)
+
+    with pytest.raises(AutoAnimError, match="neutral policy"):
+        compose_learned_animation(
+            source,
+            timestamps,
+            cues,
+            duration,
+            fps,
+            rig,
+            _default_prosody(cues, timestamps.astype(np.float32)),
+            source_neutral_policy="unknown-policy",
+        )
+
+
+def test_neutral_relative_learned_controls_require_bound_provider_neutral(
+    rig: ControlRig,
+) -> None:
+    duration = 0.5
+    timestamps = np.arange(30, dtype=np.float64) / 60.0
+    cues = [MouthCue(0.0, duration, "D")]
+    with pytest.raises(AutoAnimError, match="provider neutral"):
+        compose_learned_animation(
+            np.zeros((30, 383), dtype=np.float32),
+            timestamps,
+            cues,
+            duration,
+            60,
+            rig,
+            _default_prosody(cues, timestamps.astype(np.float32)),
+            source_neutral_policy="neutral_relative_absolute_oral_gate_v1",
+        )
 
 
 def test_learned_lower_face_limiter_has_30_60_time_parity(
@@ -992,6 +1286,131 @@ def test_contact_aware_projection_redistributes_approach_instead_of_opening_seal
     assert not track.mouth_speed_limited[30]
     assert track.mouth_speed_limited[29]
     assert quality.metrics["mouth_step_max_interocular"] <= 0.040001
+
+
+def test_absolute_contact_preprojection_preserves_reachable_source_motion(
+    rig: ControlRig,
+) -> None:
+    fps = 60
+    duration = 2.0
+    timestamps = np.arange(int(duration * fps), dtype=np.float64) / fps
+    base = np.float32(0.30) * rig.viseme("D")
+    base[365] = np.float32(0.4)
+    expression = np.repeat(base[None, :], len(timestamps), axis=0)
+    calibration = calibrate_lip_contact(rig)
+    contact_frames = np.arange(45, 59)
+    strengths = np.concatenate(
+        (
+            np.linspace(0.35, 0.85, 7, dtype=np.float32),
+            np.linspace(0.85, 0.35, 7, dtype=np.float32),
+        )
+    )
+    targets = np.zeros(len(timestamps), dtype=np.float32)
+    for frame, strength in zip(contact_frames, strengths, strict=True):
+        expression[frame], _ = rig.compose(
+            base + strength * calibration.direction,
+            np.zeros(383, dtype=np.float32),
+        )
+        targets[frame] = np.float32(
+            _mouth_gap_interocular(rig, expression[frame])
+        )
+
+    stabilized, changed = _stabilize_absolute_contact_runs(
+        rig,
+        expression,
+        timestamps,
+        targets,
+    )
+    projected = project_articulation_trajectory(
+        stabilized,
+        timestamps,
+        mouth_step_metric=lambda left, right: _mouth_step_quality_ratio(
+            rig, left, right
+        ),
+        lip_order_metric=lambda frame: _mouth_lip_order_minimum_interocular(
+            rig, frame
+        ),
+        contact_target_gap=targets,
+        mouth_gap_metric=lambda frame: _mouth_gap_interocular(rig, frame),
+        maximum_step=0.039,
+        maximum_speed=1.17,
+        contact_tolerance=0.001,
+        lip_order_floor=-0.0005,
+        contact_horizon_seconds=4.0 / 30.0,
+    )
+
+    np.testing.assert_array_equal(stabilized, expression)
+    assert not np.any(changed)
+    assert np.all(projected.contact_attained[contact_frames])
+    assert projected.report["contact_anchor_loss_frames"] == 0
+    assert projected.report["projection_induced_tongue_max_abs_control_delta"] == 0.0
+    np.testing.assert_array_equal(
+        projected.expression[:, 350:382],
+        expression[:, 350:382],
+    )
+
+
+def test_absolute_contact_preprojection_limits_only_violating_edges(
+    rig: ControlRig,
+) -> None:
+    fps = 60
+    timestamps = np.arange(120, dtype=np.float64) / fps
+    base = np.float32(0.30) * rig.viseme("D")
+    base[365] = np.float32(0.4)
+    expression = np.repeat(base[None, :], len(timestamps), axis=0)
+    calibration = calibrate_lip_contact(rig)
+    contact_frames = np.arange(45, 59)
+    targets = np.zeros(len(timestamps), dtype=np.float32)
+    for offset, frame in enumerate(contact_frames):
+        alpha = np.float32(0.10 if offset % 2 == 0 else 1.50)
+        expression[frame] = np.clip(
+            base + alpha * calibration.direction,
+            -3.0,
+            3.0,
+        ).astype(np.float32)
+        targets[frame] = np.float32(
+            _mouth_gap_interocular(rig, expression[frame])
+        )
+
+    stabilized, changed = _stabilize_absolute_contact_runs(
+        rig,
+        expression,
+        timestamps,
+        targets,
+    )
+    measured_changed = np.max(np.abs(stabilized - expression), axis=1) > 1.0e-7
+    np.testing.assert_array_equal(changed, measured_changed)
+    np.testing.assert_array_equal(stabilized[:, :200], expression[:, :200])
+    np.testing.assert_array_equal(stabilized[:, 350:], expression[:, 350:])
+    assert not np.any(changed[:29])
+    assert not np.any(changed[75:])
+    assert np.count_nonzero(changed[contact_frames]) < len(contact_frames)
+    assert len(np.unique(stabilized[contact_frames, 200:350], axis=0)) > 1
+
+    projected = project_articulation_trajectory(
+        stabilized,
+        timestamps,
+        mouth_step_metric=lambda left, right: _mouth_step_quality_ratio(
+            rig, left, right
+        ),
+        lip_order_metric=lambda frame: _mouth_lip_order_minimum_interocular(
+            rig, frame
+        ),
+        contact_target_gap=targets,
+        mouth_gap_metric=lambda frame: _mouth_gap_interocular(rig, frame),
+        maximum_step=0.039,
+        maximum_speed=1.17,
+        contact_tolerance=0.001,
+        lip_order_floor=-0.0005,
+        contact_horizon_seconds=4.0 / 30.0,
+    )
+
+    assert np.all(projected.contact_attained[contact_frames])
+    assert projected.report["contact_anchor_loss_frames"] == 0
+    np.testing.assert_array_equal(
+        projected.expression[:, 350:382],
+        expression[:, 350:382],
+    )
 
 
 def test_final_contact_status_does_not_overclaim_unreachable_open_pose(

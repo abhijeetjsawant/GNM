@@ -649,7 +649,13 @@ def evaluate_phone_articulation(
     timestamps, ticks, series, frame_ticks = _validate_series(
         timestamps_seconds,
         {
-            "lip_gap_interocular": lip_gap_interocular,
+            # Rendered mouth-boundary validation uses a signed gap so overlap
+            # remains auditable. Articulation scoring consumes physical
+            # separation, where contact and overlap are both zero distance.
+            "lip_gap_interocular": np.maximum(
+                np.asarray(lip_gap_interocular, dtype=np.float64),
+                0.0,
+            ),
             "labiodental_gap_interocular": labiodental_gap_interocular,
             "tongue_upper_teeth_gap_interocular": tongue_upper_teeth_gap_interocular,
             "mouth_width_interocular": mouth_width_interocular,

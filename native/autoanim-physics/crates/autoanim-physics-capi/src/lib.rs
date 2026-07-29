@@ -8,7 +8,8 @@ use std::slice;
 use std::sync::Arc;
 
 use autoanim_physics_core::{
-    MathKernelRequest, PhysicsConfig, PhysicsError, PhysicsTopology, Simulator,
+    MathKernelRequest, PhysicsConfig, PhysicsError, PhysicsTopology, Simulator, SoftContactConfig,
+    SoftContactSimulator,
 };
 
 thread_local! {
@@ -17,6 +18,7 @@ thread_local! {
 
 pub struct AaPhysicsTopology(Arc<PhysicsTopology>);
 pub struct AaPhysicsSimulator(Simulator);
+pub struct AaSoftContactSimulator(SoftContactSimulator);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -67,9 +69,69 @@ impl From<PhysicsConfig> for AaPhysicsConfig {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AaSoftContactConfig {
+    pub frames_per_second: f32,
+    pub substeps: u32,
+    pub iterations: u32,
+    pub edge_compliance: f32,
+    pub volume_compliance: f32,
+    pub tether_compliance: f32,
+    pub contact_compliance: f32,
+    pub contact_thickness_m: f32,
+    pub contact_activation_distance_m: f32,
+    pub max_displacement_m: f32,
+}
+
+impl Default for AaSoftContactConfig {
+    fn default() -> Self {
+        SoftContactConfig::default().into()
+    }
+}
+
+impl From<AaSoftContactConfig> for SoftContactConfig {
+    fn from(value: AaSoftContactConfig) -> Self {
+        Self {
+            frames_per_second: value.frames_per_second,
+            substeps: value.substeps,
+            iterations: value.iterations,
+            edge_compliance: value.edge_compliance,
+            volume_compliance: value.volume_compliance,
+            tether_compliance: value.tether_compliance,
+            contact_compliance: value.contact_compliance,
+            contact_thickness_m: value.contact_thickness_m,
+            contact_activation_distance_m: value.contact_activation_distance_m,
+            max_displacement_m: value.max_displacement_m,
+        }
+    }
+}
+
+impl From<SoftContactConfig> for AaSoftContactConfig {
+    fn from(value: SoftContactConfig) -> Self {
+        Self {
+            frames_per_second: value.frames_per_second,
+            substeps: value.substeps,
+            iterations: value.iterations,
+            edge_compliance: value.edge_compliance,
+            volume_compliance: value.volume_compliance,
+            tether_compliance: value.tether_compliance,
+            contact_compliance: value.contact_compliance,
+            contact_thickness_m: value.contact_thickness_m,
+            contact_activation_distance_m: value.contact_activation_distance_m,
+            max_displacement_m: value.max_displacement_m,
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn aa_physics_default_config() -> AaPhysicsConfig {
     AaPhysicsConfig::default()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn aa_soft_contact_default_config() -> AaSoftContactConfig {
+    AaSoftContactConfig::default()
 }
 
 /// Returns a thread-local message valid until the next failing ABI call on the
@@ -300,6 +362,181 @@ pub unsafe extern "C" fn aa_physics_report_json(
     }
 }
 
+/// Constructs the target-relative volumetric tongue/lip contact solver.
+///
+/// # Safety
+///
+/// Index arrays are flattened xyz/xyzw rows. Every pointer must reference its
+/// declared readable count for the duration of this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aa_soft_contact_simulator_create(
+    rest_positions: *const f32,
+    rest_position_count: usize,
+    surface_triangles: *const u32,
+    surface_triangle_count: usize,
+    tetrahedra: *const u32,
+    tetrahedron_count: usize,
+    contact_pairs: *const u32,
+    contact_pair_count: usize,
+    inverse_masses: *const f32,
+    inverse_mass_count: usize,
+    config: AaSoftContactConfig,
+) -> *mut AaSoftContactSimulator {
+    ffi_pointer(|| {
+        if rest_positions.is_null()
+            || surface_triangles.is_null()
+            || tetrahedra.is_null()
+            || contact_pairs.is_null()
+            || inverse_masses.is_null()
+        {
+            return Err(PhysicsError::InvalidInput(
+                "soft-contact input pointer is null".into(),
+            ));
+        }
+        if rest_position_count == 0 || !rest_position_count.is_multiple_of(3) {
+            return Err(PhysicsError::InvalidInput(
+                "rest_position_count must be a nonzero multiple of 3".into(),
+            ));
+        }
+        let triangle_scalar_count = surface_triangle_count
+            .checked_mul(3)
+            .ok_or_else(|| PhysicsError::InvalidInput("triangle count overflow".into()))?;
+        let tetrahedron_scalar_count = tetrahedron_count
+            .checked_mul(4)
+            .ok_or_else(|| PhysicsError::InvalidInput("tetrahedron count overflow".into()))?;
+        let contact_scalar_count = contact_pair_count
+            .checked_mul(4)
+            .ok_or_else(|| PhysicsError::InvalidInput("contact pair count overflow".into()))?;
+        // SAFETY: pointer ranges are guaranteed by the caller contract.
+        let positions = unsafe { slice::from_raw_parts(rest_positions, rest_position_count) }
+            .chunks_exact(3)
+            .map(|value| [value[0], value[1], value[2]])
+            .collect();
+        let triangles = unsafe { slice::from_raw_parts(surface_triangles, triangle_scalar_count) }
+            .chunks_exact(3)
+            .map(|value| [value[0], value[1], value[2]])
+            .collect();
+        let tetrahedra = unsafe { slice::from_raw_parts(tetrahedra, tetrahedron_scalar_count) }
+            .chunks_exact(4)
+            .map(|value| [value[0], value[1], value[2], value[3]])
+            .collect();
+        let contacts = unsafe { slice::from_raw_parts(contact_pairs, contact_scalar_count) }
+            .chunks_exact(4)
+            .map(|value| [value[0], value[1], value[2], value[3]])
+            .collect();
+        let inverse_masses =
+            unsafe { slice::from_raw_parts(inverse_masses, inverse_mass_count) }.to_vec();
+        let simulator = SoftContactSimulator::new(
+            positions,
+            triangles,
+            tetrahedra,
+            contacts,
+            inverse_masses,
+            config.into(),
+        )?;
+        Ok(Box::into_raw(Box::new(AaSoftContactSimulator(simulator))))
+    })
+}
+
+/// # Safety
+/// `simulator` must be null or a live pointer returned by the matching create
+/// function, and it may be destroyed exactly once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aa_soft_contact_simulator_destroy(simulator: *mut AaSoftContactSimulator) {
+    if !simulator.is_null() {
+        // SAFETY: required by the function contract.
+        drop(unsafe { Box::from_raw(simulator) });
+    }
+}
+
+/// Simulates one or more xyz-interleaved target frames into caller memory.
+///
+/// # Safety
+///
+/// `simulator` must be live, `targets` must reference `target_count` readable
+/// floats, and `output` must reference `output_count` writable floats. These
+/// ranges must not alias incompatibly.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aa_soft_contact_simulate_chunk(
+    simulator: *mut AaSoftContactSimulator,
+    targets: *const f32,
+    target_count: usize,
+    output: *mut f32,
+    output_count: usize,
+) -> i32 {
+    ffi_status(|| {
+        if simulator.is_null() || targets.is_null() || output.is_null() {
+            return Err(PhysicsError::InvalidInput(
+                "soft-contact simulator, targets, or output pointer is null".into(),
+            ));
+        }
+        if output_count != target_count {
+            return Err(PhysicsError::InvalidInput(format!(
+                "soft-contact output_count is {output_count}, expected {target_count}"
+            )));
+        }
+        // SAFETY: pointer ranges are guaranteed by the caller contract.
+        let simulator = unsafe { &mut *simulator };
+        let targets = unsafe { slice::from_raw_parts(targets, target_count) };
+        let result = simulator.0.simulate_chunk(targets)?;
+        unsafe { ptr::copy_nonoverlapping(result.as_ptr(), output, result.len()) };
+        Ok(())
+    })
+}
+
+/// Writes a NUL-terminated JSON soft-contact report. The return value includes
+/// the terminator; a null buffer queries the required size.
+///
+/// # Safety
+///
+/// `simulator` must be live. A non-null `buffer` must reference `capacity`
+/// writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn aa_soft_contact_report_json(
+    simulator: *const AaSoftContactSimulator,
+    buffer: *mut c_char,
+    capacity: usize,
+) -> usize {
+    match catch_unwind(AssertUnwindSafe(|| {
+        if simulator.is_null() {
+            return Err("soft-contact simulator pointer is null".to_string());
+        }
+        let report = unsafe { &*simulator }.0.report();
+        write_json_report(&report, buffer, capacity)
+    })) {
+        Ok(Ok(required)) => required,
+        Ok(Err(error)) => {
+            set_error(error);
+            0
+        }
+        Err(_) => {
+            set_error("panic caught at C ABI boundary");
+            0
+        }
+    }
+}
+
+fn write_json_report(
+    value: &impl serde::Serialize,
+    buffer: *mut c_char,
+    capacity: usize,
+) -> Result<usize, String> {
+    let json = serde_json::to_string(value).map_err(|error| error.to_string())?;
+    let required = json.len() + 1;
+    if !buffer.is_null() {
+        if capacity < required {
+            return Err(format!(
+                "report buffer needs {required} bytes, received {capacity}"
+            ));
+        }
+        unsafe {
+            ptr::copy_nonoverlapping(json.as_ptr().cast::<c_char>(), buffer, json.len());
+            *buffer.add(json.len()) = 0;
+        }
+    }
+    Ok(required)
+}
+
 fn ffi_pointer<T>(operation: impl FnOnce() -> Result<*mut T, PhysicsError>) -> *mut T {
     match catch_unwind(AssertUnwindSafe(operation)) {
         Ok(Ok(pointer)) => pointer,
@@ -415,5 +652,68 @@ mod tests {
             aa_physics_topology_destroy(ptr::null_mut());
             aa_physics_simulator_destroy(ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn soft_contact_c_abi_simulates_and_reports() {
+        let rest = [
+            -0.1_f32, 0.02, -0.1, 0.1, 0.02, -0.1, 0.0, 0.02, 0.1, 0.0, 0.08, 0.0, -0.2, 0.0, -0.2,
+            0.2, 0.0, -0.2, 0.0, 0.0, 0.2,
+        ];
+        let triangles = [0_u32, 1, 2, 0, 3, 1, 1, 3, 2, 2, 3, 0, 4, 6, 5];
+        let tetrahedra = [0_u32, 1, 2, 3];
+        let contacts = [0_u32, 4, 6, 5];
+        let inverse_masses = [1.0_f32; 7];
+        let mut config = aa_soft_contact_default_config();
+        config.contact_thickness_m = 0.005;
+        config.contact_activation_distance_m = 0.025;
+        config.tether_compliance = 1.0e-3;
+        config.max_displacement_m = 0.1;
+        let simulator = unsafe {
+            aa_soft_contact_simulator_create(
+                rest.as_ptr(),
+                rest.len(),
+                triangles.as_ptr(),
+                triangles.len() / 3,
+                tetrahedra.as_ptr(),
+                1,
+                contacts.as_ptr(),
+                1,
+                inverse_masses.as_ptr(),
+                inverse_masses.len(),
+                config,
+            )
+        };
+        assert!(!simulator.is_null());
+        let mut target = rest;
+        for vertex in 0..4 {
+            target[vertex * 3 + 1] -= 0.04;
+        }
+        let mut output = [f32::NAN; 21];
+        assert_eq!(
+            unsafe {
+                aa_soft_contact_simulate_chunk(
+                    simulator,
+                    target.as_ptr(),
+                    target.len(),
+                    output.as_mut_ptr(),
+                    output.len(),
+                )
+            },
+            0
+        );
+        assert!(output.iter().all(|value| value.is_finite()));
+        let required = unsafe { aa_soft_contact_report_json(simulator, ptr::null_mut(), 0) };
+        assert!(required > 1);
+        let mut report = vec![0_i8; required];
+        assert_eq!(
+            unsafe { aa_soft_contact_report_json(simulator, report.as_mut_ptr(), report.len()) },
+            required
+        );
+        let json = unsafe { std::ffi::CStr::from_ptr(report.as_ptr()) }
+            .to_str()
+            .unwrap();
+        assert!(json.contains("\"contact_projection_count\":"));
+        unsafe { aa_soft_contact_simulator_destroy(simulator) };
     }
 }

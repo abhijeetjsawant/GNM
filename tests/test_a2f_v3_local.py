@@ -100,6 +100,8 @@ def _patch_profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
         required_sdk_revision=A2F_V3_SDK_REVISION,
         skin_pose_names=tuple(f"skin{index}" for index in range(52)),
         tongue_pose_names=tuple(f"tongue{index}" for index in range(16)),
+        skin_zero_input_offsets=(0.0,) * 52,
+        tongue_zero_input_offsets=(0.0,) * 16,
         skin_minimums=(0.0,) * 52,
         skin_maximums=(1.0,) * 52,
         tongue_minimums=(0.0,) * 16,

@@ -116,6 +116,12 @@ def test_home_and_health(tmp_path: Path) -> None:
     assert 'id="audio-visual-repair" checked' not in home.text
     assert "contact attained" in home.text
     assert "baseline loss" in home.text
+    assert (
+        'id="audio-mouth-aperture" name="mouth_aperture_gain" type="range" '
+        'min="1" max="1.5" step="0.01" value="1"'
+    ) in home.text
+    assert "legacy lip-contact solve is rebuilt" in home.text
+    assert "it does not reconstruct the performer's face or skin" in home.text
     health = client.get("/api/health")
     assert health.status_code == 200
     health_document = health.json()

@@ -21,6 +21,7 @@ from autoanim_gnm.phone_events import (
 )
 from autoanim_gnm.service import (
     _AUDIO_CONTROL_NPZ_MEMBERS,
+    _AUDIO_CONTROL_NPZ_OPTIONAL_MEMBERS,
     _preflight_audio_controls_npz,
 )
 
@@ -307,6 +308,30 @@ def test_audio_control_npz_preflight_rejects_expansion_before_numpy_load(
     assert archive_path.stat().st_size < 100_000
     with pytest.raises(ValueError, match="expanded bytes"):
         _preflight_audio_controls_npz(archive_path, maximum_frames=2)
+
+
+def test_audio_control_npz_preflight_accepts_bound_v3_evidence_members(
+    tmp_path: Path,
+) -> None:
+    archive_path = tmp_path / "controls.npz"
+    with zipfile.ZipFile(
+        archive_path, "w", compression=zipfile.ZIP_DEFLATED
+    ) as archive:
+        for name in sorted(
+            _AUDIO_CONTROL_NPZ_MEMBERS | _AUDIO_CONTROL_NPZ_OPTIONAL_MEMBERS
+        ):
+            archive.writestr(name, b"0")
+
+    _preflight_audio_controls_npz(archive_path, maximum_frames=2)
+
+    unknown_path = tmp_path / "unknown-controls.npz"
+    with zipfile.ZipFile(
+        unknown_path, "w", compression=zipfile.ZIP_DEFLATED
+    ) as archive:
+        for name in sorted(_AUDIO_CONTROL_NPZ_MEMBERS | {"unexpected.npy"}):
+            archive.writestr(name, b"0")
+    with pytest.raises(ValueError, match="members"):
+        _preflight_audio_controls_npz(unknown_path, maximum_frames=2)
 
 
 def test_service_rejects_schema_headers_with_missing_atomic_phone_evidence(

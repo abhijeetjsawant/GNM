@@ -114,6 +114,12 @@ _AUDIO_CONTROL_NPZ_MEMBERS = frozenset(
         "mouth_aperture_edit_target_attained.npy",
     }
 )
+_AUDIO_CONTROL_NPZ_OPTIONAL_MEMBERS = frozenset(
+    {
+        "source_oral_gate.npy",
+        "contact_run_stabilized.npy",
+    }
+)
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -134,7 +140,11 @@ def _preflight_audio_controls_npz(path: Path, *, maximum_frames: int) -> None:
             names = [member.filename for member in members]
             if (
                 len(names) != len(set(names))
-                or set(names) != _AUDIO_CONTROL_NPZ_MEMBERS
+                or not _AUDIO_CONTROL_NPZ_MEMBERS.issubset(names)
+                or not set(names).issubset(
+                    _AUDIO_CONTROL_NPZ_MEMBERS
+                    | _AUDIO_CONTROL_NPZ_OPTIONAL_MEMBERS
+                )
                 or any(member.flag_bits & 0x1 for member in members)
                 or sum(member.file_size for member in members)
                 > maximum_uncompressed_bytes
@@ -2010,13 +2020,34 @@ class ApplicationService:
         mirror_fill: bool = False,
         input_names: list[str] | tuple[str, ...] | None = None,
         camera_bundle_path: str | Path | None = None,
+        calibration_observations_path: str | Path | None = None,
     ) -> dict:
         bundle_source = Path(camera_bundle_path) if camera_bundle_path is not None else None
+        observations_source = (
+            Path(calibration_observations_path)
+            if calibration_observations_path is not None
+            else None
+        )
         if bundle_source is not None and not bundle_source.is_file():
             raise AutoAnimError("INPUT_INVALID", "Camera calibration sidecar is not a file")
         if bundle_source is not None and bundle_source.stat().st_size > 1_000_000:
             raise AutoAnimError(
                 "LIMIT_EXCEEDED", "Camera calibration sidecar exceeds 1 MB"
+            )
+        if observations_source is not None and not observations_source.is_file():
+            raise AutoAnimError(
+                "INPUT_INVALID", "Calibration target observations sidecar is not a file"
+            )
+        if (
+            observations_source is not None
+            and observations_source.stat().st_size > 16 * 1024 * 1024
+        ):
+            raise AutoAnimError(
+                "LIMIT_EXCEEDED", "Calibration target observations sidecar exceeds 16 MiB"
+            )
+        if observations_source is not None and bundle_source is None:
+            raise AutoAnimError(
+                "INPUT_INVALID", "Calibration observations require a camera calibration sidecar"
             )
         configuration = {
             "roles": list(roles or ()),
@@ -2029,11 +2060,22 @@ class ApplicationService:
             input_paths,
             configuration,
             original_names=input_names,
-            attachments=(
-                {"camera_calibration": bundle_source} if bundle_source is not None else None
-            ),
+            attachments={
+                **(
+                    {"camera_calibration": bundle_source}
+                    if bundle_source is not None
+                    else {}
+                ),
+                **(
+                    {"calibration_observations": observations_source}
+                    if observations_source is not None
+                    else {}
+                ),
+            }
+            or None,
         )
         retained_bundle = None
+        retained_observations = None
         if bundle_source is not None:
             attachment = next(
                 value
@@ -2042,6 +2084,14 @@ class ApplicationService:
             )
             retained_bundle = job_dir / attachment["retained_name"]
             configuration["calibration_sha256"] = attachment["sha256"]
+        if observations_source is not None:
+            attachment = next(
+                value
+                for value in manifest.get("attachments", ())
+                if value["logical_name"] == "calibration_observations"
+            )
+            retained_observations = job_dir / attachment["retained_name"]
+            configuration["calibration_observations_sha256"] = attachment["sha256"]
         versions = runtime_versions()
         try:
             result = run_multiview_pipeline(
@@ -2053,6 +2103,7 @@ class ApplicationService:
                 focal_scale=focal_scale,
                 mirror_fill=mirror_fill,
                 camera_bundle_path=retained_bundle,
+                calibration_observations_path=retained_observations,
                 input_names=input_names,
             )
             return self.store.finish(manifest, job_dir, result, versions)

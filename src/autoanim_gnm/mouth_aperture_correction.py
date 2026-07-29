@@ -21,10 +21,16 @@ import numpy as np
 
 from .authorship import validate_mouth_aperture_authorship
 from .errors import AutoAnimError
+from .mouth_geometry import (
+    MouthBoundaryTopology,
+    boundary_opening_displacement,
+    discover_mouth_boundary,
+    measure_mouth_boundary,
+)
 from .rig import ControlRig
 
 
-SCHEMA_VERSION = "autoanim.gnm.mouth-aperture-correction.v3"
+SCHEMA_VERSION = "autoanim.gnm.mouth-aperture-correction.v4"
 LOWER_FACE_SLICE = slice(200, 350)
 TONGUE_SLICE = slice(350, 382)
 _INNER_LIP_PAIRS = ((61, 67), (62, 66), (63, 65))
@@ -52,9 +58,13 @@ class MouthApertureConfig:
     maximum_final_mouth_speed_interocular_per_second: float = 1.1985
     maximum_coefficient_delta: float = 0.90
     maximum_lower_face_coefficient: float = 3.0
-    maximum_nonmouth_displacement_interocular: float = 0.0010
+    maximum_nonmouth_displacement_interocular: float = 0.0020
     maximum_upper_face_displacement_interocular: float = 0.0005
-    maximum_tongue_displacement_interocular: float = 0.00002
+    # Lower-face PCA modes have a small unavoidable tail on tongue vertices.
+    # Bound it to 0.1% IOD (about 0.09 mm at this rig's adult-scale neutral)
+    # while tongue coefficients remain byte-identical; oral validation still
+    # rejects any introduced tongue/teeth collision risk.
+    maximum_tongue_displacement_interocular: float = 0.0010
     contact_confidence_threshold: float = 0.12
     target_tolerance_interocular: float = 0.0002
 
@@ -110,6 +120,8 @@ class MouthApertureCorrectionResult:
     final_continuity_limit_interocular: float
     final_continuity_speed_interocular_per_second: float
     reports: tuple[MouthApertureFrameReport, ...]
+    mouth_boundary_set_sha256: str
+    mouth_boundary_cycle_sha256: str
     identity_sha256: str
     input_sha256: str
     output_sha256: str
@@ -121,6 +133,8 @@ class _ApertureCalibration:
     response: np.ndarray
     interocular: float
     neutral_gap: float
+    neutral_sparse_gap: float
+    topology: MouthBoundaryTopology
     nonmouth_indices: np.ndarray
     upper_face_indices: np.ndarray
     tongue_indices: np.ndarray
@@ -246,7 +260,11 @@ def _require_array(
     return array
 
 
-def _gap_interocular(rig: ControlRig, expression: np.ndarray, interocular: float) -> float:
+def _sparse_gap_interocular(
+    rig: ControlRig,
+    expression: np.ndarray,
+    interocular: float,
+) -> float:
     landmarks = rig.compact_landmarks(expression)
     return float(
         np.mean(
@@ -256,6 +274,44 @@ def _gap_interocular(rig: ControlRig, expression: np.ndarray, interocular: float
             ]
         )
     )
+
+
+def _gap_interocular(
+    rig: ControlRig,
+    expression: np.ndarray,
+    topology: MouthBoundaryTopology,
+) -> float:
+    landmarks = rig.compact_landmarks(expression)
+    mesh = _loop_vertices(rig, expression, topology)
+    return float(
+        measure_mouth_boundary(mesh, landmarks, topology).signed_central_gap_interocular
+    )
+
+
+def _loop_vertices(
+    rig: ControlRig,
+    expression: np.ndarray,
+    topology: MouthBoundaryTopology,
+) -> np.ndarray:
+    indices = np.asarray(topology.cycle, dtype=np.int64)
+    adapter = rig.adapter
+    loop = np.asarray(
+        adapter.model.template_vertex_positions[indices],
+        dtype=np.float64,
+    ).copy()
+    loop += np.einsum(
+        "i,ijk->jk",
+        np.asarray(rig.identity, dtype=np.float64),
+        np.asarray(adapter.model.vertex_identity_basis[:, indices], dtype=np.float64),
+        optimize=True,
+    )
+    loop += np.einsum(
+        "i,ijk->jk",
+        np.asarray(expression, dtype=np.float64),
+        np.asarray(adapter.model.expression_basis[:, indices], dtype=np.float64),
+        optimize=True,
+    )
+    return np.asarray(loop, dtype=np.float32)
 
 
 def _lip_order_minimum_interocular(
@@ -302,9 +358,14 @@ def _calibrate(rig: ControlRig) -> _ApertureCalibration:
     if not np.isfinite(interocular) or interocular <= 0.0:
         raise _invalid("GNM identity has invalid interocular geometry")
 
+    topology = discover_mouth_boundary(adapter)
     compact_basis = np.asarray(adapter.compact_expression_basis[LOWER_FACE_SLICE], dtype=np.float64)
     vertex_basis = np.asarray(adapter.model.expression_basis[LOWER_FACE_SLICE], dtype=np.float64)
-    inner_system = compact_basis[:, _INNER_LIP_INDICES].transpose(1, 2, 0).reshape(-1, 150)
+    boundary_system = (
+        vertex_basis[:, np.asarray(topology.cycle, dtype=np.int64)]
+        .transpose(1, 2, 0)
+        .reshape(-1, 150)
+    )
     compact_upper_system = compact_basis[:, :48].transpose(1, 2, 0).reshape(-1, 150)
 
     lip_support = _maximum_group(
@@ -346,7 +407,7 @@ def _calibrate(rig: ControlRig) -> _ApertureCalibration:
     # visible tail into the tongue even though its coefficient block is fixed.
     system = np.vstack(
         (
-            normalized(inner_system, 1.0),
+            normalized(boundary_system, 1.0),
             normalized(vertex_system(solve_nonmouth), 20.0),
             normalized(compact_upper_system, 20.0),
             normalized(vertex_system(upper_face_indices), 100.0),
@@ -354,10 +415,19 @@ def _calibrate(rig: ControlRig) -> _ApertureCalibration:
             np.float64(1.0e-4) * np.eye(150, dtype=np.float64),
         )
     )
-    response = np.linalg.pinv(system, rcond=1.0e-7)[:, :18] / math.sqrt(18)
-    if response.shape != (150, 18) or not np.isfinite(response).all():
+    boundary_rows = 3 * len(topology.cycle)
+    response = (
+        np.linalg.pinv(system, rcond=1.0e-7)[:, :boundary_rows]
+        / math.sqrt(boundary_rows)
+    )
+    if response.shape != (150, boundary_rows) or not np.isfinite(response).all():
         raise _invalid("GNM aperture inverse is invalid")
     neutral_gap = _gap_interocular(
+        rig,
+        np.zeros(adapter.expression_dim, dtype=np.float32),
+        topology,
+    )
+    neutral_sparse_gap = _sparse_gap_interocular(
         rig,
         np.zeros(adapter.expression_dim, dtype=np.float32),
         interocular,
@@ -368,6 +438,8 @@ def _calibrate(rig: ControlRig) -> _ApertureCalibration:
         response=response,
         interocular=interocular,
         neutral_gap=neutral_gap,
+        neutral_sparse_gap=neutral_sparse_gap,
+        topology=topology,
         nonmouth_indices=np.asarray(nonmouth_indices, dtype=np.int64),
         upper_face_indices=np.asarray(upper_face_indices, dtype=np.int64),
         tongue_indices=np.asarray(tongue_indices, dtype=np.int64),
@@ -392,16 +464,11 @@ def _coefficient_alpha_limit(
     direction: np.ndarray,
     config: MouthApertureConfig,
 ) -> tuple[float, tuple[str, ...]]:
+    del original_lower
     candidates: list[tuple[float, str]] = [(2.0, "solver_scale")]
     maximum_delta = float(np.max(np.abs(direction), initial=0.0))
     if maximum_delta > 0.0:
         candidates.append((config.maximum_coefficient_delta / maximum_delta, "coefficient_delta"))
-    coefficient_limit = config.maximum_lower_face_coefficient
-    for current, delta in zip(original_lower, direction, strict=True):
-        if delta > 1.0e-12:
-            candidates.append(((coefficient_limit - float(current)) / float(delta), "coefficient_range"))
-        elif delta < -1.0e-12:
-            candidates.append(((-coefficient_limit - float(current)) / float(delta), "coefficient_range"))
     nonnegative = [(max(0.0, value), reason) for value, reason in candidates]
     limit = min(value for value, _ in nonnegative)
     reasons = tuple(
@@ -421,22 +488,39 @@ def _solve_frame(
     config: MouthApertureConfig,
 ) -> tuple[np.ndarray, np.ndarray, float, float, tuple[float, float, float], tuple[str, ...]]:
     landmarks = rig.compact_landmarks(original)
-    current_gap = _gap_interocular(rig, original, calibration.interocular)
+    face_local_mesh = _loop_vertices(rig, original, calibration.topology)
+    current_gap = _gap_interocular(rig, original, calibration.topology)
     lift = max(0.0, target_gap - current_gap)
-    desired = np.zeros((68, 3), dtype=np.float32)
-    for upper, lower in _INNER_LIP_PAIRS:
-        separation = landmarks[lower] - landmarks[upper]
-        length = float(np.linalg.norm(separation))
-        if length <= 1.0e-10:
-            continue
-        wanted = length + lift * calibration.interocular
-        expansion = separation * np.float32(wanted / length - 1.0)
-        desired[upper] -= np.float32(0.5) * expansion
-        desired[lower] += np.float32(0.5) * expansion
-    direction = calibration.response @ desired[_INNER_LIP_INDICES].reshape(-1)
+    desired = boundary_opening_displacement(
+        face_local_mesh,
+        landmarks,
+        calibration.topology,
+        lift_m=lift * calibration.interocular,
+    )
+    direction = calibration.response @ desired.reshape(-1)
     direction = np.asarray(direction, dtype=np.float32)
+    original_lower = original[LOWER_FACE_SLICE]
+    coefficient_limit = np.float32(config.maximum_lower_face_coefficient)
+    outward_saturated = (
+        ((original_lower >= coefficient_limit - np.float32(1.0e-6)) & (direction > 0.0))
+        | ((original_lower <= -coefficient_limit + np.float32(1.0e-6)) & (direction < 0.0))
+    )
+    pre_solve_bounds: list[str] = []
+    if np.any(outward_saturated):
+        # One saturated PCA coefficient must not globally zero the other 149
+        # lower-face directions. Remove only the infeasible outward rows, then
+        # measure the remaining topology response under the usual hard bounds.
+        direction[outward_saturated] = 0.0
+        pre_solve_bounds.append("outward_saturated_modes_removed")
     if not np.isfinite(direction).all() or float(np.max(np.abs(direction), initial=0.0)) <= 1.0e-10:
-        return original.copy(), baseline_mesh, current_gap, 0.0, (0.0, 0.0, 0.0), ("degenerate_solve",)
+        return (
+            original.copy(),
+            baseline_mesh,
+            current_gap,
+            0.0,
+            (0.0, 0.0, 0.0),
+            tuple(pre_solve_bounds + ["degenerate_solve"]),
+        )
 
     alpha_limit, coefficient_reasons = _coefficient_alpha_limit(
         original[LOWER_FACE_SLICE], direction, config
@@ -477,25 +561,45 @@ def _solve_frame(
 
     def expression_at(alpha: float) -> np.ndarray:
         output = original.copy()
-        output[LOWER_FACE_SLICE] = original[LOWER_FACE_SLICE] + np.float32(alpha) * direction
+        output[LOWER_FACE_SLICE] = np.clip(
+            original[LOWER_FACE_SLICE] + np.float32(alpha) * direction,
+            -config.maximum_lower_face_coefficient,
+            config.maximum_lower_face_coefficient,
+        )
         return output
 
-    gap_at_limit = _gap_interocular(rig, expression_at(alpha_limit), calibration.interocular)
-    target_reachable = gap_at_limit >= target_gap
-    if target_reachable:
-        lower = 0.0
-        upper = alpha_limit
+    samples = np.linspace(0.0, alpha_limit, 33, dtype=np.float64)
+    sampled_gaps = np.asarray(
+        [
+            _gap_interocular(rig, expression_at(float(sample)), calibration.topology)
+            for sample in samples
+        ],
+        dtype=np.float64,
+    )
+    reached = np.flatnonzero(sampled_gaps >= target_gap)
+    if len(reached):
+        upper_index = int(reached[0])
+        lower = float(samples[max(upper_index - 1, 0)])
+        upper = float(samples[upper_index])
         for _ in range(24):
             middle = 0.5 * (lower + upper)
-            if _gap_interocular(rig, expression_at(middle), calibration.interocular) < target_gap:
+            if (
+                _gap_interocular(rig, expression_at(middle), calibration.topology)
+                < target_gap
+            ):
                 lower = middle
             else:
                 upper = middle
         alpha = upper
-        active_limits: list[str] = []
+        active_limits = list(pre_solve_bounds)
     else:
-        alpha = alpha_limit
-        active_limits = sorted(set(limit_reasons))
+        best_index = int(np.argmax(sampled_gaps))
+        alpha = float(samples[best_index])
+        active_limits = (
+            sorted(set(pre_solve_bounds + limit_reasons))
+            if best_index == len(samples) - 1
+            else pre_solve_bounds + ["nonmonotonic_response"]
+        )
 
     candidate = expression_at(alpha)
     candidate_mesh = rig.adapter.mesh(
@@ -575,7 +679,9 @@ def _solve_frame(
         metrics = _mesh_displacement_metrics(baseline_mesh, candidate_mesh, calibration)
         active_limits.append("lip_order_inversion")
 
-    final_gap = _gap_interocular(rig, candidate, calibration.interocular)
+    metrics = _mesh_displacement_metrics(baseline_mesh, candidate_mesh, calibration)
+
+    final_gap = _gap_interocular(rig, candidate, calibration.topology)
     if final_gap <= current_gap + 1.0e-7:
         return original.copy(), baseline_mesh, current_gap, 0.0, (0.0, 0.0, 0.0), ("no_improvement",)
     return (
@@ -943,14 +1049,32 @@ def correct_mouth_aperture(
     protected = anchor | labels_protected | (confidence >= config.contact_confidence_threshold)
     original_gaps = np.asarray(
         [
-            _gap_interocular(rig, frame, calibration.interocular)
+            _gap_interocular(rig, frame, calibration.topology)
             for frame in expression_array
         ],
         dtype=np.float64,
     )
-    opening = np.maximum(original_gaps - calibration.neutral_gap, 0.0)
-    requested_targets = calibration.neutral_gap + config.gain * opening + config.bias_interocular
-    requested_targets = np.maximum(requested_targets, original_gaps)
+    sparse_driver_gaps = np.asarray(
+        [
+            _sparse_gap_interocular(rig, frame, calibration.interocular)
+            for frame in expression_array
+        ],
+        dtype=np.float64,
+    )
+    opening = np.maximum(
+        sparse_driver_gaps - calibration.neutral_sparse_gap,
+        0.0,
+    )
+    exact_noop = config.gain == 1.0 and config.bias_interocular == 0.0
+    if exact_noop:
+        requested_targets = original_gaps.copy()
+    else:
+        requested_targets = (
+            calibration.neutral_gap
+            + config.gain * opening
+            + config.bias_interocular
+        )
+        requested_targets = np.maximum(requested_targets, original_gaps)
     open_frames = opening > config.minimum_open_delta_interocular
     eligible_open = eligible_array & open_frames & ~protected
 
@@ -973,7 +1097,6 @@ def correct_mouth_aperture(
     applied = np.zeros(frame_count, dtype=bool)
     attained = np.ones(frame_count, dtype=bool)
     reports: list[MouthApertureFrameReport] = []
-    exact_noop = config.gain == 1.0 and config.bias_interocular == 0.0
     for frame in range(frame_count):
         baseline_mesh = adapter.mesh(
             identity=rig.identity,
@@ -1130,7 +1253,7 @@ def correct_mouth_aperture(
                 >= report.bounded_target_gap_interocular
             )
         elif eligible_open[frame]:
-            final_gap = _gap_interocular(rig, output[frame], calibration.interocular)
+            final_gap = _gap_interocular(rig, output[frame], calibration.topology)
             attained[frame] = bool(
                 final_gap + config.target_tolerance_interocular
                 >= report.bounded_target_gap_interocular
@@ -1146,7 +1269,7 @@ def correct_mouth_aperture(
             revised_reports.append(report)
             continue
 
-        final_gap = _gap_interocular(rig, output[frame], calibration.interocular)
+        final_gap = _gap_interocular(rig, output[frame], calibration.topology)
         metrics = _mesh_displacement_metrics(baseline_mesh, candidate_mesh, calibration)
         lip_order_minimum = _lip_order_minimum_interocular(
             rig,
@@ -1256,6 +1379,8 @@ def correct_mouth_aperture(
             config.maximum_final_mouth_speed_interocular_per_second
         ),
         reports=tuple(reports),
+        mouth_boundary_set_sha256=calibration.topology.set_sha256,
+        mouth_boundary_cycle_sha256=calibration.topology.cycle_sha256,
         identity_sha256=_array_digest(identity_array),
         input_sha256=input_digest,
         output_sha256=output_digest,

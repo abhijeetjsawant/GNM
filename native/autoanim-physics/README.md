@@ -1,7 +1,9 @@
-# AutoAnim Physics P0
+# AutoAnim Physics
 
-This workspace contains the isolated Phase P0 CPU physics core. It is not yet
-wired into the Python pipeline or macOS UI.
+This workspace contains the CPU reference physics core. The original P0
+secondary-motion solver remains isolated and opt-in. P1 adds a separate
+volumetric tongue/lip soft-contact solver wired into the GNM range-of-motion
+diagnostic through the C ABI and Python binding.
 
 The core consumes an animated target surface and simulates only a bounded
 secondary-motion residual. With zero residual and no external acceleration, an
@@ -31,6 +33,25 @@ This is a surface secondary-motion solver, not a muscle, tissue-volume, jaw,
 tongue-contact, or collision model. It does not improve phoneme timing or acting
 choices. GPU compute is intentionally deferred until profiling proves that a
 single face benefits after host/device synchronization costs.
+
+## P1 oral soft contact
+
+`SoftContactSimulator` is an independent deterministic XPBD path. It consumes
+GNM target vertices for the 933-vertex tongue and both 145-vertex lip surfaces.
+The Python preprocessor recovers and animation-filters 2,848 tongue tetrahedra,
+prepares reciprocal vertex/triangle candidates, and assigns bounded tissue
+mobility. The Rust solver applies target-relative edge, signed-volume, tether,
+and two-way contact constraints over 8 substeps and 16 iterations.
+
+The verified diagnostic bake uses one smooth corrective basis derived from the
+native cache. This keeps the 3D viewer at 9 morph targets instead of exporting
+high-dimensional per-frame nearest-contact noise. The raw native report and the
+bake digest are both retained.
+
+P1 is not a universal collision system: it uses a conservative per-sequence
+contact set and discrete substeps, not continuous collision detection or IPC.
+See `docs/TONGUE_LIP_SOFT_CONTACT.md` for measurements and the production
+follow-up.
 
 The checked-in GNM Head v3 topology was passed through the release C ABI during
 P0 verification: 17,821 vertices and 35,324 triangles canonicalized to 53,135

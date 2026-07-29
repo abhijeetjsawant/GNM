@@ -9,6 +9,7 @@ import pytest
 from autoanim_gnm.a2f_v3_profile import (
     OFFICIAL_V3_ASSET_SHA256,
     OFFICIAL_V3_TONGUE_CONTROL_NAMES,
+    _solver_ranges,
     load_official_v3_claire_profile,
 )
 from autoanim_gnm.sequence_provider import (
@@ -129,6 +130,27 @@ def test_official_v3_track_accepts_post_solver_tongue_values_above_one() -> None
     assert validation.tongue_control_count == 16
     assert validation.production_qualified is False
     assert validation.quality_label == QUALITY_A2F_V3_SEQUENCE_CANDIDATE
+
+
+def test_solver_zero_input_offset_is_not_inferred_from_range_minimum(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "solver.json"
+    config.write_text(
+        '{"blendshape_params":{"bsWeightMultipliers":[-2.0],'
+        '"bsWeightOffsets":[0.4],"bsSolveActivePoses":[1.0],"numPoses":1}}',
+        encoding="utf-8",
+    )
+
+    offsets, minimums, maximums = _solver_ranges(
+        config,
+        expected_count=1,
+        label="synthetic negative multiplier",
+    )
+
+    assert offsets == pytest.approx((0.4,))
+    assert minimums == pytest.approx((-1.6,))
+    assert maximums == pytest.approx((0.4,))
 
 
 def test_official_v3_track_rejects_clipped_offset_or_out_of_range_controls() -> None:

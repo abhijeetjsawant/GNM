@@ -13,7 +13,7 @@ the report always records that exact surface intersection was not validated.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import copy
 import hashlib
 import json
@@ -26,9 +26,14 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from .gnm_adapter import GNMAdapter
+from .mouth_geometry import (
+    MouthBoundaryTopology,
+    discover_mouth_boundary,
+    measure_mouth_boundary,
+)
 
 
-SCHEMA_VERSION = "autoanim.oral-validation/1.0"
+SCHEMA_VERSION = "autoanim.oral-validation/1.1"
 _INNER_LIP_PAIRS = ((61, 67), (62, 66), (63, 65))
 _EXPECTED_VERTICES = 17_821
 _GLB_JSON_CHUNK = 0x4E4F534A
@@ -48,6 +53,7 @@ class OralValidationThresholds:
     """Dimensionless gates except for explicit reconstruction tolerances."""
 
     lip_contact_gap_interocular: float = 0.006
+    lip_contact_area_interocular_squared: float = 0.0015
     lip_order_inversion_tolerance_interocular: float = 0.0005
     tongue_teeth_near_contact_interocular: float = 0.010
     tongue_teeth_collision_risk_interocular: float = 0.001
@@ -57,6 +63,7 @@ class OralValidationThresholds:
     def __post_init__(self) -> None:
         values = (
             self.lip_contact_gap_interocular,
+            self.lip_contact_area_interocular_squared,
             self.lip_order_inversion_tolerance_interocular,
             self.tongue_teeth_near_contact_interocular,
             self.tongue_teeth_collision_risk_interocular,
@@ -89,6 +96,7 @@ class OralValidationResult:
     report: dict[str, Any]
     timestamps: np.ndarray
     lip_gap_interocular: np.ndarray
+    lip_opening_area_interocular_squared: np.ndarray
     lip_contact_frames: np.ndarray
     lip_order_inversion_risk_frames: np.ndarray
     tongue_upper_teeth_gap_interocular: np.ndarray
@@ -216,6 +224,7 @@ class _OralTopology:
     groups: dict[str, np.ndarray]
     landmark_local_indices: np.ndarray
     landmark_weights: np.ndarray
+    mouth_boundary: MouthBoundaryTopology
     inventory: dict[str, Any]
 
 
@@ -303,8 +312,15 @@ def _topology(adapter: GNMAdapter) -> _OralTopology:
     landmark_weights = np.asarray(adapter.landmark_weights, dtype=np.float64)
     if landmark_native.shape != (68, 3) or landmark_weights.shape != (68, 3):
         raise OralValidationError("GEOMETRY_ABSENT", "GNM sparse oral landmarks are absent")
+    mouth_boundary = discover_mouth_boundary(adapter)
     required = np.unique(
-        np.concatenate([landmark_native.reshape(-1), *native_groups.values()])
+        np.concatenate(
+            [
+                landmark_native.reshape(-1),
+                np.asarray(mouth_boundary.cycle, dtype=np.int64),
+                *native_groups.values(),
+            ]
+        )
     ).astype(np.int32)
     native_to_required = np.full(adapter.model.num_vertices, -1, dtype=np.int32)
     native_to_required[required] = np.arange(len(required), dtype=np.int32)
@@ -314,6 +330,12 @@ def _topology(adapter: GNMAdapter) -> _OralTopology:
     }
     if any(np.any(indices < 0) for indices in local_groups.values()):
         raise OralValidationError("GEOMETRY_ABSENT", "Oral topology indexing is incomplete")
+    local_mouth_boundary = replace(
+        mouth_boundary,
+        cycle=_readonly(
+            native_to_required[np.asarray(mouth_boundary.cycle, dtype=np.int64)]
+        ),
+    )
 
     component_names = tuple(adapter.model.mesh_component_names)
     inventory_components: dict[str, dict[str, Any]] = {}
@@ -332,6 +354,9 @@ def _topology(adapter: GNMAdapter) -> _OralTopology:
         "gnm_version": "3.0",
         "source_vertex_count": int(adapter.model.num_vertices),
         "required_oral_and_landmark_vertex_count": int(len(required)),
+        "mouth_boundary_vertex_count": int(len(mouth_boundary.cycle)),
+        "mouth_boundary_set_sha256": mouth_boundary.set_sha256,
+        "mouth_boundary_cycle_sha256": mouth_boundary.cycle_sha256,
         "vertex_groups": {name: int(len(value)) for name, value in native_groups.items()},
         "components": inventory_components,
         "all_required_groups_present": True,
@@ -342,6 +367,7 @@ def _topology(adapter: GNMAdapter) -> _OralTopology:
         groups={name: _readonly(value) for name, value in local_groups.items()},
         landmark_local_indices=_readonly(native_to_required[landmark_native]),
         landmark_weights=_readonly(landmark_weights),
+        mouth_boundary=local_mouth_boundary,
         inventory=inventory,
     )
 
@@ -398,6 +424,7 @@ def _analyze_required_geometry_chunks(
     times = _validate_timestamps(timestamps, frame_count)
     lip_pair_gaps = np.empty((frame_count, len(_INNER_LIP_PAIRS)), dtype=np.float64)
     lip_gap = np.empty(frame_count, dtype=np.float64)
+    lip_opening_area = np.empty(frame_count, dtype=np.float64)
     lip_order_risk = np.empty(frame_count, dtype=bool)
     tongue_upper_min = np.empty(frame_count, dtype=np.float64)
     tongue_upper_p01 = np.empty(frame_count, dtype=np.float64)
@@ -443,7 +470,23 @@ def _analyze_required_geometry_chunks(
             ),
         )
         lip_pair_gaps[offset:stop] = chunk_pair_gaps
-        lip_gap[offset:stop] = np.mean(chunk_pair_gaps, axis=1)
+        for local_index, (frame, landmark_frame) in enumerate(
+            zip(values, landmarks, strict=True)
+        ):
+            measurement = measure_mouth_boundary(
+                frame,
+                landmark_frame,
+                topology.mouth_boundary,
+            )
+            frame_index = offset + local_index
+            lip_gap[frame_index] = measurement.signed_central_gap_interocular
+            lip_opening_area[frame_index] = (
+                measurement.opening_area_interocular_squared
+            )
+        # The rendered mouth loop has a small identity-specific overlap at
+        # neutral contact. Its signed central gap is therefore an aperture
+        # signal, not a lip-order classifier. Sparse inner-lip ordering remains
+        # the authoritative inversion check.
         lip_order_risk[offset:stop] = chunk_lip_order_risk
 
         upper_min, upper_p01 = _nearest_ratios(
@@ -504,7 +547,10 @@ def _analyze_required_geometry_chunks(
             "INVALID_GEOMETRY", "Oral geometry contains fewer frames than its timeline"
         )
 
-    lip_contact = lip_gap <= thresholds.lip_contact_gap_interocular
+    lip_contact = (
+        (lip_gap <= thresholds.lip_contact_gap_interocular)
+        & (lip_opening_area <= thresholds.lip_contact_area_interocular_squared)
+    )
     tongue_teeth_min = np.minimum(tongue_upper_min, tongue_lower_min)
     near_contact = tongue_teeth_min <= thresholds.tongue_teeth_near_contact_interocular
     collision_risk = (
@@ -529,7 +575,10 @@ def _analyze_required_geometry_chunks(
                 "Lip-contact targets must be finite, non-negative, and frame-aligned",
             )
         candidates = target > 0.0
-        attained = candidates & (lip_gap <= target + 1.0e-3)
+        # Existing control targets were authored in the legacy sparse-landmark
+        # gap space. They remain useful only as contact-intent booleans; their
+        # numeric values must not be compared to the topology-bound gap.
+        attained = candidates & lip_contact
         candidate_count = int(np.count_nonzero(candidates))
         disagreement: int | None = None
         if declared_lip_contact_attained is not None:
@@ -541,7 +590,7 @@ def _analyze_required_geometry_chunks(
                 )
             disagreement = int(np.count_nonzero(declared != attained))
         target_evidence = {
-            "source": "unvalidated_pipeline_control_target",
+            "source": "legacy_sparse_gap_contact_intent_boolean_only",
             "candidate_frames": candidate_count,
             "geometry_attained_frames": int(np.count_nonzero(attained)),
             "geometry_attainment_fraction": (
@@ -568,13 +617,24 @@ def _analyze_required_geometry_chunks(
             "differential_joint_skinning_is_measured_geometry": True,
         },
         "lip_contact": {
-            "method": "three_inner_lip_landmark_pair_mean",
+            "method": "gnm_v3_58_vertex_exterior_mouth_boundary",
             "gap_interocular": _summary(lip_gap),
+            "opening_area_interocular_squared": _summary(lip_opening_area),
+            "sparse_landmark_pair_gap_interocular_diagnostic_only": {
+                "mean": _summary(np.mean(lip_pair_gaps, axis=1)),
+                "pairs": {
+                    f"{upper}_{lower}": _summary(lip_pair_gaps[:, index])
+                    for index, (upper, lower) in enumerate(_INNER_LIP_PAIRS)
+                },
+            },
             "pair_gap_interocular": {
                 f"{upper}_{lower}": _summary(lip_pair_gaps[:, index])
                 for index, (upper, lower) in enumerate(_INNER_LIP_PAIRS)
             },
             "contact_threshold_interocular": thresholds.lip_contact_gap_interocular,
+            "contact_area_threshold_interocular_squared": (
+                thresholds.lip_contact_area_interocular_squared
+            ),
             "contact_frames": int(np.count_nonzero(lip_contact)),
             "contact_fraction": float(np.mean(lip_contact)),
             "order_inversion_tolerance_interocular": (
@@ -583,7 +643,7 @@ def _analyze_required_geometry_chunks(
             "order_inversion_risk_frames": int(np.count_nonzero(lip_order_risk)),
             "order_inversion_risk_fraction": float(np.mean(lip_order_risk)),
             "collision_interpretation": (
-                "pair-order risk proxy only; exact lip surface intersection was not tested"
+                "boundary gap/area and ordering risk; exact lip surface intersection was not tested"
             ),
             "target_evidence": target_evidence,
         },
@@ -649,6 +709,7 @@ def _analyze_required_geometry_chunks(
         report=report,
         timestamps=_readonly(times),
         lip_gap_interocular=_readonly(lip_gap),
+        lip_opening_area_interocular_squared=_readonly(lip_opening_area),
         lip_contact_frames=_readonly(lip_contact),
         lip_order_inversion_risk_frames=_readonly(lip_order_risk),
         tongue_upper_teeth_gap_interocular=_readonly(tongue_upper_min),

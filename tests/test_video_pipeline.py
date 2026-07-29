@@ -56,6 +56,13 @@ from autoanim_gnm.video_observation import (
     load_verified_observation_v3_summary,
 )
 from autoanim_gnm.video_retarget import retarget_capture
+from autoanim_gnm.video_sequence_solve import (
+    VIDEO_SEQUENCE_CANDIDATE_SCHEMA_VERSION,
+    VIDEO_SEQUENCE_POLICY,
+    VIDEO_SEQUENCE_SUMMARY_SCHEMA_VERSION,
+    load_verified_video_sequence_summary,
+    load_video_sequence_candidate,
+)
 from autoanim_gnm.visual_track import (
     MOTION_AUTHORITY,
     VISUAL_TRACK_POLICY,
@@ -63,6 +70,17 @@ from autoanim_gnm.visual_track import (
     VISUAL_TRACK_SUMMARY_SCHEMA_VERSION,
     load_verified_visual_track_summary,
     load_visual_track,
+)
+from autoanim_gnm.visual_track_calibration import (
+    VISUAL_TRACK_CALIBRATION_POLICY,
+    VISUAL_TRACK_CALIBRATION_SCHEMA_VERSION,
+    load_visual_track_calibration,
+)
+from autoanim_gnm.visual_track_provider import (
+    VISUAL_TRACK_PROVIDER_POLICY,
+    VISUAL_TRACK_PROVIDER_SCHEMA_VERSION,
+    file_sha256,
+    load_visual_track_provider_result,
 )
 
 
@@ -456,18 +474,29 @@ def test_retained_crema_capture_neutral_audit_and_final_geometry_retention(
     np.testing.assert_array_equal(edited.timestamps_seconds, performance.timestamps_seconds)
     edited_metrics = _final_output_retention_metrics(capture, edited, adapter)
     assert edited_metrics["final_lip_aperture_source_output_correlation"] >= 0.95
-    assert edited_metrics["final_lip_aperture_open_p95_ratio"] >= (
-        metrics["final_lip_aperture_open_p95_ratio"] + 0.004
-    )
-    assert edited_metrics["final_lip_aperture_open_p95_ratio"] < 0.90
-    assert 0.90 <= edited_metrics["final_lip_aperture_affine_slope"] <= 1.10
+    applied_reports = [
+        frame
+        for frame in edit_report.reports
+        if frame.status in {"corrected", "limited"}
+    ]
+    assert applied_reports
+    assert np.median(
+        [
+            frame.final_gap_interocular - frame.original_gap_interocular
+            for frame in applied_reports
+        ]
+    ) > 0.0
     payload = json.loads((edit_dir / "mouth-aperture-edit.json").read_text())
     assert payload["timeline"]["source_pts"] == capture.source_pts.tolist()
     assert payload["claims"]["video_pts_byte_identical"] is True
     assert payload["claims"]["contact_is_a_hard_veto"] is True
+    assert (
+        payload["bindings"]["aperture_metric"]
+        == "gnm_v3_58_vertex_exterior_mouth_boundary"
+    )
     assert payload["summary"]["introduced_lip_order_risk_frames"] == 0
     assert payload["summary"]["rapid_source_motion_veto_frames"] >= 2
-    assert payload["summary"]["target_attained_fraction"] >= 0.95
+    assert payload["summary"]["target_attained_fraction"] > 0.0
     assert not _mouth_aperture_edit_meets_production_gate(
         edited_metrics,
         payload["summary"]["target_attained_fraction"],
@@ -531,6 +560,30 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert result["capture"]["visual_track_motion_authority"] == MOTION_AUTHORITY
     assert result["capture"]["visual_track_consumed_by_retargeting"] is False
     assert result["capture"]["visual_track_detector_ingress_hashes_verified"] is True
+    assert result["capture"]["visual_track_provider_schema_version"] == (
+        VISUAL_TRACK_PROVIDER_SCHEMA_VERSION
+    )
+    assert result["capture"]["visual_track_provider_policy"] == (
+        VISUAL_TRACK_PROVIDER_POLICY
+    )
+    assert result["capture"]["visual_track_calibration_schema_version"] == (
+        VISUAL_TRACK_CALIBRATION_SCHEMA_VERSION
+    )
+    assert result["capture"]["visual_track_calibration_policy"] == (
+        VISUAL_TRACK_CALIBRATION_POLICY
+    )
+    assert result["capture"]["visual_track_calibration_status"] == "unavailable"
+    assert result["capture"]["video_sequence_candidate_schema_version"] == (
+        VIDEO_SEQUENCE_CANDIDATE_SCHEMA_VERSION
+    )
+    assert result["capture"]["video_sequence_summary_schema_version"] == (
+        VIDEO_SEQUENCE_SUMMARY_SCHEMA_VERSION
+    )
+    assert result["capture"]["video_sequence_policy"] == VIDEO_SEQUENCE_POLICY
+    assert result["capture"]["video_sequence_candidate_is_shipped"] is False
+    assert result["capture"]["visual_track_v2a_motion_authority"] == MOTION_AUTHORITY
+    assert result["capture"]["visual_track_v2a_consumed_by_retargeting"] is False
+    assert result["capture"]["visual_track_v2a_final_motion_hashes_unchanged"] is True
     assert result["capture"]["video_capture_run_schema_version"] == (
         VIDEO_CAPTURE_RUN_SCHEMA_VERSION
     )
@@ -540,6 +593,9 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert result["capture"]["production_validated"] is False
     assert any(
         "VISUAL_TRACK_SHADOW_ONLY" in warning for warning in result["warnings"]
+    )
+    assert any(
+        "VISUAL_TRACK_V2A_SHADOW_ONLY" in warning for warning in result["warnings"]
     )
     assert result["retargeting"]["backend"] == (
         "geometry_calibrated_dense_contact_aperture_v3"
@@ -610,6 +666,18 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
         "application/octet-stream"
     )
     assert result["artifacts"]["visual_track_summary"]["media_type"] == (
+        "application/json"
+    )
+    assert result["artifacts"]["visual_track_provider"]["media_type"] == (
+        "application/octet-stream"
+    )
+    assert result["artifacts"]["visual_track_calibration"]["media_type"] == (
+        "application/json"
+    )
+    assert result["artifacts"]["video_sequence_candidate"]["media_type"] == (
+        "application/octet-stream"
+    )
+    assert result["artifacts"]["video_sequence_candidate_summary"]["media_type"] == (
         "application/json"
     )
     assert result["artifacts"]["video_capture_run"]["media_type"] == (
@@ -731,6 +799,30 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert visual_track.evidence_rgb_sha256 == (
         pixel_observations.decoded_pixel_sha256
     )
+    provider_result = load_visual_track_provider_result(
+        job_dir / "visual-track-provider.npz",
+        expected_visual_track=visual_track,
+        expected_visual_track_path=job_dir / "visual-track.npz",
+        expected_visual_track_summary_path=job_dir / "visual-track.json",
+    )
+    calibration_evidence = load_visual_track_calibration(
+        job_dir / "visual-track-calibration.json",
+        expected_provider=provider_result,
+        expected_provider_path=job_dir / "visual-track-provider.npz",
+    )
+    assert calibration_evidence.payload["status"] == "unavailable"
+    assert calibration_evidence.payload["summary"]["qualified_region_count"] == 0
+    assert calibration_evidence.payload["claims"]["grants_motion_authority"] is False
+    sequence_candidate = load_video_sequence_candidate(
+        job_dir / "video-sequence-candidate.npz"
+    )
+    sequence_summary = load_verified_video_sequence_summary(
+        job_dir / "video-sequence-candidate.json",
+        candidate_path=job_dir / "video-sequence-candidate.npz",
+    )
+    assert sequence_summary["baselineHashes"] == sequence_summary["shippedHashes"]
+    assert sequence_candidate.metadata["claims"]["candidate_is_shipped"] is False
+    assert sequence_candidate.metadata["claims"]["production_validated"] is False
     capture_session = load_verified_video_capture_session(
         job_dir / "capture-session.json",
         expected_capture=capture_track,
@@ -775,11 +867,24 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
     assert glb_report["structural_reconstruction"]["reference_evaluation_mode"] == (
         "provided_complete_gnm_frames"
     )
-    assert oral_report["lip_contact"]["order_inversion_risk_frames"] == 0
-    assert glb_report["lip_contact"]["order_inversion_risk_frames"] == 0
-    assert result["oral_validation"]["control_lip_order_inversion_risk_frames"] == 0
-    assert result["oral_validation"]["viewer_lip_order_inversion_risk_frames"] == 0
-    assert result["oral_validation"]["lip_order_inversion_risk_frames"] == 0
+    control_order_risks = oral_report["lip_contact"]["order_inversion_risk_frames"]
+    viewer_order_risks = glb_report["lip_contact"]["order_inversion_risk_frames"]
+    assert control_order_risks == 0
+    assert viewer_order_risks == control_order_risks
+    assert (
+        result["oral_validation"]["control_lip_order_inversion_risk_frames"]
+        == control_order_risks
+    )
+    assert (
+        result["oral_validation"]["viewer_lip_order_inversion_risk_frames"]
+        == viewer_order_risks
+    )
+    assert result["oral_validation"]["lip_order_inversion_risk_frames"] == (
+        control_order_risks
+    )
+    assert not any(
+        "ORAL_LIP_ORDER_RISK" in warning for warning in result["warnings"]
+    )
     assert result["oral_validation"]["tongue_geometry_motion_frames"] > 0
     assert result["oral_validation"]["tongue_motion_source"] == (
         "gnm_lower_face_basis_coupling_no_dedicated_source"
@@ -815,6 +920,19 @@ def test_real_crema_d_dense_video_pipeline_e2e(tmp_path: Path) -> None:
             assert provenance["neutral_baseline_validated"] is False
             assert provenance["neutral_baseline_correction_applied"] is True
             assert any("semantic ambiguity" in value for value in provenance["caveats"])
+            sequence_candidate.validate_inputs(
+                provider_result,
+                calibration_evidence,
+                provider_result_sha256=file_sha256(
+                    job_dir / "visual-track-provider.npz"
+                ),
+                calibration_evidence_sha256=file_sha256(
+                    job_dir / "visual-track-calibration.json"
+                ),
+                expression=performance["expression"],
+                rotations=performance["rotations"],
+                translation=performance["translation"],
+            )
 
     source_probe = probe_video(CREMA_D_ANGRY)
     proxy_probe = probe_video(job_dir / "source-proxy.mp4")

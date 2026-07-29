@@ -14,3 +14,4 @@ output/
 .DS_Store
 gnm/shape/build/
 native/a2f-runner/.build/
+.gstack/

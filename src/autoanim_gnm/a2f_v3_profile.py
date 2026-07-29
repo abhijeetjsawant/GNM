@@ -85,6 +85,8 @@ class OfficialV3ClaireProfile:
     required_sdk_revision: str
     skin_pose_names: tuple[str, ...]
     tongue_pose_names: tuple[str, ...]
+    skin_zero_input_offsets: tuple[float, ...]
+    tongue_zero_input_offsets: tuple[float, ...]
     skin_minimums: tuple[float, ...]
     skin_maximums: tuple[float, ...]
     tongue_minimums: tuple[float, ...]
@@ -175,7 +177,7 @@ def _pose_names(path: Path, *, expected_count: int, label: str) -> tuple[str, ..
 
 def _solver_ranges(
     path: Path, *, expected_count: int, label: str
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
+) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
     document = _read_json(path, label)
     try:
         parameters = document["blendshape_params"]
@@ -203,6 +205,7 @@ def _solver_ranges(
     minimums = np.minimum(offsets, transformed)
     maximums = np.maximum(offsets, transformed)
     return (
+        tuple(float(value) for value in offsets),
         tuple(float(value) for value in minimums),
         tuple(float(value) for value in maximums),
     )
@@ -287,12 +290,12 @@ def load_official_v3_claire_profile(
             "OFFICIAL_CONTROL_SCHEMA_MISMATCH",
             "Claire tongue control ordering differs from the pinned worker ABI",
         )
-    tongue_minimums, tongue_maximums = _solver_ranges(
+    tongue_zero_input_offsets, tongue_minimums, tongue_maximums = _solver_ranges(
         root / "bs_tongue_config_Claire.json",
         expected_count=16,
         label="Claire tongue",
     )
-    skin_minimums, skin_maximums = _solver_ranges(
+    skin_zero_input_offsets, skin_minimums, skin_maximums = _solver_ranges(
         root / "bs_skin_config_Claire.json",
         expected_count=52,
         label="Claire skin",
@@ -307,6 +310,8 @@ def load_official_v3_claire_profile(
         required_sdk_revision=A2F_V3_SDK_REVISION,
         skin_pose_names=skin_names,
         tongue_pose_names=tongue_names,
+        skin_zero_input_offsets=skin_zero_input_offsets,
+        tongue_zero_input_offsets=tongue_zero_input_offsets,
         skin_minimums=skin_minimums,
         skin_maximums=skin_maximums,
         tongue_minimums=tongue_minimums,

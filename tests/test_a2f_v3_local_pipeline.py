@@ -18,6 +18,7 @@ import pytest
 
 from autoanim_gnm.a2f_v3_local import LOCAL_V3_EMOTION_NAMES
 from autoanim_gnm.a2f_v3_postprocess import ClaireV3PostprocessChunk
+from autoanim_gnm.articulation_projection import articulation_array_sha256
 from autoanim_gnm.audio import EmotionAnalysis, ProsodyTrack
 from autoanim_gnm.audio_pipeline import (
     _local_v3_emotion_vector,
@@ -329,6 +330,10 @@ def test_local_v3_fast_pipeline_writes_bound_controls_and_honest_run_evidence(
     profile = SimpleNamespace(
         skin_pose_names=skin_pose_names,
         tongue_pose_names=("tongueOut",),
+        skin_zero_input_offsets=(0.0,) * len(skin_pose_names),
+        tongue_zero_input_offsets=(0.2,),
+        skin_minimums=(0.0,) * len(skin_pose_names),
+        tongue_minimums=(0.2,),
         as_dict=lambda: {"identity": "Claire", "hash_verified": True},
     )
 
@@ -386,11 +391,24 @@ def test_local_v3_fast_pipeline_writes_bound_controls_and_honest_run_evidence(
             tongue_weights: np.ndarray,
             tongue_pose_names: tuple[str, ...],
         ) -> np.ndarray:
-            assert skin.shape == (frame_count, len(skin_pose_names))
+            assert skin.ndim == 2 and skin.shape[1] == len(skin_pose_names)
             assert skin_names == profile.skin_pose_names
-            assert tongue_weights.shape == (frame_count, 1)
+            assert tongue_weights.shape == (len(skin), 1)
             assert tongue_pose_names == profile.tongue_pose_names
-            return np.zeros((frame_count, 383), dtype=np.float32)
+            result = np.zeros((len(skin), 383), dtype=np.float32)
+            if len(skin) == 1:
+                np.testing.assert_array_equal(
+                    skin[0],
+                    np.asarray(profile.skin_zero_input_offsets, dtype=np.float32),
+                )
+                np.testing.assert_array_equal(
+                    tongue_weights[0],
+                    np.asarray(
+                        profile.tongue_zero_input_offsets, dtype=np.float32
+                    ),
+                )
+                result[0, 365] = np.float32(0.37)
+            return result
 
     def fake_consume(
         audio_path: Path,
@@ -478,6 +496,19 @@ def test_local_v3_fast_pipeline_writes_bound_controls_and_honest_run_evidence(
         "validated_v3_model_conditioning_only"
     )
     assert result["analysis"]["emotion_strength"] == pytest.approx(0.4)
+    neutral_handling = result["analysis"]["source_neutral_handling"]
+    assert neutral_handling["schema_version"] == (
+        "autoanim.learned-source-neutral-handling/1.0"
+    )
+    assert neutral_handling["policy"] == (
+        "neutral_relative_absolute_oral_gate_v1"
+    )
+    assert neutral_handling["source_control_semantics"] == (
+        "neutral_relative_absolute"
+    )
+    assert neutral_handling["rest_subtracted"] is False
+    assert neutral_handling["oral_gate_full_frames"] == frame_count
+    assert neutral_handling["oral_gate_transition_frames"] == 0
     local_run = result["analysis"]["local_sequence_run"]
     assert local_run["genuine_v3_onnx_inference"] is False
     assert local_run["official_sdk_runtime"] is False
@@ -487,8 +518,10 @@ def test_local_v3_fast_pipeline_writes_bound_controls_and_honest_run_evidence(
     assert result["animation"]["production_validated"] is False
 
     run_path = output / "a2f-v3-local-run.json"
-    controls_path = output / "arkit_controls.npz"
+    source_controls_path = output / "arkit_controls.npz"
+    controls_path = output / "controls.npz"
     assert run_path.is_file()
+    assert source_controls_path.is_file()
     assert controls_path.is_file()
     retained_run = json.loads(run_path.read_text(encoding="utf-8"))
     assert retained_run["schema_version"] == local_run["schema_version"]
@@ -506,8 +539,13 @@ def test_local_v3_fast_pipeline_writes_bound_controls_and_honest_run_evidence(
         "requested_strength": 0.4,
     }
     assert retained_run["artifacts"]["controls_sha256"]
+    expected_provider_neutral = np.zeros(383, dtype=np.float32)
+    expected_provider_neutral[365] = np.float32(0.37)
+    assert retained_run["artifacts"][
+        "provider_neutral_expression_sha256"
+    ] == articulation_array_sha256(expected_provider_neutral)
     assert result["artifacts"]["a2f_v3_local_run"] == run_path.name
-    with np.load(controls_path, allow_pickle=False) as controls:
+    with np.load(source_controls_path, allow_pickle=False) as controls:
         np.testing.assert_array_equal(controls["timestamps"], source_timestamps)
         assert controls["skin_weights"].shape == (
             frame_count,
@@ -516,6 +554,14 @@ def test_local_v3_fast_pipeline_writes_bound_controls_and_honest_run_evidence(
         assert controls["tongue_weights"].shape == (frame_count, 1)
         assert controls["jaw_transform_row_major"].shape == (frame_count, 16)
         assert controls["eye_rotations_degrees"].shape == (frame_count, 2, 2)
+        np.testing.assert_array_equal(
+            controls["provider_neutral_expression"],
+            expected_provider_neutral,
+        )
+    with np.load(controls_path, allow_pickle=False) as controls:
+        gate = controls["source_oral_gate"]
+        assert gate.shape == (frame_count,)
+        np.testing.assert_array_equal(gate, np.ones(frame_count, dtype=np.float32))
 
 
 def test_local_v3_profile_tamper_fails_closed_without_fallback_artifacts(

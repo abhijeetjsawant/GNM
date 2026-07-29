@@ -5,10 +5,12 @@
 //! exactly instead of lagging behind the authored animation.
 
 mod kernel;
+mod soft_contact;
 mod solver;
 mod topology;
 
 pub use kernel::{Capabilities, MathKernelKind, MathKernelRequest, apply_inertial_predictor};
+pub use soft_contact::{SoftContactConfig, SoftContactReport, SoftContactSimulator};
 pub use solver::{PhysicsConfig, SimulationReport, Simulator};
 pub use topology::{Edge, Neighbor, PhysicsTopology};
 

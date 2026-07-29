@@ -84,6 +84,26 @@ from .visual_track import (
     write_visual_track,
     write_visual_track_summary,
 )
+from .visual_track_calibration import (
+    VISUAL_TRACK_CALIBRATION_POLICY,
+    VISUAL_TRACK_CALIBRATION_SCHEMA_VERSION,
+    build_unavailable_calibration_evidence,
+    write_visual_track_calibration,
+)
+from .visual_track_provider import (
+    VISUAL_TRACK_PROVIDER_POLICY,
+    VISUAL_TRACK_PROVIDER_SCHEMA_VERSION,
+    build_visual_track_provider_result,
+    write_visual_track_provider_result,
+)
+from .video_sequence_solve import (
+    VIDEO_SEQUENCE_CANDIDATE_SCHEMA_VERSION,
+    VIDEO_SEQUENCE_POLICY,
+    VIDEO_SEQUENCE_SUMMARY_SCHEMA_VERSION,
+    build_shadow_video_sequence_candidate,
+    write_video_sequence_candidate,
+    write_video_sequence_summary,
+)
 from .video_retarget import (
     FAST_CONTACT_CONTROLS,
     NEUTRAL_CALIBRATION_CAVEAT,
@@ -310,6 +330,9 @@ def _apply_video_mouth_aperture_edit(
             "reason": reason,
             "config": asdict(config),
             "bindings": {
+                "aperture_metric": "gnm_v3_58_vertex_exterior_mouth_boundary",
+                "mouth_boundary_set_sha256": correction.mouth_boundary_set_sha256,
+                "mouth_boundary_cycle_sha256": correction.mouth_boundary_cycle_sha256,
                 "source_sha256": source_sha256,
                 "model_sha256": model_sha256,
                 "identity_sha256": correction.identity_sha256,
@@ -966,6 +989,22 @@ def _run_video_pipeline_impl(
     visual_track_summary_path = write_visual_track_summary(
         output / "visual-track.json", visual_track
     )
+    visual_track_provider = build_visual_track_provider_result(
+        visual_track,
+        visual_track_v1_sha256=_file_sha256(visual_track_path),
+        visual_track_v1_summary_sha256=_file_sha256(visual_track_summary_path),
+    )
+    visual_track_provider_path = write_visual_track_provider_result(
+        output / "visual-track-provider.npz", visual_track_provider
+    )
+    visual_track_calibration = build_unavailable_calibration_evidence(
+        visual_track_provider,
+        provider_result_sha256=_file_sha256(visual_track_provider_path),
+        reason="retained_video_has_no_independent_frame_level_regional_labels",
+    )
+    visual_track_calibration_path = write_visual_track_calibration(
+        output / "visual-track-calibration.json", visual_track_calibration
+    )
     capture_session_path = write_video_capture_session(
         output / "capture-session.json",
         capture,
@@ -1266,6 +1305,40 @@ def _run_video_pipeline_impl(
         }
     )
     final_expression_sha256 = _array_sha256(performance.expression)
+    final_rotations_sha256 = _array_sha256(performance.rotations)
+    final_translation_sha256 = _array_sha256(performance.translation)
+    shadow_sequence = build_shadow_video_sequence_candidate(
+        visual_track_provider,
+        visual_track_calibration,
+        provider_result_sha256=_file_sha256(visual_track_provider_path),
+        calibration_evidence_sha256=_file_sha256(visual_track_calibration_path),
+        expression=performance.expression,
+        rotations=performance.rotations,
+        translation=performance.translation,
+        hard_anchor_mask=(
+            performance.contact_correction_applied | performance.lip_contact_attained
+        ),
+    )
+    shadow_sequence_path = write_video_sequence_candidate(
+        output / "video-sequence-candidate.npz", shadow_sequence
+    )
+    shadow_sequence_summary_path = write_video_sequence_summary(
+        output / "video-sequence-candidate.json",
+        shadow_sequence,
+        candidate_sha256=_file_sha256(shadow_sequence_path),
+    )
+    if (
+        _array_sha256(performance.expression) != final_expression_sha256
+        or _array_sha256(performance.rotations) != final_rotations_sha256
+        or _array_sha256(performance.translation) != final_translation_sha256
+        or shadow_sequence.metadata["bindings"]["shipped_expression_sha256"]
+        != final_expression_sha256
+        or shadow_sequence.metadata["bindings"]["shipped_rotations_sha256"]
+        != final_rotations_sha256
+        or shadow_sequence.metadata["bindings"]["shipped_translation_sha256"]
+        != final_translation_sha256
+    ):
+        raise RuntimeError("VisualTrack V2a shadow solve changed final GNM motion")
     revision_chain = {
         "schemaVersion": "autoanim.performance-revision-chain.v1",
         "status": "candidate_unqualified" if audio_visual_repair is not None else "visual_only",
@@ -1376,6 +1449,9 @@ def _run_video_pipeline_impl(
         "VISUAL_TRACK_SHADOW_ONLY: exact source PTS and detector-ingress frame hashes "
         "are retained for review, but VisualTrack has no motion authority and specialized "
         "regional confidence remains unknown until calibrated providers are qualified.",
+        "VISUAL_TRACK_V2A_SHADOW_ONLY: provider-neutral regional evidence, an explicit "
+        "unavailable calibration record, and an offline bidirectional GNM candidate are "
+        "retained without changing or replacing final animation controls.",
     ]
     if audio_video_timing is not None and audio_visual_repair is None:
         timing_status = str(audio_video_timing["status"])
@@ -1679,7 +1755,7 @@ def _run_video_pipeline_impl(
         )
     if lip_order_risk_frames:
         warnings.append(
-            "ORAL_LIP_ORDER_RISK: structurally inverted inner-lip landmark ordering was "
+            "ORAL_LIP_ORDER_RISK: structurally inverted rendered mouth-boundary or sparse-lip ordering was "
             "measured in the control track or reconstructed viewer; inspect those frames "
             "before approval."
         )
@@ -1787,6 +1863,28 @@ def _run_video_pipeline_impl(
             "visual_track_motion_authority": MOTION_AUTHORITY,
             "visual_track_consumed_by_retargeting": False,
             "visual_track_detector_ingress_hashes_verified": True,
+            "visual_track_provider_schema_version": (
+                VISUAL_TRACK_PROVIDER_SCHEMA_VERSION
+            ),
+            "visual_track_provider_policy": VISUAL_TRACK_PROVIDER_POLICY,
+            "visual_track_calibration_schema_version": (
+                VISUAL_TRACK_CALIBRATION_SCHEMA_VERSION
+            ),
+            "visual_track_calibration_policy": VISUAL_TRACK_CALIBRATION_POLICY,
+            "visual_track_calibration_status": visual_track_calibration.payload[
+                "status"
+            ],
+            "video_sequence_candidate_schema_version": (
+                VIDEO_SEQUENCE_CANDIDATE_SCHEMA_VERSION
+            ),
+            "video_sequence_summary_schema_version": (
+                VIDEO_SEQUENCE_SUMMARY_SCHEMA_VERSION
+            ),
+            "video_sequence_policy": VIDEO_SEQUENCE_POLICY,
+            "video_sequence_candidate_is_shipped": False,
+            "visual_track_v2a_motion_authority": MOTION_AUTHORITY,
+            "visual_track_v2a_consumed_by_retargeting": False,
+            "visual_track_v2a_final_motion_hashes_unchanged": True,
             "video_capture_run_schema_version": VIDEO_CAPTURE_RUN_SCHEMA_VERSION,
             "capture_session_schema_version": CAPTURE_SESSION_SCHEMA_VERSION,
             "production_validated": False,
@@ -2035,6 +2133,10 @@ def _run_video_pipeline_impl(
             "video_capture_run": "video-capture-run.json",
             "visual_track": "visual-track.npz",
             "visual_track_summary": "visual-track.json",
+            "visual_track_provider": "visual-track-provider.npz",
+            "visual_track_calibration": "visual-track-calibration.json",
+            "video_sequence_candidate": "video-sequence-candidate.npz",
+            "video_sequence_candidate_summary": "video-sequence-candidate.json",
             "capture_session": "capture-session.json",
             "controls": "performance.npz",
             "controls_jsonl": "performance.jsonl",

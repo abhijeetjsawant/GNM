@@ -194,7 +194,17 @@ def export_gnm_glb(
             raise FileNotFoundError(texture)
         with Image.open(texture) as opened:
             image = opened.convert("RGBA").copy()
-        visual = trimesh.visual.TextureVisuals(uv=split.uvs, image=image)
+        material = trimesh.visual.material.PBRMaterial(
+            name="GNM_Head_3_0_Material",
+            baseColorTexture=image,
+            # Trimesh's implicit SimpleMaterial conversion uses a 0.4 diffuse
+            # factor. glTF multiplies that factor into the texture, making
+            # measured/photo-baked skin much darker than the retained pixels.
+            baseColorFactor=(1.0, 1.0, 1.0, 1.0),
+            metallicFactor=0.0,
+            roughnessFactor=0.9,
+        )
+        visual = trimesh.visual.TextureVisuals(uv=split.uvs, material=material)
 
     mesh = trimesh.Trimesh(
         vertices=split.positions,

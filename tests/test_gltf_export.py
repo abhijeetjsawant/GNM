@@ -69,6 +69,11 @@ def test_texture_is_embedded_without_changing_topology(tmp_path, adapter: GNMAda
     assert geometry.vertices.shape == (18_437, 3)
     assert geometry.visual.kind == "texture"
     assert geometry.visual.material.baseColorTexture.size == (8, 8)
+    np.testing.assert_array_equal(
+        geometry.visual.material.baseColorFactor,
+        np.asarray((255, 255, 255, 255), dtype=np.uint8),
+    )
+    assert geometry.visual.material.metallicFactor == 0.0
 
 
 def test_animated_glb_embeds_character_texture(tmp_path, adapter: GNMAdapter):

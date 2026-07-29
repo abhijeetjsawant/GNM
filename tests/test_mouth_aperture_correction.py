@@ -101,7 +101,7 @@ def test_slight_opening_reaches_its_declared_geometry_target(rig: ControlRig) ->
         assert report.maximum_coefficient_delta > 0.0
 
 
-def test_authored_opening_is_locally_reduced_at_the_final_quality_step_limit(
+def test_authored_opening_is_locally_reduced_by_the_velocity_envelope(
     rig: ControlRig,
 ) -> None:
     expression = np.stack(
@@ -113,7 +113,7 @@ def test_authored_opening_is_locally_reduced_at_the_final_quality_step_limit(
     )
     track = _track(rig, expression)
     track["timestamps_seconds"] = np.arange(3, dtype=np.float64) * 0.1
-    maximum_speed = 0.35
+    maximum_speed = 0.05
     result = _call(
         track,
         config=MouthApertureConfig(
@@ -124,15 +124,21 @@ def test_authored_opening_is_locally_reduced_at_the_final_quality_step_limit(
 
     assert 0.0 < result.final_continuity_scale[1] < 1.0
     assert "final_mouth_step_continuity" in result.reports[1].bounds
+    assert "target_unattained" in result.reports[1].bounds
     assert not result.reports[1].target_attained
     assert result.expression[0].tobytes() == expression[0].tobytes()
     assert result.expression[2].tobytes() == expression[2].tobytes()
-    assert max(
+    revised_maximum_step = max(
         _mouth_step_quality_ratio(rig, result.expression[index - 1], result.expression[index])
         for index in range(1, len(expression))
-    ) <= maximum_speed * 0.1 + 1.0e-7
+    )
+    original_maximum_step = max(
+        _mouth_step_quality_ratio(rig, expression[index - 1], expression[index])
+        for index in range(1, len(expression))
+    )
+    assert revised_maximum_step <= original_maximum_step + 1.0e-7
     assert result.final_continuity_limit_interocular == pytest.approx(
-        maximum_speed * 0.1
+        original_maximum_step
     )
     assert result.final_continuity_speed_interocular_per_second == maximum_speed
 
@@ -172,8 +178,9 @@ def test_authored_mouth_aperture_speed_has_30_60_time_parity(
         )
         observed_speeds[fps] = float(np.max(speeds))
 
-        assert np.count_nonzero(result.final_continuity_scale < 1.0 - 1.0e-6) > 0
-        assert maximum_speed - 1.0e-4 <= observed_speeds[fps] <= maximum_speed + 1.0e-5
+        assert np.count_nonzero(result.correction_applied) == len(expression)
+        assert np.all(result.final_continuity_scale == 1.0)
+        assert 0.05 <= observed_speeds[fps] <= maximum_speed + 1.0e-5
         assert result.final_continuity_limit_interocular == pytest.approx(
             maximum_speed / fps,
             abs=1.0e-12,

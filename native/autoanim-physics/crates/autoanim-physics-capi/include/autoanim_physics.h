@@ -10,6 +10,7 @@ extern "C" {
 
 typedef struct AaPhysicsTopology AaPhysicsTopology;
 typedef struct AaPhysicsSimulator AaPhysicsSimulator;
+typedef struct AaSoftContactSimulator AaSoftContactSimulator;
 
 typedef struct AaPhysicsConfig {
   float frames_per_second;
@@ -21,6 +22,19 @@ typedef struct AaPhysicsConfig {
   float max_displacement_m;
   float jacobi_relaxation;
 } AaPhysicsConfig;
+
+typedef struct AaSoftContactConfig {
+  float frames_per_second;
+  uint32_t substeps;
+  uint32_t iterations;
+  float edge_compliance;
+  float volume_compliance;
+  float tether_compliance;
+  float contact_compliance;
+  float contact_thickness_m;
+  float contact_activation_distance_m;
+  float max_displacement_m;
+} AaSoftContactConfig;
 
 AaPhysicsConfig aa_physics_default_config(void);
 const char *aa_physics_last_error_message(void);
@@ -42,6 +56,22 @@ int32_t aa_physics_simulate_chunk(AaPhysicsSimulator *simulator,
                                   size_t output_count);
 size_t aa_physics_report_json(const AaPhysicsSimulator *simulator, char *buffer,
                               size_t capacity);
+
+AaSoftContactConfig aa_soft_contact_default_config(void);
+AaSoftContactSimulator *aa_soft_contact_simulator_create(
+    const float *rest_positions, size_t rest_position_count,
+    const uint32_t *surface_triangles, size_t surface_triangle_count,
+    const uint32_t *tetrahedra, size_t tetrahedron_count,
+    const uint32_t *contact_pairs, size_t contact_pair_count,
+    const float *inverse_masses, size_t inverse_mass_count,
+    AaSoftContactConfig config);
+void aa_soft_contact_simulator_destroy(AaSoftContactSimulator *simulator);
+int32_t aa_soft_contact_simulate_chunk(AaSoftContactSimulator *simulator,
+                                       const float *targets,
+                                       size_t target_count, float *output,
+                                       size_t output_count);
+size_t aa_soft_contact_report_json(const AaSoftContactSimulator *simulator,
+                                   char *buffer, size_t capacity);
 
 #ifdef __cplusplus
 }

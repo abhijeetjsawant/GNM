@@ -475,6 +475,7 @@ def create_app(
         focal_scale: float = Form(1.25),
         mirror_fill: bool = Form(False),
         calibration: UploadFile | None = File(None),
+        calibration_observations: UploadFile | None = File(None),
     ):
         if not operation_lock.acquire(blocking=False):
             return _error_response(
@@ -482,6 +483,7 @@ def create_app(
             )
         temporary: list[Path] = []
         retained_calibration: Path | None = None
+        retained_calibration_observations: Path | None = None
         try:
             if not 2 <= len(files) <= 12:
                 raise AutoAnimError("INPUT_INVALID", "Upload 2-12 ordered face photos")
@@ -499,6 +501,10 @@ def create_app(
                 retained_calibration = _retain_upload(
                     calibration, max_bytes=1_000_000
                 )
+            if calibration_observations is not None:
+                retained_calibration_observations = _retain_upload(
+                    calibration_observations, max_bytes=16 * 1024 * 1024
+                )
             return service.multiview(
                 temporary,
                 roles=parsed_roles or None,
@@ -507,6 +513,7 @@ def create_app(
                 mirror_fill=mirror_fill,
                 input_names=tuple(upload.filename or f"view-{index + 1}.bin" for index, upload in enumerate(files)),
                 camera_bundle_path=retained_calibration,
+                calibration_observations_path=retained_calibration_observations,
             )
         except AutoAnimError as exc:
             return _error_response(exc)
@@ -515,6 +522,8 @@ def create_app(
                 path.unlink(missing_ok=True)
             if retained_calibration is not None:
                 retained_calibration.unlink(missing_ok=True)
+            if retained_calibration_observations is not None:
+                retained_calibration_observations.unlink(missing_ok=True)
             operation_lock.release()
 
     @app.post("/api/video", status_code=201)
@@ -1557,7 +1566,7 @@ UI_HTML = r"""<!doctype html>
       <label for="backend">Motion backend</label><select id="backend" name="backend"><option value="a2f-v3-local">Local v3 · temporal 60 Hz candidate</option><option value="auto">Auto · v2.3 learned preferred</option><option value="learned">v2.3 learned · require Audio2Face</option><option value="fallback">Procedural fallback</option></select>
       <label for="emotion">Emotion</label><select id="emotion" name="emotion"><option>auto</option><option>neutral</option><option>joy</option><option>sad</option><option>anger</option><option>fear</option><option>disgust</option><option>surprise</option><option>contempt</option></select>
       <label for="emotion-strength">Acting strength</label><input id="emotion-strength" name="emotion_strength" type="range" min="0" max="1" step="0.05" value="0.65">
-      <label for="audio-mouth-aperture">Mouth opening correction · <output id="audio-mouth-aperture-value">1.00×</output></label><input id="audio-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.25" step="0.01" value="1"><small>1.00 is byte-exact off. Higher values request a bounded, contact-preserving geometry edit; they do not scale all mouth controls.</small>
+      <label for="audio-mouth-aperture">Mouth opening preview · <output id="audio-mouth-aperture-value">1.00×</output></label><input id="audio-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.5" step="0.01" value="1"><small>1.00 preserves the model byte-for-byte. 1.15 is a conservative topology-bound artist preview and 1.25 is stronger. Neither is a production default until the legacy lip-contact solve is rebuilt against the same rendered mouth boundary.</small>
       <label for="audio-mouth-author">Edit author (required above 1.00)</label><input id="audio-mouth-author" name="mouth_aperture_author" maxlength="160" placeholder="Artist or operator">
       <label for="audio-mouth-reason">Edit reason (required above 1.00)</label><textarea id="audio-mouth-reason" name="mouth_aperture_reason" maxlength="500" placeholder="Example: source performance reads too closed on this character"></textarea>
       <label for="audio-phone-textgrid">Phone timing evidence (optional)</label><input id="audio-phone-textgrid" name="phone_textgrid" type="file" accept=".TextGrid,text/plain"><small>Praat/MFA long TextGrid. Imported evidence is scored and retained but does not alter motion in this phase.</small>
@@ -1575,17 +1584,18 @@ UI_HTML = r"""<!doctype html>
     <form class="card" id="multiview-form"><h2>Multi-view → textured GNM</h2><p>One shared identity from ordered front, ¾, and profile captures, with directly observed texture clearly separated from filled regions.</p>
       <label for="multiview-files">Ordered face photos</label><input id="multiview-files" name="files" type="file" accept="image/png,image/jpeg,image/webp" multiple required>
       <label for="multiview-roles">Roles, in file order</label><input id="multiview-roles" name="roles" placeholder="front,left_3q,right_3q,left_profile,right_profile">
-      <label for="multiview-calibration">Calibrated camera bundle (optional)</label><input id="multiview-calibration" name="calibration" type="file" accept="application/json,.json"><small>I0 identity-capture evidence requires two independent sessions, each with at least 5 fit and 2 held-out cameras spanning 120°. A bundle here establishes declaration and coverage evidence only; it cannot validate identity, scan accuracy, PBR, texture, or production readiness. Filenames and upload order must match exactly.</small>
+      <label for="multiview-calibration">Calibrated camera bundle (optional)</label><input id="multiview-calibration" name="calibration" type="file" accept="application/json,.json"><small>I0 identity-capture evidence requires two independent sessions, each with at least 5 fit and 2 held-out cameras spanning 120°. Filenames and upload order must match exactly.</small>
+      <label for="multiview-calibration-observations">Calibration target observations (optional)</label><input id="multiview-calibration-observations" name="calibration_observations" type="file" accept="application/json,.json"><small>Strict I0.1 checkerboard/Charuco observations bound to the exact bundle. Fit frames recompute intrinsics and rig poses; held-out frames are scored only after the solve. Without this file, raw calibration readiness remains false.</small>
       <label for="texture-size">Texture atlas</label><select id="texture-size" name="texture_size"><option value="256">256 · test / fast</option><option value="512">512 · review</option><option value="1024">1024 · high detail</option><option value="128">128 · diagnostic</option></select>
       <input name="focal_scale" type="hidden" value="1.25">
       <button>Build textured face</button><div class="status"></div><div class="result"></div>
     </form>
-    <form class="card" id="video-form"><h2>Video → performance</h2><p>Frame-accurate MediaPipe VIDEO tracking drives expression, head pose, translation, and gaze while keeping identity fixed. Begin with at least 0.2 seconds looking forward with a neutral face for tracker-bias calibration.</p>
+    <form class="card" id="video-form"><h2>Video → performance</h2><p>Frame-accurate MediaPipe VIDEO tracking drives expression, head pose, translation, and gaze while keeping the selected character identity fixed. This captures acting; it does not reconstruct the performer's face or skin. Begin with at least 0.2 seconds looking forward with a neutral face for tracker-bias calibration.</p>
       <label for="video-file">Face performance video</label><input id="video-file" name="file" type="file" accept="video/*" required>
       <label for="video-character">Target character</label><select id="video-character" class="character-select" name="character_id"><option value="">Default neutral GNM</option></select>
       <label for="video-scope">Intended use</label><select id="video-scope" class="usage-scope" name="usage_scope"><option value="production">Production</option><option value="commercial">Commercial</option><option value="personal">Personal</option><option value="research">Research</option></select>
       <label><input id="audio-visual-repair" style="width:auto" type="checkbox" name="audio_visual_repair" value="true"> Conservative learned audio repair · candidate</label><small>Off by default. Video keeps head, gaze, upper-face acting, reliable mouth shapes, and visible contacts. Learned audio uses a global tracker-quality heuristic to repair weak/missing lip evidence and supplies an unvalidated dedicated tongue track.</small>
-      <label for="video-mouth-aperture">Mouth opening correction · <output id="video-mouth-aperture-value">1.00×</output></label><input id="video-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.25" step="0.01" value="1"><small>Video remains authoritative. Confirmed closures are protected, and 1.00 preserves the retarget byte-for-byte.</small>
+      <label for="video-mouth-aperture">Mouth opening correction · <output id="video-mouth-aperture-value">1.00×</output></label><input id="video-mouth-aperture" name="mouth_aperture_gain" type="range" min="1" max="1.5" step="0.01" value="1"><small>Video remains authoritative, so 1.00 is the source-faithful default. Use up to 1.25 only when tracking reads too closed; higher values are review-only. Confirmed closures remain protected.</small>
       <label for="video-mouth-author">Edit author (required above 1.00)</label><input id="video-mouth-author" name="mouth_aperture_author" maxlength="160" placeholder="Artist or operator">
       <label for="video-mouth-reason">Edit reason (required above 1.00)</label><textarea id="video-mouth-reason" name="mouth_aperture_reason" maxlength="500" placeholder="Example: increase open vowels without weakening visible bilabials"></textarea>
       <button>Capture performance</button><div class="status"></div><div class="result"></div>
@@ -1661,7 +1671,7 @@ async function appendProductionReadiness(data,result){
 for(const [formId,endpoint] of [['audio-form','/api/audio'],['image-form','/api/image'],['multiview-form','/api/multiview'],['video-form','/api/video'],['direction-form','/api/direction']]){
  const form=document.getElementById(formId),status=form.querySelector('.status'),result=form.querySelector('.result'),button=form.querySelector('button');
  form.addEventListener('submit',async event=>{event.preventDefault();button.disabled=true;status.className='status';status.textContent='Processing locally…';result.style.display='none';
-  try{const response=await fetch(endpoint,{method:'POST',body:new FormData(form)}),data=await response.json();if(!response.ok)throw new Error(`${data.code}: ${data.message}`);status.textContent=`Succeeded · ${data.job_id}`;result.innerHTML='';
+  try{const payload=new FormData(form);if(Number(payload.get('mouth_aperture_gain'))===1){payload.delete('mouth_aperture_author');payload.delete('mouth_aperture_reason')}const response=await fetch(endpoint,{method:'POST',body:payload}),data=await response.json();if(!response.ok)throw new Error(`${data.code}: ${data.message}`);status.textContent=`Succeeded · ${data.job_id}`;result.innerHTML='';
 	   if(data.kind==='audio_animation'){const q=document.createElement('div');q.className='quality';const backend=data.analysis.motion_backend||'',learned=backend==='learned_a2f',sequence=backend==='unverified_external_sequence_controls_candidate',localV3=backend==='local_a2f_v3_candidate_unqualified';const title=document.createElement('strong');title.textContent=localV3?'Genuine local v3 sequence · unqualified candidate':sequence?'Unverified external controls · claimed v3 profile':learned?'Learned face + tongue controls · geometry calibrated':'Procedural fallback · not production';q.append(title);const articulation=data.phone_articulation||null,families=articulation?.families||{},f1=value=>value?.classification?.f1==null?'n/a':value.classification.f1.toFixed(3),proxyFailureValues=articulation?.phone_span_proxy_gate?.failures||[],proxyFailures=proxyFailureValues.slice(0,3).map(name=>name.replaceAll('_',' ')),proxyFailureRemainder=proxyFailureValues.length-proxyFailures.length,articulationText=articulation?` Phone-span proxy diagnostics: P/B/M F1 ${f1(families.bilabial)}, F/V proximity F1 ${f1(families.labiodental)}, tongue/teeth proximity F1 ${f1(families.tongue_upper_teeth)}, rounding-width F1 ${f1(families.rounded)} · proxy gate ${articulation.phone_span_proxy_gate?.passed?'pass':'blocked'}${proxyFailures.length?` (${proxyFailures.join(', ')}${proxyFailureRemainder?`, +${proxyFailureRemainder} more`:''})`:''} · production blocked by schema.`:'';const detail=document.createElement('small');detail.textContent=`Stationary speech transitions ${(100*data.metrics.lower_face_stationary_fraction).toFixed(1)}% · mouth speed p95 ${data.metrics.mouth_speed_p95_interocular_per_second.toFixed(3)} IOD/s · absolute step p95 ${data.metrics.mouth_step_p95_interocular.toFixed(3)} IOD · limited frames ${data.metrics.mouth_speed_limited_frames}.${articulationText} Tongue collision and perceptual speech quality still require review. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);setActivePerformance(data.job_id,data.kind)}
    if(data.kind==='image_fit'){const q=document.createElement('div');q.className='quality';const title=document.createElement('strong');title.textContent=`Visible-geometry fit · ${data.fit.confidence} confidence`;q.append(title);const detail=document.createElement('small');detail.textContent=`Landmark NME ${data.fit.nme.toFixed(4)} · stability ${data.fit.stability_rms.toFixed(4)} · ${(100*data.fit.coefficient_bound_fraction).toFixed(1)}% coefficients at bounds. This neutral fit does not reconstruct hidden geometry or metric depth. ${data.warnings.join(' ')}`;q.append(detail);result.append(q);document.querySelector('#character-job').value=data.job_id}
 		   if(data.kind==='video_performance'){const q=document.createElement('div');q.className='quality';const repair=data.retargeting.audio_visual_repair||{status:'disabled'},repaired=repair.status!=='disabled';const title=document.createElement('strong');title.textContent=`Video performance · ${data.retargeting.geometry_calibrated?'geometry calibrated':'semantic fallback'}${repaired?' · audiovisual repair candidate':''}`;q.append(title);const contact=data.metrics.final_contact_geometry_attained_fraction;const contactText=contact===null?'no scored closure':`${(100*contact).toFixed(1)}% contact attained`;const aperture=data.metrics.final_lip_aperture_open_p95_ratio;const apertureText=aperture===null?'aperture n/a':`aperture amplitude ${(100*aperture).toFixed(1)}%`;const authority=repaired?`Visual head/gaze/upper face/reliable lips locked · audio changed ${repair.metrics.lowerFaceRepairedFrames} globally low-quality/missing-observation lower-face frames, drove ${repair.metrics.dedicatedTongueDrivenFrames} tongue frames, and diagnosed ${repair.metrics.audioVisualContactConflictFrames} trusted-frame contact disagreements. Candidate is not production validated.`:'Visual-only motion; audio is playback only and tongue is not inferred.';const detail=document.createElement('small');detail.textContent=`Face presence ${(100*data.metrics.face_presence_fraction).toFixed(1)}% · ${contactText} · ${apertureText} · expression timing ${data.metrics.final_expression_motion_correlation===null?'n/a':data.metrics.final_expression_motion_correlation.toFixed(3)} · baseline loss ${(100*data.metrics.negative_baseline_residual_clipped_fraction).toFixed(1)}% · proxy timing error ${data.metrics.proxy_pts_max_error_ms.toFixed(2)} ms. ${authority} ${data.warnings.join(' ')}`;q.append(detail);result.append(q);setActivePerformance(data.job_id,data.kind)}

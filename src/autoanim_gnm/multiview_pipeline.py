@@ -23,6 +23,7 @@ from .camera_bundle import (
     perspective_camera_from_calibration,
     project_calibrated_points,
 )
+from .calibration_evidence import recompute_calibration_evidence
 from .errors import AutoAnimError
 from .gltf_export import export_gnm_glb
 from .gnm_adapter import GNMAdapter
@@ -70,6 +71,10 @@ NEUTRAL_TEXTURE_CAVEAT = (
 CALIBRATED_CAPTURE_CAVEAT = (
     "Measured camera calibration and held-out views make the geometric audit stronger, but "
     "they do not establish performer consent, metric scan accuracy, or perceptual likeness."
+)
+UNVERIFIED_RAW_CALIBRATION_CAVEAT = (
+    "The uploaded camera bundle was not independently recomputed from retained target "
+    "observations; calibration_ready_for_identity_fit remains false."
 )
 
 HELDOUT_AGGREGATE_NME_GATE = 0.035
@@ -820,6 +825,7 @@ def run_multiview_pipeline(
     focal_scale: float = 1.25,
     mirror_fill: bool = False,
     camera_bundle_path: str | Path | None = None,
+    calibration_observations_path: str | Path | None = None,
     input_names: Sequence[str] | None = None,
 ) -> dict:
     """Fit one GNM identity and bake an auditable texture from 2-12 photos."""
@@ -871,6 +877,11 @@ def run_multiview_pipeline(
         )
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
+    if calibration_observations_path is not None and camera_bundle_path is None:
+        raise AutoAnimError(
+            "INPUT_INVALID",
+            "Calibration target observations require their exactly bound camera bundle",
+        )
 
     extractor = FaceExtractor(model_path)
     detections = []
@@ -885,6 +896,7 @@ def run_multiview_pipeline(
             ) from exc
 
     camera_bundle: CalibratedCameraBundle | None = None
+    calibration_evidence: dict | None = None
     if camera_bundle_path is not None:
         camera_bundle = load_camera_bundle(
             camera_bundle_path,
@@ -912,6 +924,22 @@ def run_multiview_pipeline(
                     "maximum_scale_error_fraction": CALIBRATION_SCALE_GATE_FRACTION,
                 },
             )
+        if calibration_observations_path is not None:
+            calibration_evidence = recompute_calibration_evidence(
+                calibration_observations_path,
+                camera_bundle=camera_bundle,
+            )
+            write_json(output / "calibration-evidence-report.json", calibration_evidence)
+            if not calibration_evidence["calibration_ready_for_identity_fit"]:
+                raise AutoAnimError(
+                    "FIT_REJECTED",
+                    "Independently recomputed camera calibration evidence failed closed before identity fitting.",
+                    {
+                        "failures": calibration_evidence["failures"],
+                        "report_sha256": calibration_evidence["report_sha256"],
+                        "production_validated": False,
+                    },
+                )
         detections = [
             _undistort_detection(detection, view)
             for detection, view in zip(detections, camera_bundle.views, strict=True)
@@ -1231,6 +1259,8 @@ def run_multiview_pipeline(
             NEUTRAL_TEXTURE_CAVEAT,
             CALIBRATED_CAPTURE_CAVEAT,
         ]
+        if calibration_evidence is None:
+            warnings.append(UNVERIFIED_RAW_CALIBRATION_CAVEAT)
     for index in rejected:
         warnings.append(f"REJECTED_VIEW_{index + 1}:{capture_roles[index]}")
     if float(baked.metrics["observed_fraction"]) < 0.50:
@@ -1268,6 +1298,16 @@ def run_multiview_pipeline(
                     "calibration_source": "uploaded_camera_bundle",
                     "calibration_schema_version": camera_bundle.schema_version,
                     "calibration_sha256": camera_bundle.source_sha256,
+                    "raw_calibration_recomputed": calibration_evidence is not None,
+                    "calibration_ready_for_identity_fit": bool(
+                        calibration_evidence
+                        and calibration_evidence["calibration_ready_for_identity_fit"]
+                    ),
+                    "calibration_evidence_report_sha256": (
+                        calibration_evidence["report_sha256"]
+                        if calibration_evidence is not None
+                        else None
+                    ),
                     "distortion_handling": "opencv_undistort_same_K",
                     "fit_view_indices": list(fit_indices),
                     "held_out_view_indices": list(held_out_indices),
@@ -1350,6 +1390,11 @@ def run_multiview_pipeline(
                 {
                     "capture_calibration": "capture-calibration.json",
                     "camera_registration": "gnm-camera-registration.json",
+                    **(
+                        {"calibration_evidence_report": "calibration-evidence-report.json"}
+                        if calibration_evidence is not None
+                        else {}
+                    ),
                 }
                 if camera_bundle is not None
                 else {}

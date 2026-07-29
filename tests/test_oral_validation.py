@@ -197,11 +197,13 @@ def test_geometry_measures_tongue_motion_and_contact_without_claiming_phonemes(
         declared_lip_contact_attained=declared,
     )
 
-    np.testing.assert_array_equal(result.lip_contact_frames, (False, False, True))
+    # The legacy sparse-landmark calibration does not close the rendered
+    # 58-vertex mouth boundary; the topology-bound validator must expose that.
+    np.testing.assert_array_equal(result.lip_contact_frames, (False, False, False))
     target_report = result.report["lip_contact"]["target_evidence"]
     assert target_report["candidate_frames"] == 1
-    assert target_report["geometry_attained_frames"] == 1
-    assert target_report["declared_geometry_disagreement_frames"] == 0
+    assert target_report["geometry_attained_frames"] == 0
+    assert target_report["declared_geometry_disagreement_frames"] == 1
     assert target_report["phoneme_ground_truth"] is False
     assert result.report["tongue_motion"]["frame_max_m"]["maximum"] > 0.001
     assert result.report["claims"]["phoneme_correctness_validated"] is False
@@ -371,8 +373,8 @@ def test_video_npz_aliases_preserve_contact_target_evidence(
     result = validate_controls_npz(controls, adapter=adapter, batch_size=1)
     target = result.report["lip_contact"]["target_evidence"]
     assert target["candidate_frames"] == 1
-    assert target["geometry_attained_frames"] == 1
-    assert target["declared_geometry_disagreement_frames"] == 0
+    assert target["geometry_attained_frames"] == 0
+    assert target["declared_geometry_disagreement_frames"] == 1
 
 
 def test_animated_glb_oral_reconstruction_matches_source_controls(
