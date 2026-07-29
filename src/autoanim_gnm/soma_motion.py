@@ -632,22 +632,26 @@ _DELTA_MAPPING = {
     "UpperChest": "Chest",
     "Neck": "Neck2",
     "Head": "Head",
-    "LeftShoulder": "LeftShoulder",
-    "LeftUpperArm": "LeftArm",
-    "LeftLowerArm": "LeftForeArm",
-    "LeftHand": "LeftHand",
-    "RightShoulder": "RightShoulder",
-    "RightUpperArm": "RightArm",
-    "RightLowerArm": "RightForeArm",
-    "RightHand": "RightHand",
-    "LeftUpperLeg": "LeftLeg",
-    "LeftLowerLeg": "LeftShin",
-    "LeftFoot": "LeftFoot",
-    "LeftToes": "LeftToeBase",
-    "RightUpperLeg": "RightLeg",
-    "RightLowerLeg": "RightShin",
-    "RightFoot": "RightFoot",
-    "RightToes": "RightToeBase",
+    # SOMA anatomical left is positive source X, while AutoAnim's reviewed
+    # canonical skeleton defines Left on negative X. Swap anatomical labels at
+    # this explicit boundary; the MPFB provider requires the same convention
+    # correction.
+    "LeftShoulder": "RightShoulder",
+    "LeftUpperArm": "RightArm",
+    "LeftLowerArm": "RightForeArm",
+    "LeftHand": "RightHand",
+    "RightShoulder": "LeftShoulder",
+    "RightUpperArm": "LeftArm",
+    "RightLowerArm": "LeftForeArm",
+    "RightHand": "LeftHand",
+    "LeftUpperLeg": "RightLeg",
+    "LeftLowerLeg": "RightShin",
+    "LeftFoot": "RightFoot",
+    "LeftToes": "RightToeBase",
+    "RightUpperLeg": "LeftLeg",
+    "RightLowerLeg": "LeftShin",
+    "RightFoot": "LeftFoot",
+    "RightToes": "LeftToeBase",
 }
 
 

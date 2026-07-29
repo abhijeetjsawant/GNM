@@ -29,10 +29,12 @@ def _rest_positions() -> np.ndarray:
     offsets = np.zeros((77, 3), dtype=np.float32)
     offsets[:, 1] = 0.04
     offsets[0] = 0.0
-    offsets[SOMASKEL77_NAMES.index("LeftShoulder")] = (-0.10, 0.05, 0.0)
-    offsets[SOMASKEL77_NAMES.index("RightShoulder")] = (0.10, 0.05, 0.0)
-    offsets[SOMASKEL77_NAMES.index("LeftLeg")] = (-0.08, -0.10, 0.0)
-    offsets[SOMASKEL77_NAMES.index("RightLeg")] = (0.08, -0.10, 0.0)
+    # SOMA's anatomical left is positive X; AutoAnim canonical Left is
+    # negative X and the projection explicitly swaps the side convention.
+    offsets[SOMASKEL77_NAMES.index("LeftShoulder")] = (0.10, 0.05, 0.0)
+    offsets[SOMASKEL77_NAMES.index("RightShoulder")] = (-0.10, 0.05, 0.0)
+    offsets[SOMASKEL77_NAMES.index("LeftLeg")] = (0.08, -0.10, 0.0)
+    offsets[SOMASKEL77_NAMES.index("RightLeg")] = (-0.08, -0.10, 0.0)
     for index, parent in enumerate(SOMASKEL77_PARENTS):
         if parent >= 0:
             positions[index] = positions[parent] + offsets[index]
@@ -189,9 +191,9 @@ def test_projection_preserves_body_motion_but_not_face_eye_or_raw_contacts() -> 
     )
 
     projected = project_soma_to_body_track(source)
-    body_left_arm = CANONICAL_HUMANOID.index("LeftUpperArm")
+    body_right_arm = CANONICAL_HUMANOID.index("RightUpperArm")
     np.testing.assert_allclose(
-        projected.local_rotations_xyzw[:, body_left_arm],
+        projected.local_rotations_xyzw[:, body_right_arm],
         rotations[:, SOMASKEL77_NAMES.index("LeftArm")],
         atol=1e-7,
     )
@@ -370,3 +372,31 @@ def test_projection_removes_nonidentity_source_rest_joint_bases() -> None:
     identities = np.zeros_like(projected.local_rotations_xyzw)
     identities[..., 3] = 1.0
     np.testing.assert_allclose(projected.local_rotations_xyzw, identities, atol=1e-6)
+
+
+def test_projection_swaps_soma_positive_x_left_into_canonical_negative_x_left() -> None:
+    source = _motion()
+    rotations = source.local_rotations_xyzw.copy()
+    half = np.deg2rad(30.0) / 2.0
+    source_right_arm = SOMASKEL77_NAMES.index("RightArm")
+    rotations[:, source_right_arm, 2] = np.sin(half)
+    rotations[:, source_right_arm, 3] = np.cos(half)
+    joints = soma_forward_kinematics(
+        source.root_translation_m,
+        rotations,
+        source.rest_joint_positions_m,
+        source.rest_world_rotations_xyzw,
+    )
+    projected = project_soma_to_body_track(
+        replace(source, local_rotations_xyzw=rotations, joint_positions_m=joints)
+    )
+    target_left = projected.local_rotations_xyzw[
+        :, CANONICAL_HUMANOID.index("LeftUpperArm")
+    ]
+    target_right = projected.local_rotations_xyzw[
+        :, CANONICAL_HUMANOID.index("RightUpperArm")
+    ]
+    np.testing.assert_allclose(target_left[:, 2], np.sin(half), atol=1.0e-6)
+    np.testing.assert_allclose(target_left[:, 3], np.cos(half), atol=1.0e-6)
+    np.testing.assert_allclose(target_right[:, :3], 0.0, atol=1.0e-6)
+    np.testing.assert_allclose(target_right[:, 3], 1.0, atol=1.0e-6)

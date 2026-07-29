@@ -1419,6 +1419,44 @@ character revision, actual source media, and the real native review path.
 - A complete shot can be reopened offline and all hashes, approvals, source
   synchronization, and exact frame cursor checks still pass.
 
+#### N5 implementation checkpoint — 2026-07-29
+
+The first safe N5 slice is implemented and real-input verified:
+
+- `body_export.py` exports the reviewed 13,380-vertex MPFB asset as one glTF
+  skin with 25 canonical joints, one animation clip, one shared time accessor,
+  eight-influence skinning, exact body-track hashes, and an immutable mapping
+  NPZ.
+- `body_compositor.py` binds the sealed source, time-preserving face crop,
+  GNM performance, SOMA source track, canonical body projection, MPFB asset,
+  and both review GLBs into `autoanim.unified-performance/1.0`.
+- The compositor gives body exclusive Root-through-Head base ownership,
+  suppresses GNM neck/head pose and translation, preserves GNM expression and
+  eye arrays byte-for-byte, and rejects a second eye owner.
+- The diagnostic reviewer uses the source video's presented-time clock for
+  both animation mixers and exposes source, MPFB body, and GNM face in separate
+  panes. It cannot be mislabeled publishable or a connected character.
+- The retained 70-frame squat video required a spatial-only face crop because
+  the full-frame MediaPipe pass returned `FACE_NOT_FOUND`. The crop preserved
+  all original source PTS exactly. Face/body tick error is zero at the 48 kHz
+  canonical timebase.
+- Real MPFB body and ownership-safe GNM GLBs both pass Khronos validation with
+  zero errors and zero warnings. The GNM re-export reconstructs at 0.086 mm
+  mesh p95 and 0.417 mm maximum.
+- Browser review found and drove fixes for two actual retarget defects:
+  provider rest-basis composition and SOMA positive-X anatomical-left versus
+  AutoAnim negative-X canonical-left. The corrected middle frame visibly
+  preserves the squat and forearm convergence.
+- Regression result: 892 passed, 4 skipped, 1 dependency deprecation warning.
+
+This checkpoint remains `diagnostic_unified_preview`, not production
+composition. Publish stays fail-closed on
+`GNM_HEAD_SOCKET_UNCALIBRATED`, `PROVIDER_HEAD_NOT_REMOVED`,
+`NECK_SEAM_NOT_VALIDATED`, `SOMA_25_PROJECTION_PREVIEW_ONLY`, and
+`GNM_FACE_TRACK_NOT_PRODUCTION_CALIBRATED`. The next N5 slice is the
+character-bound socket/seam calibration and one connected-mesh exporter; the
+current separate panes must not be presented as that result.
+
 ### Phase N6 — production qualification and release
 
 **Build**
