@@ -133,6 +133,46 @@ public struct JobInputSummary: Codable, Equatable, Sendable {
     }
 }
 
+public struct JobInputProvenance: Codable, Equatable, Sendable {
+    public let name: String
+    public let sha256: String
+    public let bytes: Int
+    public let mediaType: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case sha256
+        case bytes
+        case mediaType = "media_type"
+    }
+}
+
+public struct JobProvenanceRecord: Codable, Equatable, Sendable {
+    public let jobID: String
+    public let kind: String
+    public let status: String
+    public let input: JobInputProvenance
+    public let configuration: JobCharacterConfiguration
+
+    enum CodingKeys: String, CodingKey {
+        case jobID = "job_id"
+        case kind
+        case status
+        case input
+        case configuration
+    }
+}
+
+public struct JobCharacterConfiguration: Codable, Equatable, Sendable {
+    public let characterID: String?
+    public let characterRevisionID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case characterID = "character_id"
+        case characterRevisionID = "character_revision_id"
+    }
+}
+
 public enum ServiceDecoding {
     public static func readyEvent(from line: String) throws -> BackendReadyEvent {
         try JSONDecoder().decode(BackendReadyEvent.self, from: Data(line.utf8))
@@ -144,5 +184,21 @@ public enum ServiceDecoding {
 
     public static func jobs(from data: Data) throws -> RecentJobsResponse {
         try JSONDecoder().decode(RecentJobsResponse.self, from: data)
+    }
+
+    public static func jobProvenance(from data: Data) throws -> JobProvenanceRecord {
+        try JSONDecoder().decode(JobProvenanceRecord.self, from: data)
+    }
+
+    public static func projects(from data: Data) throws -> ProductionProjectsResponse {
+        try JSONDecoder().decode(ProductionProjectsResponse.self, from: data)
+    }
+
+    public static func shots(from data: Data) throws -> ProductionShotsResponse {
+        try JSONDecoder().decode(ProductionShotsResponse.self, from: data)
+    }
+
+    public static func characters(from data: Data) throws -> ProductionCharactersResponse {
+        try JSONDecoder().decode(ProductionCharactersResponse.self, from: data)
     }
 }

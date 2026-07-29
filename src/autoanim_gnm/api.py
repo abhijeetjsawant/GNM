@@ -9,10 +9,12 @@ import re
 import secrets
 import tempfile
 import threading
+from typing import Any, Literal
 
 import cv2
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from .errors import AutoAnimError
 from .artifacts import sha256
@@ -21,6 +23,7 @@ from .capture_session import (
     load_verified_legacy_video_capture_session_v1,
     load_verified_video_capture_session,
 )
+from .production import ProductionStore
 from .service import ApplicationService
 from .video_capture import (
     load_capture_npz,
@@ -46,6 +49,9 @@ STATUS_BY_CODE = {
     "CUE_INVALID": 400,
     "JOB_NOT_FOUND": 404,
     "CHARACTER_NOT_FOUND": 404,
+    "PROJECT_NOT_FOUND": 404,
+    "SHOT_NOT_FOUND": 404,
+    "TAKE_NOT_FOUND": 404,
     "ARTIFACT_NOT_FOUND": 404,
     "CONSENT_REQUIRED": 422,
     "CONSENT_REVOKED": 403,
@@ -58,6 +64,9 @@ STATUS_BY_CODE = {
     "MATERIAL_LAYOUT_UNSUPPORTED": 422,
     "MATERIAL_RUNTIME_UNSUPPORTED": 422,
     "REVISION_CONFLICT": 409,
+    "LIFECYCLE_INVALID": 409,
+    "CHARACTER_REVISION_MISMATCH": 409,
+    "JOB_INCOMPATIBLE": 409,
     "INTEGRITY_FAILED": 409,
     "INTEGRITY_UNSEALED": 409,
     "BUSY": 409,
@@ -108,6 +117,35 @@ _OBSERVATION_V3_V2_CHAIN_NAMES = (
     *_OBSERVATION_V3_V2_EXTENSION_NAMES,
     "capture_session",
 )
+
+
+class _StrictJSONBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class _CreateProjectBody(_StrictJSONBody):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=1_000)
+
+
+class _CreateShotBody(_StrictJSONBody):
+    name: str = Field(min_length=1, max_length=120)
+    character_id: str = Field(min_length=1, max_length=128)
+    character_revision_id: str = Field(min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=1_000)
+
+
+class _CreateTakeBody(_StrictJSONBody):
+    name: str = Field(min_length=1, max_length=120)
+    media_kind: Literal["audio", "video"]
+    source_name: str = Field(min_length=1, max_length=200)
+    source_sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+    source_bytes: int = Field(ge=0, le=100 * 1024 * 1024 * 1024)
+    source_media_type: str | None = Field(default=None, max_length=160)
+
+
+class _LinkJobBody(_StrictJSONBody):
+    job_id: str = Field(min_length=1, max_length=128)
 
 
 def _observation_v3_chain_names(artifacts: dict[str, object]) -> tuple[str, ...]:
@@ -286,6 +324,7 @@ def create_app(
     a2f_offline: bool = False,
     viewer_vendor_root: str | Path | None = None,
     character_root: str | Path | None = None,
+    production_root: str | Path | None = None,
     session_token: str | None = None,
 ) -> FastAPI:
     session_digest = (
@@ -305,6 +344,51 @@ def create_app(
     operation_lock = threading.Lock()
     review_decode_lock = threading.Lock()
     app.state.service = service
+    app.state.production = ProductionStore(
+        (
+            Path(production_root)
+            if production_root is not None
+            else service.store.root.parent / "production"
+        ),
+        service.characters,
+    )
+
+    def production_store() -> Any:
+        store = app.state.production
+        if store is None:
+            raise AutoAnimError(
+                "DEPENDENCY_MISSING",
+                "The production project store is unavailable in this build",
+            )
+        return store
+
+    def production_not_found(
+        project_id: str,
+        *,
+        leaf_code: str,
+        leaf_message: str,
+        shot_id: str | None = None,
+    ) -> JSONResponse:
+        try:
+            store = production_store()
+            store.get_project(project_id)
+            if shot_id is not None:
+                store.get_shot(project_id, shot_id)
+        except FileNotFoundError:
+            try:
+                production_store().get_project(project_id)
+            except FileNotFoundError:
+                return _error_response(
+                    AutoAnimError("PROJECT_NOT_FOUND", "Project was not found")
+                )
+            except AutoAnimError as exc:
+                return _error_response(exc)
+            return _error_response(
+                AutoAnimError("SHOT_NOT_FOUND", "Shot was not found")
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+        return _error_response(AutoAnimError(leaf_code, leaf_message))
 
     if session_digest is not None:
 
@@ -565,6 +649,143 @@ def create_app(
     @app.get("/api/jobs")
     def jobs(limit: int = 20):
         return {"jobs": service.store.list_recent(limit=max(1, min(limit, 50)))}
+
+    @app.get("/api/projects")
+    def projects(limit: int = 100):
+        try:
+            return {
+                "projects": production_store().list_projects(
+                    limit=max(1, min(limit, 200))
+                )
+            }
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.post("/api/projects", status_code=201)
+    def create_project(body: _CreateProjectBody):
+        try:
+            return production_store().create_project(
+                body.name,
+                description=body.description,
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.get("/api/projects/{project_id}")
+    def project(project_id: str):
+        try:
+            return production_store().get_project(project_id)
+        except FileNotFoundError:
+            return _error_response(
+                AutoAnimError("PROJECT_NOT_FOUND", "Project was not found")
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.get("/api/projects/{project_id}/shots")
+    def shots(project_id: str, limit: int = 100):
+        try:
+            return {
+                "shots": production_store().list_shots(
+                    project_id,
+                    limit=max(1, min(limit, 200)),
+                )
+            }
+        except FileNotFoundError:
+            return _error_response(
+                AutoAnimError("PROJECT_NOT_FOUND", "Project was not found")
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.post("/api/projects/{project_id}/shots", status_code=201)
+    def create_shot(project_id: str, body: _CreateShotBody):
+        try:
+            return production_store().create_shot(
+                project_id,
+                name=body.name,
+                character_id=body.character_id,
+                character_revision_id=body.character_revision_id,
+                description=body.description,
+            )
+        except FileNotFoundError:
+            return _error_response(
+                AutoAnimError("PROJECT_NOT_FOUND", "Project was not found")
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.get("/api/projects/{project_id}/shots/{shot_id}")
+    def shot(project_id: str, shot_id: str):
+        try:
+            store = production_store()
+            store.get_project(project_id)
+            return store.get_shot(project_id, shot_id)
+        except FileNotFoundError:
+            return production_not_found(
+                project_id,
+                leaf_code="SHOT_NOT_FOUND",
+                leaf_message="Shot was not found",
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.post(
+        "/api/projects/{project_id}/shots/{shot_id}/takes",
+        status_code=201,
+    )
+    def create_take(project_id: str, shot_id: str, body: _CreateTakeBody):
+        try:
+            store = production_store()
+            store.get_project(project_id)
+            return store.create_take(
+                project_id,
+                shot_id,
+                name=body.name,
+                media_kind=body.media_kind,
+                source_name=body.source_name,
+                source_sha256=body.source_sha256,
+                source_bytes=body.source_bytes,
+                source_media_type=body.source_media_type,
+            )
+        except FileNotFoundError:
+            return production_not_found(
+                project_id,
+                leaf_code="SHOT_NOT_FOUND",
+                leaf_message="Shot was not found",
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
+
+    @app.post(
+        "/api/projects/{project_id}/shots/{shot_id}/takes/{take_id}/jobs",
+        status_code=201,
+    )
+    def link_job(
+        project_id: str,
+        shot_id: str,
+        take_id: str,
+        body: _LinkJobBody,
+    ):
+        try:
+            store = production_store()
+            store.get_project(project_id)
+            store.get_shot(project_id, shot_id)
+            return store.link_job(
+                project_id,
+                shot_id,
+                take_id,
+                job_id=body.job_id,
+            )
+        except FileNotFoundError:
+            return production_not_found(
+                project_id,
+                shot_id=shot_id,
+                leaf_code="TAKE_NOT_FOUND",
+                leaf_message="Take was not found",
+            )
+        except AutoAnimError as exc:
+            return _error_response(exc)
 
     @app.get("/api/jobs/{job_id}/production-readiness")
     def production_readiness(

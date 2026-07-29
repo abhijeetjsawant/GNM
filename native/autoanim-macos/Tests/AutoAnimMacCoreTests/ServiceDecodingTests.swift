@@ -33,6 +33,14 @@ struct ServiceDecodingTests {
         #expect(response.jobs[0].warningCount == 2)
     }
 
+    @Test("Decodes sealed job input and character provenance for shot attachment")
+    func decodesJobProvenance() throws {
+        let data = Data(#"{"job_id":"01kxwwdq8gqrsrzycjc3c3kjy9","kind":"audio_animation","status":"succeeded","input":{"name":"speech.wav","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","bytes":42,"media_type":"audio/wav"},"configuration":{"character_id":"01kxwwdq8gqrsrzycjc3c3kjy9","character_revision_id":"01kxy4cqxkzrehcpbfk6jjaar6"}}"#.utf8)
+        let job = try ServiceDecoding.jobProvenance(from: data)
+        #expect(job.input.bytes == 42)
+        #expect(job.configuration.characterRevisionID == "01kxy4cqxkzrehcpbfk6jjaar6")
+    }
+
     @Test("Requires a full 256-bit lowercase hexadecimal session token")
     func validatesTokenShape() throws {
         let token = try SessionToken.generate()

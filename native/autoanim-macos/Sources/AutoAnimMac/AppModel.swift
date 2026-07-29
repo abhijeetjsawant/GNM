@@ -10,8 +10,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var reviewBundles: [String: ReviewBundle] = [:]
     @Published private(set) var reviewBundleErrors: [String: String] = [:]
     @Published private(set) var loadingReviewJobIDs: Set<String> = []
+    @Published private(set) var productionLibrary = ProductionLibrarySnapshot.empty
+    @Published var selectedProjectID: String?
+    @Published var selectedCharacterID: String?
+    @Published var selectedShotID: String?
     @Published var selectedJobID: String?
-    @Published var selectedSection: LibrarySection = .jobs
+    @Published var selectedSection: LibrarySection = .projects
     @Published private(set) var requestError: String?
     @Published private(set) var refreshing = false
 
@@ -49,6 +53,18 @@ final class AppModel: ObservableObject {
         jobs.first { $0.jobID == selectedJobID }
     }
 
+    var selectedProject: ProductionProjectRecord? {
+        productionLibrary.project(id: selectedProjectID)
+    }
+
+    var selectedCharacter: ProductionCharacterRecord? {
+        productionLibrary.character(id: selectedCharacterID)
+    }
+
+    var selectedShot: ProductionShotRecord? {
+        productionLibrary.shot(id: selectedShotID)
+    }
+
     var diagnostics: [RuntimeDiagnostic] {
         configuration?.diagnostics() ?? []
     }
@@ -80,7 +96,12 @@ final class AppModel: ObservableObject {
             do {
                 async let fetchedHealth = client.health()
                 async let fetchedJobs = client.recentJobs()
-                let (newHealth, newJobs) = try await (fetchedHealth, fetchedJobs)
+                async let fetchedProductionLibrary = client.productionLibrary()
+                let (newHealth, newJobs, newProductionLibrary) = try await (
+                    fetchedHealth,
+                    fetchedJobs,
+                    fetchedProductionLibrary
+                )
                 guard let self,
                       !Task.isCancelled,
                       self.isCurrentRuntime(epoch: epoch, endpoint: endpoint, token: token),
@@ -88,9 +109,22 @@ final class AppModel: ObservableObject {
                 else { return }
                 self.health = newHealth
                 self.jobs = newJobs
+                self.productionLibrary = newProductionLibrary
                 if self.selectedJobID == nil
                     || !newJobs.contains(where: { $0.jobID == self.selectedJobID }) {
                     self.selectedJobID = newJobs.first?.jobID
+                }
+                if self.selectedProjectID == nil
+                    || newProductionLibrary.project(id: self.selectedProjectID) == nil {
+                    self.selectedProjectID = newProductionLibrary.projects.first?.id
+                }
+                if self.selectedCharacterID == nil
+                    || newProductionLibrary.character(id: self.selectedCharacterID) == nil {
+                    self.selectedCharacterID = newProductionLibrary.characters.first?.id
+                }
+                if self.selectedShotID == nil
+                    || newProductionLibrary.shot(id: self.selectedShotID) == nil {
+                    self.selectedShotID = newProductionLibrary.shots.first?.id
                 }
             } catch {
                 guard let self,
@@ -205,6 +239,106 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func openProject(_ projectID: String) {
+        guard productionLibrary.project(id: projectID) != nil else { return }
+        selectedProjectID = projectID
+        selectedSection = .projects
+    }
+
+    func openCharacter(_ characterID: String) {
+        guard productionLibrary.character(id: characterID) != nil else { return }
+        selectedCharacterID = characterID
+        selectedSection = .characters
+    }
+
+    func openShot(_ shotID: String) {
+        guard productionLibrary.shot(id: shotID) != nil else { return }
+        selectedShotID = shotID
+        selectedSection = .shots
+    }
+
+    func createProject(name: String, description: String?) async throws {
+        guard let endpoint = supervisor?.endpoint, let token = supervisor?.token else {
+            throw BackendClientError.invalidResponse
+        }
+        let project = try await BackendClient(endpoint: endpoint, token: token)
+            .createProject(name: name, description: description)
+        guard supervisor?.endpoint == endpoint, supervisor?.token == token else { return }
+        selectedProjectID = project.id
+        selectedSection = .projects
+        refresh()
+    }
+
+    func createShot(
+        projectID: String,
+        name: String,
+        characterID: String,
+        characterRevisionID: String,
+        description: String?
+    ) async throws {
+        guard let endpoint = supervisor?.endpoint, let token = supervisor?.token else {
+            throw BackendClientError.invalidResponse
+        }
+        let shot = try await BackendClient(endpoint: endpoint, token: token).createShot(
+            projectID: projectID,
+            name: name,
+            characterID: characterID,
+            characterRevisionID: characterRevisionID,
+            description: description
+        )
+        guard supervisor?.endpoint == endpoint, supervisor?.token == token else { return }
+        selectedProjectID = projectID
+        selectedShotID = shot.id
+        selectedSection = .shots
+        refresh()
+    }
+
+    func attachCompletedJob(_ job: JobSummary, to shot: ProductionShotRecord) async throws {
+        guard job.status == "succeeded" else { throw BackendClientError.invalidResponse }
+        let expectedKind: String
+        let mediaKind: String
+        switch job.kind {
+        case "audio_animation":
+            expectedKind = "audio_animation"
+            mediaKind = "audio"
+        case "video_performance":
+            expectedKind = "video_performance"
+            mediaKind = "video"
+        default:
+            throw BackendClientError.invalidResponse
+        }
+        guard job.kind == expectedKind,
+              let endpoint = supervisor?.endpoint,
+              let token = supervisor?.token
+        else { throw BackendClientError.invalidResponse }
+        let client = BackendClient(endpoint: endpoint, token: token)
+        let provenance = try await client.jobProvenance(jobID: job.jobID)
+        guard provenance.kind == expectedKind,
+              provenance.status == "succeeded",
+              provenance.configuration.characterID == shot.characterRevision.characterID,
+              provenance.configuration.characterRevisionID == shot.characterRevision.revisionID
+        else {
+            throw BackendClientError.invalidResponse
+        }
+        let take = try await client.createTake(
+            projectID: shot.projectID,
+            shotID: shot.shotID,
+            name: "\(mediaKind.capitalized) · \(provenance.input.name)",
+            mediaKind: mediaKind,
+            input: provenance.input
+        )
+        _ = try await client.linkJob(
+            projectID: shot.projectID,
+            shotID: shot.shotID,
+            takeID: take.takeID,
+            jobID: job.jobID
+        )
+        guard supervisor?.endpoint == endpoint, supervisor?.token == token else { return }
+        selectedShotID = shot.id
+        selectedSection = .shots
+        refresh()
+    }
+
     private func runtimeDidBecomeReady(endpoint: LoopbackEndpoint, token: String) {
         guard supervisor?.endpoint == endpoint, supervisor?.token == token else { return }
         invalidateAsyncOperations()
@@ -241,6 +375,10 @@ final class AppModel: ObservableObject {
     private func clearRuntimeData() {
         health = nil
         jobs = []
+        productionLibrary = .empty
+        selectedProjectID = nil
+        selectedCharacterID = nil
+        selectedShotID = nil
         reviewBundles = [:]
         reviewBundleErrors = [:]
         loadingReviewJobIDs = []
@@ -289,8 +427,21 @@ final class AppModel: ObservableObject {
 }
 
 enum LibrarySection: String, CaseIterable, Identifiable {
+    case projects = "Projects"
+    case characters = "Characters"
+    case shots = "Shots"
     case jobs = "Recent Jobs"
     case diagnostics = "Diagnostics"
 
     var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .projects: "film.stack"
+        case .characters: "person.2"
+        case .shots: "rectangle.stack"
+        case .jobs: "clock.arrow.circlepath"
+        case .diagnostics: "stethoscope"
+        }
+    }
 }

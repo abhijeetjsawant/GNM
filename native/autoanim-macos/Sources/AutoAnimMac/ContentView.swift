@@ -3,6 +3,8 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var showingNewProject = false
+    @State private var showingNewShot = false
 
     var body: some View {
         NavigationSplitView {
@@ -31,10 +33,32 @@ struct ContentView: View {
                     Label("Restart Runtime", systemImage: "restart")
                 }
                 .disabled(model.supervisor == nil)
+
+                Button {
+                    showingNewProject = true
+                } label: {
+                    Label("New Project", systemImage: "plus.rectangle.on.folder")
+                }
+                .disabled(model.supervisor?.endpoint == nil)
+
+                Button {
+                    showingNewShot = true
+                } label: {
+                    Label("New Shot", systemImage: "plus.rectangle.on.rectangle")
+                }
+                .disabled(model.supervisor?.endpoint == nil || model.selectedProject == nil || model.productionLibrary.characters.isEmpty)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             sourceRuntimeBanner
+        }
+        .sheet(isPresented: $showingNewProject) {
+            NewProjectSheet(model: model)
+        }
+        .sheet(isPresented: $showingNewShot) {
+            if let project = model.selectedProject {
+                NewShotSheet(model: model, project: project)
+            }
         }
     }
 
@@ -42,7 +66,7 @@ struct ContentView: View {
         List(LibrarySection.allCases, selection: $model.selectedSection) { section in
             Label(
                 section.rawValue,
-                systemImage: section == .jobs ? "clock.arrow.circlepath" : "stethoscope"
+                systemImage: section.systemImage
             )
             .tag(section)
         }
@@ -66,6 +90,21 @@ struct ContentView: View {
     @ViewBuilder
     private var content: some View {
         switch model.selectedSection {
+        case .projects:
+            ProductionProjectList(
+                projects: model.productionLibrary.projects,
+                selection: $model.selectedProjectID
+            )
+        case .characters:
+            ProductionCharacterList(
+                characters: model.productionLibrary.characters,
+                selection: $model.selectedCharacterID
+            )
+        case .shots:
+            ProductionShotList(
+                shots: model.productionLibrary.shots,
+                selection: $model.selectedShotID
+            )
         case .jobs:
             jobsList
         case .diagnostics:
@@ -104,17 +143,38 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let job = model.selectedJob {
-            JobDetail(job: job, model: model)
-        } else if model.selectedSection == .diagnostics {
+        switch model.selectedSection {
+        case .projects:
+            if let project = model.selectedProject {
+                ProductionProjectDetail(project: project)
+            } else {
+                productionSelectionEmpty("Select a project", "film")
+            }
+        case .characters:
+            if let character = model.selectedCharacter {
+                ProductionCharacterDetail(character: character)
+            } else {
+                productionSelectionEmpty("Select a character", "person.crop.square")
+            }
+        case .shots:
+            if let shot = model.selectedShot {
+                ProductionShotDetail(shot: shot, model: model)
+            } else {
+                productionSelectionEmpty("Select a shot", "rectangle.stack")
+            }
+        case .jobs:
+            if let job = model.selectedJob {
+                JobDetail(job: job, model: model)
+            } else {
+                productionSelectionEmpty("Select a job", "viewfinder")
+            }
+        case .diagnostics:
             DiagnosticsDetail(model: model)
-        } else {
-            ContentUnavailableView(
-                "Select a job",
-                systemImage: "viewfinder",
-                description: Text("Choose a completed 3D job to inspect its exact artifact.")
-            )
         }
+    }
+
+    private func productionSelectionEmpty(_ title: String, _ icon: String) -> some View {
+        ContentUnavailableView(title, systemImage: icon, description: Text("The local production library will appear when the runtime has records."))
     }
 
     private var sourceRuntimeBanner: some View {
@@ -157,6 +217,113 @@ struct ContentView: View {
         case .ready: return "The current source artifact store has no jobs."
         default: return model.configurationError ?? "Start or restart the source runtime."
         }
+    }
+}
+
+private struct NewProjectSheet: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var description = ""
+    @State private var submitting = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("New Project").font(.title2.weight(.semibold))
+            Text("Projects are the durable home for characters, shots and delivery work.")
+                .foregroundStyle(.secondary)
+            TextField("Project name", text: $name)
+            TextField("Description (optional)", text: $description, axis: .vertical)
+                .lineLimit(3...5)
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.disabled(submitting)
+                Button("Create") {
+                    submitting = true
+                    error = nil
+                    Task {
+                        do {
+                            try await model.createProject(name: name, description: description.nilIfBlank)
+                            dismiss()
+                        } catch {
+                            self.error = error.localizedDescription
+                            submitting = false
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || submitting)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+    }
+}
+
+private struct NewShotSheet: View {
+    @ObservedObject var model: AppModel
+    let project: ProductionProjectRecord
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var description = ""
+    @State private var characterID = ""
+    @State private var submitting = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("New Shot").font(.title2.weight(.semibold))
+            Text("Pins the selected character revision to \(project.name).")
+                .foregroundStyle(.secondary)
+            TextField("Shot name", text: $name)
+            Picker("Character", selection: $characterID) {
+                Text("Choose a character").tag("")
+                ForEach(model.productionLibrary.characters) { character in
+                    Text("\(character.name) · \(character.currentRevisionID.prefix(8))")
+                        .tag(character.id)
+                }
+            }
+            TextField("Description (optional)", text: $description, axis: .vertical)
+                .lineLimit(3...5)
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.disabled(submitting)
+                Button("Create") {
+                    guard let character = model.productionLibrary.character(id: characterID) else { return }
+                    submitting = true
+                    error = nil
+                    Task {
+                        do {
+                            try await model.createShot(
+                                projectID: project.id,
+                                name: name,
+                                characterID: character.id,
+                                characterRevisionID: character.currentRevisionID,
+                                description: description.nilIfBlank
+                            )
+                            dismiss()
+                        } catch {
+                            self.error = error.localizedDescription
+                            submitting = false
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || characterID.isEmpty || submitting)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
