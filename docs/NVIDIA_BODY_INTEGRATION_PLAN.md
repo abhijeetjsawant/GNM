@@ -1457,6 +1457,71 @@ composition. Publish stays fail-closed on
 character-bound socket/seam calibration and one connected-mesh exporter; the
 current separate panes must not be presented as that result.
 
+#### N5 connected-character checkpoint — 2026-07-30
+
+The next N5 slice is implemented and verified on the retained 70-frame real
+squat video and its time-preserving face crop:
+
+- `body_binding.py` no longer treats the provider's 148-vertex neck slab or
+  GNM's 110-edge shoulder flange as attachment loops. It intersects MPFB at
+  the canonical Neck plane and GNM at
+  `Neck + 0.35 * (Head - Neck)`, records every original/intersection-vertex
+  interpolation, bakes GNM's `+X subject-left` to AutoAnim's
+  `-X anatomical-left` conversion with reversed winding, and seals the body,
+  identity, topology, plane, transform, and array hashes.
+- The real cut loops contain 90 MPFB and 234 GNM vertices. Their perimeters are
+  378.285 mm and 385.820 mm, so the bounded uniform socket scale is 0.980472;
+  no large identity-distorting head scale is applied.
+- `unified_gltf.py` removes the provider head, clips the exact evaluated GNM
+  frames, freezes expression displacement at the collar, preserves GNM's
+  native Neck/Head skin blend, zippers the unequal loops, recomputes morph
+  normals, and emits one topologically connected exterior in one mesh, one
+  25-joint skin, and one animation. The shared animation has root translation,
+  23 non-eye body rotation channels, and one GNM morph-weight channel driven
+  by one float time accessor.
+- The retained connected GLB has 25,617 vertices, 51,024 triangles, 324 bridge
+  triangles, 14 morph targets, and zero neck boundary edges. Khronos glTF
+  Validator 2.0.0-dev.3.10 reports zero errors, warnings, infos, and hints.
+- The exporter consumes the sealed composition, requires exact integer
+  ticks/PTS and exact body/face arrays, and binds source, composition, body
+  track, ownership-contract, body, face, identity, and binding hashes. The
+  evaluated face track reuses the existing lip-contact, lip-order,
+  tongue/teeth-collision, landmark, and normal reconstruction gates. Face
+  expression and GNM eye arrays are hash-checked before and after ownership
+  preparation; GNM neck/head pose and translation are removed while body
+  Head motion is retained exactly once.
+- Browser review at the first, middle, and final real timestamps found a
+  nearly coplanar zipper strip which rendered as a black collar. The binding
+  now records a bounded 15 mm anatomical collar height; a repeated shaded and
+  wireframe review shows a continuous visible transition with no console
+  errors.
+- The pinned Three.js runtime consumes only four skin influences even though
+  the provider master has eight. A deterministic trajectory-aware four-weight
+  fit reaches 0.099 mm RMS on the real clip but has a localized 4.363 mm
+  maximum, above the 0.5 mm gate. The connected browser GLB is therefore an
+  honest diagnostic preview, while the eight-weight provider arrays remain
+  canonical.
+- The current ordinal zipper is measured rather than qualified: its retained
+  bridge has p95/max aspect ratios 203.8/1695.7 and animated edge stretch
+  0.478x-2.383x. Those failures are sealed blockers; open-edge closure is not
+  treated as evidence of an acceptable production seam.
+- New clipping, interpolation, deterministic topology, zipper, and skin
+  projection tests pass. The retained real export also passes its structural,
+  timing, ownership, topology, reconstruction, validator, and browser checks.
+
+This checkpoint is a genuine connected-character artifact, but it is not
+publishable. Its sealed blockers are
+`CHARACTER_BODY_IDENTITY_NOT_CALIBRATED`,
+`BRIDGE_LOOKDEV_NOT_ARTIST_APPROVED`,
+`SOMA_25_PROJECTION_PREVIEW_ONLY`,
+`NECK_CENTERED_PLANAR_SHAPE_RESIDUAL_ABOVE_5MM`, and
+`THREEJS_FOUR_WEIGHT_MAX_ABOVE_0_5MM`,
+`NECK_BRIDGE_TRIANGLE_QUALITY_FAILED`, and
+`NECK_BRIDGE_ANIMATED_STRETCH_FAILED`. Production work must build a common
+resampled collar with shared positions/skin attributes, use an eight-influence
+runtime or qualify a better reduction, add character/body texture and UV
+look-dev, and pass the full held-out motion grid.
+
 ### Phase N6 — production qualification and release
 
 **Build**
