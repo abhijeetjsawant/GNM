@@ -65,12 +65,13 @@ def _arguments() -> tuple[Path, Path, Path, Path, Path, Path]:
             "Expected MODEL SKELETON PARAMS VERTICES OUTPUT.fbx REPORT.json after '--'"
         ) from exc
     values = sys.argv[separator + 1 :]
-    if len(values) != 6:
+    if len(values) not in (6, 7):
         raise SystemExit(
-            "Expected MODEL SKELETON PARAMS VERTICES OUTPUT.fbx REPORT.json after '--'"
+            "Expected MODEL SKELETON PARAMS VERTICES OUTPUT.fbx REPORT.json [MODE] after '--'"
         )
+    mode = values[6] if len(values) == 7 else "symmetric"
     model, skeleton, params, vertices, output, report = (
-        Path(value).expanduser().resolve() for value in values
+        Path(value).expanduser().resolve() for value in values[:6]
     )
     for source in (model, skeleton, params, vertices):
         if not source.is_file():
@@ -79,7 +80,7 @@ def _arguments() -> tuple[Path, Path, Path, Path, Path, Path]:
         raise SystemExit(f"Output must use the .fbx extension: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
     report.parent.mkdir(parents=True, exist_ok=True)
-    return model, skeleton, params, vertices, output, report
+    return model, skeleton, params, vertices, output, report, mode
 
 
 def _axis_angle_to_quaternion(values: np.ndarray) -> np.ndarray:
@@ -344,9 +345,12 @@ def _forbidden_labels(path: Path) -> list[str]:
 
 
 def main() -> None:
-    model_path, skeleton_path, params_path, vertices_path, output, report_path = _arguments()
+    (
+        model_path, skeleton_path, params_path, vertices_path,
+        output, report_path, mode,
+    ) = _arguments()
     _clear_scene()
-    data = _load_sources(model_path, skeleton_path, "symmetric")
+    data = _load_sources(model_path, skeleton_path, mode)
     _build_character(data, mirror_rolls=True)
     armature = [obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE"][0]
     motion = _motion(model_path, params_path, vertices_path, data)
@@ -430,6 +434,7 @@ def main() -> None:
         "character_name": CHARACTER_NAME,
         "output_fbx": str(output),
         "rig": "symmetrized mean-shape locked-head SMPL-X (betas = 0)",
+        "rig_mode": mode,
         "motion_source": str(params_path),
         "frames": motion["frames"],
         "sample_rate_hz": SAMPLE_RATE_HZ,

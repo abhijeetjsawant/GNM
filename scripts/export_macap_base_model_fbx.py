@@ -50,7 +50,7 @@ CHARACTER_NAME = "macap-Base-model"
 FORBIDDEN_BINARY_LABELS = (b"mamma", b"MAMMA")
 BETA_COUNT = 16
 MAX_INFLUENCES = 8
-MODES = ("raw", "symmetric")
+MODES = ("raw", "symmetric", "symmetric-v2")
 
 # Explicit tails for every joint with more than one child, plus the leaves whose
 # direction-from-parent fallback would otherwise pick an anatomically wrong axis.
@@ -90,6 +90,37 @@ SPINE_REBALANCE_FALLOFF_M = 0.02
 # ball of the foot keeps its anatomical placement along the foot.
 FOOT_SLAB_HALF_WIDTH_M = 0.010
 FOOT_LEG_SPLIT_M = 0.02
+
+# The knee is regressed two centimetres lateral of the leg it bends, which reads
+# as a kink in the thigh-to-shin line from the front. Only its across-the-leg
+# position is recentred: the knee's own fore-aft offset is behind the centre of
+# the leg, which is where a flexion axis belongs, so it is left alone.
+KNEE_SLAB_HALF_WIDTH_M = 0.012
+
+# ``symmetric-v2`` only. SMPL-X regresses the hip joints 7.07% of stature apart
+# and 8.4 cm below the crotch, which reads as short legs pivoting from inside the
+# upper thigh. Biomechanics places the hip joint centre at roughly 9.7% of
+# stature either side of the midline, at about pubic-symphysis height. Moving
+# them there is a deliberate trade, not a defect fix: v1 stays faithful to the
+# pose MAMMA solved against SMPL-X's own placement, v2 is anatomical.
+#
+# The fore-aft position is taken from the pelvis joint rather than left where
+# SMPL-X had it. Raising the hip to crotch height leaves only about 1.5 cm of
+# vertical run between root and hip, so any fore-aft difference reads from the
+# side as a near-horizontal jog rather than a joint.
+HIP_SEPARATION_FRACTION = 0.097
+HIP_MIDLINE_HALF_WIDTH_M = 0.015
+
+# ``symmetric-v2`` only. The elbow sits about a centimetre below the axis of the
+# arm it bends. Cross-sections are taken perpendicular to the arm rather than by
+# height, because the arm is horizontal in the rest pose.
+ELBOW_SLAB_HALF_WIDTH_M = 0.012
+ARM_TORSO_SPLIT_M = 0.20
+# Recentring a joint inside an out-of-round limb can cost a little clearance -
+# the elbow currently sits in the thicker part of its section. Requiring
+# clearance to strictly increase would block a correct move, so the gate is a
+# floor: a recentred joint may not end up meaningfully shallower than it started.
+CLEARANCE_FLOOR_FRACTION = 0.9
 
 
 def _arguments() -> tuple[Path, Path, str, Path, Path]:
@@ -288,6 +319,134 @@ def _correct_feet(
     return corrected, moved, report
 
 
+def _correct_knees(
+    names: tuple[str, ...],
+    joints: np.ndarray,
+    vertices: np.ndarray,
+    joint_mirror: np.ndarray,
+) -> tuple[np.ndarray, tuple[int, ...], dict[str, object]]:
+    """Centre each knee across the leg it bends, left measured and right mirrored."""
+
+    index = {name: position for position, name in enumerate(names)}
+    knee = index["left_knee"]
+    corrected = np.array(joints, dtype=np.float64, copy=True)
+
+    slab = vertices[
+        (np.abs(vertices[:, 1] - joints[knee, 1]) < KNEE_SLAB_HALF_WIDTH_M)
+        & (vertices[:, 0] > FOOT_LEG_SPLIT_M)
+    ]
+    if len(slab) < 8:
+        raise RuntimeError("Knee cross-section slab is too sparse to recentre")
+    target = np.array(
+        [0.5 * (slab[:, 0].min() + slab[:, 0].max()), joints[knee, 1], joints[knee, 2]]
+    )
+
+    report = {
+        names[knee]: {
+            "clearance_before_m": _skin_clearance(vertices, joints[knee]),
+            "clearance_after_m": _skin_clearance(vertices, target),
+            "move_m": float(np.linalg.norm(target - joints[knee])),
+        }
+    }
+    corrected[knee] = target
+    corrected[int(joint_mirror[knee])] = target * np.array([-1.0, 1.0, 1.0])
+    return corrected, (knee, int(joint_mirror[knee])), report
+
+
+def _correct_hips(
+    names: tuple[str, ...],
+    joints: np.ndarray,
+    vertices: np.ndarray,
+    joint_mirror: np.ndarray,
+) -> tuple[np.ndarray, tuple[int, ...], dict[str, object]]:
+    """Move the hip joints out and up to an anatomical hip-joint centre."""
+
+    index = {name: position for position, name in enumerate(names)}
+    hip, knee, pelvis = index["left_hip"], index["left_knee"], index["pelvis"]
+    stature = float(vertices[:, 1].max() - vertices[:, 1].min())
+    midline = vertices[
+        (np.abs(vertices[:, 0]) < HIP_MIDLINE_HALF_WIDTH_M)
+        & (vertices[:, 1] < joints[pelvis, 1])
+    ]
+    if len(midline) < 8:
+        raise RuntimeError("Cannot locate the crotch to place the hip joints")
+    crotch = float(midline[:, 1].max())
+
+    corrected = np.array(joints, dtype=np.float64, copy=True)
+    target = np.array(
+        [0.5 * HIP_SEPARATION_FRACTION * stature, crotch, joints[pelvis, 2]]
+    )
+    report = {
+        "left_hip": {
+            "clearance_before_m": _skin_clearance(vertices, joints[hip]),
+            "clearance_after_m": _skin_clearance(vertices, target),
+            "move_m": float(np.linalg.norm(target - joints[hip])),
+        },
+        "stature_m": stature,
+        "crotch_height_m": crotch,
+        "separation_before_fraction_of_stature": float(abs(joints[hip, 0]) * 2 / stature),
+        "separation_after_fraction_of_stature": HIP_SEPARATION_FRACTION,
+        "thigh_before_m": float(np.linalg.norm(joints[knee] - joints[hip])),
+        "thigh_after_m": float(np.linalg.norm(joints[knee] - target)),
+        "root_to_hip_lean_before_deg": float(
+            np.degrees(
+                np.arctan2(
+                    abs(joints[hip, 2] - joints[pelvis, 2]),
+                    abs(joints[hip, 1] - joints[pelvis, 1]),
+                )
+            )
+        ),
+        "root_to_hip_lean_after_deg": float(
+            np.degrees(
+                np.arctan2(
+                    abs(target[2] - joints[pelvis, 2]),
+                    abs(target[1] - joints[pelvis, 1]),
+                )
+            )
+        ),
+    }
+    corrected[hip] = target
+    corrected[int(joint_mirror[hip])] = target * np.array([-1.0, 1.0, 1.0])
+    return corrected, (hip, int(joint_mirror[hip])), report
+
+
+def _correct_elbows(
+    names: tuple[str, ...],
+    joints: np.ndarray,
+    vertices: np.ndarray,
+    joint_mirror: np.ndarray,
+) -> tuple[np.ndarray, tuple[int, ...], dict[str, object]]:
+    """Centre each elbow on the axis of the arm it bends."""
+
+    index = {name: position for position, name in enumerate(names)}
+    elbow = index["left_elbow"]
+    corrected = np.array(joints, dtype=np.float64, copy=True)
+
+    slab = vertices[
+        (np.abs(vertices[:, 0] - joints[elbow, 0]) < ELBOW_SLAB_HALF_WIDTH_M)
+        & (vertices[:, 0] > ARM_TORSO_SPLIT_M)
+    ]
+    if len(slab) < 8:
+        raise RuntimeError("Elbow cross-section slab is too sparse to recentre")
+    target = np.array(
+        [
+            joints[elbow, 0],
+            0.5 * (slab[:, 1].min() + slab[:, 1].max()),
+            0.5 * (slab[:, 2].min() + slab[:, 2].max()),
+        ]
+    )
+    report = {
+        "left_elbow": {
+            "clearance_before_m": _skin_clearance(vertices, joints[elbow]),
+            "clearance_after_m": _skin_clearance(vertices, target),
+            "move_m": float(np.linalg.norm(target - joints[elbow])),
+        }
+    }
+    corrected[elbow] = target
+    corrected[int(joint_mirror[elbow])] = target * np.array([-1.0, 1.0, 1.0])
+    return corrected, (elbow, int(joint_mirror[elbow])), report
+
+
 def _point_segment_distance(points: np.ndarray, start: np.ndarray, end: np.ndarray) -> np.ndarray:
     axis = end - start
     length_squared = float(axis @ axis)
@@ -443,6 +602,7 @@ def _load_sources(model_path: Path, skeleton_path: Path, mode: str) -> dict[str,
         ),
     }
 
+    symmetric = mode != "raw"
     pruned = 0
     joints = regressor @ vertices
     leans_before = _spine_leans(names, joints)
@@ -450,7 +610,13 @@ def _load_sources(model_path: Path, skeleton_path: Path, mode: str) -> dict[str,
     rebalance: dict[str, float] = {}
     foot_metrics: dict[str, object] = {}
     foot_rebalance: dict[str, float] = {}
-    if mode == "symmetric":
+    knee_metrics: dict[str, object] = {}
+    knee_rebalance: dict[str, float] = {}
+    hip_metrics: dict[str, object] = {}
+    hip_rebalance: dict[str, float] = {}
+    elbow_metrics: dict[str, object] = {}
+    elbow_rebalance: dict[str, float] = {}
+    if symmetric:
         vertices, regressor, weights = _symmetrize_model(
             vertices, regressor, weights, vertex_mirror, joint_mirror
         )
@@ -486,6 +652,43 @@ def _load_sources(model_path: Path, skeleton_path: Path, mode: str) -> dict[str,
         weights, foot_rebalance = _rebalance_joint_weights(
             weights, vertices, joints, foot_moved, foot_tails, vertex_mirror, joint_mirror
         )
+        joints, knee_moved, knee_metrics = _correct_knees(
+            names, joints, vertices, joint_mirror
+        )
+        weights, knee_rebalance = _rebalance_joint_weights(
+            weights,
+            vertices,
+            joints,
+            knee_moved,
+            {joint: joints[index["%s_ankle" % names[joint].split("_")[0]]] for joint in knee_moved},
+            vertex_mirror,
+            joint_mirror,
+        )
+        if mode == "symmetric-v2":
+            joints, hip_moved, hip_metrics = _correct_hips(
+                names, joints, vertices, joint_mirror
+            )
+            weights, hip_rebalance = _rebalance_joint_weights(
+                weights,
+                vertices,
+                joints,
+                hip_moved,
+                {joint: joints[index["%s_knee" % names[joint].split("_")[0]]] for joint in hip_moved},
+                vertex_mirror,
+                joint_mirror,
+            )
+            joints, elbow_moved, elbow_metrics = _correct_elbows(
+                names, joints, vertices, joint_mirror
+            )
+            weights, elbow_rebalance = _rebalance_joint_weights(
+                weights,
+                vertices,
+                joints,
+                elbow_moved,
+                {joint: joints[index["%s_wrist" % names[joint].split("_")[0]]] for joint in elbow_moved},
+                vertex_mirror,
+                joint_mirror,
+            )
         weights, pruned = _limit_influences(weights, vertex_mirror, joint_mirror)
     leans_after = _spine_leans(names, joints)
 
@@ -534,14 +737,23 @@ def _load_sources(model_path: Path, skeleton_path: Path, mode: str) -> dict[str,
         "vertices_pruned_to_influence_budget": pruned,
         "symmetry_before": before,
         "symmetry_after": after,
-        "spine_corrected": mode == "symmetric",
+        "spine_corrected": symmetric,
         "spine_leans_before": leans_before,
         "spine_leans_after": leans_after,
         "spine_metrics": spine_metrics,
         "spine_reskin": rebalance,
-        "feet_corrected": mode == "symmetric",
+        "feet_corrected": symmetric,
         "feet_metrics": foot_metrics,
         "feet_reskin": foot_rebalance,
+        "knees_corrected": symmetric,
+        "knees_metrics": knee_metrics,
+        "knees_reskin": knee_rebalance,
+        "hips_corrected": mode == "symmetric-v2",
+        "hips_metrics": hip_metrics,
+        "hips_reskin": hip_rebalance,
+        "elbows_corrected": mode == "symmetric-v2",
+        "elbows_metrics": elbow_metrics,
+        "elbows_reskin": elbow_rebalance,
         "template_vertices": vertices.astype(np.float64),
     }
 
@@ -745,7 +957,7 @@ def main() -> None:
         failures.append(f"forbidden provider labels present: {', '.join(leaked)}")
     if not data["model_parents_match_contract"]:
         failures.append("SMPL-X kintree parents differ from the 55-joint contract")
-    if mode == "symmetric":
+    if mode != "raw":
         after = data["symmetry_after"]
         if after["mesh_mirror_error_m"] > 1e-9:
             failures.append("symmetrized mesh is not mirror symmetric")
@@ -764,14 +976,24 @@ def main() -> None:
             failures.append("spine reskin altered weights outside the relocated joints")
         if data["feet_reskin"].get("max_untouched_column_delta", 0.0) > 0.0:
             failures.append("foot reskin altered weights outside the relocated joints")
-        for joint, entry in data["feet_metrics"].items():
-            if entry["clearance_after_m"] <= entry["clearance_before_m"]:
-                failures.append(f"{joint} recentring did not increase skin clearance")
+        if data["knees_reskin"].get("max_untouched_column_delta", 0.0) > 0.0:
+            failures.append("knee reskin altered weights outside the relocated joints")
+        if data["hips_reskin"].get("max_untouched_column_delta", 0.0) > 0.0:
+            failures.append("hip reskin altered weights outside the relocated joints")
+        if data["elbows_reskin"].get("max_untouched_column_delta", 0.0) > 0.0:
+            failures.append("elbow reskin altered weights outside the relocated joints")
+        for entry_name in ("feet_metrics", "knees_metrics", "hips_metrics", "elbows_metrics"):
+            for joint, entry in data[entry_name].items():
+                if not isinstance(entry, dict):
+                    continue
+                floor = CLEARANCE_FLOOR_FRACTION * entry["clearance_before_m"]
+                if entry["clearance_after_m"] < floor:
+                    failures.append(f"{joint} recentring lost too much skin clearance")
     if rest_mesh_error > 1e-6:
         failures.append(f"delivered rest mesh moved by {rest_mesh_error:.9f} m")
 
     report = {
-        "schema_version": "autoanim.macap-base-model-fbx/3.1",
+        "schema_version": "autoanim.macap-base-model-fbx/4.2",
         "status": "passed" if not failures else "failed",
         "mode": mode,
         "character_name": CHARACTER_NAME,
@@ -779,8 +1001,8 @@ def main() -> None:
         "identity": "mean-shape neutral locked-head SMPL-X",
         "pose": "native SMPL-X rest pose with flat-hand mean",
         "smplx_betas": [0.0] * BETA_COUNT,
-        "symmetrized": mode == "symmetric",
-        "symmetrized_arrays": ["v_template", "J_regressor", "weights"] if mode == "symmetric" else [],
+        "symmetrized": mode != "raw",
+        "symmetrized_arrays": ["v_template", "J_regressor", "weights"] if mode != "raw" else [],
         "shapedirs_symmetrized": False,
         "symmetry_before": data["symmetry_before"],
         "symmetry_after": data["symmetry_after"],
@@ -792,6 +1014,15 @@ def main() -> None:
         "feet_corrected": data["feet_corrected"],
         "feet_metrics": data["feet_metrics"],
         "feet_reskin": data["feet_reskin"],
+        "knees_corrected": data["knees_corrected"],
+        "knees_metrics": data["knees_metrics"],
+        "knees_reskin": data["knees_reskin"],
+        "hips_corrected": data["hips_corrected"],
+        "hips_metrics": data["hips_metrics"],
+        "hips_reskin": data["hips_reskin"],
+        "elbows_corrected": data["elbows_corrected"],
+        "elbows_metrics": data["elbows_metrics"],
+        "elbows_reskin": data["elbows_reskin"],
         "rest_mesh_error_m": rest_mesh_error,
         "bone_axis_mirror_error_source": max(source_axis_errors.values()),
         "bone_axis_mirror_error_roundtrip": max(roundtrip_axis_errors.values()),
