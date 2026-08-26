@@ -39,6 +39,14 @@ from export_macap_base_model_fbx import (  # noqa: E402
 
 
 SAMPLE_RATE_HZ = 30
+# ``matchlegs``. A rig whose bones differ from the capture's cannot reproduce its
+# joint positions from its rotations - a longer thigh puts the knee somewhere
+# else. Where the feet land usually matters more than where the knees do, so the
+# two leg chains are re-solved with analytic two-bone IK to put each ankle on the
+# position MAMMA fitted, and the knee is left to bend wherever that requires.
+# The bend plane is taken from MAMMA's own knee so the leg does not flip.
+LEG_REACH_MARGIN = 0.999
+
 # An occluded joint can leave MAMMA's fit unconstrained, and the solve then
 # walks the joint around a full loop that returns almost to where it started.
 # A run of elevated angular velocity containing at least one frame above the
@@ -65,11 +73,13 @@ def _arguments() -> tuple[Path, Path, Path, Path, Path, Path]:
             "Expected MODEL SKELETON PARAMS VERTICES OUTPUT.fbx REPORT.json after '--'"
         ) from exc
     values = sys.argv[separator + 1 :]
-    if len(values) not in (6, 7):
+    if len(values) not in (6, 7, 8) or (len(values) == 8 and values[7] != "matchlegs"):
         raise SystemExit(
-            "Expected MODEL SKELETON PARAMS VERTICES OUTPUT.fbx REPORT.json [MODE] after '--'"
+            "Expected MODEL SKELETON PARAMS VERTICES OUTPUT.fbx REPORT.json "
+            "[MODE] [matchlegs] after '--'"
         )
-    mode = values[6] if len(values) == 7 else "symmetric"
+    mode = values[6] if len(values) >= 7 else "symmetric"
+    match_legs = len(values) == 8
     model, skeleton, params, vertices, output, report = (
         Path(value).expanduser().resolve() for value in values[:6]
     )
@@ -80,7 +90,7 @@ def _arguments() -> tuple[Path, Path, Path, Path, Path, Path]:
         raise SystemExit(f"Output must use the .fbx extension: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
     report.parent.mkdir(parents=True, exist_ok=True)
-    return model, skeleton, params, vertices, output, report, mode
+    return model, skeleton, params, vertices, output, report, mode, match_legs
 
 
 def _axis_angle_to_quaternion(values: np.ndarray) -> np.ndarray:
@@ -122,6 +132,131 @@ def _relative_angles_deg(rotations: np.ndarray) -> np.ndarray:
     relative = np.einsum("fjab,fjcb->fjac", rotations[1:], rotations[:-1])
     trace = np.clip((np.trace(relative, axis1=2, axis2=3) - 1.0) / 2.0, -1.0, 1.0)
     return np.degrees(np.arccos(trace))
+
+
+def _align(source, target):
+    """Minimal rotation taking one unit vector onto another."""
+
+    axis = np.cross(source, target)
+    length = np.linalg.norm(axis)
+    dot = float(np.clip(source @ target, -1.0, 1.0))
+    if length < 1e-9:
+        if dot > 0.0:
+            return np.eye(3)
+        seed = np.array([1.0, 0.0, 0.0])
+        if abs(source[0]) > 0.9:
+            seed = np.array([0.0, 1.0, 0.0])
+        axis = np.cross(source, seed)
+        axis /= np.linalg.norm(axis)
+        angle = np.pi
+    else:
+        axis = axis / length
+        angle = float(np.arctan2(length, dot))
+    x, y, z = axis
+    K = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]])
+    return np.eye(3) + np.sin(angle) * K + (1.0 - np.cos(angle)) * (K @ K)
+
+
+def _match_leg_targets(global_rotations, global_positions, joints, parents, targets, names):
+    """Re-solve both legs so each ankle lands on the captured ankle position.
+
+    Only the hip and knee rotations change. Everything below keeps the local
+    rotation the capture produced, so the foot stays oriented as it was fitted
+    and only its placement follows the new chain.
+    """
+
+    index = {name: position for position, name in enumerate(names)}
+    order = sorted(range(len(names)), key=lambda j: _depth(parents, j))
+    residuals, clamped = [], 0
+
+    for frame in range(len(global_positions)):
+        rotations = global_rotations[frame]
+        positions = global_positions[frame]
+        locals_ = {}
+        for joint in range(len(names)):
+            parent = int(parents[joint])
+            locals_[joint] = (
+                rotations[joint] if parent < 0
+                else np.linalg.inv(rotations[parent]) @ rotations[joint]
+            )
+
+        for side in ("left", "right"):
+            hip, knee = index["%s_hip" % side], index["%s_knee" % side]
+            ankle = index["%s_ankle" % side]
+            thigh = float(np.linalg.norm(joints[knee] - joints[hip]))
+            shin = float(np.linalg.norm(joints[ankle] - joints[knee]))
+
+            origin = positions[hip].copy()
+            wanted = targets[frame, ankle]
+            span = wanted - origin
+            distance = float(np.linalg.norm(span))
+            reach, floor = (thigh + shin) * LEG_REACH_MARGIN, abs(thigh - shin) * 1.001
+            solved = min(max(distance, floor), reach)
+            if abs(solved - distance) > 1e-9:
+                clamped += 1
+            direction = span / max(distance, 1e-9)
+
+            pole = targets[frame, knee] - origin
+            pole = pole - direction * (pole @ direction)
+            if np.linalg.norm(pole) < 1e-6:
+                pole = positions[knee] - origin
+                pole = pole - direction * (pole @ direction)
+            if np.linalg.norm(pole) < 1e-6:
+                pole = np.cross(direction, np.array([0.0, 0.0, 1.0]))
+            pole = pole / max(np.linalg.norm(pole), 1e-9)
+
+            cosine = np.clip(
+                (thigh ** 2 + solved ** 2 - shin ** 2) / (2.0 * thigh * solved), -1.0, 1.0
+            )
+            offset = float(np.arccos(cosine))
+            thigh_direction = direction * np.cos(offset) + pole * np.sin(offset)
+            knee_position = origin + thigh_direction * thigh
+            shin_direction = wanted - knee_position
+            shin_direction = shin_direction / max(np.linalg.norm(shin_direction), 1e-9)
+
+            current = positions[knee] - origin
+            rotations[hip] = _align(
+                current / max(np.linalg.norm(current), 1e-9), thigh_direction
+            ) @ rotations[hip]
+            positions[knee] = knee_position
+
+            current = positions[ankle] - positions[knee]
+            rotations[knee] = _align(
+                current / max(np.linalg.norm(current), 1e-9), shin_direction
+            ) @ rotations[knee]
+
+            for joint in order:
+                if joint == knee or not _descends_from(parents, joint, knee):
+                    continue
+                parent = int(parents[joint])
+                rotations[joint] = rotations[parent] @ locals_[joint]
+                positions[joint] = positions[parent] + rotations[parent] @ (
+                    joints[joint] - joints[parent]
+                )
+            residuals.append(float(np.linalg.norm(positions[ankle] - wanted)))
+
+    return {
+        "ankle_residual_mean_m": float(np.mean(residuals)),
+        "ankle_residual_worst_m": float(np.max(residuals)),
+        "frames_clamped_to_reach": clamped,
+        "leg_solves": len(residuals),
+    }
+
+
+def _depth(parents, joint):
+    depth = 0
+    while int(parents[joint]) >= 0:
+        joint = int(parents[joint])
+        depth += 1
+    return depth
+
+
+def _descends_from(parents, joint, ancestor):
+    while joint >= 0:
+        if joint == ancestor:
+            return True
+        joint = int(parents[joint])
+    return False
 
 
 def _repair_spins(
@@ -186,6 +321,7 @@ def _motion(
     params_path: Path,
     vertices_path: Path,
     data: dict[str, object],
+    match_legs: bool = False,
 ) -> dict[str, object]:
     """Forward-kinematic the MAMMA take onto the symmetric rest skeleton."""
 
@@ -240,6 +376,12 @@ def _motion(
                 )
         global_positions[frame] += translation[frame]
 
+    leg_match: dict[str, object] = {}
+    if match_legs:
+        leg_match = _match_leg_targets(
+            global_rotations, global_positions, joints, parents, fitted_joints, data["names"]
+        )
+
     # The fitted MAMMA joints belong to that subject's betas. This rig is the
     # mean shape, so the difference measures body proportion, not solve error.
     shape_deviation = np.linalg.norm(global_positions - fitted_joints, axis=-1)
@@ -262,6 +404,7 @@ def _motion(
         "mean_shape_vs_fitted_joint_deviation_mean_m": float(shape_deviation.mean()),
         "discarded_face_pose_magnitude_rad": face_pose_magnitude,
         "spin_repairs": spin_repairs,
+        "leg_match": leg_match,
         "worst_frame_delta_after_repair_deg": float(
             _relative_angles_deg(local_rotations).max()
         ),
@@ -347,13 +490,13 @@ def _forbidden_labels(path: Path) -> list[str]:
 def main() -> None:
     (
         model_path, skeleton_path, params_path, vertices_path,
-        output, report_path, mode,
+        output, report_path, mode, match_legs,
     ) = _arguments()
     _clear_scene()
     data = _load_sources(model_path, skeleton_path, mode)
     _build_character(data, mirror_rolls=True)
     armature = [obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE"][0]
-    motion = _motion(model_path, params_path, vertices_path, data)
+    motion = _motion(model_path, params_path, vertices_path, data, match_legs=match_legs)
     _animate(armature, data, motion)
     source_contract = _scene_contract()
 
@@ -435,6 +578,8 @@ def main() -> None:
         "output_fbx": str(output),
         "rig": "symmetrized mean-shape locked-head SMPL-X (betas = 0)",
         "rig_mode": mode,
+        "legs_matched_to_capture": match_legs,
+        "leg_match": motion["leg_match"],
         "motion_source": str(params_path),
         "frames": motion["frames"],
         "sample_rate_hz": SAMPLE_RATE_HZ,

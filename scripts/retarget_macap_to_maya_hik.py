@@ -75,8 +75,11 @@ def _sha256(path):
 
 def _arguments():
     values = sys.argv[1:]
-    if len(values) != 4:
-        raise SystemExit("Expected SOURCE.fbx TARGET.ma OUTPUT.fbx REPORT.json")
+    if len(values) not in (4, 5) or (len(values) == 5 and values[4] not in ("faithful", "solved")):
+        raise SystemExit(
+            "Expected SOURCE.fbx TARGET.ma OUTPUT.fbx REPORT.json [faithful|solved]"
+        )
+    mode = values[4] if len(values) == 5 else "faithful"
     source, output, report = (os.path.abspath(values[i]) for i in (0, 2, 3))
     target = values[1] if values[1] == GENERATED_TARGET else os.path.abspath(values[1])
     paths = (source,) if target == GENERATED_TARGET else (source, target)
@@ -89,7 +92,7 @@ def _arguments():
         directory = os.path.dirname(path)
         if directory and not os.path.isdir(directory):
             os.makedirs(directory)
-    return source, target, output, report
+    return source, target, output, report, mode
 
 
 def _start_maya():
@@ -425,6 +428,21 @@ def _deform_joints(cmds, mel, target_character):
 # differently proportioned body. They re-solve the hips from the target's own
 # mass centre and leg length, which walks the root off the performer's path.
 # Turning them off transfers the take instead of reinterpreting it.
+# ``solved`` mode. HumanIK is asked to reach the source's ankle positions and to
+# compensate for the proportion difference, instead of transferring rotations
+# untouched. Joint angles stop being the capture's exactly - that is the price of
+# landing the feet where the capture put them on a differently proportioned rig.
+SOLVED_PROPERTIES = {
+    "ScaleCompensationMode": 1,
+    "MassCenterCompensationMode": 1,
+    "HipsHeightCompensationMode": 1,
+    "AnkleHeightCompensationMode": 1,
+    "AnkleProximityCompensationMode": 1,
+    "ReachActorLeftAnkle": 1.0,
+    "ReachActorRightAnkle": 1.0,
+    "ReachActorLeftAnkleRotationRotation": 1.0,
+    "ReachActorRightAnkleRotation": 1.0,
+}
 RETARGET_PROPERTIES = {
     "ScaleCompensationMode": 0,
     "MassCenterCompensationMode": 0,
@@ -446,7 +464,7 @@ def _slot_node(cmds, mel, character, slot_name):
     return cmds.ls(node, long=True)[0]
 
 
-def _configure_retarget(cmds, target_character):
+def _configure_retarget(cmds, target_character, solve=False):
     """Disable HumanIK's proportion compensations after the source is set.
 
     ``hikSetCharacterInput`` restores these to their shipped values, so this has
@@ -458,7 +476,7 @@ def _configure_retarget(cmds, target_character):
         return None, {}
     node = properties[0]
     applied = {}
-    for attribute, value in RETARGET_PROPERTIES.items():
+    for attribute, value in (SOLVED_PROPERTIES if solve else RETARGET_PROPERTIES).items():
         plug = "%s.%s" % (node, attribute)
         if not cmds.objExists(plug):
             raise RuntimeError("Target HumanIK properties lack %s" % attribute)
@@ -485,7 +503,7 @@ def _set_source(mel, target_character, source_character):
 
 
 def main():
-    source_path, target_path, output_path, report_path = _arguments()
+    source_path, target_path, output_path, report_path, retarget_mode = _arguments()
     cmds, mel = _start_maya()
     cmds.file(new=True, force=True)
     # The macap takes are 30 Hz. Matching the scene rate first keeps imported
@@ -520,7 +538,9 @@ def main():
     target_finger_rest = _world_rest(cmds, [pair[1] for pair in finger_pairs])
     deform = _deform_joints(cmds, mel, target_character)
     _set_source(mel, target_character, source_character)
-    property_node, retarget_properties = _configure_retarget(cmds, target_character)
+    property_node, retarget_properties = _configure_retarget(
+        cmds, target_character, solve=retarget_mode == "solved"
+    )
 
     cmds.playbackOptions(minTime=start, maxTime=end, animationStartTime=start, animationEndTime=end)
     cmds.bakeResults(
@@ -737,6 +757,7 @@ def main():
         "mapped_joints": len(mapped),
         "mapping": mapped,
         "deform_joints_baked": len(deform),
+        "retarget_mode": retarget_mode,
         "retarget_properties": retarget_properties,
         "source_sha256": _sha256(source_path),
         "output_sha256": _sha256(output_path),
