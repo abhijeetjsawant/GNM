@@ -21,6 +21,11 @@ That search space is `(subjects!)^cameras`:
 | 6 | 4 | 191,102,976 | *intractable* | — | — | — |
 | 8 | 4 | 110,075,314,176 | *intractable* | — | — | — |
 
+Equivalence is *proven* only where the exhaustive search is computable. The
+three tractable rows are clean synthetic scenes with no phantom detections and
+no occlusion, so they do not exercise the ambiguity guard. Beyond them the graph
+path is validated against known ground-truth roots, not against exhaustive.
+
 **The pipeline could not have done three performers, and could barely do six
 cameras.** Battle 2's shoot list includes crossing identities and multi-person
 staging, so this was a hard blocker on the next increment, not a tidy-up.
@@ -86,6 +91,12 @@ the output is identical rather than merely close.
   speedup. Not attempted; two candidate heuristics were measured and rejected.
 - Coverage is 88.2%, below Battle 1's ≥90% exit gate. Association was never the
   binding term there — the spatiotemporal triangulation increment is.
+
+## Reproducing
+
+`scripts/compare_association_strategies.py ARTIFACT_DIR` runs both strategies
+over the same cached detections and prints the table above. It is the regression
+instrument for any future association change.
 
 ## Battle 1 remaining
 
