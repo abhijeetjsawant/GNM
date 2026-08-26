@@ -96,8 +96,10 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
 - RTMDet for person boxes — **not Ultralytics YOLO** (AGPL)
 - MediaPipe BlazePose GHUM as the interim detector (33 pts, the only
   off-the-shelf model with verified-clean provenance)
-- Cycle-consistent Hungarian matching on epipolar affinity, replacing greedy
-  per-frame permutation search
+- ✅ **Cycle-consistent Hungarian matching on epipolar affinity, replacing the
+  exhaustive per-frame permutation search** — landed 2026-08-27, identical
+  output on every fixture frame, and the only tractable path beyond two
+  subjects. See `docs/BATTLE1_INCREMENT1_ASSOCIATION.md`
 - AniPose-style spatiotemporal triangulation with per-shot bone-length estimation
 
 **Ceiling, stated honestly:** this lands around ~40 mm, where the best sparse

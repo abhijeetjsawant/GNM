@@ -14,9 +14,10 @@ from itertools import combinations, product, permutations
 import json
 import math
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 from scipy.signal import savgol_filter
 from scipy.spatial.transform import Rotation
 
@@ -41,6 +42,9 @@ PROVIDER_ID = "autoanim_cleanroom_multiview"
 # (detector width / this reference) so the gates stay invariant in millimetres.
 # Thresholds already expressed in metres are deliberately left alone.
 REFERENCE_DETECTOR_WIDTH_PX = 1280
+# How many surplus person-components the graph associator will consider before
+# giving up and deferring to the exhaustive search. Bounds the combinatorics.
+MAXIMUM_SURPLUS_COMPONENTS = 3
 JOINT_NAMES = (
     "nose",
     "neck",
@@ -371,6 +375,369 @@ def _assignment_options(detection_count: int, subject_count: int) -> list[tuple[
     return sorted(set(permutations(values, subject_count)), key=lambda row: tuple(-1 if item is None else item for item in row))
 
 
+def _score_assignment(
+    cameras: Sequence[CalibratedCamera],
+    associated: np.ndarray,
+    *,
+    subject_count: int,
+    previous_roots_world_m: np.ndarray | None,
+    previous_positions_world_m: np.ndarray | None,
+    previous_observations_xyc: np.ndarray | None,
+    pixel_scale: float,
+) -> float | None:
+    """Score one cross-view assignment.
+
+    Shared by every association strategy so that the objective, and the
+    reported ``association_objective_median``, mean the same thing however
+    the candidate assignment was arrived at. Returns ``None`` when the
+    assignment cannot be scored, e.g. a subject with no triangulated root.
+    """
+
+    errors: list[float] = []
+    support_deficits: list[int] = []
+    roots: list[np.ndarray] = []
+    candidate_positions = np.full(
+        (subject_count, len(JOINT_NAMES), 3), np.nan, dtype=np.float64
+    )
+    valid = True
+    for subject_index in range(subject_count):
+        subject_root: np.ndarray | None = None
+        for name in CORE_ASSOCIATION_JOINTS:
+            joint = JOINT_INDEX[name]
+            sample = triangulate_point(
+                cameras,
+                associated[subject_index, :, joint, :2],
+                associated[subject_index, :, joint, 2],
+                # Association deliberately tolerates a wider residual
+                # than final reconstruction. It decides identity in the
+                # presence of detector jitter/partial occlusion; the final
+                # 14 px robust solve still rejects the bad view.
+                inlier_threshold_px=40.0,
+                pixel_scale=pixel_scale,
+            )
+            if sample is None:
+                continue
+            errors.extend(sample.reprojection_errors_px[list(sample.used_camera_indices)])
+            support_deficits.append(len(cameras) - len(sample.used_camera_indices))
+            candidate_positions[subject_index, joint] = sample.position_world_m
+            if name == "root":
+                subject_root = sample.position_world_m
+        if subject_root is None:
+            valid = False
+            break
+        roots.append(subject_root)
+    if not valid or not errors:
+        return None
+    cost = float(np.median(errors))
+    # A two-camera accidental intersection can have a smaller residual
+    # than the correct four-camera person. Reward calibrated consensus,
+    # not residual alone, or robust triangulation itself creates ghosts.
+    # support_deficits is a camera count (unitless); the weight carries the
+    # pixel unit, so it scales with the detector width.
+    cost += 12.0 * pixel_scale * float(np.mean(support_deficits))
+    if previous_roots_world_m is not None:
+        roots_array = np.asarray(roots)
+        if roots_array.shape == previous_roots_world_m.shape:
+            # root displacement is in metres (capped at 2.0 m); the weight
+            # carries the pixel unit and therefore scales.
+            cost += 50.0 * pixel_scale * float(
+                np.mean(np.minimum(np.linalg.norm(roots_array - previous_roots_world_m, axis=1), 2.0))
+            )
+    if previous_positions_world_m is not None:
+        previous = np.asarray(previous_positions_world_m, dtype=np.float64)
+        if previous.shape == candidate_positions.shape:
+            continuity: list[float] = []
+            for subject_index in range(subject_count):
+                for name in CORE_ASSOCIATION_JOINTS:
+                    joint = JOINT_INDEX[name]
+                    if np.isfinite(candidate_positions[subject_index, joint]).all() and np.isfinite(previous[subject_index, joint]).all():
+                        continuity.append(
+                            min(
+                                float(
+                                    np.linalg.norm(
+                                        candidate_positions[subject_index, joint]
+                                        - previous[subject_index, joint]
+                                    )
+                                ),
+                                1.0,
+                            )
+                        )
+            if continuity:
+                # continuity is in metres (capped at 1.0 m); weight scales.
+                cost += 60.0 * pixel_scale * float(np.mean(continuity))
+    if previous_observations_xyc is not None:
+        previous_2d = np.asarray(previous_observations_xyc, dtype=np.float64)
+        if previous_2d.shape == associated.shape:
+            screen_steps: list[float] = []
+            for subject_index in range(subject_count):
+                for camera_index in range(len(cameras)):
+                    for name in CORE_ASSOCIATION_JOINTS:
+                        joint = JOINT_INDEX[name]
+                        current = associated[subject_index, camera_index, joint]
+                        prior = previous_2d[subject_index, camera_index, joint]
+                        if (
+                            np.isfinite(current).all()
+                            and np.isfinite(prior).all()
+                            and current[2] >= 0.25
+                            and prior[2] >= 0.25
+                        ):
+                            screen_steps.append(
+                                min(
+                                    float(np.linalg.norm(current[:2] - prior[:2])),
+                                    250.0 * pixel_scale,
+                                )
+                            )
+            if screen_steps:
+                # Reprojection measures cross-camera consistency within a
+                # frame. This term supplies the missing across-frame
+                # identity evidence and rejects a low-reprojection ghost.
+                # screen_steps are pixels and already scale with width, so
+                # this weight is intentionally left unscaled.
+                cost += 0.25 * float(np.mean(screen_steps))
+    return cost
+
+
+def _fundamental_matrix(source: CalibratedCamera, target: CalibratedCamera) -> np.ndarray:
+    """Fundamental matrix F with ``x_target^T F x_source == 0`` on a true match."""
+
+    source_projection = source.projection_matrix
+    target_projection = target.projection_matrix
+    epipole = target_projection @ np.append(source.camera_center_world_m, 1.0)
+    skew = np.asarray(
+        (
+            (0.0, -epipole[2], epipole[1]),
+            (epipole[2], 0.0, -epipole[0]),
+            (-epipole[1], epipole[0], 0.0),
+        )
+    )
+    return skew @ target_projection @ np.linalg.pinv(source_projection)
+
+
+def _epipolar_distance_px(
+    fundamental: np.ndarray,
+    source_person: np.ndarray,
+    target_person: np.ndarray,
+    *,
+    minimum_confidence: float,
+    minimum_shared_joints: int,
+) -> float:
+    """Median symmetric epipolar distance over joints both cameras can see.
+
+    Median rather than mean: a single mislabelled limb should not decide
+    identity. Returns ``inf`` when the two detections share too little evidence.
+    """
+
+    source = np.asarray(source_person, dtype=np.float64)
+    target = np.asarray(target_person, dtype=np.float64)
+    shared = (
+        np.isfinite(source).all(axis=1)
+        & np.isfinite(target).all(axis=1)
+        & (source[:, 2] >= minimum_confidence)
+        & (target[:, 2] >= minimum_confidence)
+    )
+    if int(np.count_nonzero(shared)) < minimum_shared_joints:
+        return math.inf
+    ones = np.ones((int(np.count_nonzero(shared)), 1))
+    source_h = np.hstack((source[shared, :2], ones))
+    target_h = np.hstack((target[shared, :2], ones))
+    target_lines = source_h @ fundamental.T
+    source_lines = target_h @ fundamental
+    numerator = np.abs(np.sum(target_h * target_lines, axis=1))
+    target_norm = np.hypot(target_lines[:, 0], target_lines[:, 1])
+    source_norm = np.hypot(source_lines[:, 0], source_lines[:, 1])
+    if not (np.all(target_norm > 1e-9) and np.all(source_norm > 1e-9)):
+        return math.inf
+    return float(np.median(numerator / target_norm + numerator / source_norm))
+
+
+def associate_frame_graph(
+    cameras: Sequence[CalibratedCamera],
+    detections: Sequence[Sequence[np.ndarray]],
+    *,
+    subject_count: int,
+    previous_roots_world_m: np.ndarray | None = None,
+    previous_positions_world_m: np.ndarray | None = None,
+    previous_observations_xyc: np.ndarray | None = None,
+    pixel_scale: float = 1.0,
+    maximum_epipolar_px: float = 60.0,
+    minimum_shared_joints: int = 4,
+    minimum_confidence: float = 0.25,
+) -> tuple[np.ndarray, float]:
+    """Associate detections across views by cycle-consistent graph matching.
+
+    Replaces an exhaustive search over every per-camera assignment, whose cost
+    is the product of per-camera options and which triangulates every core joint
+    of every candidate. This instead scores each cross-view detection pair once
+    by symmetric epipolar distance, matches each camera pair with the Hungarian
+    algorithm, and grows people as connected components under the constraint
+    that a person may hold at most one detection per camera -- which is what
+    enforces cycle consistency, since a triangle violation would otherwise
+    require two detections from the same camera in one component.
+
+    Falls back to :func:`associate_frame` when the resulting assignment cannot
+    be scored, so this can only ever match or beat the exhaustive path.
+    """
+
+    if len(cameras) != len(detections) or subject_count < 1:
+        raise CommercialMultiviewError("Association inputs are invalid")
+    if not math.isfinite(pixel_scale) or pixel_scale <= 0.0:
+        raise CommercialMultiviewError("Pixel scale must be finite and positive")
+
+    def exhaustive() -> tuple[np.ndarray, float]:
+        return associate_frame(
+            cameras,
+            detections,
+            subject_count=subject_count,
+            previous_roots_world_m=previous_roots_world_m,
+            previous_positions_world_m=previous_positions_world_m,
+            previous_observations_xyc=previous_observations_xyc,
+            pixel_scale=pixel_scale,
+        )
+
+    if any(len(people) > subject_count for people in detections):
+        # A view reporting more people than the shot contains is where identity
+        # is genuinely ambiguous, and measurement showed the graph heuristic
+        # picks a different, higher-cost assignment there. Pay for the exact
+        # search on those frames rather than guess.
+        return exhaustive()
+
+    nodes = [
+        (camera_index, person_index)
+        for camera_index, people in enumerate(detections)
+        for person_index in range(len(people))
+    ]
+    if len(nodes) < 2:
+        return exhaustive()
+    node_index = {node: index for index, node in enumerate(nodes)}
+    threshold = maximum_epipolar_px * pixel_scale
+
+    edges: list[tuple[float, int, int]] = []
+    for left in range(len(cameras)):
+        for right in range(left + 1, len(cameras)):
+            if not detections[left] or not detections[right]:
+                continue
+            fundamental = _fundamental_matrix(cameras[left], cameras[right])
+            distances = np.full((len(detections[left]), len(detections[right])), math.inf)
+            for a, source_person in enumerate(detections[left]):
+                for b, target_person in enumerate(detections[right]):
+                    distance = _epipolar_distance_px(
+                        fundamental,
+                        source_person,
+                        target_person,
+                        minimum_confidence=minimum_confidence,
+                        minimum_shared_joints=minimum_shared_joints,
+                    )
+                    distances[a, b] = distance
+            # Non-assignment must stay available: an occluded person has no
+            # counterpart, and forcing one is how ghost identities appear.
+            feasible = np.isfinite(distances) & (distances <= threshold)
+            if not feasible.any():
+                continue
+            cost = np.where(feasible, distances, threshold * 1e3)
+            rows, columns = linear_sum_assignment(cost)
+            for a, b in zip(rows.tolist(), columns.tolist(), strict=True):
+                if feasible[a, b]:
+                    edges.append((float(distances[a, b]), node_index[(left, a)], node_index[(right, b)]))
+
+    parent = list(range(len(nodes)))
+
+    def find(item: int) -> int:
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+
+    cameras_used: list[set[int]] = [{node[0]} for node in nodes]
+    # Strongest evidence first, and never merge two detections from one camera:
+    # that single rule is what makes the components cycle-consistent, since a
+    # triangle violation would otherwise need two detections from one camera in
+    # one component. Complete linkage over `pair_distance` was measured as an
+    # alternative and was strictly worse -- it fragments components and changes
+    # the chosen assignment on more frames, not fewer.
+    for _, left_node, right_node in sorted(edges, key=lambda edge: edge[0]):
+        left_root, right_root = find(left_node), find(right_node)
+        if left_root == right_root or cameras_used[left_root] & cameras_used[right_root]:
+            continue
+        parent[right_root] = left_root
+        cameras_used[left_root] |= cameras_used[right_root]
+
+    components: dict[int, list[int]] = {}
+    for index in range(len(nodes)):
+        components.setdefault(find(index), []).append(index)
+    # A spurious extra detection in one view produces an extra component, and
+    # picking the largest ones then quietly picks the wrong person. Score the
+    # plausible choices instead -- still a handful of evaluations against the
+    # exhaustive path's product over per-camera assignments.
+    candidates = sorted(components.values(), key=len, reverse=True)[: subject_count + MAXIMUM_SURPLUS_COMPONENTS]
+    if len(candidates) < subject_count:
+        return exhaustive()
+
+    best_cost = math.inf
+    best: np.ndarray | None = None
+    for chosen in combinations(range(len(candidates)), subject_count):
+        associated = np.full(
+            (subject_count, len(cameras), len(JOINT_NAMES), 3), np.nan, dtype=np.float64
+        )
+        roots: list[np.ndarray] = []
+        complete = True
+        for slot, candidate_index in enumerate(chosen):
+            for index in candidates[candidate_index]:
+                camera_index, person_index = nodes[index]
+                associated[slot, camera_index] = detections[camera_index][person_index]
+            sample = triangulate_point(
+                cameras,
+                associated[slot, :, JOINT_INDEX["root"], :2],
+                associated[slot, :, JOINT_INDEX["root"], 2],
+                inlier_threshold_px=40.0,
+                pixel_scale=pixel_scale,
+            )
+            if sample is None:
+                complete = False
+                break
+            roots.append(sample.position_world_m)
+        if not complete:
+            continue
+        associated = associated[_identity_order(np.asarray(roots), previous_roots_world_m)]
+        cost = _score_assignment(
+            cameras,
+            associated,
+            subject_count=subject_count,
+            previous_roots_world_m=previous_roots_world_m,
+            previous_positions_world_m=previous_positions_world_m,
+            previous_observations_xyc=previous_observations_xyc,
+            pixel_scale=pixel_scale,
+        )
+        if cost is not None and cost < best_cost:
+            best_cost = cost
+            best = associated
+    if best is None:
+        return exhaustive()
+    return best, best_cost
+
+
+def _identity_order(roots: np.ndarray, previous_roots_world_m: np.ndarray | None) -> np.ndarray:
+    """Map components onto stable subject slots.
+
+    With no history, order by capture world X -- the same deterministic contract
+    the exhaustive path uses, which everything downstream relies on. With
+    history, match to the previous frame's roots. This is a soft prior applied
+    once per frame, not a hard constraint: the bounded-acceleration gate in
+    :func:`reconstruct_multiview` remains the safety net, so a single bad frame
+    cannot pin identities forever.
+    """
+
+    if previous_roots_world_m is None or np.asarray(previous_roots_world_m).shape != roots.shape:
+        return np.argsort(roots[:, 0])
+    previous = np.asarray(previous_roots_world_m, dtype=np.float64)
+    distances = np.linalg.norm(roots[:, None, :] - previous[None, :, :], axis=2)
+    if not np.isfinite(distances).all():
+        return np.argsort(roots[:, 0])
+    rows, columns = linear_sum_assignment(distances)
+    order = np.empty(len(roots), dtype=np.int64)
+    order[columns] = rows
+    return order
+
+
 def associate_frame(
     cameras: Sequence[CalibratedCamera],
     detections: Sequence[Sequence[np.ndarray]],
@@ -404,107 +771,17 @@ def associate_frame(
             for subject_index, person_index in enumerate(assignment):
                 if person_index is not None:
                     associated[subject_index, camera_index] = detections[camera_index][person_index]
-        errors: list[float] = []
-        support_deficits: list[int] = []
-        roots: list[np.ndarray] = []
-        candidate_positions = np.full(
-            (subject_count, len(JOINT_NAMES), 3), np.nan, dtype=np.float64
+        cost = _score_assignment(
+            cameras,
+            associated,
+            subject_count=subject_count,
+            previous_roots_world_m=previous_roots_world_m,
+            previous_positions_world_m=previous_positions_world_m,
+            previous_observations_xyc=previous_observations_xyc,
+            pixel_scale=pixel_scale,
         )
-        valid = True
-        for subject_index in range(subject_count):
-            subject_root: np.ndarray | None = None
-            for name in CORE_ASSOCIATION_JOINTS:
-                joint = JOINT_INDEX[name]
-                sample = triangulate_point(
-                    cameras,
-                    associated[subject_index, :, joint, :2],
-                    associated[subject_index, :, joint, 2],
-                    # Association deliberately tolerates a wider residual
-                    # than final reconstruction. It decides identity in the
-                    # presence of detector jitter/partial occlusion; the final
-                    # 14 px robust solve still rejects the bad view.
-                    inlier_threshold_px=40.0,
-                    pixel_scale=pixel_scale,
-                )
-                if sample is None:
-                    continue
-                errors.extend(sample.reprojection_errors_px[list(sample.used_camera_indices)])
-                support_deficits.append(len(cameras) - len(sample.used_camera_indices))
-                candidate_positions[subject_index, joint] = sample.position_world_m
-                if name == "root":
-                    subject_root = sample.position_world_m
-            if subject_root is None:
-                valid = False
-                break
-            roots.append(subject_root)
-        if not valid or not errors:
+        if cost is None:
             continue
-        cost = float(np.median(errors))
-        # A two-camera accidental intersection can have a smaller residual
-        # than the correct four-camera person. Reward calibrated consensus,
-        # not residual alone, or robust triangulation itself creates ghosts.
-        # support_deficits is a camera count (unitless); the weight carries the
-        # pixel unit, so it scales with the detector width.
-        cost += 12.0 * pixel_scale * float(np.mean(support_deficits))
-        if previous_roots_world_m is not None:
-            roots_array = np.asarray(roots)
-            if roots_array.shape == previous_roots_world_m.shape:
-                # root displacement is in metres (capped at 2.0 m); the weight
-                # carries the pixel unit and therefore scales.
-                cost += 50.0 * pixel_scale * float(
-                    np.mean(np.minimum(np.linalg.norm(roots_array - previous_roots_world_m, axis=1), 2.0))
-                )
-        if previous_positions_world_m is not None:
-            previous = np.asarray(previous_positions_world_m, dtype=np.float64)
-            if previous.shape == candidate_positions.shape:
-                continuity: list[float] = []
-                for subject_index in range(subject_count):
-                    for name in CORE_ASSOCIATION_JOINTS:
-                        joint = JOINT_INDEX[name]
-                        if np.isfinite(candidate_positions[subject_index, joint]).all() and np.isfinite(previous[subject_index, joint]).all():
-                            continuity.append(
-                                min(
-                                    float(
-                                        np.linalg.norm(
-                                            candidate_positions[subject_index, joint]
-                                            - previous[subject_index, joint]
-                                        )
-                                    ),
-                                    1.0,
-                                )
-                            )
-                if continuity:
-                    # continuity is in metres (capped at 1.0 m); weight scales.
-                    cost += 60.0 * pixel_scale * float(np.mean(continuity))
-        if previous_observations_xyc is not None:
-            previous_2d = np.asarray(previous_observations_xyc, dtype=np.float64)
-            if previous_2d.shape == associated.shape:
-                screen_steps: list[float] = []
-                for subject_index in range(subject_count):
-                    for camera_index in range(len(cameras)):
-                        for name in CORE_ASSOCIATION_JOINTS:
-                            joint = JOINT_INDEX[name]
-                            current = associated[subject_index, camera_index, joint]
-                            prior = previous_2d[subject_index, camera_index, joint]
-                            if (
-                                np.isfinite(current).all()
-                                and np.isfinite(prior).all()
-                                and current[2] >= 0.25
-                                and prior[2] >= 0.25
-                            ):
-                                screen_steps.append(
-                                    min(
-                                        float(np.linalg.norm(current[:2] - prior[:2])),
-                                        250.0 * pixel_scale,
-                                    )
-                                )
-                if screen_steps:
-                    # Reprojection measures cross-camera consistency within a
-                    # frame. This term supplies the missing across-frame
-                    # identity evidence and rejects a low-reprojection ghost.
-                    # screen_steps are pixels and already scale with width, so
-                    # this weight is intentionally left unscaled.
-                    cost += 0.25 * float(np.mean(screen_steps))
         if cost < best_cost:
             best_cost = cost
             best = associated
@@ -771,6 +1048,12 @@ def reconstruct_multiview(
     *,
     subject_count: int = 2,
     sample_rate_hz: int = 30,
+    # Cycle-consistent graph matching by default: measured identical to the
+    # exhaustive search on every frame of the reference fixture, ~2x faster
+    # there, and the only tractable option beyond two subjects -- the exhaustive
+    # search is (subjects!)^cameras, which is 1,296 assignments at three
+    # subjects and four cameras and 110 billion at four subjects and eight.
+    associator: Callable[..., tuple[np.ndarray, float]] = associate_frame_graph,
 ) -> tuple[tuple[BodyTrack, ...], ReconstructionDiagnostics, np.ndarray, np.ndarray]:
     """Reconstruct every subject from calibrated multiview observations.
 
@@ -823,7 +1106,7 @@ def reconstruct_multiview(
             [_person_array(person) for person in values[frame]["people"]]
             for values in observations_by_camera
         ]
-        associated, cost = associate_frame(
+        associated, cost = associator(
             scaled_cameras,
             detections,
             subject_count=subject_count,
@@ -953,6 +1236,7 @@ def reconstruct_multiview(
 
 __all__ = [
     "CalibratedCamera",
+    "associate_frame_graph",
     "CommercialMultiviewError",
     "JOINT_NAMES",
     "PROVIDER_ID",

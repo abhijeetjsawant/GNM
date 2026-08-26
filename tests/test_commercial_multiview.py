@@ -13,6 +13,7 @@ from autoanim_gnm.commercial_multiview import (
     JOINT_INDEX,
     JOINT_NAMES,
     associate_frame,
+    associate_frame_graph,
     positions_to_body_track,
     triangulate_point,
 )
@@ -290,3 +291,99 @@ def test_association_cost_scales_homogeneously_with_detector_width() -> None:
         # association must be identical and only the scale of the cost changes.
         assert costs[factor] == pytest.approx(costs[1] * factor, rel=1e-9)
         assert np.allclose(orders[factor], orders[1], atol=1e-9, equal_nan=True)
+
+
+def _ring(count: int) -> tuple[CalibratedCamera, ...]:
+    return tuple(
+        _look_at_camera(
+            f"cam{index}",
+            (4.0 * np.cos(2.0 * np.pi * index / count), 4.0 * np.sin(2.0 * np.pi * index / count), 2.0),
+        )
+        for index in range(count)
+    )
+
+
+def _people(cameras, roots, *, drop: tuple[int, int] | None = None):
+    detections: list[list[np.ndarray]] = []
+    for camera_index, camera in enumerate(cameras):
+        people: list[np.ndarray] = []
+        for subject, root in enumerate(roots):
+            joints = np.full((len(JOINT_NAMES), 3), np.nan, dtype=np.float64)
+            for name_index in range(len(JOINT_NAMES)):
+                point = root + np.asarray(
+                    (0.01 * (name_index % 3), 0.005 * (name_index % 5), 0.02 * (name_index % 4))
+                )
+                joints[name_index, :2] = camera.project(point)[0]
+                joints[name_index, 2] = 0.95
+            if drop == (camera_index, subject):
+                continue
+            people.append(joints)
+        detections.append(people)
+    return detections
+
+
+def test_graph_association_matches_exhaustive_on_the_ghost_fixture() -> None:
+    cameras = (
+        _look_at_camera("front", (0.0, -5.0, 2.0)),
+        _look_at_camera("left", (-4.0, -1.0, 2.0)),
+        _look_at_camera("right", (4.0, -1.0, 2.0)),
+        _look_at_camera("rear", (0.0, 5.0, 2.0)),
+    )
+    roots = (np.asarray((-0.8, 0.1, 1.0)), np.asarray((0.8, 0.2, 1.0)))
+    detections = _people(cameras, roots)
+    # Shuffle detector ordering per camera: list order is not an identity signal.
+    detections = [list(reversed(people)) if index % 2 else people for index, people in enumerate(detections)]
+
+    exhaustive, exhaustive_cost = associate_frame(cameras, detections, subject_count=2)
+    graph, graph_cost = associate_frame_graph(cameras, detections, subject_count=2)
+    assert np.allclose(graph, exhaustive, equal_nan=True)
+    assert graph_cost == pytest.approx(exhaustive_cost, rel=1e-12)
+
+
+def test_graph_association_survives_a_camera_losing_a_subject() -> None:
+    cameras = _ring(4)
+    roots = (np.asarray((-0.9, 0.0, 1.0)), np.asarray((0.9, 0.1, 1.0)))
+    # The rear camera never sees subject 1, so non-assignment must stay available
+    # or the matcher is forced to invent a counterpart.
+    detections = _people(cameras, roots, drop=(2, 1))
+    assert len(detections[2]) == 1
+
+    graph, _ = associate_frame_graph(cameras, detections, subject_count=2)
+    exhaustive, _ = associate_frame(cameras, detections, subject_count=2)
+    assert np.allclose(graph, exhaustive, equal_nan=True)
+    # The occluded view contributes nothing for that subject and everything for
+    # the other, rather than being filled with a wrong person.
+    assert not np.isfinite(graph[1, 2]).any()
+    assert np.isfinite(graph[0, 2]).all()
+
+
+def test_graph_association_resolves_three_subjects_the_exhaustive_search_cannot_afford() -> None:
+    """With k subjects and c cameras the exhaustive search is (k!)^c: 1,296
+    assignments at three subjects and four cameras, each triangulating every
+    core joint. The graph path is polynomial and reproduces the same answer."""
+
+    cameras = _ring(4)
+    roots = [np.asarray((-1.2 + 0.9 * subject, 0.1 * subject, 1.0)) for subject in range(3)]
+    detections = _people(cameras, roots)
+
+    associated, _ = associate_frame_graph(cameras, detections, subject_count=3)
+    recovered = []
+    for subject in range(3):
+        result = triangulate_point(
+            cameras,
+            associated[subject, :, JOINT_INDEX["root"], :2],
+            associated[subject, :, JOINT_INDEX["root"], 2],
+            inlier_threshold_px=5.0,
+        )
+        assert result is not None
+        recovered.append(result.position_world_m)
+    # Identity slots are ordered by capture world X with no history, which is the
+    # determinism contract everything downstream depends on. `_people` offsets
+    # every joint, so the root joint sits at root + its own offset.
+    root_index = JOINT_INDEX["root"]
+    offset = np.asarray(
+        (0.01 * (root_index % 3), 0.005 * (root_index % 5), 0.02 * (root_index % 4))
+    )
+    expected = sorted(roots, key=lambda root: root[0])
+    for got, want in zip(recovered, expected, strict=True):
+        assert np.linalg.norm(got - (want + offset)) < 1e-6
