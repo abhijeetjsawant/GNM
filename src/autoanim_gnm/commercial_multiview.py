@@ -33,7 +33,12 @@ from .body_projection import project_generated_foot_contacts
 
 
 SCHEMA_VERSION = "autoanim.commercial-multiview/1.0"
+# The original observation contract named its detector, which stopped being true
+# the moment a second one existed. 1.1 is detector-neutral and carries a
+# `detector` field; 1.0 is still accepted and reads as Apple Vision.
 OBSERVATION_SCHEMA_VERSION = "autoanim.apple-vision-body-observations/1.0"
+BODY_OBSERVATION_SCHEMA_VERSION = "autoanim.body-observations/1.1"
+LEGACY_OBSERVATION_DETECTOR = "apple_vision"
 PROVIDER_ID = "autoanim_cleanroom_multiview"
 
 # Every pixel-denominated constant below is expressed at this detector width.
@@ -388,18 +393,32 @@ def _person_array(person: Any) -> np.ndarray:
 
 
 def load_observation_jsonl(path: str | Path) -> list[dict[str, Any]]:
+    """Load 2D body observations from any detector that honours the contract.
+
+    Accepts the detector-neutral 1.1 schema, which names its detector, and the
+    original 1.0 schema, which was Apple-Vision-only by construction and is read
+    as such. Every frame comes back carrying a `detector` key either way, so
+    downstream code never has to know which version it came from.
+    """
+
     frames: list[dict[str, Any]] = []
     for line in Path(path).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
         value = json.loads(line)
+        version = value.get("schema_version") if isinstance(value, dict) else None
         if (
             not isinstance(value, dict)
-            or value.get("schema_version") != OBSERVATION_SCHEMA_VERSION
+            or version not in (OBSERVATION_SCHEMA_VERSION, BODY_OBSERVATION_SCHEMA_VERSION)
             or not isinstance(value.get("frame_index"), int)
             or not isinstance(value.get("width"), int)
             or not isinstance(value.get("height"), int)
             or not isinstance(value.get("people"), list)
         ):
-            raise CommercialMultiviewError("Apple Vision observation schema is invalid")
+            raise CommercialMultiviewError("Body observation schema is invalid")
+        if version == BODY_OBSERVATION_SCHEMA_VERSION and not isinstance(value.get("detector"), str):
+            raise CommercialMultiviewError("Body observations must name their detector")
+        value.setdefault("detector", LEGACY_OBSERVATION_DETECTOR)
         frames.append(value)
     if len(frames) < 2 or any(
         frames[index]["frame_index"] >= frames[index + 1]["frame_index"]
@@ -1580,6 +1599,7 @@ def reconstruct_multiview(
 
 
 __all__ = [
+    "BODY_OBSERVATION_SCHEMA_VERSION",
     "CalibratedCamera",
     "associate_frame_graph",
     "CommercialMultiviewError",

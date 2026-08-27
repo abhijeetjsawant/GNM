@@ -94,8 +94,14 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
 
 - SAM2 masks with temporal identity propagation (Apache-2.0)
 - RTMDet for person boxes — **not Ultralytics YOLO** (AGPL)
-- MediaPipe BlazePose GHUM as the interim detector (33 pts, the only
-  off-the-shelf model with verified-clean provenance)
+- MediaPipe Pose Landmarker as the interim detector (33 pts, the only
+  off-the-shelf model with verified-clean provenance). **Viability probe passed
+  2026-08-27** — the abort recorded in `docs/MAMMA_MULTIVIEW_EXECUTION.md` is the
+  *legacy* `mediapipe.python.solutions` graph, which is not even present in the
+  installed 0.10.35. The **Tasks** runtime builds and runs its native graph on
+  this host on CPU via XNNPACK. Worker written
+  (`workers/commercial_multiview/mediapipe_pose.py`); blocked only on the model
+  asset's licence gate.
 - ✅ **Cycle-consistent Hungarian matching on epipolar affinity, replacing the
   exhaustive per-frame permutation search** — landed 2026-08-27, identical
   output on every fixture frame, and the only tractable path beyond two
