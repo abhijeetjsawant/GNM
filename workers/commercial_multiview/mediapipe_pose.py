@@ -17,6 +17,8 @@ XNNPACK.
 
     python workers/commercial_multiview/mediapipe_pose.py MODEL.task FRAME...
 
+Set AUTOANIM_MP_CONFIDENCE to override the detection/presence/tracking floor.
+
 Writes one JSON object per frame to stdout, in argument order.
 """
 
@@ -75,6 +77,13 @@ DERIVED_JOINTS: dict[str, tuple[int, int]] = {
 }
 
 MAXIMUM_PEOPLE = 2
+# MediaPipe's 0.5 defaults are tuned for a close-up single subject. On a wide
+# four-camera stage they find ~0.55 people per frame -- i.e. they miss both
+# performers most of the time. Measured over 40 frames of the reference fixture:
+# 0.5 -> 0.57 people/frame and 1 frame in 40 with two; 0.1 -> 1.82 and 33 in 40.
+# The reconstruction side already gates on confidence and rejects outliers, so
+# it is better to let weak detections through and let geometry judge them.
+DEFAULT_CONFIDENCE = 0.1
 
 
 def _confidence(landmark: Any) -> float:
@@ -112,6 +121,9 @@ def main() -> int:
     if len(sys.argv) < 3:
         print(__doc__, file=sys.stderr)
         return 2
+    import os
+
+    confidence = float(os.environ.get("AUTOANIM_MP_CONFIDENCE", DEFAULT_CONFIDENCE))
     model = Path(sys.argv[1]).resolve(strict=True)
     frames = [Path(value) for value in sys.argv[2:]]
 
@@ -123,6 +135,9 @@ def main() -> int:
         base_options=BaseOptions(model_asset_path=str(model)),
         running_mode=vision.RunningMode.IMAGE,
         num_poses=MAXIMUM_PEOPLE,
+        min_pose_detection_confidence=confidence,
+        min_pose_presence_confidence=confidence,
+        min_tracking_confidence=confidence,
     )
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         for frame in frames:
