@@ -546,3 +546,45 @@ def test_sequence_solve_leaves_wholly_unobserved_slots_for_interpolation() -> No
     solved, recovered = solve_sequence_positions(cameras, world, observations)
     assert not recovered[12:16, wrist].any()
     assert not np.isfinite(solved[12:16, wrist]).any()
+
+
+def test_sequence_solve_declines_a_genuine_depth_branch_flip() -> None:
+    """A ray meets the limb-length sphere in two points. Where the true joint is
+    on the *far* branch and the interpolated start sits near the other, the
+    temporal term does not rescue it -- measured, not assumed. What matters is
+    that it fails safe: the residual gate refuses the slot rather than emitting
+    a confident wrong position, and the caller's interpolation takes over."""
+
+    cameras = _ring(4)
+    wrist, elbow = JOINT_INDEX["left_wrist"], JOINT_INDEX["left_elbow"]
+    frames, hidden = 40, slice(15, 25)
+    truth = np.zeros((frames, len(JOINT_NAMES), 3), dtype=np.float64)
+    for frame in range(frames):
+        for joint in range(len(JOINT_NAMES)):
+            truth[frame, joint] = (0.10 * (joint % 3), 0.05 * (joint % 5), 0.90 + 0.04 * (joint % 4))
+        # Outside the gap the forearm points along +Y, lateral to camera 0.
+        # Inside it swings onto camera 0's depth axis, which is where the
+        # two-fold ambiguity actually bites.
+        offset = (-0.26, 0.0, 0.0) if hidden.start <= frame < hidden.stop else (0.0, 0.26, 0.0)
+        truth[frame, wrist] = truth[frame, elbow] + np.asarray(offset)
+
+    observations = np.full((frames, len(cameras), len(JOINT_NAMES), 3), np.nan)
+    for frame in range(frames):
+        for camera_index, camera in enumerate(cameras):
+            for joint in range(len(JOINT_NAMES)):
+                if joint == wrist and hidden.start <= frame < hidden.stop and camera_index != 0:
+                    continue
+                observations[frame, camera_index, joint, :2] = camera.project(truth[frame, joint])[0]
+                observations[frame, camera_index, joint, 2] = 0.95
+    world = np.full((frames, len(JOINT_NAMES), 3), np.nan, dtype=np.float64)
+    for frame in range(frames):
+        for joint in range(len(JOINT_NAMES)):
+            result = triangulate_point(
+                cameras, observations[frame, :, joint, :2], observations[frame, :, joint, 2]
+            )
+            if result is not None:
+                world[frame, joint] = result.position_world_m
+
+    solved, recovered = solve_sequence_positions(cameras, world, observations)
+    assert not recovered[hidden, wrist].any(), "a branch flip must not be reported as recovered"
+    assert not np.isfinite(solved[hidden, wrist]).any(), "the slot must be left for interpolation"

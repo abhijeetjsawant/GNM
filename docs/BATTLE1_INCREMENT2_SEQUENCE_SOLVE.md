@@ -29,9 +29,16 @@ real evidence that per-frame triangulation simply cannot use.
   displacement
 
 A calibrated ray meets the sphere of known limb length about the parent in at
-most two points — limb toward the camera or away — and the temporal term picks
-between them. (An earlier draft of this doc said "circle"; that is the case where
-the length is known but the ray is not.)
+most two points — limb toward the camera or away. (An earlier draft of this doc
+said "circle"; that is the case where the length is known but the ray is not.)
+
+**The temporal term does not reliably pick between those two branches.** Tested
+directly: with the forearm swinging onto a camera's depth axis while hidden from
+the other three, the solve recovers **0 of 10** slots. It fails *safe* — the
+residual gate refuses them and interpolation takes over — rather than emitting a
+confident wrong position. That behaviour is now locked in by a test. Recovery
+therefore works where the ray and the prior agree, and declines where they are
+genuinely ambiguous, which is the honest description of what this buys.
 
 Residual scaling follows Anipose (Karashchuk et al., *Cell Reports* 2021),
 reimplemented from the published description: soft-l1 on the reprojection block
@@ -127,9 +134,14 @@ bar — it is putting the bar where the work is.
   They recover only through reprojection and temporal continuity, not limb length.
 - Chained single-ray joints (an unresolved parent) degrade toward
   temporal-interpolation-only depth. Not measured on this fixture.
-- The two-solution branch ambiguity is resolved by the temporal term. Under fast
-  motion a wrong branch could latch; the unit test constructs the ambiguity but
-  does not stress fast motion.
+- **Genuine depth-branch flips are not recovered at all** (0/10 in the test
+  above), only declined safely. Any real gain is confined to slots where the ray
+  and the limb prior already agree.
+- `MINIMUM_LIMB_SAMPLES = 10`: a limb that never reaches ten
+  directly-triangulated frames gets no length constraint, and its single-ray
+  slots then fall back to interpolation. Graceful, but silent — nothing in
+  diagnostics names which limbs lacked an estimate. Battle 2's shoot list
+  includes short blocks, so this wants a per-limb count in the report.
 - 43.7 s per 150-frame two-person take. Anipose chunks past ~1000 frames with 15
   pinned overlap frames; not implemented, not needed at this length.
 - **Review depth is lower than increments 0 and 1.** Those each had a multi-agent
