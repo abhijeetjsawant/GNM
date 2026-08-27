@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 import numpy as np
-from scipy.optimize import linear_sum_assignment
+from scipy.optimize import least_squares, linear_sum_assignment
+from scipy.sparse import coo_matrix
 from scipy.signal import savgol_filter
 from scipy.spatial.transform import Rotation
 
@@ -50,6 +51,8 @@ MAXIMUM_SURPLUS_COMPONENTS = 3
 # frame, so past this the frame is refused with its size named rather than
 # silently stalling a capture.
 MAXIMUM_EXHAUSTIVE_ASSOCIATION_CANDIDATES = 20_000
+# Fewest directly-triangulated frames before a limb length is trusted.
+MINIMUM_LIMB_SAMPLES = 10
 JOINT_NAMES = (
     "nose",
     "neck",
@@ -72,6 +75,30 @@ JOINT_NAMES = (
     "left_ear",
 )
 JOINT_INDEX = {name: index for index, name in enumerate(JOINT_NAMES)}
+# Limbs whose length is constant within a take, used to resolve joints that only
+# one camera can see: a calibrated ray meets a sphere of known radius about the
+# parent in at most two points -- limb toward the camera or away from it -- and
+# temporal continuity picks between them.
+# Head landmarks (nose, eyes, ears) are deliberately absent -- they have no rigid
+# bone to a parent, and GNM owns the head regardless, so they stay on the
+# existing neck-fallback path.
+RIGID_LIMBS = (
+    ("root", "neck"),
+    ("neck", "left_shoulder"),
+    ("neck", "right_shoulder"),
+    ("left_shoulder", "left_elbow"),
+    ("left_elbow", "left_wrist"),
+    ("right_shoulder", "right_elbow"),
+    ("right_elbow", "right_wrist"),
+    ("root", "left_hip"),
+    ("root", "right_hip"),
+    ("left_hip", "left_knee"),
+    ("left_knee", "left_ankle"),
+    ("right_hip", "right_knee"),
+    ("right_knee", "right_ankle"),
+    ("left_shoulder", "right_shoulder"),
+    ("left_hip", "right_hip"),
+)
 CORE_ASSOCIATION_JOINTS = (
     "root",
     "neck",
@@ -176,6 +203,8 @@ class ReconstructionDiagnostics:
     subject_count: int
     camera_count: int
     valid_joint_fraction: float
+    constraint_recovered_joint_fraction: float
+    frames_deferred_to_exhaustive_association: int
     median_reprojection_error_px: float
     p95_reprojection_error_px: float
     maximum_reprojection_error_px: float
@@ -192,6 +221,13 @@ class ReconstructionDiagnostics:
             "subject_count": self.subject_count,
             "camera_count": self.camera_count,
             "valid_joint_fraction": self.valid_joint_fraction,
+            # A slot recovered from a single ray plus limb-length and temporal
+            # constraints is evidence-based, unlike an interpolated one. It is
+            # reported separately so `valid_joint_fraction` keeps meaning
+            # exactly what it has always meant: per-frame triangulation
+            # succeeded from two or more views.
+            "constraint_recovered_joint_fraction": self.constraint_recovered_joint_fraction,
+            "frames_deferred_to_exhaustive_association": self.frames_deferred_to_exhaustive_association,
             "median_reprojection_error_px": self.median_reprojection_error_px,
             "p95_reprojection_error_px": self.p95_reprojection_error_px,
             "maximum_reprojection_error_px": self.maximum_reprojection_error_px,
@@ -514,6 +550,15 @@ def _score_assignment(
     return cost
 
 
+def frame_is_ambiguous(detections: Sequence[Sequence[np.ndarray]], subject_count: int) -> bool:
+    """A view reporting more people than the shot contains means identity is
+    genuinely ambiguous, and the graph associator defers such frames to the
+    exhaustive search. One definition, so the diagnostic counter cannot drift
+    away from the behaviour it counts."""
+
+    return any(len(people) > subject_count for people in detections)
+
+
 def _fundamental_matrix(source: CalibratedCamera, target: CalibratedCamera) -> np.ndarray:
     """Fundamental matrix F with ``x_target^T F x_source == 0`` on a true match."""
 
@@ -630,7 +675,7 @@ def associate_frame_graph(
             pixel_scale=pixel_scale,
         )
 
-    if any(len(people) > subject_count for people in detections):
+    if frame_is_ambiguous(detections, subject_count):
         # A view reporting more people than the shot contains is where identity
         # is genuinely ambiguous, and measurement showed the graph heuristic
         # picks a different, higher-cost assignment there. Pay for the exact
@@ -863,6 +908,230 @@ def associate_frame(
         order = np.argsort(np.asarray(initial_roots)[:, 0])
         best = best[order]
     return best, best_cost
+
+
+def estimate_limb_lengths_m(world: np.ndarray) -> dict[tuple[str, str], float]:
+    """Median limb length over the frames where both endpoints triangulated.
+
+    Median rather than mean, and only over directly-triangulated frames: lengths
+    co-estimated against a joint that is 19% missing would drift toward whatever
+    makes the residual small. One set per subject per take, which is what
+    "per-shot bone lengths" means here.
+    """
+
+    positions = np.asarray(world, dtype=np.float64)
+    if positions.ndim != 3 or positions.shape[2] != 3:
+        raise CommercialMultiviewError("Limb estimation needs [frame,joint,3] positions")
+    lengths: dict[tuple[str, str], float] = {}
+    for parent, child in RIGID_LIMBS:
+        a = positions[:, JOINT_INDEX[parent]]
+        b = positions[:, JOINT_INDEX[child]]
+        usable = np.isfinite(a).all(axis=1) & np.isfinite(b).all(axis=1)
+        if int(np.count_nonzero(usable)) < MINIMUM_LIMB_SAMPLES:
+            continue
+        measured = np.linalg.norm(a[usable] - b[usable], axis=1)
+        lengths[(parent, child)] = float(np.median(measured))
+    return lengths
+
+
+def _pixels_per_metre(cameras: Sequence[CalibratedCamera], world: np.ndarray) -> float:
+    """Scale that makes metre-denominated residuals commensurate with pixels."""
+
+    points = np.asarray(world, dtype=np.float64).reshape(-1, 3)
+    points = points[np.isfinite(points).all(axis=1)]
+    if not len(points):
+        raise CommercialMultiviewError("Cannot scale residuals without any position")
+    values: list[float] = []
+    for camera in cameras:
+        rotation = Rotation.from_quat(camera.camera_to_world_xyzw).as_matrix()
+        depth = (points - camera.camera_center_world_m) @ rotation[:, 2]
+        depth = depth[depth > 1e-6]
+        if len(depth):
+            focal = 0.5 * float(camera.intrinsics[0, 0] + camera.intrinsics[1, 1])
+            values.append(focal / float(np.median(depth)))
+    if not values:
+        raise CommercialMultiviewError("Cannot scale residuals without a valid depth")
+    return float(np.mean(values))
+
+
+def solve_sequence_positions(
+    cameras: Sequence[CalibratedCamera],
+    world: np.ndarray,
+    observations_xyc: np.ndarray,
+    *,
+    pixel_scale: float = 1.0,
+    smooth_weight: float = 2.0,
+    length_weight: float = 2.0,
+    minimum_confidence: float = 0.25,
+    robust_scale_px: float = 14.0,
+    maximum_evaluations: int = 200,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Solve a whole take at once, and report which slots that recovered.
+
+    Per-frame triangulation needs two views. On the reference fixture 83% of the
+    joints it cannot resolve were seen by exactly one camera -- a single ray,
+    underdetermined alone. A ray plus a known distance from an already-solved
+    parent leaves a circle, and temporal continuity picks the point on it, so a
+    sequence-level solve recovers them from evidence rather than filling them by
+    interpolation.
+
+    Returns ``(positions, recovered)``: positions for every slot, and a boolean
+    mask marking slots that had no two-view triangulation but were resolved from
+    at least one ray. Slots with no observation at all stay NaN for the caller's
+    existing fill to handle.
+    """
+
+    positions = np.asarray(world, dtype=np.float64)
+    observations = np.asarray(observations_xyc, dtype=np.float64)
+    frames, joints = positions.shape[0], positions.shape[1]
+    if positions.ndim != 3 or positions.shape[2] != 3:
+        raise CommercialMultiviewError("Sequence solve needs [frame,joint,3] positions")
+    if observations.shape != (frames, len(cameras), joints, 3):
+        raise CommercialMultiviewError("Sequence solve needs [frame,camera,joint,3] observations")
+    if not math.isfinite(pixel_scale) or pixel_scale <= 0.0:
+        raise CommercialMultiviewError("Pixel scale must be finite and positive")
+
+    direct = np.isfinite(positions).all(axis=2)
+    seen = (
+        np.isfinite(observations[..., :2]).all(axis=3)
+        & (observations[..., 2] >= minimum_confidence)
+    ).transpose(0, 2, 1)
+    support = seen.sum(axis=2)
+    # Only slots with an actual ray are candidates. No ray means no evidence,
+    # and inventing one here would be interpolation wearing a solver's clothes.
+    candidate = (~direct) & (support >= 1)
+    if not candidate.any():
+        return positions.copy(), np.zeros_like(direct)
+
+    start = _fill_and_smooth_positions(positions)[0]
+    step = np.linalg.norm(np.diff(start, axis=0), axis=2)
+    motion_scale = float(np.mean(step[np.isfinite(step)])) if step.size else 1.0
+    if not math.isfinite(motion_scale) or motion_scale <= 1e-9:
+        motion_scale = 1e-3
+    lengths = estimate_limb_lengths_m(positions)
+    projections = np.stack([camera.projection_matrix for camera in cameras])
+
+    frame_index, joint_index, camera_index = np.nonzero(seen)
+    observed_uv = observations[frame_index, camera_index, joint_index, :2]
+    observed_weight = np.sqrt(
+        np.clip(observations[frame_index, camera_index, joint_index, 2], 0.0, 1.0)
+    )
+    limb_pairs = [
+        (JOINT_INDEX[parent], JOINT_INDEX[child], value) for (parent, child), value in lengths.items()
+    ]
+    robust = robust_scale_px * pixel_scale
+
+    def unpack(vector: np.ndarray) -> np.ndarray:
+        return vector.reshape(frames, joints, 3)
+
+    def residuals(vector: np.ndarray) -> np.ndarray:
+        current = unpack(vector)
+        selected = current[frame_index, joint_index]
+        homogeneous = np.hstack((selected, np.ones((len(selected), 1))))
+        projected = np.einsum("nij,nj->ni", projections[camera_index], homogeneous)
+        depth = np.where(np.abs(projected[:, 2]) < 1e-9, 1e-9, projected[:, 2])
+        error = np.linalg.norm(projected[:, :2] / depth[:, None] - observed_uv, axis=1)
+        # Robustify the reprojection block only, in the residual itself, and
+        # leave the regularisers quadratic. Handing scipy a global `loss` would
+        # down-weight the limb and temporal terms too, which are priors rather
+        # than measurements and have no outliers to suppress.
+        compressed = 2.0 * robust * (np.sqrt(1.0 + error / robust) - 1.0)
+        safe = np.where(error < 1e-9, 1.0, error)
+        parts = [((projected[:, :2] / depth[:, None] - observed_uv)
+                  * (compressed / safe * observed_weight)[:, None]).ravel()]
+        for parent, child, value in limb_pairs:
+            measured = np.linalg.norm(current[:, parent] - current[:, child], axis=1)
+            # Percentage length error, so one weight covers a forearm and a
+            # thigh alike rather than favouring whichever limb is longer.
+            parts.append(length_weight * 100.0 * (measured - value) / value)
+        if frames > 2:
+            acceleration = current[:-2] - 2.0 * current[1:-1] + current[2:]
+            # Normalised by the take's own mean per-frame displacement, so the
+            # weight means the same thing for a still shot and a fast one.
+            parts.append(smooth_weight * acceleration.ravel() / motion_scale)
+        return np.concatenate(parts)
+
+    sparsity = _sequence_jacobian_sparsity(
+        frames, joints, frame_index, joint_index, limb_pairs
+    )
+    solution = least_squares(
+        residuals,
+        start.ravel(),
+        jac_sparsity=sparsity,
+        method="trf",
+        loss="linear",
+        ftol=1e-3,
+        max_nfev=maximum_evaluations,
+        verbose=0,
+    )
+    solved = unpack(solution.x)
+
+    # A recovery has to survive the same gate a triangulation would. If the
+    # solved point does not lie near its own ray it is not evidence, and it is
+    # demoted to the caller's interpolation rather than reported as recovered.
+    recovered = np.zeros_like(direct)
+    rows = np.nonzero(candidate)
+    for frame, joint in zip(rows[0].tolist(), rows[1].tolist()):
+        errors = []
+        for camera in np.nonzero(seen[frame, joint])[0].tolist():
+            projected, depth = cameras[camera].project(solved[frame, joint])
+            if depth <= 0.0:
+                errors.append(math.inf)
+                continue
+            errors.append(float(np.linalg.norm(projected - observations[frame, camera, joint, :2])))
+        recovered[frame, joint] = bool(errors) and max(errors) <= robust
+
+    # Deliberately do NOT overwrite slots that already triangulated from two or
+    # more views. Measured, the solve moved them by a median of 11-14 mm and up
+    # to 700 mm -- the temporal and limb terms outvoting good geometry. This is
+    # a recovery pass for missing evidence, not a re-estimator of present
+    # evidence, and the existing Savitzky-Golay stage still smooths the seam.
+    output = positions.copy()
+    output[recovered] = solved[recovered]
+    return output, recovered
+
+
+def _sequence_jacobian_sparsity(
+    frames: int,
+    joints: int,
+    frame_index: np.ndarray,
+    joint_index: np.ndarray,
+    limb_pairs: Sequence[tuple[int, int, float]],
+) -> Any:
+    """Which variables each residual touches. Without this the solve is dense."""
+
+    def variable(frame: int, joint: int) -> int:
+        return (frame * joints + joint) * 3
+
+    rows: list[int] = []
+    columns: list[int] = []
+    row = 0
+    for frame, joint in zip(frame_index.tolist(), joint_index.tolist()):
+        base = variable(frame, joint)
+        for _ in range(2):
+            rows.extend([row] * 3)
+            columns.extend([base, base + 1, base + 2])
+            row += 1
+    for parent, child, _ in limb_pairs:
+        for frame in range(frames):
+            parent_base, child_base = variable(frame, parent), variable(frame, child)
+            rows.extend([row] * 6)
+            columns.extend(
+                [parent_base, parent_base + 1, parent_base + 2, child_base, child_base + 1, child_base + 2]
+            )
+            row += 1
+    if frames > 2:
+        for frame in range(frames - 2):
+            for joint in range(joints):
+                for axis in range(3):
+                    for offset in range(3):
+                        rows.append(row)
+                        columns.append(variable(frame + offset, joint) + axis)
+                    row += 1
+    return coo_matrix(
+        (np.ones(len(rows), dtype=np.int8), (rows, columns)),
+        shape=(row, frames * joints * 3),
+    )
 
 
 def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
@@ -1149,6 +1418,10 @@ def reconstruct_multiview(
     if not math.isfinite(pixel_scale) or pixel_scale <= 0.0:
         raise CommercialMultiviewError("Observation width does not yield a valid pixel scale")
     world = np.full((subject_count, frames, len(JOINT_NAMES), 3), np.nan, dtype=np.float64)
+    retained_observations = np.full(
+        (subject_count, frames, len(cameras), len(JOINT_NAMES), 3), np.nan, dtype=np.float64
+    )
+    deferred_frames = 0
     reprojection: list[float] = []
     association_costs: list[float] = []
     previous_roots: np.ndarray | None = None
@@ -1162,6 +1435,8 @@ def reconstruct_multiview(
             [_person_array(person) for person in values[frame]["people"]]
             for values in observations_by_camera
         ]
+        if frame_is_ambiguous(detections, subject_count):
+            deferred_frames += 1
         associated, cost = associator(
             scaled_cameras,
             detections,
@@ -1232,6 +1507,7 @@ def reconstruct_multiview(
             if not accepted[subject]:
                 continue
             world[subject, frame] = candidate_world[subject]
+            retained_observations[subject, frame] = associated[subject]
             reprojection.extend(candidate_errors[subject])
             if last_good_frame[subject] >= 0:
                 elapsed = (frame - int(last_good_frame[subject])) / sample_rate_hz
@@ -1255,8 +1531,19 @@ def reconstruct_multiview(
     provenance.update(json.dumps(frame_ids, separators=(",", ":")).encode("ascii"))
     source_hash = provenance.hexdigest()
     contacts: list[tuple[int, int]] = []
+    recovered_counts: list[float] = []
     for subject in range(subject_count):
-        positions, fraction = _fill_and_smooth_positions(world[subject])
+        # Recover single-ray joints from limb-length and temporal constraints
+        # before falling back to interpolation, so an evidence-based estimate is
+        # preferred to a drawn line wherever one is available.
+        resolved, recovered = solve_sequence_positions(
+            scaled_cameras,
+            world[subject],
+            retained_observations[subject],
+            pixel_scale=pixel_scale,
+        )
+        recovered_counts.append(float(np.mean(recovered)))
+        positions, fraction = _fill_and_smooth_positions(resolved)
         smoothed.append(positions)
         interpolated.append(fraction)
         track = positions_to_body_track(
@@ -1276,6 +1563,8 @@ def reconstruct_multiview(
         subject_count=subject_count,
         camera_count=len(cameras),
         valid_joint_fraction=valid_fraction,
+        constraint_recovered_joint_fraction=float(np.mean(recovered_counts)) if recovered_counts else 0.0,
+        frames_deferred_to_exhaustive_association=deferred_frames,
         median_reprojection_error_px=float(np.median(errors)),
         p95_reprojection_error_px=float(np.percentile(errors, 95)),
         maximum_reprojection_error_px=float(np.max(errors)),

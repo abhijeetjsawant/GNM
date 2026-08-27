@@ -16,6 +16,7 @@ from autoanim_gnm.commercial_multiview import (
     associate_frame,
     associate_frame_graph,
     positions_to_body_track,
+    solve_sequence_positions,
     triangulate_point,
 )
 
@@ -471,3 +472,77 @@ def test_exhaustive_fallback_is_refused_rather_than_left_to_stall() -> None:
     with pytest.raises(CommercialMultiviewError) as caught:
         associate_frame_graph(cameras, detections, subject_count=4)
     assert "candidates" in str(caught.value)
+
+
+def _sequence_fixture(frames: int = 30, single_view_span: tuple[int, int] = (10, 20)):
+    """A moving subject, with the left wrist visible to only one camera for a
+    span in the middle -- the case per-frame triangulation cannot resolve."""
+
+    cameras = _ring(4)
+    wrist = JOINT_INDEX["left_wrist"]
+    truth = np.zeros((frames, len(JOINT_NAMES), 3), dtype=np.float64)
+    for frame in range(frames):
+        sway = 0.30 * np.sin(frame * 0.20)
+        for joint in range(len(JOINT_NAMES)):
+            truth[frame, joint] = (
+                0.10 * (joint % 3) + sway,
+                0.05 * (joint % 5),
+                0.90 + 0.04 * (joint % 4),
+            )
+        # Keep the forearm a genuinely constant length so the limb prior is real.
+        truth[frame, wrist] = truth[frame, JOINT_INDEX["left_elbow"]] + (0.26, 0.0, 0.0)
+
+    observations = np.full((frames, len(cameras), len(JOINT_NAMES), 3), np.nan)
+    for frame in range(frames):
+        for camera_index, camera in enumerate(cameras):
+            for joint in range(len(JOINT_NAMES)):
+                if joint == wrist and single_view_span[0] <= frame < single_view_span[1] and camera_index != 0:
+                    continue
+                observations[frame, camera_index, joint, :2] = camera.project(truth[frame, joint])[0]
+                observations[frame, camera_index, joint, 2] = 0.95
+
+    world = np.full((frames, len(JOINT_NAMES), 3), np.nan, dtype=np.float64)
+    for frame in range(frames):
+        for joint in range(len(JOINT_NAMES)):
+            result = triangulate_point(
+                cameras, observations[frame, :, joint, :2], observations[frame, :, joint, 2]
+            )
+            if result is not None:
+                world[frame, joint] = result.position_world_m
+    return cameras, truth, world, observations
+
+
+def test_sequence_solve_recovers_a_joint_only_one_camera_can_see() -> None:
+    cameras, truth, world, observations = _sequence_fixture()
+    wrist = JOINT_INDEX["left_wrist"]
+    hidden = slice(10, 20)
+    assert not np.isfinite(world[hidden, wrist]).any(), "fixture must leave the wrist unresolved"
+
+    solved, recovered = solve_sequence_positions(cameras, world, observations)
+    assert recovered[hidden, wrist].all()
+    error = np.linalg.norm(solved[hidden, wrist] - truth[hidden, wrist], axis=1) * 1000.0
+    assert error.max() < 40.0, f"recovered wrist is {error.max():.1f} mm from truth"
+
+
+def test_sequence_solve_leaves_directly_triangulated_slots_alone() -> None:
+    """It is a recovery pass for missing evidence, not a re-estimator of present
+    evidence. Measured, letting it rewrite good slots moved them up to 700 mm."""
+
+    cameras, _truth, world, observations = _sequence_fixture()
+    direct = np.isfinite(world).all(axis=2)
+    solved, recovered = solve_sequence_positions(cameras, world, observations)
+    assert np.array_equal(solved[direct], world[direct])
+    assert not (recovered & direct).any()
+
+
+def test_sequence_solve_leaves_wholly_unobserved_slots_for_interpolation() -> None:
+    """No ray means no evidence. Inventing a position here would be
+    interpolation wearing a solver's clothes, so the slot stays NaN and the
+    caller's existing fill owns it."""
+
+    cameras, _truth, world, observations = _sequence_fixture()
+    wrist = JOINT_INDEX["left_wrist"]
+    observations[12:16, :, wrist, :] = np.nan
+    solved, recovered = solve_sequence_positions(cameras, world, observations)
+    assert not recovered[12:16, wrist].any()
+    assert not np.isfinite(solved[12:16, wrist]).any()
