@@ -79,8 +79,15 @@ metrics (`median_reprojection_error_px = 4.588984179617748`).
 
 What works: single-linkage merge, plus **defer to the exhaustive search on
 frames where any view reports more people than the shot contains**. That is
-where identity is genuinely ambiguous, it is 3 frames in 150 here, and it is why
-the output is identical rather than merely close.
+where identity is genuinely ambiguous, and it is why the output is identical
+rather than merely close.
+
+**Two different numbers, which an earlier draft of this document conflated.**
+The guard *fires* on **32 of 150 frames (21%)** — the fixture's detection-count
+histogram is 94 frames at (2,2,2,2) and 56 with a view reporting 1 or 3 people.
+The assignment would only have *changed* on **3** of them (25, 142, 143). The 3
+is the accuracy argument; the 32 is the cost argument, and it is the 32 that
+explains why the fixture speedup is ~2× rather than the ~7× that 3 would imply.
 
 ## What the adversarial review found
 
@@ -97,6 +104,15 @@ correcting edge. The result was a "person" assembled from two performers, with
 about it. Reproduced on the real four-camera rig at the shipped
 `subject_count=2`: mixed identities on 9/20 seeds at 45°/0.4 m, still 3/20 at
 1.5 m, firing at sub-pixel noise. The exhaustive path was 0/20 in every cell.
+
+In fairness to the shipped code, the verification pass also found the trigger
+band is narrow: it needs two detections that are near-translates of each other
+along the camera-pair baseline, matching within ~1 cm in depth and a few degrees
+in orientation. The sweep fixtures give both performers identical per-joint
+offsets, so they are pose clones; real crossing performers face opposite
+directions, which is maximally non-degenerate. That is why the review downgraded
+this from critical to major. The fix is cheap insurance either way, and the
+guarantee it falsified was wrong regardless.
 
 Fixed: a Hungarian pick is now accepted only when it beats its best alternative
 in **both** its row and its column, by a ratio and by an absolute margin. A pair
@@ -129,8 +145,16 @@ unchanged: still 0/150, verifier still passes with byte-identical metrics.
 ## Honest limitations
 
 - The speedup on *this* fixture is ~2×, not the 12–852× above, because the
-  ambiguity guard pays full exhaustive cost on surplus-detection frames. The
-  large numbers are what matters for Battle 2's multi-person captures.
+  ambiguity guard pays full exhaustive cost on 21% of frames. The large numbers
+  are what matters for Battle 2's multi-person captures — but note the same
+  caveat applies there: a single surplus detection routes a frame back into the
+  search this is meant to escape, so "the only tractable path beyond two
+  subjects" holds for phantom-free footage, not unconditionally.
+- The fallback is now **bounded**. `(subjects!)^cameras` reaches 331,776
+  candidates at four subjects on four cameras — hours for one frame. Past a
+  20,000-candidate budget the frame is refused with its size named rather than
+  stalling a capture silently. That converts a latent hang into a legible
+  failure; it does not make four-subject surplus frames work.
 - A better phantom-robust merge would remove the guard and recover the full
   speedup. Not attempted; two candidate heuristics were measured and rejected.
 - The ambiguity margin (`ambiguity_ratio`, `ambiguity_margin_px`) is tuned to
@@ -154,3 +178,26 @@ instrument for any future association change.
 | AniPose-style spatiotemporal solve with per-shot bone lengths | not started — this is what should move coverage to the ≥90% gate |
 | SAM2 masks + temporal identity propagation | not started |
 | detector swap | **blocked pending a viability probe.** MediaPipe 0.10.35's *face* graph aborts natively on this host (`docs/MAMMA_MULTIVIEW_EXECUTION.md`); the *pose* graph is unverified. Probe before planning it in. |
+
+## Review findings deliberately deferred
+
+The review confirmed 22 findings. Five were fixed (M1, M2, the bounded fallback,
+the delegation test, and the false claims above). The rest are recorded here so
+silence is not read as "nothing else found".
+
+| finding | why deferred |
+|---|---|
+| **M3b — an untriangulable component defers instead of being carried as a NaN slot** | Mid-take the harm is contained: the 14 px gate and the acceleration envelope rejected the ghost on every occluded frame of a 30-frame run. It is severe only with occlusion on frames 0–2, where a ghost is accepted with no history. The fix touches `_identity_order`'s shape contract and changes what `association_objective_median` means on a partially-observed frame — that needs its own increment, not a tail-end edit. |
+| Component pruning ranks by node count | The size ranking this increment rejected, reinstated as the *pruning* rule. Reproduced dropping a performer at 6 cameras / 2 subjects. Should rank by the root triangulation the loop already computes. Not reachable on the 4-camera fixture. |
+| `_identity_order` pre-commits one slot permutation | 1 in 300 adversarial crossing frames, +0.32 on the objective. Verification showed the obvious fix made its own end-to-end case *worse*, so it needs measurement, not a patch. |
+| No anchor precondition on the graph path | Where no camera sees `subject_count` people, exhaustive raises and graph answers. Graph's behaviour is probably better — this is a contract decision to make explicitly, and it becomes the common case at 3+ subjects. |
+| A per-frame association error aborts the whole take | `reconstruct_multiview` has no per-frame try. Worth doing with M3b, since both are about carrying a bad frame rather than failing the capture. |
+| No `frames_deferred_to_exhaustive_association` in diagnostics | This observability gap is exactly what produced the 3-vs-32 error above. Cheap, but it changes the diagnostics schema, which the verifier reads — its own commit. |
+| Thin coverage of the `feasible` mask, the `combinations` loop, and history in tests | Real gap. The mask never once filters across the whole suite. |
+
+**Process note.** A review agent left an uncommitted `SABOTAGE_DELEGATE` stub in
+`commercial_multiview.py` during mutation testing and did not restore it. It was
+inert without the environment variable set, `git diff` against the commit
+confirmed it was the only delta, and it never reached a commit — but it should
+have been impossible, not merely caught. Future review workflows run with
+worktree isolation.

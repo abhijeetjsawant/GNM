@@ -45,6 +45,11 @@ REFERENCE_DETECTOR_WIDTH_PX = 1280
 # How many surplus person-components the graph associator will consider before
 # giving up and deferring to the exhaustive search. Bounds the combinatorics.
 MAXIMUM_SURPLUS_COMPONENTS = 3
+# Ceiling on the exhaustive fallback's search. (subjects!)^cameras reaches
+# 331,776 at four subjects on four cameras, which measures in hours for a single
+# frame, so past this the frame is refused with its size named rather than
+# silently stalling a capture.
+MAXIMUM_EXHAUSTIVE_ASSOCIATION_CANDIDATES = 20_000
 JOINT_NAMES = (
     "nose",
     "neck",
@@ -588,8 +593,9 @@ def associate_frame_graph(
     enforces cycle consistency, since a triangle violation would otherwise
     require two detections from the same camera in one component.
 
-    Falls back to :func:`associate_frame` when the frame is ambiguous or the
-    resulting assignment cannot be scored. It is a heuristic, not an optimiser:
+    Falls back to :func:`associate_frame` when the frame is ambiguous -- any view
+    reporting more people than the shot contains, which is 21% of frames on the
+    reference fixture -- or when the resulting assignment cannot be scored. It is a heuristic, not an optimiser:
     it reproduces the exhaustive search's answer on every frame of the reference
     fixture, but it does not *guarantee* the global optimum of the objective.
     """
@@ -600,6 +606,20 @@ def associate_frame_graph(
         raise CommercialMultiviewError("Pixel scale must be finite and positive")
 
     def exhaustive() -> tuple[np.ndarray, float]:
+        # Deferring hands the frame to a (subjects!)^cameras search that
+        # triangulates every core joint of every candidate. That is fine at two
+        # subjects and four cameras (16 candidates) and catastrophic at four
+        # subjects (331,776, measured at hours per frame). Fail loudly with the
+        # frame's size rather than stall silently inside a long capture.
+        candidates = 1
+        for people in detections:
+            candidates *= max(len(_assignment_options(len(people), subject_count)), 1)
+        if candidates > MAXIMUM_EXHAUSTIVE_ASSOCIATION_CANDIDATES:
+            raise CommercialMultiviewError(
+                f"Cross-view association would need {candidates} candidates for "
+                f"{subject_count} subjects across {len(cameras)} cameras, past the "
+                f"{MAXIMUM_EXHAUSTIVE_ASSOCIATION_CANDIDATES} budget"
+            )
         return associate_frame(
             cameras,
             detections,

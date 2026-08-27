@@ -99,7 +99,9 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
 - ✅ **Cycle-consistent Hungarian matching on epipolar affinity, replacing the
   exhaustive per-frame permutation search** — landed 2026-08-27, identical
   output on every fixture frame, and the only tractable path beyond two
-  subjects. See `docs/BATTLE1_INCREMENT1_ASSOCIATION.md`
+  subjects *on phantom-free footage* — a surplus detection still routes a frame
+  into the exhaustive search, which is now bounded rather than unbounded. See
+  `docs/BATTLE1_INCREMENT1_ASSOCIATION.md`
 - AniPose-style spatiotemporal triangulation with per-shot bone-length estimation
 
 **Ceiling, stated honestly:** this lands around ~40 mm, where the best sparse
@@ -220,6 +222,12 @@ Not a vibe; specific checkpoints.
 **sol (advisor review):**
 3. Before each battle's design commits.
 4. Before each battle is declared done.
+
+**Isolation.** Review workflows run read-only or with worktree isolation. A
+review agent once left a mutation-test stub in tracked source and did not
+restore it; it was caught before it reached a commit, but it should have been
+structurally impossible. Any mutation of tracked files by a review agent is a
+defect in the review.
 
 ---
 

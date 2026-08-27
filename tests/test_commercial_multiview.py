@@ -431,3 +431,43 @@ def test_scoring_survives_a_subject_with_no_history() -> None:
         )
         assert math.isfinite(cost), associator.__name__
         assert np.isfinite(associated[:, :, JOINT_INDEX["root"], :2]).any()
+
+
+def test_graph_association_does_not_secretly_delegate(monkeypatch) -> None:
+    """The whole deliverable is that the graph path avoids the exhaustive
+    search. Every other test compares the two, so all of them would still pass
+    if this function quietly degenerated into `return associate_frame(...)` --
+    which is its natural failure mode, since it has several fall-through sites.
+    Make the exhaustive path explode, and require an answer anyway."""
+
+    cameras = _ring(4)
+    roots = [np.asarray((-1.2 + 0.9 * subject, 0.1 * subject, 1.0)) for subject in range(3)]
+    detections = _people(cameras, roots)
+    assert all(len(people) == 3 for people in detections), "no surplus, so no deferral is expected"
+
+    import autoanim_gnm.commercial_multiview as module
+
+    def explode(*args, **kwargs):
+        raise AssertionError("graph association fell through to the exhaustive search")
+
+    monkeypatch.setattr(module, "associate_frame", explode)
+    associated, cost = module.associate_frame_graph(cameras, detections, subject_count=3)
+    assert math.isfinite(cost)
+    assert np.isfinite(associated[:, :, JOINT_INDEX["root"], :2]).all()
+
+
+def test_exhaustive_fallback_is_refused_rather_than_left_to_stall() -> None:
+    """The fallback is a (subjects!)^cameras search. At four subjects on four
+    cameras that is 331,776 candidates, hours for a single frame. It must fail
+    with the size named, not stall a capture."""
+
+    cameras = _ring(4)
+    roots = [np.asarray((-1.5 + 0.9 * subject, 0.1 * subject, 1.0)) for subject in range(4)]
+    detections = _people(cameras, roots)
+    # One view reports a surplus person, which is what routes the frame to the
+    # fallback in the first place.
+    detections[0] = detections[0] + [detections[0][0].copy()]
+
+    with pytest.raises(CommercialMultiviewError) as caught:
+        associate_frame_graph(cameras, detections, subject_count=4)
+    assert "candidates" in str(caught.value)
