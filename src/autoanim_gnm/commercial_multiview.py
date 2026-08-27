@@ -437,12 +437,24 @@ def _score_assignment(
     cost += 12.0 * pixel_scale * float(np.mean(support_deficits))
     if previous_roots_world_m is not None:
         roots_array = np.asarray(roots)
-        if roots_array.shape == previous_roots_world_m.shape:
-            # root displacement is in metres (capped at 2.0 m); the weight
-            # carries the pixel unit and therefore scales.
-            cost += 50.0 * pixel_scale * float(
-                np.mean(np.minimum(np.linalg.norm(roots_array - previous_roots_world_m, axis=1), 2.0))
+        previous_roots = np.asarray(previous_roots_world_m, dtype=np.float64)
+        if roots_array.shape == previous_roots.shape:
+            # `reconstruct_multiview` seeds the prior roots all-NaN and fills a
+            # row only once that subject is accepted, so a subject missed on the
+            # first frame leaves a permanent NaN row. Without this mask its NaN
+            # poisons every candidate's cost, `best` stays None, and the take
+            # aborts as "no valid assignment". Score against the rows we
+            # actually have. Root displacement is in metres (capped at 2.0 m);
+            # the weight carries the pixel unit and therefore scales.
+            usable = (
+                np.isfinite(roots_array).all(axis=1)
+                & np.isfinite(previous_roots).all(axis=1)
             )
+            if usable.any():
+                displacement = np.linalg.norm(
+                    roots_array[usable] - previous_roots[usable], axis=1
+                )
+                cost += 50.0 * pixel_scale * float(np.mean(np.minimum(displacement, 2.0)))
     if previous_positions_world_m is not None:
         previous = np.asarray(previous_positions_world_m, dtype=np.float64)
         if previous.shape == candidate_positions.shape:
@@ -562,6 +574,8 @@ def associate_frame_graph(
     maximum_epipolar_px: float = 60.0,
     minimum_shared_joints: int = 4,
     minimum_confidence: float = 0.25,
+    ambiguity_ratio: float = 0.7,
+    ambiguity_margin_px: float = 2.0,
 ) -> tuple[np.ndarray, float]:
     """Associate detections across views by cycle-consistent graph matching.
 
@@ -574,8 +588,10 @@ def associate_frame_graph(
     enforces cycle consistency, since a triangle violation would otherwise
     require two detections from the same camera in one component.
 
-    Falls back to :func:`associate_frame` when the resulting assignment cannot
-    be scored, so this can only ever match or beat the exhaustive path.
+    Falls back to :func:`associate_frame` when the frame is ambiguous or the
+    resulting assignment cannot be scored. It is a heuristic, not an optimiser:
+    it reproduces the exhaustive search's answer on every frame of the reference
+    fixture, but it does not *guarantee* the global optimum of the objective.
     """
 
     if len(cameras) != len(detections) or subject_count < 1:
@@ -636,8 +652,28 @@ def associate_frame_graph(
             cost = np.where(feasible, distances, threshold * 1e3)
             rows, columns = linear_sum_assignment(cost)
             for a, b in zip(rows.tolist(), columns.tolist(), strict=True):
-                if feasible[a, b]:
-                    edges.append((float(distances[a, b]), node_index[(left, a)], node_index[(right, b)]))
+                if not feasible[a, b]:
+                    continue
+                # A match is only evidence if something actually decided it.
+                # Where a camera pair's baseline is near-collinear with the
+                # people it sees, every entry collapses into one narrow band,
+                # the Hungarian pick is arbitrary, and single linkage then
+                # freezes that arbitrary pick into a component no later stage
+                # can re-partition -- producing a person assembled from two
+                # performers. Require the pick to beat its best alternative in
+                # both its row and its column, by a ratio and by an absolute
+                # margin, so a pair carrying no identity information
+                # contributes nothing rather than a confident mistake.
+                best = float(distances[a, b])
+                alternative = min(
+                    float(np.min(np.delete(distances[a], b))) if distances.shape[1] > 1 else math.inf,
+                    float(np.min(np.delete(distances[:, b], a))) if distances.shape[0] > 1 else math.inf,
+                )
+                if alternative < max(
+                    best / ambiguity_ratio, best + ambiguity_margin_px * pixel_scale
+                ):
+                    continue
+                edges.append((best, node_index[(left, a)], node_index[(right, b)]))
 
     parent = list(range(len(nodes)))
 

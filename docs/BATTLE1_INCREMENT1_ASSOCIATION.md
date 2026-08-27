@@ -82,6 +82,50 @@ frames where any view reports more people than the shot contains**. That is
 where identity is genuinely ambiguous, it is 3 frames in 150 here, and it is why
 the output is identical rather than merely close.
 
+## What the adversarial review found
+
+A 31-agent review confirmed 22 findings. Nothing rated critical survived
+verification. Two were fixed before closing the increment.
+
+**A regression this change introduced.** A camera pair whose baseline is
+near-collinear with the people it sees produces an epipolar cost matrix that
+cannot separate the pairings — every entry collapses into one narrow band. The
+Hungarian pick is then arbitrary, it entered the edge list as *maximal-strength*
+evidence, single linkage froze it, and the same-camera rule blocked every
+correcting edge. The result was a "person" assembled from two performers, with
+`valid_joint_fraction` and `temporally_rejected_subject_frames` both silent
+about it. Reproduced on the real four-camera rig at the shipped
+`subject_count=2`: mixed identities on 9/20 seeds at 45°/0.4 m, still 3/20 at
+1.5 m, firing at sub-pixel noise. The exhaustive path was 0/20 in every cell.
+
+Fixed: a Hungarian pick is now accepted only when it beats its best alternative
+in **both** its row and its column, by a ratio and by an absolute margin. A pair
+that carries no identity information contributes nothing rather than a confident
+mistake. After the fix the degenerate case returns the exhaustive grouping at
+identical cost, and a 4-angle × 3-separation × 5-seed sweep at 0.5 px noise
+differs from exhaustive on **0/60**.
+
+The review also falsified this document's original claim that the graph path
+"can only ever match or beat the exhaustive path". It cannot: it is a heuristic,
+not an optimiser. The docstring now says so.
+
+**A latent abort the graph path inherited.** `_score_assignment`'s
+previous-roots term had no finiteness mask, unlike the two other temporal terms.
+`reconstruct_multiview` seeds the prior roots all-NaN and fills a row only once a
+subject is accepted, so a subject missed on frame 0 leaves a permanent NaN row —
+which made every candidate score NaN, left `best` as None, and aborted the whole
+take as "no valid assignment". Reachable with no detector error at all: two
+performers starting within 0.28 m trip the body-volume rule, and on frame 0 the
+tie-break rejects a subject deterministically. Pre-existing and byte-identical on
+the legacy path, so reverting the default would not have fixed it.
+
+Fixed by masking to the rows that exist. The review's scenario — performers
+starting 0.20 m apart and walking to 1.49 m — aborted before and now completes at
+`valid_joint_fraction = 0.963`.
+
+Both fixes are covered by regression tests, and the reference fixture is
+unchanged: still 0/150, verifier still passes with byte-identical metrics.
+
 ## Honest limitations
 
 - The speedup on *this* fixture is ~2×, not the 12–852× above, because the
@@ -89,6 +133,10 @@ the output is identical rather than merely close.
   large numbers are what matters for Battle 2's multi-person captures.
 - A better phantom-robust merge would remove the guard and recover the full
   speedup. Not attempted; two candidate heuristics were measured and rejected.
+- The ambiguity margin (`ambiguity_ratio`, `ambiguity_margin_px`) is tuned to
+  keep the reference fixture byte-identical while clearing the degeneracy sweep.
+  It has not been tuned against real multi-person footage, because none exists
+  yet — that is Battle 2.
 - Coverage is 88.2%, below Battle 1's ≥90% exit gate. Association was never the
   binding term there — the spatiotemporal triangulation increment is.
 

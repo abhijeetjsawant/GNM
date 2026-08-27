@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import math
 
 import numpy as np
 import pytest
@@ -387,3 +388,46 @@ def test_graph_association_resolves_three_subjects_the_exhaustive_search_cannot_
     expected = sorted(roots, key=lambda root: root[0])
     for got, want in zip(recovered, expected, strict=True):
         assert np.linalg.norm(got - (want + offset)) < 1e-6
+
+
+def test_graph_association_refuses_evidence_from_an_undecided_camera_pair() -> None:
+    """Where a camera pair's baseline is near-collinear with the people it sees,
+    its epipolar cost matrix cannot separate the pairings. The Hungarian pick is
+    then arbitrary, and single linkage would freeze it into a component holding
+    detections from two different performers."""
+
+    cameras = _ring(4)
+    # Both performers on the axis joining the opposed cameras: the degenerate case.
+    roots = (np.asarray((0.22, 0.0, 1.0)), np.asarray((-0.22, 0.0, 1.0)))
+    detections = _people(cameras, roots)
+
+    exhaustive, exhaustive_cost = associate_frame(cameras, detections, subject_count=2)
+    graph, graph_cost = associate_frame_graph(cameras, detections, subject_count=2)
+    assert np.allclose(graph, exhaustive, equal_nan=True)
+    assert graph_cost == pytest.approx(exhaustive_cost, abs=1e-9)
+
+    # Without the margin test the arbitrary pick is accepted and the grouping
+    # becomes chimeric, which is the defect this guards.
+    permissive, permissive_cost = associate_frame_graph(
+        cameras, detections, subject_count=2, ambiguity_ratio=1.0, ambiguity_margin_px=0.0
+    )
+    assert permissive_cost > exhaustive_cost
+
+
+def test_scoring_survives_a_subject_with_no_history() -> None:
+    """`reconstruct_multiview` seeds the previous roots all-NaN and fills a row
+    only once a subject is accepted, so a subject missed on the first frame
+    leaves a permanent NaN row. That must not NaN out every candidate's cost and
+    abort the whole take."""
+
+    cameras = _ring(4)
+    roots = (np.asarray((-0.7, 0.0, 1.0)), np.asarray((0.7, 0.1, 1.0)))
+    detections = _people(cameras, roots)
+    previous = np.asarray([[np.nan, np.nan, np.nan], [0.68, 0.09, 1.0]])
+
+    for associator in (associate_frame, associate_frame_graph):
+        associated, cost = associator(
+            cameras, detections, subject_count=2, previous_roots_world_m=previous
+        )
+        assert math.isfinite(cost), associator.__name__
+        assert np.isfinite(associated[:, :, JOINT_INDEX["root"], :2]).any()
