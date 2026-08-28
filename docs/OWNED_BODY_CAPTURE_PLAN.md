@@ -280,6 +280,14 @@ Not a vibe; specific checkpoints.
 3. Before each battle's design commits.
 4. Before each battle is declared done.
 
+**Existence proof before a negative result.** Before recording "X cannot be
+done" as physics, check whether anything demonstrably does X under the same
+conditions. This lane recorded "fingers cannot be triangulated from four wide
+cameras" while MAMMA's finger output on those exact four videos sat on disk
+unexamined. The measurement was right; the generalisation was not, and only the
+user's domain knowledge caught it. The review machinery tests claims that were
+made — it does not generate the counter-example nobody thought to look for.
+
 **Isolation.** Review workflows run read-only or with worktree isolation. A
 review agent once left a mutation-test stub in tracked source and did not
 restore it; it was caught before it reached a commit, but it should have been

@@ -140,6 +140,33 @@ well above its body error. Expect pose-plausible fingers, not contact-precise
 ones. But "expect limited accuracy" is a different claim from "the information
 isn't there", and only the first is supported.
 
+## The constraining prior: MHR already ships one, and it is clean
+
+MAMMA's hand recovery rests on MANO's learned pose space, which is
+non-commercial for us. So the open question was whether anything clean can
+constrain finger articulation. Inspected `mhr_model_lod1.pt` directly
+(`.cache/autoanim_gnm/gem-x/third_party/soma/assets/MHR/`):
+
+| joint | rotation channels | DoF |
+|---|---|---:|
+| index1 / middle1 / ring1 / pinky1 | x y z | 3 each |
+| index2/3, middle2/3, ring2/3, pinky2/3 | **z only** | **1 each** |
+| thumb0 | y z | 2 |
+| thumb1 | x y z | 3 |
+| thumb2 / thumb3 | z only | 1 each |
+| **total per hand** | | **27** |
+
+Free rotation of 15 joints would be 45 DoF. **MHR's parameterisation removes 40%
+of the space through anatomy alone** — the middle and distal finger joints are
+modelled as single-axis hinges, which is what they are. The model also carries
+`parameter_limits` and `linear_joint_range_min` / `linear_joint_range_max`.
+
+This is not MANO's statistical pose space, and for our purposes it may be better
+suited: a hard anatomical constraint cannot be violated by an optimiser the way a
+soft PCA prior can, and it is Apache-2.0 rather than research-only. The
+constraining prior that makes MAMMA's approach work is therefore available to us
+in a clean form.
+
 ## Decision (superseded — see the amendment above)
 
 ~~**Do not wire SOMA-77's fingers into the body track.**~~ Do not wire them
