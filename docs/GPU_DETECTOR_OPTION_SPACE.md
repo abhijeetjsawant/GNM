@@ -36,12 +36,48 @@ over encumbered training data.
 | **SAM 2** | Apache-2.0, **code and checkpoints** | The mask stage is clean. MAMMA's ablation put masks at 31.96 → 18.33 px on two-person 2D error |
 | **Unity PeopleSansPeople** | Apache-2.0 | A privacy-preserving synthetic human data generator — relevant to Battle 3 |
 
-Two more worth chasing, both currently **unverified**:
+### The one the survey nearly missed: we already own a clean whole-body detector
 
-- **We may already own a clean whole-body 2D detector.** GEM-X reportedly bundles
-  a ViTPose predicting 77 SOMA keypoints (body + hands) under NVIDIA's terms.
-  If that holds, it is a materially better interim detector than Apple Vision's
-  19 sparse joints. **Verify before building on it.**
+**Verified 2026-08-28.** GEM-X, already on disk, bundles
+`Dinov3_ViTPose_huge_metrosim_256x192` — a ViT-Huge emitting **77 SOMA
+keypoints** (body, hands with 15 articulated finger joints per side, feet, face)
+at 256×192. Confirmed by inspecting the ONNX directly: `heatmaps [1, 77, 64, 48]`.
+
+Provenance, from NVIDIA's own model card: *"GEM is trained exclusively on
+internally generated synthetic video data"* — Bones RigPlay-1 (350k mocap
+sequences, NVIDIA-owned), RenderPeople (500 characters, NVIDIA-licensed), 3,500
+internal synthetic characters, HDRI Haven — and *"All training data and the SOMA
+parametric body model are owned by NVIDIA or released under permissive licenses,
+making GEM ready for commercial use."* That is the clean-provenance whole-body
+checkpoint the rest of this survey concluded did not exist.
+
+**Correction to the bundled docs.** GEM-X's own `docs/MODEL_OVERVIEW.md` says the
+model is "Apache 2.0 (commercial)". That is wrong for the weights. The repo
+README and HuggingFace card both say: *"Use of the source code is governed by the
+Apache License, Version 2.0. Use of the associated model is governed by the
+**NVIDIA Open Model License Agreement**."* Still commercially usable — *"Models
+are commercially usable"*, *"NVIDIA claims no ownership rights in outputs"* — but
+with conditions: attribution passthrough on redistribution, compliance with
+NVIDIA's Trustworthy AI terms, and termination on guardrail circumvention or
+litigation. The Trustworthy AI clause that touches a mocap product bars *illegal*
+biometric processing without consent — a compliance obligation, not a
+field-of-use bar.
+
+**One open question, worth an email.** The backbone is architecturally Meta's
+DINOv3 ViT-H+/16, and nothing public states whether it was initialised from
+Meta's pretrained weights. If it was, DINOv3's agreement flows down alongside the
+NVIDIA OML — commercial use still permitted, but redistribution must carry that
+agreement too, and "NVIDIA-owned only" would cover the fine-tuning data rather
+than the pretraining corpus. Ask NVIDIA.
+
+**Two encumbrances avoided by construction:** GEM-X's bundled person detector is
+YOLOX trained on **Human-Art**, which is authorised "for non-commercial purposes"
+only — so our worker takes person boxes from the Apple Vision detections we
+already have, keeping that checkpoint out of the path. And the `--no-imgfeat`
+ONNX path we run skips SAM-3D-Body entirely, so the 2D lane never touches Meta's
+SAM materials.
+
+Still worth chasing, currently **unverified**:
 - **SDPose-Body** (Sept 2025): MIT, *"trained exclusively on COCO-2017 train2017,
   no extra data"* — the narrowest data story found. Body-only, but COCO's own
   image-provenance caveat still applies.
