@@ -301,6 +301,7 @@ defect in the review.
 | Action | Why | When |
 |---|---|---|
 | **FTO counsel engagement** | US10395411B2 (MPG, ~2036) claims runtime use of the blendshape+skinning formulation; US9189886B2 (Brown, ~2032) reads on image-based capture regardless of body model. Apache-2.0 from Meta cannot clear Max Planck's patents | Start now, in parallel. Blocks launch, not engineering |
+| **Request EgoSuite-Open100K access** (`huggingface.co/datasets/LightwheelAI/EgoDemo`) | Best hand-articulation motion source evaluated — 21-joint non-MANO hand pose at scale, retargetable to MHR. Licence text is not public; manual review, 2–3 business days. Read it against four clauses: do derivatives (renders, trained weights) fall under "no resale"; are training outputs unrestricted; termination; consent warranty | Before Battle 3 |
 | Email KIT (`motiondatabase@lists.kit.edu`) | 4,600 motions with **no published licence at all** — cheapest large win available | Before Battle 3 |
 | Email HDM05 (`HDM05@mpi-inf.mpg.de`) | Confirm the archived CC BY-SA 3.0; live host 403s | Before Battle 3 |
 | Email Truebones | Confirm ML training is permitted before relying on the $99 pack | Optional |

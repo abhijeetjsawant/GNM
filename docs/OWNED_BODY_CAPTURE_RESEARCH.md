@@ -598,6 +598,29 @@ what we need, at zero cost.
 MAMMA's ablation says the wins came from extreme poses, hand articulation and
 interaction. CMU covers none of them well. Clean fills:
 
+**A candidate that would close the hand gap properly — blocked at the licence
+gate.** [EgoSuite-Open100K](https://huggingface.co/blog/LightwheelAI/egosuite-open100k)
+(LightwheelAI, 2026) ships **hand pose as data**: 21 joints, positions `(21,3)`
+and rotations `(21,4)` as quaternions in world coordinates, per-episode time
+series. **Not MANO** — "MANO" and "SMPL" appear nowhere in any card — so it is
+retargetable onto MHR's 27-DoF hands. 50 h downloadable now, ~12 TB in the gated
+buckets, 100,000 h planned. Against ContactPose's 2,306 *static* grasps that is
+orders of magnitude more articulation-over-time.
+
+Its imagery is useless to us, but not for the obvious reason: viewpoint gaps
+turn out to matter little for pose pretraining, whereas *resolution* does, and
+our hands are ~20 px where theirs are close-ups.
+
+**Blocked, and correctly so.** The HF metadata says
+`license: "other"`, `license_name: "commercial-training-no-resale-v1.0"` — and
+**no verbatim licence text exists at any public URL**. EgoStandard and EgoPro
+contain one file each (a README); the data sits behind a manually-reviewed gate,
+and the card points at "the repository license" which is not published. A licence
+*name* and a blog sentence are not terms. The clause that decides it for us:
+**does "no resale" reach derivatives** — synthetic renders generated from their
+poses, and model weights trained on those renders? Derivative generation is our
+entire use case. If it does, walk away.
+
 **Hands — solved, and cheaper than expected.** I had assumed we needed hand
 mocap. We don't. Microsoft's own paper states they *splice* hand poses in:
 *"If the body pose sequence lacks articulated hands then we splice these in from
