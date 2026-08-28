@@ -18,13 +18,25 @@ joints per hand. Confirmed by inspecting the ONNX graph directly:
 
 Identical frames, identical calibration, identical reconstruction.
 
-| detector | valid | + recovered | interp | reprojection | 2D error at subject | bone instability | temporal rejections |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Apple Vision (19) | 88.2% | 94.0% | 6.0% | 4.59 px | 25.6 mm | 9.4% | 14 |
-| MediaPipe (33) | 32.6% | 34.9% | 65.1% | 3.05 px | — | 50.8% | 133 |
-| **GEM-X SOMA-77** | **88.9%** | 89.2% | 10.8% | **2.82 px** | **15.7 mm** | **5.5%** | **0** |
+| detector | valid | interp | reprojection | 2D error at subject | bone instability | temporal rejections |
+|---|---:|---:|---:|---:|---:|---:|
+| Apple Vision (19) | 88.2% | 6.0% | 4.59 px | 25.6 mm | 9.4% | 14 |
+| MediaPipe (33) | 32.6% | 65.1% | 3.05 px | 17.0 mm | 50.8% | 133 |
+| SOMA-77, clipped box *(defective — see below)* | 88.9% | 10.8% | 2.82 px | 15.7 mm | 5.5% | 0 |
+| **GEM-X SOMA-77, corrected** | **89.1%** | 10.8% | 2.91 px | **16.2 mm** | **3.5%** | **0** |
 
-**2D error at the subject falls 25.6 mm → 15.7 mm, a 39% reduction** — on the
+Against Apple Vision: **2D error at the subject −37%**, **bone-length instability
+−63%**, **temporal rejections 14 → 0**, valid joints slightly up.
+
+Note what the box fix did and did not do. Reprojection got marginally *worse*
+(2.82 → 2.91 px) while bone instability improved sharply (5.5% → 3.5%). That is
+the expected shape: the clipped version's flattering reprojection was partly the
+same survivorship pattern seen twice before in this lane — border-pinned joints
+are consistent with each other while being wrong. Bone length is a physical
+invariant and cannot be gamed that way, which is why it is the more trustworthy
+of the two numbers here.
+
+**2D error at the subject falls 25.6 mm → 16.2 mm, a 37% reduction** — on the
 exact quantity Battle 0 identified as Apple Vision's model-limited ceiling.
 
 > **Basis, stated so it is not over-quoted.** These millimetres are derived from
@@ -34,10 +46,10 @@ exact quantity Battle 0 identified as Apple Vision's model-limited ceiling.
 > accuracy. No accuracy claim in this lane is ground-truth-verified until Battle
 > 2 delivers an owned reference capture.
 
-**Bone-length instability falls 9.4% → 5.5%** — a 41% gain, and still short of
+**Bone-length instability falls 9.4% → 3.5%** — a 63% gain, and still short of
 the 2% gate, which moved to Battle 4 in increment 2 precisely because no
-detector then available could approach it. 5.5% narrows that gap; it does not
-close it.
+detector then available could approach it. 3.5% narrows that gap a long way; it
+does not close it.
 
  That was the hypothesis: this
 model predicts *skeletal joint centres*, where Apple Vision and MediaPipe predict

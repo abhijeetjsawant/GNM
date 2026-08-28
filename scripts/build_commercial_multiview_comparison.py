@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any
 
 import numpy as np
@@ -26,6 +27,8 @@ from autoanim_gnm.viewer import VIEWER_THREE_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 SWIFT_SOURCE = ROOT / "workers" / "commercial_multiview" / "apple_vision_pose.swift"
+SOMA77_WORKER = ROOT / "workers" / "commercial_multiview" / "soma77_pose.py"
+SOMA77_MODEL = ROOT / ".cache" / "autoanim_gnm" / "gem-x" / "inputs" / "onnx" / "vitpose.onnx"
 WORKER_ROOT = ROOT / ".cache" / "autoanim_gnm" / "commercial-multiview"
 WORKER = WORKER_ROOT / "apple_vision_pose"
 MODULE_CACHE = ROOT / ".cache" / "clang-module-cache"
@@ -141,6 +144,33 @@ def _detect(frames: list[Path], output: Path) -> None:
     output.write_text(completed.stdout, encoding="utf-8")
 
 
+def _detect_soma77(frames: list[Path], boxes: Path, output: Path) -> None:
+    """Second detection pass: SOMA-77 whole-body keypoints.
+
+    Top-down, so it needs a person box per subject. Boxes come from the Apple
+    Vision pass rather than from GEM-X's bundled YOLOX, whose checkpoint is
+    Human-Art-trained and authorised for non-commercial use only. Reusing boxes
+    we already have keeps that asset out of the pipeline entirely.
+    """
+
+    if output.is_file() and len(output.read_text(encoding="utf-8").splitlines()) == len(frames):
+        return
+    completed = _run(
+        [
+            sys.executable,
+            str(SOMA77_WORKER),
+            str(SOMA77_MODEL.resolve(strict=True)),
+            str(boxes),
+            *(str(path) for path in frames),
+        ],
+        capture=True,
+    )
+    lines = completed.stdout.splitlines()
+    if len(lines) != len(frames):
+        raise RuntimeError(f"SOMA-77 returned {len(lines)} frames for {len(frames)} inputs")
+    output.write_text(completed.stdout, encoding="utf-8")
+
+
 def _camera_rig_from_mamma_fixture(path: Path) -> dict[str, Any]:
     """Convert only fixture calibration fields; no MAMMA runtime is imported."""
 
@@ -179,6 +209,12 @@ def main() -> int:
     parser.add_argument("--end-frame", type=int, default=210)
     parser.add_argument("--detector-width", type=int, default=1280)
     parser.add_argument("--subject-count", type=int, default=2)
+    parser.add_argument(
+        "--detector",
+        choices=("apple_vision", "soma77"),
+        default="apple_vision",
+        help="soma77 runs Apple Vision first for person boxes, then SOMA-77 for keypoints",
+    )
     parser.add_argument("--body-run", type=Path, default=DEFAULT_BODY_RUN)
     arguments = parser.parse_args()
     if arguments.end_frame - arguments.start_frame < 2:
@@ -208,6 +244,12 @@ def main() -> int:
             # or the report would certify settings the detector never saw.
             observation_path.unlink(missing_ok=True)
         _detect(frames, observation_path)
+        if arguments.detector == "soma77":
+            soma_path = output / "work" / f"{camera_name}-soma77-observations.jsonl"
+            if extracted:
+                soma_path.unlink(missing_ok=True)
+            _detect_soma77(frames, observation_path, soma_path)
+            observation_path = soma_path
         observations.append(load_observation_jsonl(observation_path))
     rig_value = _camera_rig_from_mamma_fixture(arguments.calibration_yaml.resolve(strict=True))
     rig_path = output / "camera-rig.json"
@@ -286,6 +328,9 @@ def main() -> int:
             # taken from the observations rather than the CLI argument, so the
             # field describes the data actually reconstructed from
             "detector_width": observations[0][0]["width"],
+            # There are three detectors now, so the artifact must say which one
+            # produced it. Read from the observations rather than the argument.
+            "detector": observations[0][0].get("detector", "apple_vision"),
             "frame_jpeg_quality": FRAME_JPEG_QUALITY,
             "input_sha256": input_hashes,
             "joint_names": list(JOINT_NAMES),

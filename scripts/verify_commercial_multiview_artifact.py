@@ -86,6 +86,12 @@ def verify(output: Path) -> dict[str, Any]:
     # and the same physical reconstruction would pass or fail depending on it.
     # Pin the fixture rather than let the unit drift silently.
     _require(report.get("detector_width") == 1280, "Acceptance fixture is calibrated at 1280 detector width")
+    # Three detectors now emit into this contract, and their joint coverage
+    # differs structurally -- SOMA-77 has no ear landmarks, so two of the
+    # nineteen slots are always interpolated for reasons that are not a quality
+    # signal. The gates below are unchanged; recording which detector produced
+    # the artifact is what keeps them interpretable.
+    _require(isinstance(report.get("detector", "apple_vision"), str), "Artifact does not name its detector")
     _require(report.get("frame_jpeg_quality") == 2, "Acceptance fixture requires pinned JPEG quality")
     for camera in ("A001", "B001", "C001", "D001"):
         stamp_path = output / "work" / "frames" / camera / "extraction.json"
@@ -186,6 +192,7 @@ def verify(output: Path) -> dict[str, Any]:
         "artifact": str(output),
         "source_duration_s": source_duration_s,
         "metrics": {
+            "detector": report.get("detector", "apple_vision"),
             "valid_joint_fraction": report["valid_joint_fraction"],
             "interpolated_joint_fraction": report["interpolated_joint_fraction"],
             "median_reprojection_error_px": report["median_reprojection_error_px"],
