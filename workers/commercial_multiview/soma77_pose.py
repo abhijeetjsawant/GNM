@@ -23,8 +23,10 @@ Two structural differences from the other workers:
   checkpoint is Human-Art-trained and has not cleared the asset licence gate.
   Reusing boxes we already have keeps that asset out of the path entirely.
 * SOMA-77 carries **15 articulated finger joints per hand**, which the AutoAnim-19
-  contract cannot express. They are decoded and discarded here. That is the
-  N5.1 hand blocker's missing input, and it is worth its own increment.
+  contract cannot express. Every person therefore also carries a
+  `landmarks_soma77` array holding all 77 decoded points, so the finger evidence
+  survives the contract boundary for the hand-chain fit. The 19-joint `joints`
+  dict is unchanged, so existing consumers see nothing new.
 
     python workers/commercial_multiview/soma77_pose.py MODEL.onnx BOXES.jsonl FRAME...
 
@@ -190,7 +192,19 @@ def main() -> int:
                 }
                 for name, soma in SOMA77_TO_AUTOANIM.items()
             }
-            people.append({"index": len(people), "joints": joints})
+            people.append(
+                {
+                    "index": len(people),
+                    "joints": joints,
+                    # All 77 points, in SOMA order, as [x, y, confidence]. The
+                    # 19-joint contract above cannot express fingers; this keeps
+                    # them for the hand-chain fit without changing that contract.
+                    "landmarks_soma77": [
+                        [float(decoded[k, 0]), float(decoded[k, 1]), float(confidences[k])]
+                        for k in range(decoded.shape[0])
+                    ],
+                }
+            )
         print(
             json.dumps(
                 {
