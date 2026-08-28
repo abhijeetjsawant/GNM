@@ -119,6 +119,12 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
 
 - SAM2 masks with temporal identity propagation (Apache-2.0)
 - RTMDet for person boxes — **not Ultralytics YOLO** (AGPL)
+- ✅ **Interim detector settled 2026-08-28: NVIDIA GEM-X's SOMA-77**, a ViT-Huge
+  whole-body model already in `.cache` under the NVIDIA Open Model License,
+  trained exclusively on NVIDIA-owned synthetic data. 2D error at the subject
+  25.6 → **15.7 mm**, bone instability 9.4% → **5.5%**, temporal rejections
+  14 → **0**, and 99.3% direct triangulation over the 17 joints it emits. See
+  `docs/BATTLE1_INCREMENT4_SOMA77_DETECTOR.md`
 - ~~MediaPipe Pose Landmarker as the interim detector~~ — **closed negative
   2026-08-27.** Measured head-to-head on our own fixture it is far worse than
   Apple Vision (32.6% vs 88.2% joint coverage). Apple Vision stays. See
@@ -135,10 +141,12 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
   interpolating them: coverage 0.8823 → **0.9398**, interpolation halved, every
   pre-existing metric unchanged. See `docs/BATTLE1_INCREMENT2_SEQUENCE_SOLVE.md`
 
-**Ceiling, stated honestly:** this lands around ~40 mm, where the best sparse
-pipelines sit. It cannot reach 20 mm — the residual is systematic label-convention
-bias, not precision (research §9b). Battle 1 is cheap and de-risks the plumbing;
-it is not a shortcut to the target.
+**Ceiling, restated 2026-08-28.** The original text said Battle 1 lands ~40 mm
+because the residual is systematic label-convention bias. The bias claim was
+right and the ceiling claim was too pessimistic: swapping to a detector that
+predicts skeletal joint *centres* rather than surface landmarks cut 2D error 39%
+and bone instability 41%. Battle 1 still cannot reach 20 mm — dense landmarks are
+Battle 4's job — but it got materially closer than "de-risk the plumbing".
 
 *Exit (reference-free):* zero identity switches on the two-person fixture ✅;
 triangulation jitter ≤ 5 mm median; **direct + constraint-recovered joint
