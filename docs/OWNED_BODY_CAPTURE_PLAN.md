@@ -28,7 +28,11 @@ its metric is not a gate. Full caveat in research §2.
 
 ## The dependency that shapes everything
 
-**Battle 2 is the critical path for *measurement*, not just for data.**
+**Battle 2 is the critical path for the *final gate*.**
+
+*(Restated 2026-08-28. It was "the critical path for measurement", which is too
+strong: reference-free progress on the detector — Battles 3 and 4 — can begin
+before we own a capture. What Battle 2 gates is any claim of accuracy.)*
 
 Research §4.1 concluded the MAMMA fixture cannot referee commercial development —
 its licence bars production of artifacts for commercial purposes, so benchmarking
@@ -46,6 +50,25 @@ fixture gets a retirement date: **it is deleted from the evaluation path the day
 Battle 2 delivers**, and from that point exists only as a historical note.
 
 ---
+
+## The on-device constraint is gone
+
+The pipeline may run on a bigger GPU; it does not have to run on the MacBook.
+A 72-agent survey established what that unlocks — see
+`docs/GPU_DETECTOR_OPTION_SPACE.md`. The short version:
+
+- **No commercially-clean whole-body 2D checkpoint exists.** The menu was
+  licence-gated, not compute-gated, so this unlocks zero new shippable models.
+  COCO-WholeBody is research-only and its 133-keypoint skeleton *is* the
+  whole-body format, so every open checkpoint inherits the taint.
+- **What it does unlock is density.** Dense landmarks cost ~80× sparse-keypoint
+  inference — exactly what an on-device budget could never afford, and exactly
+  where MAMMA's accuracy comes from.
+- **Cost is not the obstacle.** Our shot is $0.10–$0.49 of GPU time; a full
+  ViT-Base training run is ~$600–720. The unpriced item is the synthetic corpus.
+- **Three clean assets found:** Meta's SAM 3D Body (commercial checkpoints,
+  predicts into MHR), SAM 2 (Apache-2.0 code *and* weights), Unity
+  PeopleSansPeople (Apache-2.0 synthetic humans).
 
 ## Sequence
 
@@ -83,8 +106,10 @@ detector width against `REFERENCE_DETECTOR_WIDTH_PX`; `detector_width` and
 cuts temporal rejections 33 → **14**; verifier passes; 33 tests green, with the
 four scaling terms mutation-tested.
 
-**Still open:** a per-person ROI crop stage, untested, which a probe suggests
-matters ~4× more than detector width — a Battle 1 experiment.
+**Closed 2026-08-28:** the per-person ROI crop is **not** a Battle 1 experiment.
+Apple Vision is model-limited, so a crop cannot rescue it. Crop resolution is a
+real lever — published ablations put it above a backbone step — but on *our own*
+detector, in Battle 4.
 
 ---
 
@@ -94,14 +119,11 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
 
 - SAM2 masks with temporal identity propagation (Apache-2.0)
 - RTMDet for person boxes — **not Ultralytics YOLO** (AGPL)
-- MediaPipe Pose Landmarker as the interim detector (33 pts, the only
-  off-the-shelf model with verified-clean provenance). **Viability probe passed
-  2026-08-27** — the abort recorded in `docs/MAMMA_MULTIVIEW_EXECUTION.md` is the
-  *legacy* `mediapipe.python.solutions` graph, which is not even present in the
-  installed 0.10.35. The **Tasks** runtime builds and runs its native graph on
-  this host on CPU via XNNPACK. Worker written
-  (`workers/commercial_multiview/mediapipe_pose.py`); blocked only on the model
-  asset's licence gate.
+- ~~MediaPipe Pose Landmarker as the interim detector~~ — **closed negative
+  2026-08-27.** Measured head-to-head on our own fixture it is far worse than
+  Apple Vision (32.6% vs 88.2% joint coverage). Apple Vision stays. See
+  `docs/BATTLE1_INCREMENT3_DETECTOR_COMPARISON.md`. The viability blocker was
+  also wrong — the recorded abort is the *legacy* graph, not the Tasks runtime.
 - ✅ **Cycle-consistent Hungarian matching on epipolar affinity, replacing the
   exhaustive per-frame permutation search** — landed 2026-08-27, identical
   output on every fixture frame, and the only tractable path beyond two
