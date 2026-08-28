@@ -1522,6 +1522,11 @@ resampled collar with shared positions/skin attributes, use an eight-influence
 runtime or qualify a better reduction, add character/body texture and UV
 look-dev, and pass the full held-out motion grid.
 
+The production follow-up is specified in
+[`N5_1_PRODUCTION_CHARACTER_ASSEMBLY.md`](N5_1_PRODUCTION_CHARACTER_ASSEMBLY.md).
+Its first gate restores the finger animation and MPFB finger skin weights that
+the current SOMA-77 to canonical-25 projection deliberately discards.
+
 ### Phase N6 — production qualification and release
 
 **Build**

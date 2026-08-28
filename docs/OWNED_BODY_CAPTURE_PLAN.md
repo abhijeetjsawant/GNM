@@ -119,15 +119,15 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
 
 - SAM2 masks with temporal identity propagation (Apache-2.0)
 - RTMDet for person boxes — **not Ultralytics YOLO** (AGPL)
-- 🔬 **Interim detector validated 2026-08-28 — integration pending: NVIDIA GEM-X's SOMA-77**, a ViT-Huge
+- ✅ **Interim detector adopted 2026-08-28: NVIDIA GEM-X's SOMA-77**, a ViT-Huge
   whole-body model already in `.cache` under the NVIDIA Open Model License,
   trained exclusively on NVIDIA-owned synthetic data. 2D error at the subject
   25.6 → **15.7 mm**, bone instability 9.4% → **5.5%**, temporal rejections
   14 → **0**, and 99.3% direct triangulation over the 17 joints it emits.
-  Measured by driving `reconstruct_multiview` directly; the build script still
-  hardcodes the Apple Vision worker and the verifier has not run on a SOMA-77
-  artifact. Bone instability 5.5% is a large gain but still does not meet the
-  2% gate, which moved to Battle 4. See
+  Integrated behind `--detector soma77` and verified end to end: the acceptance
+  gate passes, retarget endpoint median 157.0 → **120.0 mm** and p95 359.7 →
+  **249.0 mm**. Bone instability 9.4% → **3.5%** is a large gain and still does
+  not meet the 2% gate, which stays with Battle 4. See
   `docs/BATTLE1_INCREMENT4_SOMA77_DETECTOR.md`
 - ~~MediaPipe Pose Landmarker as the interim detector~~ — **closed negative
   2026-08-27.** Measured head-to-head on our own fixture it is far worse than

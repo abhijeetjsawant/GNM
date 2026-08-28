@@ -172,6 +172,33 @@ property of the *category* — was too broad. A better model existed, was
 commercially licensed, and was already on disk. **Measuring the alternative
 should have come before concluding the ceiling was general.**
 
+## Integration, and the full acceptance gate
+
+The build script now takes `--detector {apple_vision,soma77}`. The soma77 path
+runs Apple Vision first for person boxes, then SOMA-77 for keypoints;
+`run-report.json` records which detector produced the artifact, read from the
+observations rather than the CLI argument.
+
+Both artifacts pass `verify_commercial_multiview_artifact.py`. Gate by gate:
+
+| gate | Apple Vision | SOMA-77 | |
+|---|---:|---:|---|
+| valid joint fraction | 0.8823 | **0.8912** | ↑ |
+| interpolated fraction | 0.0602 | 0.1077 | ↑ — the two ears SOMA-77 does not model |
+| median reprojection | 4.589 px | **2.913 px** | **−37%** |
+| p95 reprojection | 10.877 px | **6.334 px** | **−42%** |
+| max reprojection | 19.663 px | 18.228 px | ↓ |
+| temporal rejections | 14 | **0** | |
+| **retarget endpoint median** | 157.0 mm | **120.0 mm** | **−24%** |
+| **retarget endpoint p95** | 359.7 mm | **249.0 mm** | **−31%** |
+| status | pass | **pass** | |
+
+The retarget endpoint pair is the most product-relevant row: it measures how far
+the reconstructed joints sit from the fitted rig, which is what an animator
+actually sees. `COMMERCIAL_MULTIVIEW_BODY.md` set those at ≤180 mm median and
+≤400 mm p95 and called them "intentionally loose, P0 only". At 120 / 249 mm they
+are now comfortably inside, on the same fixture.
+
 ## Actions that need you, not me
 
 | action | why | when |
