@@ -122,7 +122,7 @@ Every component Apache/BSD, no training, nothing to buy. See research §10.
 - ✅ **Interim detector adopted 2026-08-28: NVIDIA GEM-X's SOMA-77**, a ViT-Huge
   whole-body model already in `.cache` under the NVIDIA Open Model License,
   trained exclusively on NVIDIA-owned synthetic data. 2D error at the subject
-  25.6 → **15.7 mm**, bone instability 9.4% → **5.5%**, temporal rejections
+  25.6 → **16.2 mm**, bone instability 9.4% → **3.5%**, temporal rejections
   14 → **0**, and 99.3% direct triangulation over the 17 joints it emits.
   Integrated behind `--detector soma77` and verified end to end: the acceptance
   gate passes, retarget endpoint median 157.0 → **120.0 mm** and p95 359.7 →
