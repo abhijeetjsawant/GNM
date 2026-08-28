@@ -33,6 +33,7 @@ from typing import Any, Sequence
 
 import numpy as np
 from scipy.optimize import least_squares
+from scipy.sparse import coo_matrix
 from scipy.spatial.transform import Rotation
 
 from .commercial_multiview import CalibratedCamera, CommercialMultiviewError
@@ -327,8 +328,13 @@ def fit_hand_sequence(
         return np.concatenate(parts)
 
     start = np.zeros(frames * per_frame, dtype=np.float64)
+    # Without this the Jacobian is dense: frames * per_frame columns, each
+    # costing a full residual evaluation. At 150 frames that is 4,500 forward
+    # passes per iteration and the solve never finishes. Every residual touches
+    # only its own frame, except the temporal term which spans three.
     solution = least_squares(
-        residuals, start, method="trf", loss="linear", ftol=1e-3,
+        residuals, start, jac_sparsity=_jacobian_sparsity(residuals(start), frames, per_frame, dof, used),
+        method="trf", loss="linear", ftol=1e-3, x_scale="jac",
         max_nfev=maximum_evaluations, verbose=0,
     )
     state = unpack(solution.x)
@@ -342,6 +348,56 @@ def fit_hand_sequence(
         ]
     )
     return state[:, 3:], positions, used
+
+
+def _jacobian_sparsity(
+    sample: np.ndarray, frames: int, per_frame: int, dof: int, used: np.ndarray
+) -> Any:
+    """Which variables each residual touches.
+
+    Reprojection residuals for a frame depend on that frame's wrist rotation and
+    joint angles and nothing else. Limit residuals touch a single angle. The
+    temporal term spans three consecutive frames.
+    """
+
+    rows: list[int] = []
+    columns: list[int] = []
+    row = 0
+
+    def frame_block(frame: int) -> range:
+        base = frame * per_frame
+        return range(base, base + per_frame)
+
+    for frame in range(frames):
+        for camera in range(used.shape[1]):
+            count = int(used[frame, camera].sum())
+            for _ in range(count * 2):
+                for column in frame_block(frame):
+                    rows.append(row)
+                    columns.append(column)
+                row += 1
+    for _ in range(2):  # lower then upper limit blocks
+        for frame in range(frames):
+            base = frame * per_frame + 3
+            for k in range(dof):
+                rows.append(row)
+                columns.append(base + k)
+                row += 1
+    if frames > 2:
+        for frame in range(frames - 2):
+            for k in range(dof):
+                for offset in range(3):
+                    rows.append(row)
+                    columns.append((frame + offset) * per_frame + 3 + k)
+                row += 1
+    if row != len(sample):
+        raise CommercialMultiviewError(
+            f"Jacobian sparsity has {row} rows against {len(sample)} residuals"
+        )
+    return coo_matrix(
+        (np.ones(len(rows), dtype=np.int8), (rows, columns)),
+        shape=(row, frames * per_frame),
+    )
 
 
 __all__ = [
