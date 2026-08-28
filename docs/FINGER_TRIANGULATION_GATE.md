@@ -1,6 +1,15 @@
-# Can we triangulate fingers from four wide cameras? No.
+# Can we triangulate fingers from four wide cameras?
 
-Status: negative result, 2026-08-29. Recorded so the question does not resurface.
+Status: **amended 2026-08-29.** The original conclusion — "no, the physics
+forbids it" — was **wrong, and overclaimed from a correct measurement.**
+
+What the measurements below actually establish is narrower and more useful:
+**independent per-joint triangulation of fingers fails at this framing.** They do
+not establish that fingers are unrecoverable. MAMMA recovers them from *these
+exact four videos*, which is the counter-example that settles it.
+
+The amendment is at the bottom, under "What MAMMA does differently". Read it
+before acting on anything above it.
 
 ## Why it was asked
 
@@ -87,9 +96,54 @@ Native-resolution re-cropping does not rescue it either: it turns a ~20 px hand
 into ~50 px, where the dedicated hand models expect 150–250 px.
 **Pixels-on-hand is a rig decision, not a model decision.**
 
-## Decision
+## What MAMMA does differently — the correction
 
-**Do not wire SOMA-77's fingers into the body track.** The pipeline's own rule
+MAMMA ran on **this same fixture**: the same four cameras, the same 4.7 m stage,
+the same 150 frames. Its output is retained at
+`artifacts/mamma/mamma-4cam-five-second-v2/`. Measured directly from it:
+
+| | |
+|---|---:|
+| SMPL-X hand pose variation per DoF | 0.098 rad, against 0.186 for the body |
+| — i.e. hand articulation is **53% of body articulation** | not a frozen prior |
+| pairwise distance stability, MAMMA's 512 triangulated landmarks, extremity region | **7.3%** |
+| same, core region | 10.5% |
+| **our independently-triangulated SOMA fingers** | **226%** |
+| our body control, same harness | 51% |
+
+MAMMA's 3D points are **5–20× more geometrically stable than ours on identical
+footage**. The information is in these videos. Our estimator was throwing it away.
+
+**Why.** MAMMA never triangulates a finger joint as a free 3D point. It fits
+SMPL-X — a parametric body whose hand is a constrained 45-parameter pose space —
+jointly across all views and all frames, with shape shared over the sequence,
+temporal smoothing, and per-landmark uncertainty and visibility weighting. A
+finger position is therefore never 3 unconstrained degrees of freedom fitted to
+near-parallel rays; it is the consequence of a kinematic chain with fixed bone
+lengths, driven by every view at once.
+
+That is precisely the estimator my test lacked. Independent per-joint DLT is the
+*worst possible* estimator for a small feature at 4.7 m, because depth is almost
+unconstrained — which is exactly what the 68–196 mm phalanges show. The failure I
+measured is real; the conclusion I drew from it was not.
+
+**So the honest statement is:** fingers at this framing require a
+**model-constrained fit**, not triangulation. We already have both halves —
+SOMA-77 supplies per-view finger 2D, MHR supplies an articulated hand with fixed
+bone lengths — and `solve_sequence_positions` already implements a sequence-level
+fit with limb-length and temporal terms. Extending that solve to the hand chain
+is the same architecture MAMMA uses, in miniature.
+
+The physics section above still stands as a caution on *accuracy*: ~20 px of hand
+inside the model input is genuinely tight, and MAMMA itself reports hand error
+well above its body error. Expect pose-plausible fingers, not contact-precise
+ones. But "expect limited accuracy" is a different claim from "the information
+isn't there", and only the first is supported.
+
+## Decision (superseded — see the amendment above)
+
+~~**Do not wire SOMA-77's fingers into the body track.**~~ Do not wire them
+through **independent triangulation**, which is what was tested. The pipeline's own rule
 exists for this case: *"missing or untrusted hand observations remain explicitly
 `review_required`; they do not fall back to an unreported canned gesture."*
 Prior-driven fingers would break that rule with our own detector, and for a
