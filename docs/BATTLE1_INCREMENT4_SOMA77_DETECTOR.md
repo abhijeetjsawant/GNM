@@ -97,6 +97,49 @@ OML — commercial use still permitted, redistribution must carry it, and
 "NVIDIA-owned only" would describe the fine-tuning data rather than the
 pretraining corpus.
 
+## A defect the adversarial review found in this worker
+
+The 7.1 px cross-detector agreement validated the transform on **one person in
+one frame**, which was not tight enough. A 33-agent review, worktree-isolated,
+found a real error in my box construction.
+
+The model consumes only the centre 192 of the 256 crop columns. My `_square_box`
+sized a square on `max(width, height)`, which gives the subject a horizontal
+field of view of only `0.75 x 1.25 x max(w, h)` — narrower than a wide pose.
+GEM-X's reference `get_bbx_xys` fits the hull to the 192:256 ratio *before*
+enlarging, so its horizontal FOV is always at least 1.2x the hull width.
+
+Measured on the fixture before the fix:
+
+| | |
+|---|---:|
+| person-frames losing at least one joint out of the input | **353 / 1179 (30%)** |
+| joints outside the model input | 1067 / 18156 (5.9%) |
+| clipped joints pinning to the heatmap border (within 4 px) | **38.2%**, vs 1.8% in-view — a 21x enrichment |
+| clipped joints that still passed the 0.25 confidence gate | 410 |
+
+A joint outside the input cannot receive a heatmap peak, so the argmax saturates
+at a border cell. Confidence does partially signal it — median 0.454 for clipped
+joints against 0.930 in-view, and the gate discarded ~31% of them — so it is not
+wholly silent, but 410 wrong joints still reached triangulation.
+
+Fixed by fitting the hull to the visible window before enlarging:
+`side = max(height, width * CROP / MODEL_WIDTH) * BOX_PADDING`. After the fix,
+**0 of 1179 person-frames and 0 of 18156 joints are clipped.**
+
+**The headline numbers above were measured with this defect present** and are
+re-baselined below. The review also notes the fix is not a uniform win: growing a
+wide hull's box can pull a neighbouring performer into the crop in a two-person
+scene, so the improvement should be measured rather than assumed.
+
+### One divergence that is not a bug
+
+`_crop` maps the box across 255 columns while `_decode` assumes 192/256 of the
+box side — a 256/255 inconsistency. It is inherited from the reference, which
+does exactly the same thing, so our worker reproduces GEM-X bitwise. Left alone
+deliberately: matching the reference is worth more than being 0.4% more
+self-consistent than it.
+
 ## Correctness of the reimplementation
 
 The worker is written against the ONNX graph and published preprocessing rather
