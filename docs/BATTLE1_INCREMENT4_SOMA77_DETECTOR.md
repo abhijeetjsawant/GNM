@@ -27,7 +27,19 @@ Identical frames, identical calibration, identical reconstruction.
 **2D error at the subject falls 25.6 mm → 15.7 mm, a 39% reduction** — on the
 exact quantity Battle 0 identified as Apple Vision's model-limited ceiling.
 
-**Bone-length instability falls 9.4% → 5.5%.** That was the hypothesis: this
+> **Basis, stated so it is not over-quoted.** These millimetres are derived from
+> the *reprojection residual*, which is both fitted and gate-censored, exactly as
+> flagged throughout `BATTLE0_DETECTOR_WIDTH_FINDINGS.md`. It is a relative
+> comparison between detectors on identical footage, not a ground-truth-verified
+> accuracy. No accuracy claim in this lane is ground-truth-verified until Battle
+> 2 delivers an owned reference capture.
+
+**Bone-length instability falls 9.4% → 5.5%** — a 41% gain, and still short of
+the 2% gate, which moved to Battle 4 in increment 2 precisely because no
+detector then available could approach it. 5.5% narrows that gap; it does not
+close it.
+
+ That was the hypothesis: this
 model predicts *skeletal joint centres*, where Apple Vision and MediaPipe predict
 *surface* landmarks. Surface landmarks slide relative to bone as a subject turns,
 which is the mechanism increment 2 identified behind the instability. Interior
@@ -104,6 +116,13 @@ it. That stands. But the framing around it — that the detector ceiling was a
 property of the *category* — was too broad. A better model existed, was
 commercially licensed, and was already on disk. **Measuring the alternative
 should have come before concluding the ceiling was general.**
+
+## Actions that need you, not me
+
+| action | why | when |
+|---|---|---|
+| **Email NVIDIA** re: whether `vitpose.pth`'s DINOv3-architecture backbone was initialised from Meta's pretrained weights | Blocks nothing today. Gates our redistribution posture: if yes, DINOv3's agreement flows down alongside the NVIDIA OML | Before any redistribution |
+| **Add the NVIDIA Open Model License attribution notice** to the ship checklist | The OML requires attribution passthrough on redistribution, alongside the Apache and CC notices already listed | Ship checklist |
 
 ## Follow-ups this opens
 
