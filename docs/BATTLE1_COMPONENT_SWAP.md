@@ -675,3 +675,47 @@ Not this. Two reference-free instruments, neither run:
   MAMMA's 10,475-vertex mesh, point-to-surface in both directions. Not joint-to-joint:
   that needs an MHR-to-SMPL-X mapping research §9a says is unrecovered, and
   hand-authoring one is the defect class this project has banned.
+
+## Rung 6 — is fusing four monocular MHR fits well-conditioned? **No, and it gates the build**
+
+Fable's (e)(i), run before any fusion solver is written, because the answer decides
+whether such a solver would intersect four rays or average four differently-wrong
+bodies.
+
+SAM 3D emits joints **body-local** (root-relative, Y-down) plus `pred_cam_t`;
+`pred + cam_t` is the camera-frame position, verified by reprojecting to the model's
+own `pred_keypoints_2d` at **7.5 px** median. Our calibrated extrinsics carry that
+into world. **Transform checked before the numbers were read:** the four-view mean
+body centre lands a median **0.28 m** from our tracked pelvis, which is what a mean
+over 127 joints versus a pelvis should give — metres would have meant a broken
+transform.
+
+9,779 view-joint deviations from the four-view mean, 10 frames, both subjects:
+
+| | median | p90 |
+|---|---:|---:|
+| total disagreement between views | **118.2 mm** | 597.8 mm |
+| along the viewing ray *(depth — the ambiguous axis)* | 88.4 mm | 377.0 mm |
+| **transverse to it** *(the axis fusion cannot fix)* | **42.8 mm** | 426.3 mm |
+| body-centre spread across views | 115 mm | |
+
+**67% of the disagreement is depth**, which is the expected monocular weakness and
+the part four calibrated rays would resolve. **But 42.8 mm is transverse**, and
+fusion cannot recover that — averaging four independent transverse errors reduces it
+by about half, to roughly 21 mm.
+
+**So a fused SAM 3D would land near 20 mm where our existing triangulation already
+agrees with MAMMA's to ~10 mm. Fusion is not worth building.** That is the gate fable
+asked for, answered before a solver was written rather than after.
+
+One observation worth carrying: the disagreement is **not uniform across subjects**.
+Subject 0 shows 0.34, 0.22, 0.76, 0.39 and 0.80 m of centre gap where subject 1 shows
+0.12, 0.14, 0.13, 0.37 and 0.18. On a clip named *pushing and lifting from ground*,
+monocular estimation degrades sharply on the non-canonical pose — exactly where a
+multiview rig has the most to offer and a single image the least.
+
+**The blindness, stated because the number is otherwise seductive:** this instrument
+is reference-free, so four monocular fits could agree closely and all be wrong the
+same way through shared appearance bias. Agreement here was only ever a **necessary
+condition** for fusion. It failed the necessary condition, which is a sound reason to
+stop; it could never have been a sufficient one to proceed.
