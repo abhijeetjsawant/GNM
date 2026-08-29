@@ -67,6 +67,64 @@
 > outputs in §7b–7e and everything downstream of it, including the reordering
 > written into `OWNED_BODY_CAPTURE_PLAN.md`.
 
+## 0. Corrected results — and the ordering does not survive
+
+Re-measured with all three defects fixed: the noise refitted to the one-sided
+ladder, the degenerate `both` arm dropped, and both weight orderings run. Three
+seeds, paired noise realisations, `artifacts/synthetic-truth`.
+
+| arm | mixture (2.75 px / 7% at 36) | lognormal (median 2.75, σ_log 0.85) |
+|---|---:|---:|
+| no channel | **11.62 mm** | **14.38 mm** |
+| sigma, weight after loss | 10.67 (+0.95) | 12.23 (**+2.15**) |
+| sigma, weight before loss | 10.67 (+0.95) | 12.23 (+2.15) |
+| visibility | **8.87 (+2.75)** | 13.19 (+1.19) |
+| visibility, shuffled *(control)* | 15.18 (−3.56) | 18.03 (−3.64) |
+
+### Three things, and the second one is the important one
+
+**The estimator-plus-detector-noise term is about half what §7 reported.** 11.6 mm
+against the retracted 23.5 mm, which is the 2x noise correction propagating exactly
+as it should. It also breaks §7a's "agrees within 5% with the 24.7 mm of real
+spread" — that agreement was the double count, as the reviewer predicted. 24.7 mm
+is a two-system spread containing MAMMA's own 13.5–20 mm; ours sitting at 11.6 mm
+of estimator noise is consistent with it, where 23.5 mm was not.
+
+**The sigma-versus-visibility ordering reverses between two noise models that both
+fit the measured data.** Under the mixture, visibility wins 2.9x. Under the
+lognormal continuum, **sigma wins 1.8x**. The mixture is the better fit — 0.043
+against 0.139 on the full ladder, because the lognormal cannot reach the measured
+p95 of 32.79 px — but "better fit to a proxy statistic" is not enough to carry a
+ranking that flips with the model.
+
+**So we cannot currently rank sigma against visibility, and the plan's reordering
+is not supported.** What survives is weaker and still useful: both channels are
+worth roughly 1–3 mm on an 11.6–14.4 mm baseline, i.e. 8–20%, and a *wrong* channel
+costs more than a right one gains (shuffled visibility, −3.6 mm under both models).
+The controls work; the ranking does not.
+
+**Weight ordering made no measurable difference** — 10.67 mm either way, to the
+decimal. The defect is real in principle (`solve_sequence_positions` cannot
+reclassify an outlier through the weight, `fit_hand_sequence` can) but it does not
+move this number, because the confidence floor still caps the expressible weight
+ratio at 2x while the fitted sigma ratio is 13x. An uncapped run is in flight.
+
+### What would settle it
+
+Not a better parametric fit. **The shape of the detector's error distribution has
+to be measured, not modelled** — and the fixture already specifies how: **arm (i)**,
+render the synthetic scene, run SOMA-77 on the renders, and compare its 2D against
+the projected truth. That yields the actual per-observation error distribution,
+fit-free and uncensored, instead of a two-parameter guess fitted to a proxy that
+turned out to be a factor of two off.
+
+Both instruments used so far — epipolar disagreement and reprojection residual —
+see only the *cross-view-incoherent* part of the error. A per-joint bias, or a
+whole limb shifted, is invisible to both. Arm (i) is the only thing that separates
+them, and a systematic component is exactly what a training campaign could remove.
+
+**Arm (i) is now the highest-value remaining measurement in this document.**
+
 ## 1. What this measures, and what it cannot
 
 ### 1.1 The problem
