@@ -432,6 +432,51 @@ Thirteen mechanisms, each with the cheapest check that catches it.
 
 ---
 
+## 7c. What a better detector is worth — the number the strategy actually turns on
+
+Sigma is redundant with robust geometry. Detector **accuracy** cannot be, because
+no estimator recovers information that was never in the 2D. Sweeping the two things
+a better detector would change, and reporting true 3D error for each:
+
+| clean sigma | 15% bad | 7.5% bad | 3% bad | 0% bad |
+|---|---:|---:|---:|---:|
+| 8.0 px | 64.8 | 44.7 | 41.2 | 34.3 |
+| **5.5 px** | 35.6 | **23.5** ← us | 18.0 | 16.4 |
+| 3.0 px | 23.1 | **13.1** | 9.8 | 8.8 |
+| 1.5 px | 16.8 | 7.6 | 5.0 | 4.5 |
+
+Read across the row we are in, and then up the column:
+
+| lever | change | true error | worth |
+|---|---|---:|---:|
+| **precision** — halve the clean sigma, 5.5 → 3.0 px | | 23.5 → 13.1 mm | **10.4 mm** |
+| **outlier rate** — halve it, 7.5% → 3% | | 23.5 → 18.0 mm | **5.5 mm** |
+| **a sigma head** — perfect per-observation uncertainty | | 23.5 → 23.1 mm | **0.4 mm** |
+
+**Detector precision is worth twenty-six times what an uncertainty head is worth.**
+That is the strategic answer, measured against truth rather than argued from
+analogy, and it inverts the hypothesis this line of work started from.
+
+It also sets a target rather than an aspiration. **A detector at 3.0 px clean error
+puts this pipeline at 13.1 mm — MAMMA's single-person figure** — with no change to
+the estimator at all. Our detector is at 5.5 px. The task is to halve it.
+
+That is precisely what a synthetic-data campaign is for, and precisely what
+MAMMA's contribution was: MammaNet is a better 2D predictor, and the fitting recipe
+it feeds is one we have already reimplemented. So Battle 3 and Battle 4 keep their
+place in the plan — **aimed at accuracy, with the uncertainty head demoted from
+headline feature to nice-to-have.**
+
+### What this table is not
+
+Synthetic, so it carries none of calibration error, lens distortion, sync error,
+soft-tissue artefact or joint-definition error, and §1.3 lists all five as
+first-order on real footage. The noise is a two-component Gaussian fitted to
+cross-view disagreement; real detector error may be shaped differently, and in
+particular is likely correlated *across joints* — a whole limb shifting — which
+nothing here models. Three seeds per cell, 84 frames, two subjects, one pair of
+clips. **The ratios are the finding; the absolute numbers are a floor.**
+
 ## 8. What we still cannot claim afterwards — and why the marker session still happens
 
 ### 8.1 Claims the fixture supports
