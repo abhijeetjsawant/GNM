@@ -347,3 +347,31 @@ the graph: `sam_3d_body_dinov3_bf16`, `sam3_1_multiplex_fp16`,
 `moge_2_vitl_normal_fp16`, `rt_detr_v4-o-hgnet_fp32`. Note these are **Comfy-Org
 mirrors**; the SAM License governs the SAM materials wherever they are hosted, and
 SAM 3 and MoGe carry their own terms that this pass has **not** checked.
+
+### For our rig, only one of the four models is needed
+
+The workflow loads four. Three of them exist to compensate for things we already
+have, so the ask is **one asset, not four**:
+
+| workflow model | what it is for | do we need it |
+|---|---|---|
+| `moge_2_vitl_normal` | guess the camera's field of view from one image | **no** — bundle-adjusted rig, intrinsics byte-verified against MAMMA's |
+| `sam3_1_multiplex` | track multiple people across frames | **no** — cycle-consistent cross-view association, zero identity switches on this take |
+| `rt_detr_v4-o-hgnet` | person bounding boxes | **probably not** — we already source boxes, and the Apple Vision dependency is separately audited |
+| **`sam-3d-body-dinov3`** | **the body model itself, predicting into MHR** | **yes — this is the whole ask** |
+
+**Take `facebook/sam-3d-body-dinov3`**, not `sam-3d-body-vith`: it is the variant the
+workflow loads, the one carrying the published EMDB figure, and by download count
+the one in use (8.04k against 787). The model card confirms what matters — *"body,
+feet, and hands using the Momentum Human Rig parametric mesh representation"*.
+
+**Not** `facebook/sam-3d-body-dataset` (5.66M rows). That is training data. It is
+interesting for Battle 3 and it is a separate decision with separate terms; it is
+not needed to evaluate anything.
+
+**Two flags before download.** Access requires accepting terms and sharing contact
+information — a user action, and the accepted terms should be archived per the
+dependency audit's standing requirement. And the model card declares the SAM License
+but is **silent on whether DINOv3's own licence applies in addition**; the backbone
+is Meta's own, so the SAM License plausibly governs the whole bundle, but "plausibly"
+is exactly what the asset gate exists to replace.
