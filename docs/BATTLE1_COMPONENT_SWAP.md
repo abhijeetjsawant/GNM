@@ -31,6 +31,13 @@ visibility below 0.5**: MammaNet's own answer to how much of a 512-point body
 surface any one camera can see, and the same order as the 60–77% our geometric veto
 discards on fingers.
 
+And a third, which may matter more than either. With **uniform** confidence all 512
+landmarks triangulate to ~10 mm — **including the 64% MammaNet flags as invisible**.
+Its predictions for occluded landmarks are *amodal and good*. SOMA-77's predictions
+for occluded landmarks are the confidently-wrong ones the entire cross-view veto
+exists to filter. **Amodal quality on occluded landmarks is a detector property
+nobody here has priced**, and a large share of the 25–34 mm may live in it.
+
 ## The swap
 
 Our `triangulate_point`, unchanged, fed MAMMA's 2D landmarks and its visibility as
@@ -65,14 +72,35 @@ together, since it fed MAMMA's `visibilities` as the confidence.
 
 Two things follow. The exact correspondence moves the number from 7.3 to 8.9 mm, so
 the nearest-vertex metric was understating by about a fifth rather than
-catastrophically. And **the survivorship caveat is largely answered**: taking every
-one of the 512 landmarks, including the ones MammaNet marks as invisible, costs only
+catastrophically. And **the survivorship caveat is answered**: taking every one of
+the 512 landmarks, including the ones MammaNet marks as invisible, costs only
 1.3 mm. The result was not resting on the well-seen subset.
 
-**MAMMA's visibility channel is worth ~1.3 mm here, for 40% of the coverage.** That
-is the first pricing of a visibility channel on *real* data rather than on a
-synthetic noise model — and it is far below the 4.5 mm the synthetic fixture
-suggested.
+### The visibility channel is worth 0.16 mm, not 1.3 — the rest was composition
+
+That 1.3 mm compares 8.9 mm over the ~317 landmarks that survive gating against
+10.2 mm over all 512 **including the hard tail the other arm dropped**. Different
+populations. Scored on identical landmarks:
+
+| | same 18,972 landmarks |
+|---|---:|
+| MAMMA's visibility as confidence | **8.83 mm** (p90 21.2) |
+| uniform confidence | **8.98 mm** (p90 22.8) |
+| **the channel is worth** | **+0.16 mm** |
+| the 11,748 landmarks it *dropped*, under uniform | 12.62 mm (p90 36.9) |
+
+**Almost all of the 1.3 mm was the composition shift.** MammaNet's visibility does
+identify genuinely harder landmarks — the ones it drops are 1.4× the median error of
+the ones it keeps — but **used as a weight it buys 0.16 mm**, and dropping them
+improves the reported median by removing hard cases, which is survivorship rather
+than accuracy.
+
+This is the first pricing of a visibility channel on **real** data rather than a
+synthetic noise model, and it does not overturn the fixture — it lands *between* the
+corrected predictions of 2.75 mm (mixture) and 1.19 mm (lognormal), on the low side.
+If anything it mildly favours the lognormal, which is the noise model under which
+**sigma outranked visibility**. The corrected §0 of the fixture doc said the ordering
+could not be determined; this nudges it, and does not settle it.
 
 Against the same reference, our geometry given **our** 2D disagrees by **24.7 mm of
 per-frame spread plus 33.9 mm of per-joint systematic bias**
