@@ -344,3 +344,47 @@ That is consistent with the diagnosis: the wrist block was the larger error, so
 covering it buys more accuracy than damping the fingers harder. It also suggests
 the two priors are complementary rather than alternatives, which has not been
 tested. The warm-started sweep is running.
+
+## SOMA-77 cannot tell us when it is wrong
+
+Before assuming the missing σ requires training a detector, the cheap version was
+worth testing: heatmap shape. The decoder takes only the argmax, and the spread of
+a heatmap around its peak is the standard uncertainty proxy — a sharp peak is a
+confident landmark, a smeared one is not. If finger heatmaps were measurably
+flatter than body ones, the σ we have been substituting with a binary geometric
+veto would already be sitting in a tensor we throw away.
+
+Three local statistics, over 16 person-crops, on 64×48 heatmaps. (A first attempt
+used the second moment of the whole map, which is dominated by the background
+floor and says nothing about the peak; these are all computed in a ±4 cell window
+around the argmax.)
+
+| | local spread | best rival peak | sharpness |
+|---|---:|---:|---:|
+| body landmarks (forearms, shins, hips) | 2.63 | 0.078 | 0.376 |
+| finger landmarks (index, middle, thumb, both hands) | 2.61 | 0.076 | 0.378 |
+
+**Indistinguishable.** Every statistic agrees to under 1%, and in two of the three
+the fingers look marginally *more* confident than the body. The model emits a
+fixed-shape blob whether or not it can actually see the landmark — which is the
+same fact as the earlier measurement that its peak confidences all sit in
+[0.895, 0.992] and its high confidence on occluded fingers.
+
+So this detector cannot report its own reliability, and no amount of decoding will
+make it. That is a real constraint and it was cheap to establish.
+
+**But it does not follow that we need a new detector.** Geometry can supply the
+same quantity, and does: the per-observation median epipolar distance to the other
+views has deciles of 2.3, 4.2, 7.5, 14.9 and 30.6 px — a wide, informative
+distribution that the gate currently destroys by thresholding it into a bit. That
+is a σ, from data we already compute.
+
+**This is the experiment that decides the strategy**, and it must be run before
+the conclusion is written down. If weighting observations by that geometric σ
+closes most of the smooth-versus-mobile gap, then the estimator was the waster and
+the detector hypothesis was an over-generalisation — the same mistake as
+concluding fingers could not be triangulated from four wide cameras, which was
+also a correct measurement attached to a wrong claim about what was possible. If
+it does not close the gap, then "the real battle is a detector that emits μ, σ and
+visibility" is earned, with data, and the synthetic-training-data campaign has a
+measured justification rather than a plausible one.
