@@ -719,3 +719,57 @@ is reference-free, so four monocular fits could agree closely and all be wrong t
 same way through shared appearance bias. Agreement here was only ever a **necessary
 condition** for fusion. It failed the necessary condition, which is a sound reason to
 stop; it could never have been a sufficient one to proceed.
+
+## Rung 7 — the integration that survives: SAM 3D as an **orientation source**
+
+Rung 6 killed fusion of positions. But the two systems are complementary in a way
+that survives it: **our reconstruction produces good positions and no orientations at
+all**, which is what blocked the arm (i) local-frame calibration and what bone twist
+in any skeletal animation needs. SAM 3D produces the reverse.
+
+So the question is not whose positions to use — that is settled — but whether its
+*rotational* degrees of freedom are usable. Measured convention-free, as **world bone
+directions from positions**, because `pred_global_rots` turned out to be a valid
+joint-to-world basis with column 0 along the bone (|cos| 0.87–0.99 against the
+model's own joints) and my first attempt at composing it gave 152° of nonsense —
+my transform, not the model.
+
+**Raw, across views:**
+
+| bone | median | p90 |
+|---|---:|---:|
+| spine | 4.5° | 22.1° |
+| upper legs | 5.7–5.8° | 37–57° |
+| upper arms | 8.0–9.9° | 53–69° |
+| forearms | 11.0–13.0° | **108–122°** |
+| **all** | **6.9°** | **72.1°** |
+
+The median is usable; the p90 is not. A tenth of the time a view has a limb pointing
+somewhere else entirely — the classic monocular flip.
+
+**But we have four cameras, and a monocular failure in one view is detectable from
+four.** That is what the pipeline's inlier machinery already does for points. Taking
+the largest mutually-agreeing set of views per bone per frame:
+
+| threshold | bone-frames with ≥3 views agreeing | all four | residual inside the majority |
+|---|---:|---:|---|
+| 10° | 106/160 (66%) | 71 | **2.8°** median, 6.0° p90 |
+| **15°** | **119/160 (74%)** | 83 | **3.2°** median, **6.9°** p90 |
+| 20° | 128/160 (80%) | 94 | 3.5° median, 8.7° p90 |
+
+**Majority agreement turns 6.9°/72° into 3.2°/6.9° on 74% of bone-frames.** At a
+0.25 m forearm, 3.2° is about 13 mm — the same order as our position accuracy, which
+makes it usable rather than merely interesting.
+
+### The integration this implies
+
+Not a fusion solver. **Our positions, SAM 3D's orientations where the views concur.**
+The rejected 26% is honest coverage loss of exactly the kind every gate in this lane
+already takes, and it is measured rather than assumed.
+
+**Caveats, and the first is the same one rung 6 carried.** This is reference-free:
+four views agreeing is a necessary condition, not an accuracy claim — they can agree
+and be wrong together through shared appearance bias. Ten frames, two subjects, one
+clip. And it measures bone **direction** only; twist about the bone axis is a separate
+degree of freedom, is the one monocular estimation is worst at, and has not been
+measured.
