@@ -238,42 +238,42 @@ same way.
 - Outputs: μ, uncertainty σ, visibility p. Gaussian NLL on landmarks, BCE on
   visibility
 
-**⚠ THIS PRICING IS UNDER CORRECTION — see the banner at the top of
-`BATTLE2_SYNTHETIC_TRUTH_FIXTURE.md`.** Adversarial review found the detector's
-noise was overstated by exactly 2x (the model was fitted to the *symmetric*
-epipolar distance as though it were one-sided; measured ratio 1.962). The corrected
-operating point is **~2.75 px, not 5.5**, which means the 10.4 mm attributed to
-"halving precision" is largely already banked and the ordering below does not
-survive at the corrected anchor. Two further defects — a byte-identical `both` arm
-and a weight applied after the robust loss rather than before — mean the sigma
-figure was measured through a channel that could not express sigma. **Do not act on
-the table below.** A corrected measurement is in progress.
+**Measured 2026-08-29, then corrected the same day. Read the correction, not the
+first pass.** Full working in `BATTLE2_SYNTHETIC_TRUTH_FIXTURE.md` §0 and its
+banner.
 
-**Priced, 2026-08-29, against synthetic ground truth.** The three outputs are not
-worth the same, and the ordering is the opposite of what this plan assumed. From
-`BATTLE2_SYNTHETIC_TRUTH_FIXTURE.md` §7b–7d, measured on true 3D error with the
-noise model fitted to our own detector's cross-view disagreement:
+The first pass priced μ at 10.4 mm, visibility at 4.5 mm and σ at 0.4 mm, and this
+plan was reordered around it. That pricing was wrong: the noise model had been
+fitted to `_epipolar_distance_px`, which returns the **symmetric** epipolar
+distance, as though it were one-sided — an overstatement of exactly 2x, measured at
+1.962 over 23,987 pairs. Two further defects made the σ arm unmeasurable.
 
-| output | what it buys | note |
-|---|---:|---|
-| **μ, halving clean error 5.5 → 3.0 px** | **10.4 mm** | the dominant term by far |
-| **p, visibility** | **4.5 mm** | and σ adds nothing on top of it |
-| σ, per-landmark uncertainty | **0.4 mm** | redundant with `triangulate_point`'s RANSAC |
+**Corrected, and it is a weaker conclusion than the plan had adopted:**
 
-**And the visibility head has a spec, not just a value: one point of precision is
-worth ten of recall.** 50→100% recall at zero false positives buys 2.2 mm, 0.044 mm
-per point; 0→10% false positives at full recall costs 4.4 mm, 0.44 mm per point.
-Train it cautious — a head that flags half the bad observations and never flags a
-good one beats one that catches everything at a 10% false-positive rate. Useful
-region is false positives below about 5%.
+| | mixture noise | lognormal noise |
+|---|---:|---:|
+| baseline, no channel | **11.62 mm** | **14.38 mm** |
+| a σ head buys | +0.95 mm | **+2.15 mm** |
+| a visibility head buys | **+2.75 mm** | +1.19 mm |
+| a *wrong* channel costs | −3.56 mm | −3.64 mm |
 
-So **train for position and visibility; treat the σ head as optional.** A σ head is
-worth 1.5% of MPJPE to a pipeline that already triangulates robustly, because the
-inlier search identifies the same observations by geometry without being told. The
-visibility head is worth thirteen times as much, because it removes bad
-observations *before* the geometry — which also protects association, the per-take
-limb-length estimate and the interpolation, none of which the robust triangulator
-covers.
+**The ordering reverses between two noise models that both fit the measured data**,
+so σ and visibility cannot currently be ranked, and the "train for position and
+visibility, σ optional" instruction this plan carried is **withdrawn**. Both heads
+are worth roughly 1–3 mm on an 11–14 mm baseline; a wrong one costs more than a
+right one gains.
+
+The detector's real operating point is **~2.75 px, not 5.5**, so a large part of the
+precision headroom the first pass promised is already banked. What a further halving
+buys has not been re-measured at the corrected anchor.
+
+**What Battle 4 should do about it: nothing yet.** The specification below stays as
+MammaNet's — μ, σ and visibility — because the evidence does not justify dropping
+any of the three. The measurement that would justify a change is **arm (i)** of the
+fixture: render, run SOMA-77 on the renders, compare its 2D against the projected
+truth. Every instrument used so far — epipolar disagreement, reprojection residual —
+sees only the cross-view-incoherent part of the error and is blind to per-joint bias
+and limb-coherent shifts, which is exactly what a training campaign could remove.
 
 Two scope notes. This pricing is for the **body** pipeline; `fit_hand_sequence` has
 no per-observation RANSAC, and there the same geometric signal was worth 7.1 mm
