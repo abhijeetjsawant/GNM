@@ -251,3 +251,23 @@ equally trustworthy.
 weight.** The cross-view agreement distance the gate already computes is a
 continuous quantity that is being thresholded into a bit; using it as an inverse
 variance instead costs nothing new to measure.
+
+Measured on subj0's left hand, the case for it is stronger than expected. The
+gate is a **hard veto**: with four cameras there are six pairs, and one pair
+disagreeing above 9 px kills *both* observations. So an observation can agree
+with every other view and still be discarded because one view is wrong.
+
+| | |
+|---|---:|
+| observations present | 11,060 |
+| kept by the gate | 4,106 (37%) |
+| rejected, but whose own median epipolar distance to the other views is under 9 px | **2,790 of 6,954 (40%)** |
+| — as a share of all evidence | **25%** |
+
+**A quarter of all finger evidence is vetoed while agreeing with the majority.**
+Replacing the veto with an inverse-variance weight on that same median distance
+would roughly recover it — 37% kept becomes about 62% — and would downweight the
+genuinely bad observations instead of trusting them equally. More evidence and
+better-weighted evidence both reduce the per-frame noise the temporal prior is
+currently being asked to absorb on its own, which is exactly the term that has to
+collapse the hand to do its job.
