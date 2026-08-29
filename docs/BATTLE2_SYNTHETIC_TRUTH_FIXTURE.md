@@ -6,6 +6,67 @@
 
 ---
 
+> # ⚠ CORRECTION, 2026-08-29 — sections 7b–7f are wrong in their absolute numbers
+>
+> An adversarial review found three defects. Two are confirmed by independent
+> re-derivation and they change the headline; the third is weakened but real. The
+> results below are left in place, struck where wrong, because the *shape* of the
+> error is instructive: every one of them is a measurement that was correct about
+> the quantity it computed and wrong about the quantity it was believed to compute.
+>
+> **1. The detector's noise was overstated by exactly 2x, and the precision
+> headroom with it. CONFIRMED.**
+> `_epipolar_distance_px` (`commercial_multiview.py:635`) returns
+> `numerator/target_norm + numerator/source_norm` — the **symmetric** epipolar
+> distance, the sum of two one-sided distances. The noise model was fitted to that
+> as if it were the one-sided distance. Measured ratio on the real data:
+> **median(sum / one-sided) = 1.962** over 23,987 pairs.
+> Refitting to the one-sided ladder gives **clean 2.75 px, 7.0% bad at 36 px**,
+> against the 5.5 px / 7.5% / 65 px used throughout. Exactly 2.00x on the clean
+> component. The reviewer reached 2.6–3.0 px independently by injecting noise
+> through `triangulate_point` on the real rig and matching the observed 2.913 px
+> reprojection median; three routes agree.
+> **Consequence: §7c prices "halving 5.5 → 3.0 px" at 10.4 mm, but we are already
+> at ~2.75 px.** That headroom is largely banked, not available. The next halving
+> is worth far less, and the claim that precision dominates visibility by a wide
+> margin does not survive at the corrected operating point.
+>
+> **2. "Sigma adds nothing on top of visibility" was an identity. CONFIRMED.**
+> `sigma_to_confidence` normalises by `weight.max()`, so every clean observation
+> maps to exactly `CONFIDENCE_CEILING`. The `both` arm,
+> `where(bad, floor/2, sigma_to_confidence(...))`, is therefore **byte-identical**
+> to the `visible` arm. Verified. §7d's "identical to the decimal" and the causal
+> story attached to it are the **G6 pathology recurring one section after §8a
+> retired G6** — the fourth construct in this project that no configuration could
+> fail.
+>
+> **3. The sigma arm was measured through a channel that cannot express sigma.
+> CONFIRMED.** `solve_sequence_positions` computes the soft-l1 compression from the
+> **unweighted** error and multiplies by `observed_weight` afterwards
+> (`commercial_multiview.py:1062-1065`), so the weight scales an already-compressed
+> residual and cannot change what counts as an outlier. `fit_hand_sequence`
+> multiplies **before** the loss (`hand_fit.py:436`), which is the statistically
+> correct ordering. The claim in `measure_sigma_value.py` that the body solver
+> consumes confidence "the same form as the hand fit" is wrong. So "sigma buys
+> nothing" was measured on a handicapped encoding.
+>
+> **4. Model dependence — WEAKENED, not dismissed.** The reviewer argued the 13x
+> sigma-versus-visibility ratio is an artefact of a two-point noise model and that a
+> lognormal continuum fitting the same data puts them within 1.5x. Re-fitting both
+> to the **full** one-sided ladder including p95: two-point scores a mean |log
+> ratio| of **0.043**, lognormal **0.139** — the lognormal cannot reproduce the
+> p95 of 32.79 px, reaching only 15.98. So the data does discriminate, and it
+> prefers the two-point model. But the underlying concern is sound and is not
+> answered by fit quality: the ratio's sensitivity to the noise model has to be
+> measured directly.
+>
+> **What still stands.** The fixture itself (gate G1 at 0.65 mm), the estimator
+> results of increment 6, the Cramér-Rao comparison in §7f, and the G10
+> speed-lag finding in §7g are unaffected — none of them depends on the noise
+> calibration or the confidence encoding. What falls is the *pricing* of detector
+> outputs in §7b–7e and everything downstream of it, including the reordering
+> written into `OWNED_BODY_CAPTURE_PLAN.md`.
+
 ## 1. What this measures, and what it cannot
 
 ### 1.1 The problem
