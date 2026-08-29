@@ -92,6 +92,65 @@ temporal prior, and a smooth answer can still be a wrong one.** This measurement
 separates *coherent* from *thrashing*. It says nothing about accuracy — that
 claim rests on the 35 mm held-out number and nothing else.
 
-## Result
+## Result — **thrashing, confirmed**
 
-Pending — the fit that produces it is running.
+| | hand | amplitude | jitter | roughness |
+|---|---:|---:|---:|---:|
+| ours, subj0 left | 82.1 mm | 48.8 mm (59.5%) | **26.11 mm** | 0.535 |
+| MAMMA, subj0 left | 108.9 mm | 21.0 mm (19.3%) | 0.19 mm | 0.008 |
+
+**137× MAMMA's jitter, against a pre-registered thrashing threshold of 0.78 mm.**
+Not close to the band, not ambiguous. The angle variance was not gauge freedom —
+the fingertips genuinely jump between frames. Amplitude is 59.5% of hand length
+against MAMMA's 19.3%, which is not a hand articulating, it is a hand flailing.
+
+The remaining hands are in the table below once their fits land.
+
+## Why — the temporal term is 1.9% of the objective
+
+Evaluated at the fitted solution for subj0's left hand:
+
+| block | residuals | sum of squares |
+|---|---:|---:|
+| reprojection | 8,212 | ~62,600 |
+| temporal | 3,996 | 1,185 |
+
+`smooth_weight` multiplies a second difference **in radians** while the data
+block is soft-l1 **in pixels**. Those units were never reconciled, so the nominal
+weight of 2.0 buys the temporal prior under 2% of the cost. It cannot resist
+anything. The measured median second difference is 5.69° per DoF per frame.
+
+The obvious guess — that the thrashing concentrates in frames the cross-view gate
+left evidence-poor — is **wrong**, and worth recording because it would have sent
+the fix in the wrong direction:
+
+| | jitter, evidence-poor third | jitter, evidence-rich third | correlation |
+|---|---:|---:|---:|
+| subj0 left | 29.6 mm | 27.5 mm | **+0.15** |
+| subj0 right | 28.9 mm | 44.3 mm | **+0.32** |
+
+The correlation is *positive*: well-observed frames thrash as much or more. So
+this is not an under-determined-frame problem to be solved with better gating. The
+fit is chasing per-frame detector noise everywhere, on a ~20 px hand, with no
+prior strong enough to average it out. That predicts something specific and
+testable: **raising the temporal weight should reduce held-out error, not just
+smooth the motion**, because noise independent across frames averages down. If
+held-out error instead degrades, the smoothing is destroying signal and the
+weight is the wrong lever.
+
+## What this does to the 35 mm
+
+It does not retract it, and it does not rescue the motion.
+
+Leave-one-camera-out is a **per-frame** test: it asks whether a frame's pose,
+fitted from three views, predicts the fourth. A solution can pass that in every
+frame and still jump between frames, because nothing in the test looks across
+time. 35 mm remains an honest statement about view generalisation. It was never
+a statement about temporal coherence, and the two must now be quoted separately:
+
+- **view generalisation: 35.0 mm held-out** — stands.
+- **temporal coherence: fails** — 26 mm of frame-to-frame acceleration against a
+  0.78 mm threshold.
+
+The increment's headline should therefore be read as *the geometry is right and
+the motion is not yet usable*, not as a pass.
