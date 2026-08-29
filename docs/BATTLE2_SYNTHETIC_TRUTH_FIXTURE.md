@@ -125,6 +125,78 @@ them, and a systematic component is exactly what a training campaign could remov
 
 **Arm (i) is now the highest-value remaining measurement in this document.**
 
+## 0b. Arm (i) — run, and it found the largest detector term yet measured
+
+A human skinned from `SOMA_neutral.npz`, posed by an owned somaskel77 motion,
+rendered through the **real calibrated rig** with our own `CalibratedCamera.project`
+so no camera conversion could go silently wrong, then SOMA-77 run on the pictures
+with boxes taken from the projected truth. 24 frames × 4 views = 1,632 observations.
+Truth is the model's own joints, so detector and reference share a skeleton and the
+comparison introduces no definitional mismatch of its own.
+
+### The render is in distribution — checked before believing anything
+
+The one-sided epipolar ladder, the statistic both instruments can see:
+
+| | p10 | p25 | p50 | p75 | p90 | p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| real footage | 0.53 | 1.37 | 3.11 | 6.04 | 11.49 | 32.79 |
+| synthetic renders | 0.53 | 1.24 | 2.75 | 5.11 | 7.70 | 9.42 |
+| ratio | 1.00 | 0.90 | 0.88 | 0.85 | 0.67 | **0.29** |
+
+**The detector's incoherent error on a flat-shaded render matches real footage to
+within 10–15% through the bulk.** The tail is much lighter, and explainably so: the
+synthetic scene has one unoccluded subject, so the gross failures that produce the
+real p95 of 32.79 px have nothing to arise from. The domain gap is small for this
+measurement, which is what licenses everything below.
+
+### And on the component only this instrument can see
+
+| | |
+|---|---:|
+| 2D error against known truth, median | **10.40 px** |
+| of which **systematic bias** | **80%** (9.11 px bias against 6.51 px spread) |
+| in 3D, mean offset from the rig joint | **61.3 mm** |
+| standard deviation of that offset | **8.3 mm** |
+
+**SOMA-77's landmarks sit about 61 mm from the rig's joints, and they sit there
+consistently** — the scatter is 13% of the magnitude. Worst are the head and
+shoulder girdle: nose 78 mm, eyes 75–77, right shoulder 67, neck 67. Best are the
+knees, 35–44 mm.
+
+**Every instrument this project has used until now was blind to this.** Epipolar
+disagreement and reprojection residual both see only the cross-view-*incoherent*
+component, and both put the detector at 2.75–2.91 px. Arm (i) puts it at 10.40 px.
+The two are not in conflict — they measure different components, and the 4x gap
+between them **is** the coherent bias.
+
+### What it means, and it is better news than it sounds
+
+A consistent offset is not noise; it is a **convention difference**, and convention
+differences are calibratable. SOMA-77 was trained to predict landmarks that need not
+coincide with this rig's joint centres, and a per-joint constant offset in the
+joint's local frame would remove most of 61 mm **for free** — no training, no data,
+no campaign.
+
+That reading is corroborated independently. `BATTLE1_BODY_PROFILE_VS_MAMMA.md`
+measured per-joint systematic biases against MAMMA's retained fit on real footage
+and found the same shape and the same order of magnitude — neck 58 mm, ankles 27,
+pelvis 26, arm chain 1–12 — arrived at by a completely different route.
+
+**So the biggest single detector term we have ever measured is probably not
+something to train away. It is something to subtract.** The next measurement is
+whether fitting per-joint offsets on held-out poses actually removes it, or whether
+it varies with pose in a way a constant cannot capture.
+
+### Limits
+
+24 frames of one clip, one subject, no occlusion, flat shading with a single key
+light. The offset's constancy was tested in both the world and each joint's local
+frame and could not be distinguished between them, because this dialogue clip
+rotates the body too little to separate the two — a turning motion would. And the
+boxes come from projected truth, which isolates the keypoint head from detection and
+makes these figures an optimistic bound on a pipeline that has box error too.
+
 ## 1. What this measures, and what it cannot
 
 ### 1.1 The problem
