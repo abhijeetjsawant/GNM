@@ -247,6 +247,33 @@ def _limits_for(chain: HandChain) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(low), np.asarray(high)
 
 
+def _pixels_per_metre(
+    cameras: Sequence[CalibratedCamera], wrists: np.ndarray
+) -> float:
+    """How many pixels a hand-sized displacement spans, averaged over the rig.
+
+    The temporal prior is a distance and the data term is a pixel count. Without
+    this conversion the smoothing weight silently means something different on
+    every rig -- change the resolution or move the cameras back and the same
+    number buys a different amount of regularisation. Measured on this fixture
+    the two blocks were 1.9% and 98.1% of the objective, which is how a hand fit
+    that reprojects to 6 px ended up thrashing 26 mm between frames.
+    """
+
+    finite = wrists[np.isfinite(wrists).all(axis=1)]
+    if not len(finite):
+        raise CommercialMultiviewError("Wrist track has no finite frames")
+    values: list[float] = []
+    for camera in cameras:
+        depth = float(np.median(np.linalg.norm(finite - camera.camera_center_world_m, axis=1)))
+        focal = float(camera.intrinsics[0, 0] + camera.intrinsics[1, 1]) / 2.0
+        if depth > 1e-6:
+            values.append(focal / depth)
+    if not values:
+        raise CommercialMultiviewError("Cameras are degenerate for the wrist track")
+    return float(np.mean(values))
+
+
 def fit_hand_sequence(
     cameras: Sequence[CalibratedCamera],
     chain: HandChain,
@@ -256,6 +283,7 @@ def fit_hand_sequence(
     keep: np.ndarray | None = None,
     scale: float = 1.0,
     smooth_weight: float = 2.0,
+    pose_smooth_weight: float = 1.0,
     limit_weight: float = 50.0,
     robust_scale_px: float = 8.0,
     maximum_evaluations: int = 120,
@@ -264,6 +292,15 @@ def fit_hand_sequence(
 
     Variables per frame: wrist orientation (3, axis-angle) plus the chain's
     joint angles. Bone lengths are constants, which is the entire point.
+
+    Two temporal terms, and the second is the one that matters. ``smooth_weight``
+    penalises acceleration in *angle* space, which leaves the three wrist
+    orientation parameters unregularised and is measured in radians against a
+    data term measured in pixels. ``pose_smooth_weight`` penalises acceleration
+    of the wrist-relative joint *positions*: it is dimensionless, it covers the
+    wrist block and the joint angles together because positions depend on both,
+    it has no Euler-gauge or axis-angle-wrap freedom to hide in, and it is the
+    same quantity the articulation measurement reports as jitter.
 
     Returns ``(angles, positions, used)`` -- the per-frame parameter vector, the
     fitted joint positions in metres, and the observation mask actually used.
@@ -291,15 +328,19 @@ def fit_hand_sequence(
     def unpack(vector: np.ndarray) -> np.ndarray:
         return vector.reshape(frames, per_frame)
 
+    pixels_per_metre = _pixels_per_metre(cameras, wrists)
+
     def residuals(vector: np.ndarray) -> np.ndarray:
         state = unpack(vector)
         parts: list[np.ndarray] = []
         reprojection: list[float] = []
+        posed = np.empty((frames, joints, 3), dtype=np.float64)
         for frame in range(frames):
             rotation = Rotation.from_rotvec(state[frame, :3]).as_quat()
             positions = forward_kinematics(
                 chain, wrists[frame], rotation, state[frame, 3:], scale
             )
+            posed[frame] = positions
             for camera_index in range(len(cameras)):
                 mask = used[frame, camera_index]
                 if not mask.any():
@@ -325,6 +366,14 @@ def fit_hand_sequence(
         parts.append(limit_weight * np.maximum(angles - high, 0.0).ravel())
         if frames > 2:
             parts.append(smooth_weight * (angles[:-2] - 2.0 * angles[1:-1] + angles[2:]).ravel())
+            # Wrist translation is an input, not a variable, so subtracting it
+            # keeps this from fighting the body track's real acceleration.
+            relative = posed - wrists[:, None, :]
+            parts.append(
+                pose_smooth_weight
+                * pixels_per_metre
+                * (relative[:-2] - 2.0 * relative[1:-1] + relative[2:]).ravel()
+            )
         return np.concatenate(parts)
 
     start = np.zeros(frames * per_frame, dtype=np.float64)
@@ -333,7 +382,9 @@ def fit_hand_sequence(
     # passes per iteration and the solve never finishes. Every residual touches
     # only its own frame, except the temporal term which spans three.
     solution = least_squares(
-        residuals, start, jac_sparsity=_jacobian_sparsity(residuals(start), frames, per_frame, dof, used),
+        residuals, start, jac_sparsity=_jacobian_sparsity(
+            residuals(start), frames, per_frame, dof, used, joints
+        ),
         method="trf", loss="linear", ftol=1e-3, x_scale="jac",
         max_nfev=maximum_evaluations, verbose=0,
     )
@@ -351,13 +402,16 @@ def fit_hand_sequence(
 
 
 def _jacobian_sparsity(
-    sample: np.ndarray, frames: int, per_frame: int, dof: int, used: np.ndarray
+    sample: np.ndarray, frames: int, per_frame: int, dof: int, used: np.ndarray,
+    joints: int = 0,
 ) -> Any:
     """Which variables each residual touches.
 
     Reprojection residuals for a frame depend on that frame's wrist rotation and
-    joint angles and nothing else. Limit residuals touch a single angle. The
-    temporal term spans three consecutive frames.
+    joint angles and nothing else. Limit residuals touch a single angle. Both
+    temporal terms span three consecutive frames -- the angle one over the angle
+    columns, the position one over every column of those frames, since a joint
+    position depends on the wrist rotation as well as its own chain.
     """
 
     rows: list[int] = []
@@ -389,6 +443,14 @@ def _jacobian_sparsity(
                 for offset in range(3):
                     rows.append(row)
                     columns.append((frame + offset) * per_frame + 3 + k)
+                row += 1
+    if frames > 2 and joints:
+        for frame in range(frames - 2):
+            for _ in range(joints * 3):
+                for offset in range(3):
+                    for column in frame_block(frame + offset):
+                        rows.append(row)
+                        columns.append(column)
                 row += 1
     if row != len(sample):
         raise CommercialMultiviewError(
