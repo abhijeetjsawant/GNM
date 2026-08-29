@@ -459,6 +459,33 @@ The fixture's MPJPE is against **MHR/SOMA joint centres**. MAMMA's 13.5 mm is ag
 
 ---
 
+## 7a. A consistency check the fixture passed without being asked to
+
+Two independent measurements land in the same place, and neither was tuned to the
+other:
+
+| | |
+|---|---:|
+| synthetic pipeline, true 3D error under noise calibrated from our own detector | **23.5 mm** |
+| our real body track's per-frame **spread** against MAMMA, body joints, bias removed | **24.7 mm** |
+
+The first is MPJPE against joints we posed ourselves. The second is
+`BATTLE1_BODY_PROFILE_VS_MAMMA.md`, measured on real footage against a different
+system entirely. The noise model was fitted to cross-view *epipolar disagreement*,
+which is a quantity neither number is computed from.
+
+They are not the same statistic — one is absolute error, the other is spread about
+a systematic offset — so this is a consistency check, not a validation. But the two
+routes to "how noisy is our reconstruction per frame" agree to within 5%, which is
+better agreement than either deserves on its own, and it is the first evidence that
+the synthetic noise model is not simply a number I chose.
+
+**What it does not license.** It does not say our real error is 23.5 mm. The
+fixture has no calibration error, no lens distortion, no sync error, no
+soft-tissue artefact and no joint-definition error, and §1.3 lists all five as
+first-order on real footage. It says the *estimator-plus-detector-noise* part of
+the budget is around 23 mm, and that the other terms are additional.
+
 ## 8a. Correction to gate G6 — it cannot fail, and that is the problem
 
 G6 was specified as the vacuity control on the headline number: re-run arm (iii)
