@@ -19,7 +19,7 @@ import zipfile
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .body import CANONICAL_HUMANOID
+from .body import skeleton_for_joint_names
 from .body_provider import load_and_validate_body_asset, sha256_file
 from .serialization import write_json, write_npz
 
@@ -44,6 +44,113 @@ class PlaneClippedMesh:
     source_indices: np.ndarray
     source_weights: np.ndarray
     cut_loop: np.ndarray
+
+
+def simplify_cut_loop_edges(
+    clipped: PlaneClippedMesh,
+    *,
+    minimum_edge_length_m: float,
+) -> PlaneClippedMesh:
+    """Collapse pathological consecutive cut-loop samples deterministically.
+
+    Plane clipping can leave two intersection vertices only a few microns apart
+    when a source triangle barely grazes the neck plane.  A zipper must retain
+    every boundary vertex, so one such sample turns into a needle-shaped collar
+    triangle even though neither source mesh is malformed.  Collapse only
+    *consecutive cut-loop* vertices below a declared threshold, then rebuild
+    the clipped topology.  The retained endpoint continues to carry exact
+    source interpolation provenance; no new, untraceable vertex is invented.
+
+    This is a topology hygiene pass, not a fit adjustment.  Callers must still
+    report the post-pass collar shape residual and enforce the normal attachment
+    gates.
+    """
+
+    threshold = float(minimum_edge_length_m)
+    vertices = np.asarray(clipped.vertices, dtype=np.float32)
+    triangles = np.asarray(clipped.triangles, dtype=np.int32)
+    loop = np.asarray(clipped.cut_loop, dtype=np.int32)
+    if (
+        not np.isfinite(threshold)
+        or threshold <= 0.0
+        or loop.ndim != 1
+        or len(loop) < 8
+        or len(np.unique(loop)) != len(loop)
+    ):
+        raise BodyBindingError("Cut-loop simplification inputs are invalid")
+
+    # The loop is ordered.  Greedily retain the first vertex in canonical
+    # order, dropping later points that cannot form a long enough edge.  A
+    # second seam check keeps the closing edge above the same threshold.
+    points = vertices[loop].astype(np.float64)
+    retained_positions = [0]
+    for position in range(1, len(loop)):
+        if (
+            np.linalg.norm(points[position] - points[retained_positions[-1]])
+            >= threshold
+        ):
+            retained_positions.append(position)
+    while (
+        len(retained_positions) > 8
+        and np.linalg.norm(
+            points[retained_positions[0]] - points[retained_positions[-1]]
+        )
+        < threshold
+    ):
+        retained_positions.pop()
+    if len(retained_positions) < 8:
+        raise BodyBindingError("Cut-loop simplification removed the neck boundary")
+    retained_loop = loop[np.asarray(retained_positions, dtype=np.int64)]
+    if len(retained_loop) == len(loop):
+        return clipped
+
+    # Every dropped sample maps to the preceding retained boundary point.  The
+    # collapse only touches an existing cut edge, so redirecting incident faces
+    # and removing their degenerate remnants preserves a closed manifold cut.
+    remap = np.arange(len(vertices), dtype=np.int32)
+    for start, end in zip(
+        retained_positions,
+        [*retained_positions[1:], len(loop)],
+        strict=True,
+    ):
+        representative = int(loop[start])
+        for position in range(start + 1, end):
+            remap[int(loop[position])] = representative
+    remapped_faces = remap[triangles]
+    distinct = np.logical_and.reduce(
+        (
+            remapped_faces[:, 0] != remapped_faces[:, 1],
+            remapped_faces[:, 1] != remapped_faces[:, 2],
+            remapped_faces[:, 2] != remapped_faces[:, 0],
+        )
+    )
+    remapped_faces = remapped_faces[distinct]
+    if len(remapped_faces) < 1:
+        raise BodyBindingError("Cut-loop simplification removed every triangle")
+    used = np.unique(remapped_faces.reshape(-1))
+    compact = np.full(len(vertices), -1, dtype=np.int32)
+    compact[used] = np.arange(len(used), dtype=np.int32)
+    compact_faces = compact[remapped_faces]
+    compact_loop = compact[remap[retained_loop]]
+    if np.any(compact_loop < 0) or len(np.unique(compact_loop)) != len(compact_loop):
+        raise BodyBindingError("Cut-loop simplification produced an invalid loop")
+    boundary = _boundary_edges(compact_faces)
+    expected_boundary = np.sort(
+        np.stack(
+            (compact_loop, np.roll(compact_loop, -1)), axis=1
+        ),
+        axis=1,
+    )
+    observed_boundary = {tuple(edge) for edge in boundary.tolist()}
+    if any(tuple(edge) not in observed_boundary for edge in expected_boundary.tolist()):
+        raise BodyBindingError("Cut-loop simplification did not preserve the boundary")
+    return PlaneClippedMesh(
+        vertices=vertices[used],
+        triangles=compact_faces,
+        source_indices=np.asarray(clipped.source_indices)[used],
+        source_weights=np.asarray(clipped.source_weights)[used],
+        cut_loop=compact_loop,
+    )
 
 
 def array_sha256(value: np.ndarray) -> str:
@@ -312,6 +419,7 @@ def calibrate_gnm_body_binding(
     gnm_head_position: np.ndarray,
     gnm_cut_fraction: float = 0.35,
     collar_height_m: float = 0.015,
+    minimum_cut_loop_edge_m: float = 0.00075,
 ) -> dict[str, Any]:
     """Create one exact, immutable geometric preview binding."""
 
@@ -337,6 +445,7 @@ def calibrate_gnm_body_binding(
         or not np.isfinite(identity).all()
         or not 0.25 <= gnm_cut_fraction <= 0.50
         or not 0.010 <= collar_height_m <= 0.030
+        or not 0.00025 <= minimum_cut_loop_edge_m <= 0.003
     ):
         raise BodyBindingError("GNM binding inputs have invalid shape or values")
 
@@ -349,8 +458,11 @@ def calibrate_gnm_body_binding(
     baked_gnm_head = gnm_head @ GNM_TO_AUTOANIM_BASIS.T
 
     world_rest = _global_rest_matrices(body["local_rest_matrices"], body["parents"])
-    neck_index = CANONICAL_HUMANOID.index("Neck")
-    head_index = CANONICAL_HUMANOID.index("Head")
+    target_skeleton = skeleton_for_joint_names(
+        tuple(str(value) for value in body["joint_names"].tolist())
+    )
+    neck_index = target_skeleton.index("Neck")
+    head_index = target_skeleton.index("Head")
     body_neck = world_rest[neck_index, :3, 3]
     body_head = world_rest[head_index, :3, 3]
     body_axis = body_head - body_neck
@@ -369,6 +481,12 @@ def calibrate_gnm_body_binding(
         plane_point=gnm_plane,
         plane_normal=gnm_axis,
         keep_positive=True,
+    )
+    body_clip = simplify_cut_loop_edges(
+        body_clip, minimum_edge_length_m=minimum_cut_loop_edge_m
+    )
+    gnm_clip = simplify_cut_loop_edges(
+        gnm_clip, minimum_edge_length_m=minimum_cut_loop_edge_m
     )
 
     body_loop_points = body_clip.vertices[body_clip.cut_loop].astype(np.float64)
@@ -401,6 +519,7 @@ def calibrate_gnm_body_binding(
         "uniform_scale": float(scale),
         "rotation_determinant": float(np.linalg.det(rotation)),
         "collar_height_m": float(collar_height_m),
+        "minimum_cut_loop_edge_m": float(minimum_cut_loop_edge_m),
         "body_loop_perimeter_m": body_perimeter,
         "gnm_loop_perimeter_m": gnm_perimeter,
         "centered_planar_shape_rms_m": float(
@@ -441,7 +560,11 @@ def calibrate_gnm_body_binding(
     blockers = [
         "CHARACTER_BODY_IDENTITY_NOT_CALIBRATED",
         "BRIDGE_LOOKDEV_NOT_ARTIST_APPROVED",
-        "SOMA_25_PROJECTION_PREVIEW_ONLY",
+        (
+            "SOMA_25_PROJECTION_PREVIEW_ONLY"
+            if len(target_skeleton.joints) == 25
+            else "SOMA_DETAILED_HANDS_PROVIDER_PREVIEW_ONLY"
+        ),
     ]
     if metrics["centered_planar_shape_p95_m"] > 0.005:
         blockers.append("NECK_CENTERED_PLANAR_SHAPE_RESIDUAL_ABOVE_5MM")
@@ -481,6 +604,7 @@ def calibrate_gnm_body_binding(
             "provider_head_removed": True,
             "gnm_cut_fraction": float(gnm_cut_fraction),
             "collar_height_m": float(collar_height_m),
+            "minimum_cut_loop_edge_m": float(minimum_cut_loop_edge_m),
             "body_kept_triangle_count": int(len(body_clip.triangles)),
             "gnm_kept_triangle_count": int(len(gnm_clip.triangles)),
         },
@@ -639,4 +763,5 @@ __all__ = [
     "clip_triangle_mesh",
     "interpolate_clipped_attribute",
     "load_gnm_body_binding",
+    "simplify_cut_loop_edges",
 ]

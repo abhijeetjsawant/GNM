@@ -664,6 +664,66 @@ directly. Render arm (i), run SOMA-77 on the renders, and compare its 2D against
 the projected truth. That is a fit-free, uncensored, per-view measurement of the
 detector's own error — the one number both existing estimates are proxies for.
 
+## 7g. Gate G10 failed, and fixing the fixture found an estimator defect
+
+**G10 asked whether error varies with joint speed. It does not — 1.04x between the
+fastest and slowest quintiles** — and the reason is that the fixture's motion is
+far too slow. Its p95 joint speed is **0.27 m/s against the real fixture's
+1.76 m/s**, because the owned clips are dialogue and upper-body acting. A fixture
+whose motion cannot exercise the temporal prior reports optimistic millimetres for
+every arm, and the prior is doing about half the work (§7f).
+
+The fixture now takes `--stride`, playing the same physical poses back faster.
+Running the **zero-noise** control across it isolates what the prior alone costs,
+because with noiseless 2D nothing else is left:
+
+| playback speed | median | p95 | max |
+|---|---:|---:|---:|
+| 1x (0.27 m/s p95) | **0.65 mm** | 2.5 mm | 9.1 mm |
+| 2x | 1.32 mm | 5.4 mm | 19.5 mm |
+| 3x | 1.95 mm | 10.7 mm | 44.2 mm |
+| 4x | 2.64 mm | 16.9 mm | 59.7 mm |
+| **6x (≈ real acting speed)** | **4.42 mm** | **34.9 mm** | 92.1 mm |
+| 8x | 6.45 mm | 48.4 mm | 138.2 mm |
+
+**At realistic acting speeds our temporal smoother imposes 4.4 mm of median and
+34.9 mm of p95 error with perfect 2D.** That is estimator error no detector
+improvement can touch, and it was in no budget because every fixture and every real
+take so far has been slow dialogue.
+
+The mechanism is `_fill_and_smooth_positions`: a fixed **9-frame Savitzky-Golay
+window, 300 ms at 30 fps**, second order. At 1.76 m/s a joint travels 53 cm inside
+that window, and a quadratic cannot follow it.
+
+### The window is not simply mis-set — it is a bias-variance trade
+
+| | window 5 | 7 | 9 (shipped) | 13 |
+|---|---:|---:|---:|---:|
+| slow, noiseless | 0.57 mm | 0.71 | 0.89 | 1.36 |
+| slow, with noise | 29.62 mm | 25.96 | **23.51** | **20.59** |
+| fast, noiseless | 3.28 mm | 6.01 | 8.99 | 14.00 |
+| fast, with noise | 34.52 mm | 31.88 | **31.82** | **31.52** |
+
+Longer is better for MPJPE at *both* speeds — so the shipped 9 is not wrong on the
+metric, and shortening it would make the totals worse. But look at what it costs:
+at speed the window buys almost nothing (31.88 → 31.52 from 7 to 13) while its
+noiseless lag triples (6.01 → 14.00).
+
+**MPJPE mixes bias and variance and hides this.** The smoother is trading variance
+for a *systematic temporal lag*, and a lag reads as a character being behind the
+beat, which is an animation defect of a different kind from noise — one that a
+millimetre average is the wrong instrument for.
+
+**The actionable fix is a velocity-adaptive window**: keep the long window where
+the joint is slow and the noise reduction is nearly free, shorten it where the
+joint is fast and the lag dominates. Untested. `SMOOTHING_WINDOW_FRAMES` is now a
+named constant so the trade can be measured rather than assumed.
+
+**And this qualifies §7f.** "The estimator already beats the single-frame
+information bound" is true, and the mechanism is exactly this prior — which means
+the margin over the bound is partly borrowed against fast motion, and the loan
+comes due at acting speeds.
+
 ## 8. What we still cannot claim afterwards — and why the marker session still happens
 
 ### 8.1 Claims the fixture supports

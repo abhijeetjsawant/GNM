@@ -127,7 +127,9 @@ def build_parser() -> argparse.ArgumentParser:
     image = subparsers.add_parser("image")
     image.add_argument("input", type=Path)
     image.add_argument("--out", type=Path, required=True)
-    image.add_argument("--modes", type=int, choices=(10, 20), default=20)
+    image.add_argument(
+        "--modes", type=int, choices=(10, 20, 40, 80, 120, 170), default=20
+    )
     image.add_argument("--allow-low-confidence", action="store_true")
     multiview = subparsers.add_parser("multiview")
     multiview.add_argument("inputs", type=Path, nargs="+")

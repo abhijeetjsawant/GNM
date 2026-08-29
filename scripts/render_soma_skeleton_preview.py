@@ -8,12 +8,25 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from autoanim_gnm.nvidia_body_provider import load_gem_x_preview_response
+from autoanim_gnm.nvidia_body_provider import (
+    load_gem_x_cuda_response,
+    load_gem_x_preview_response,
+)
 from autoanim_gnm.soma_motion import SOMASKEL77_PARENTS
 
 
-def render_preview(video_path: Path, manifest_path: Path, output_path: Path) -> None:
-    motion = load_gem_x_preview_response(manifest_path)
+def render_preview(
+    video_path: Path,
+    manifest_path: Path,
+    output_path: Path,
+    *,
+    cuda_soma: bool = False,
+) -> None:
+    motion = (
+        load_gem_x_cuda_response(manifest_path)
+        if cuda_soma
+        else load_gem_x_preview_response(manifest_path)
+    )
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -66,7 +79,11 @@ def render_preview(video_path: Path, manifest_path: Path, output_path: Path) -> 
                 cv2.circle(panel, tuple(point), max(2, width // 180), (245, 245, 245), -1)
             cv2.putText(
                 panel,
-                "GEM-X / SOMA-77  |  Apple CPU preview",
+                (
+                    "GEM-X / SOMA-77  |  CUDA image-conditioned"
+                    if cuda_soma
+                    else "GEM-X / SOMA-77  |  Apple CPU preview"
+                ),
                 (18, 34),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.62,
@@ -96,11 +113,17 @@ def main() -> int:
     parser.add_argument("--video", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--cuda-soma",
+        action="store_true",
+        help="Load a strict full-image-conditioned CUDA GEM-X response.",
+    )
     arguments = parser.parse_args()
     render_preview(
         arguments.video.resolve(),
         arguments.manifest.resolve(),
         arguments.output.resolve(),
+        cuda_soma=arguments.cuda_soma,
     )
     return 0
 

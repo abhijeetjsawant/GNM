@@ -48,7 +48,10 @@ class IdentityFitter:
         self.adapter = adapter
         self.rig = rig
         self.template = adapter.compact_template.astype(np.float64)
-        self.identity_basis = adapter.compact_identity_basis[:20].astype(np.float64)
+        # GNM identity dimensions 0:170 have support at the compact 68
+        # landmarks. The default remains conservative, while likeness studies
+        # may explicitly unlock the complete observable prefix.
+        self.identity_basis = adapter.compact_identity_basis[:170].astype(np.float64)
         anchors = ["happy", "surprise", "pucker", "corners_down"]
         self.nuisance_coefficients = np.stack([rig.decoder.prototype(name) for name in anchors])
         self.nuisance_basis = np.einsum(
@@ -176,14 +179,23 @@ class IdentityFitter:
         observed = np.asarray(observed, dtype=np.float64)
         if observed.shape != (68, 2) or not np.isfinite(observed).all():
             raise ValueError(f"Expected finite [68,2] observations; got {observed.shape}")
-        if modes not in (10, 20):
-            raise ValueError("modes must be 10 or 20")
+        supported_modes = (10, 20, 40, 80, 120, 170)
+        if modes not in supported_modes:
+            raise ValueError(f"modes must be one of {supported_modes}")
         height, width = image_shape
-        camera, beta, nuisance = self._solve(observed, width, height, 10)
-        if modes == 20:
-            camera, beta, nuisance = self._solve(
-                observed, width, height, 20, (camera, beta, nuisance)
+        camera: np.ndarray | None = None
+        beta: np.ndarray | None = None
+        nuisance: np.ndarray | None = None
+        for stage in (value for value in supported_modes if value <= modes):
+            initial = (
+                None
+                if camera is None or beta is None or nuisance is None
+                else (camera, beta, nuisance)
             )
+            camera, beta, nuisance = self._solve(
+                observed, width, height, stage, initial
+            )
+        assert camera is not None and beta is not None and nuisance is not None
         fitted_points = project_landmarks(self._landmarks(beta, nuisance, modes), camera)
         distances = np.linalg.norm(fitted_points - observed, axis=1)
         interocular = float(np.linalg.norm(observed[36] - observed[45]))
@@ -194,7 +206,21 @@ class IdentityFitter:
             perturbations = []
             for seed in range(4):
                 noisy = observed + np.random.default_rng(seed).normal(0, 0.5, observed.shape)
-                _, noisy_beta, _ = self._solve(noisy, width, height, modes)
+                noisy_camera: np.ndarray | None = None
+                noisy_beta: np.ndarray | None = None
+                noisy_nuisance: np.ndarray | None = None
+                for stage in (value for value in supported_modes if value <= modes):
+                    initial = (
+                        None
+                        if noisy_camera is None
+                        or noisy_beta is None
+                        or noisy_nuisance is None
+                        else (noisy_camera, noisy_beta, noisy_nuisance)
+                    )
+                    noisy_camera, noisy_beta, noisy_nuisance = self._solve(
+                        noisy, width, height, stage, initial
+                    )
+                assert noisy_beta is not None
                 perturbations.append(float(np.sqrt(np.mean((noisy_beta - beta) ** 2))))
             stability = float(np.mean(perturbations))
         face_width = float(face_width if face_width is not None else np.ptp(observed[:, 0]))

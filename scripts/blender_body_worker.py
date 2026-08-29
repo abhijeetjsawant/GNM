@@ -23,7 +23,14 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from autoanim_gnm.body import ATTACHMENT_SCHEMA_VERSION, CANONICAL_HUMANOID, attachment_contract
+from autoanim_gnm.body import (
+    ATTACHMENT_SCHEMA_VERSION,
+    CANONICAL_HUMANOID,
+    DETAILED_HUMANOID,
+    DETAILED_SKELETON_SCHEMA_VERSION,
+    SKELETON_SCHEMA_VERSION,
+    attachment_contract,
+)
 from autoanim_gnm.body_provider import (
     BODY_ASSET_SCHEMA,
     MAKEHUMAN_LICENSE_URL,
@@ -215,6 +222,10 @@ def _extract_asset(
         triangles = np.asarray(triangles_list, dtype=np.int32)
 
         mapping = request["skeleton"]["joint_map"]
+        target_skeleton = {
+            SKELETON_SCHEMA_VERSION: CANONICAL_HUMANOID,
+            DETAILED_SKELETON_SCHEMA_VERSION: DETAILED_HUMANOID,
+        }[request["skeleton"]["schema_version"]]
         source_bones = rig.data.bones
         missing = [source for source in mapping.values() if source not in source_bones]
         if missing:
@@ -224,9 +235,9 @@ def _extract_asset(
         for canonical_name, source_name in mapping.items():
             source = np.asarray(rig.matrix_world @ source_bones[source_name].matrix_local, dtype=np.float64)
             source_global[canonical_name] = convert @ source @ np.linalg.inv(convert)
-        local = np.empty((25, 4, 4), dtype=np.float64)
+        local = np.empty((len(target_skeleton.joints), 4, 4), dtype=np.float64)
         global_rest = np.empty_like(local)
-        for index, joint in enumerate(CANONICAL_HUMANOID.joints):
+        for index, joint in enumerate(target_skeleton.joints):
             global_rest[index] = source_global[joint.name]
             local[index] = (
                 global_rest[index]
@@ -237,7 +248,7 @@ def _extract_asset(
 
         group_to_joint: dict[int, int] = {}
         selected_source_to_canonical = {
-            source: CANONICAL_HUMANOID.index(canonical)
+            source: target_skeleton.index(canonical)
             for canonical, source in mapping.items()
         }
         # Collapse every MPFB deformation bone to its nearest selected
@@ -269,11 +280,11 @@ def _extract_asset(
                 joint_indices[vertex.index, slot] = joint_index
                 joint_weights[vertex.index, slot] = weight
 
-        head_index = CANONICAL_HUMANOID.index("Head")
+        head_index = target_skeleton.index("Head")
         # Calibration is intentionally deferred.  Identity means the GNM
         # model is parented in Head-local space, never that the seam is fitted.
         head_socket = np.eye(4, dtype=np.float32)
-        neck_index = CANONICAL_HUMANOID.index("Neck")
+        neck_index = target_skeleton.index("Neck")
         head_origin = global_rest[head_index][:3, 3]
         neck_origin = global_rest[neck_index][:3, 3]
         axis = head_origin - neck_origin
@@ -305,9 +316,9 @@ def _extract_asset(
             },
             "coordinate_system": {"handedness": "right", "up_axis": "+Y", "forward_axis": "+Z", "linear_unit": "meter"},
             "skeleton": {
-                "schema_version": CANONICAL_HUMANOID.schema_version,
-                "joint_names": list(CANONICAL_HUMANOID.names),
-                "parents": [joint.parent for joint in CANONICAL_HUMANOID.joints],
+                "schema_version": target_skeleton.schema_version,
+                "joint_names": list(target_skeleton.names),
+                "parents": [joint.parent for joint in target_skeleton.joints],
             },
             "mesh": {"vertex_count": int(vertices.shape[0]), "triangle_count": int(triangles.shape[0]), "neutral_pose": True},
             "skin": {"max_influences": influences, "weights_normalized": True, "inverse_bind_semantics": "global_bind_matrix @ inverse_bind_matrix = identity"},
@@ -342,8 +353,11 @@ def _extract_asset(
         arrays = {
             "vertices_m": vertices,
             "triangles": triangles,
-            "joint_names": np.asarray(CANONICAL_HUMANOID.names, dtype="U32"),
-            "parents": np.asarray([joint.parent for joint in CANONICAL_HUMANOID.joints], dtype=np.int16),
+            "joint_names": np.asarray(target_skeleton.names, dtype="U32"),
+            "parents": np.asarray(
+                [joint.parent for joint in target_skeleton.joints],
+                dtype=np.int16,
+            ),
             "local_rest_matrices": local.astype(np.float32),
             "inverse_bind_matrices": inverse.astype(np.float32),
             "joint_indices": joint_indices,

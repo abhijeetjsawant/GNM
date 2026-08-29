@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from .acting import TICKS_PER_SECOND
-from .body import BodyTrack, CANONICAL_HUMANOID
+from .body import BodyTrack, CANONICAL_HUMANOID, DETAILED_HUMANOID, HumanoidSkeleton
 
 
 SOMA_MOTION_SCHEMA_VERSION = "autoanim.soma-motion/1.0"
@@ -655,8 +655,52 @@ _DELTA_MAPPING = {
 }
 
 
-def project_soma_to_body_track(track: SomaMotion) -> BodyTrack:
-    """Create a preview-only projection into the existing body runtime.
+def _detailed_delta_mapping() -> dict[str, str]:
+    mapping = dict(_DELTA_MAPPING)
+    for target_side, source_side in (("Left", "Right"), ("Right", "Left")):
+        mapping.update(
+            {
+                f"{target_side}ThumbMetacarpal": f"{source_side}HandThumb1",
+                f"{target_side}ThumbProximal": f"{source_side}HandThumb2",
+                f"{target_side}ThumbDistal": f"{source_side}HandThumb3",
+            }
+        )
+        for target_finger, source_finger in (
+            ("Index", "Index"),
+            ("Middle", "Middle"),
+            ("Ring", "Ring"),
+            ("Little", "Pinky"),
+        ):
+            # SOMA has a metacarpal-like first segment plus three phalanges for
+            # non-thumb fingers. VRM/MPFB has only the three deforming
+            # phalanges. Selecting SOMA 2/3/4 in world-delta space folds the
+            # upstream SOMA segment into the target proximal rotation.
+            mapping.update(
+                {
+                    f"{target_side}{target_finger}Proximal": (
+                        f"{source_side}Hand{source_finger}2"
+                    ),
+                    f"{target_side}{target_finger}Intermediate": (
+                        f"{source_side}Hand{source_finger}3"
+                    ),
+                    f"{target_side}{target_finger}Distal": (
+                        f"{source_side}Hand{source_finger}4"
+                    ),
+                }
+            )
+    return mapping
+
+
+_DETAILED_DELTA_MAPPING = _detailed_delta_mapping()
+
+
+def _project_soma_to_skeleton(
+    track: SomaMotion,
+    *,
+    skeleton: HumanoidSkeleton,
+    mapping: dict[str, str],
+) -> BodyTrack:
+    """Project one validated SOMA track into an exact supported skeleton.
 
     The source Hips world transform is transferred to AutoAnim's artificial
     Root, and the target Hips offset is removed from root translation so target
@@ -668,10 +712,10 @@ def project_soma_to_body_track(track: SomaMotion) -> BodyTrack:
 
     validate_soma_motion(track)
     frame_count = track.ticks.size
-    rotations = np.zeros((frame_count, len(CANONICAL_HUMANOID.joints), 4), dtype=np.float32)
+    rotations = np.zeros((frame_count, len(skeleton.joints), 4), dtype=np.float32)
     rotations[..., 3] = 1.0
     soma_index = {name: index for index, name in enumerate(SOMASKEL77_NAMES)}
-    body_index = {name: index for index, name in enumerate(CANONICAL_HUMANOID.names)}
+    body_index = {name: index for index, name in enumerate(skeleton.names)}
     source_world = _soma_world_rotations(
         track.local_rotations_xyzw, track.rest_world_rotations_xyzw
     )
@@ -681,8 +725,8 @@ def project_soma_to_body_track(track: SomaMotion) -> BodyTrack:
     )
     target_world = np.zeros_like(rotations, dtype=np.float64)
     target_world[..., 3] = 1.0
-    for target_index, joint in enumerate(CANONICAL_HUMANOID.joints):
-        source_name = _DELTA_MAPPING.get(joint.name)
+    for target_index, joint in enumerate(skeleton.joints):
+        source_name = mapping.get(joint.name)
         if source_name is None:
             if joint.parent >= 0:
                 target_world[:, target_index] = target_world[:, joint.parent]
@@ -712,7 +756,7 @@ def project_soma_to_body_track(track: SomaMotion) -> BodyTrack:
     # remain in SomaMotion until a contact solve has anchored the target feet.
     foot_contacts = np.zeros((frame_count, 2), dtype=np.bool_)
     hips_offset = np.asarray(
-        CANONICAL_HUMANOID.joints[body_index["Hips"]].rest_translation_m,
+        skeleton.joints[body_index["Hips"]].rest_translation_m,
         dtype=np.float32,
     )
     root_translation = track.root_translation_m - _rotate_vector(
@@ -723,7 +767,7 @@ def project_soma_to_body_track(track: SomaMotion) -> BodyTrack:
         duration_ticks=track.duration_ticks,
         ticks_per_second=TICKS_PER_SECOND,
         sample_rate_hz=track.sample_rate_hz,
-        joint_names=CANONICAL_HUMANOID.names,
+        joint_names=skeleton.names,
         ticks=track.ticks,
         root_translation_m=root_translation,
         local_rotations_xyzw=rotations,
@@ -732,4 +776,24 @@ def project_soma_to_body_track(track: SomaMotion) -> BodyTrack:
         gaze_strength=np.zeros(frame_count, dtype=np.float32),
         gnm_eye_rotations_xyzw=eye_rotations,
         source_plan_sha256=track.content_sha256(),
+    )
+
+
+def project_soma_to_body_track(track: SomaMotion) -> BodyTrack:
+    """Create the legacy preview-only canonical-25 projection."""
+
+    return _project_soma_to_skeleton(
+        track,
+        skeleton=CANONICAL_HUMANOID,
+        mapping=_DELTA_MAPPING,
+    )
+
+
+def project_soma_to_detailed_body_track(track: SomaMotion) -> BodyTrack:
+    """Preserve SOMA hand articulation in the append-only 55-joint runtime."""
+
+    return _project_soma_to_skeleton(
+        track,
+        skeleton=DETAILED_HUMANOID,
+        mapping=_DETAILED_DELTA_MAPPING,
     )

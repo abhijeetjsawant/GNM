@@ -82,7 +82,7 @@ def load_clip(name: str) -> np.ndarray:
     return positions @ SOMA_TO_WORLD.T
 
 
-def build_take(clip: str, frames: int | None, ground_xy: np.ndarray) -> np.ndarray:
+def build_take(clip: str, frames: int | None, ground_xy: np.ndarray, stride: int = 1) -> np.ndarray:
     """One subject's take: a single clip, placed in the volume.
 
     Deliberately **one** clip. An earlier draft concatenated several to reach a
@@ -100,6 +100,15 @@ def build_take(clip: str, frames: int | None, ground_xy: np.ndarray) -> np.ndarr
     """
 
     take = load_clip(clip)
+    # Playing the clip back at `stride` times speed. Gate G10 failed on the
+    # stride-1 fixture: p95 joint speed was 0.27 m/s against the real fixture's
+    # 1.76, error was flat across speed quintiles at 1.04x, and a fixture whose
+    # motion cannot exercise the temporal prior reports optimistic millimetres for
+    # every arm. The content is unchanged and the poses stay physical; only the
+    # playback rate moves, so this is not dynamically accurate motion -- it is a
+    # way to put the estimator under the joint speeds it will actually meet.
+    if stride > 1:
+        take = take[::stride]
     if frames is not None:
         take = take[:frames]
     # Stand the subject where a real performer stood, feet on the floor. Placement
@@ -160,6 +169,8 @@ def main() -> int:
     parser.add_argument("--frames", type=int, default=None)
     parser.add_argument("--placement", type=Path,
                         default=Path("artifacts/handfit-arrays/body-track.npz"))
+    parser.add_argument("--stride", type=int, default=1,
+                        help="play the motion back at this multiple of real time (gate G10)")
     parser.add_argument("--skip-gate", action="store_true")
     args = parser.parse_args()
 
@@ -174,8 +185,8 @@ def main() -> int:
         ground = np.asarray([[0.5, 4.9], [-0.9, 4.7]])
     print(f"placement (world x, y): {np.round(ground, 2).tolist()}")
 
-    takes = [build_take(FULL_BODY_CLIPS[0], args.frames, ground[0]),
-             build_take(FULL_BODY_CLIPS[2], args.frames, ground[1])]
+    takes = [build_take(FULL_BODY_CLIPS[0], args.frames, ground[0], args.stride),
+             build_take(FULL_BODY_CLIPS[2], args.frames, ground[1], args.stride)]
     length = min(len(t) for t in takes)
     subjects = np.stack([t[:length] for t in takes])
     print(f"truth: {subjects.shape[0]} subjects x {subjects.shape[1]} frames x "
@@ -237,8 +248,11 @@ def gate_g1(cameras, records, subjects, out: Path) -> int:
     print(f"\nG1 zero-noise positive control: median {median:.4f} mm, p95 {p95:.4f} mm, "
           f"max {worst:.4f} mm, coverage {coverage*100:.2f}%  -> {verdict}")
     if verdict == "FAIL":
-        print("  A convention bug, not an accuracy result: check the Y-up to Z-up "
-              "rotation, the quaternion order, and the principal-point sign.")
+        print("  At stride 1 this is a convention bug, not an accuracy result: check the")
+        print("  Y-up to Z-up rotation, the quaternion order, and the principal-point sign.")
+        print("  At stride > 1 the conventions are already known good, so it is the")
+        print("  temporal smoother lagging the motion -- which is itself the measurement:")
+        print("  with noiseless 2D the only error left is what the prior imposes.")
     (out / "g1-report.json").write_text(json.dumps({
         "gate": "G1 zero-noise positive control", "threshold_mm": 1.0,
         "median_mm": median, "p95_mm": p95, "max_mm": worst,

@@ -70,11 +70,24 @@ class FaceExtractor:
         image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
         if image is None:
             raise AutoAnimError("MEDIA_INVALID", "OpenCV could not decode the image")
+        # Reject mathematically featureless frames before constructing the
+        # native MediaPipe graph. Besides giving callers the correct typed
+        # result, this avoids entering a native runtime for an input that
+        # cannot possibly contain a detectable face.
+        if int(image.max()) - int(image.min()) <= 1:
+            raise AutoAnimError("FACE_NOT_FOUND", "No face was detected")
         height, width = image.shape[:2]
         if width > 12_000 or height > 12_000 or width * height > 40_000_000:
             raise AutoAnimError("LIMIT_EXCEEDED", "Image exceeds dimension/pixel limits")
         options = mp.tasks.vision.FaceLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(model_asset_path=str(self.model_path)),
+            # Pin the desktop pipeline to the CPU delegate.  MediaPipe's
+            # implicit macOS delegate selection can attempt to create a Metal
+            # graph even in a headless render process, where it aborts before
+            # detection instead of falling back cleanly.
+            base_options=mp.tasks.BaseOptions(
+                model_asset_path=str(self.model_path),
+                delegate=mp.tasks.BaseOptions.Delegate.CPU,
+            ),
             output_face_blendshapes=True,
             output_facial_transformation_matrixes=True,
             num_faces=2,

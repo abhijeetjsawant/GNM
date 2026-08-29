@@ -21,6 +21,8 @@ from .acting import TICKS_PER_SECOND, validate_acting_plan
 
 SKELETON_SCHEMA_VERSION = "autoanim.humanoid-skeleton/1.0"
 BODY_TRACK_SCHEMA_VERSION = "autoanim.body-track/1.0"
+DETAILED_SKELETON_SCHEMA_VERSION = "autoanim.humanoid-skeleton/1.1"
+DETAILED_BODY_TRACK_SCHEMA_VERSION = "autoanim.body-track/1.1"
 ATTACHMENT_SCHEMA_VERSION = "autoanim.gnm-body-attachment/1.0"
 DEFAULT_SAMPLE_RATE_HZ = 30
 MAX_SAMPLE_RATE_HZ = 120
@@ -268,8 +270,80 @@ CANONICAL_HUMANOID = HumanoidSkeleton(
 )
 
 
+def _finger_joints() -> tuple[JointSpec, ...]:
+    """Return the append-only VRM-compatible production hand extension."""
+
+    joints: list[JointSpec] = []
+    core_count = len(CANONICAL_HUMANOID.joints)
+    finger_specs = (
+        ("ThumbMetacarpal", (-0.038, -0.012, 0.028), 0.032),
+        ("IndexProximal", (-0.082, 0.0, 0.030), 0.036),
+        ("MiddleProximal", (-0.088, 0.0, 0.008), 0.040),
+        ("RingProximal", (-0.083, 0.0, -0.016), 0.037),
+        ("LittleProximal", (-0.072, 0.0, -0.038), 0.030),
+    )
+    for side in ("Left", "Right"):
+        hand_index = CANONICAL_HUMANOID.index(f"{side}Hand")
+        sign = -1.0 if side == "Left" else 1.0
+        vrm_side = side.lower()
+        for finger_name, proximal_offset, segment_length in finger_specs:
+            if finger_name == "ThumbMetacarpal":
+                names = ("ThumbMetacarpal", "ThumbProximal", "ThumbDistal")
+            else:
+                base = finger_name.removesuffix("Proximal")
+                names = (f"{base}Proximal", f"{base}Intermediate", f"{base}Distal")
+            parent = hand_index
+            for segment, name in enumerate(names):
+                joint_name = f"{side}{name}"
+                if segment == 0:
+                    translation = (
+                        sign * abs(proximal_offset[0]),
+                        proximal_offset[1],
+                        proximal_offset[2],
+                    )
+                else:
+                    translation = (sign * segment_length, 0.0, 0.0)
+                parent_joint = (
+                    CANONICAL_HUMANOID.joints[parent]
+                    if parent < core_count
+                    else joints[parent - core_count]
+                )
+                usd_path = f"{parent_joint.usd_path}/{joint_name}"
+                joints.append(
+                    _joint(
+                        joint_name,
+                        parent,
+                        translation,
+                        usd_path,
+                        f"{vrm_side}{name}",
+                    )
+                )
+                parent = core_count + len(joints) - 1
+    return tuple(joints)
+
+
+DETAILED_HUMANOID = HumanoidSkeleton(
+    CANONICAL_HUMANOID.joints + _finger_joints(),
+    schema_version=DETAILED_SKELETON_SCHEMA_VERSION,
+)
+
+
+def skeleton_for_joint_names(joint_names: Sequence[str]) -> HumanoidSkeleton:
+    """Resolve an exact supported skeleton without guessing from joint count."""
+
+    names = tuple(joint_names)
+    if names == CANONICAL_HUMANOID.names:
+        return CANONICAL_HUMANOID
+    if names == DETAILED_HUMANOID.names:
+        return DETAILED_HUMANOID
+    raise BodyValidationError("Body track joint order does not match a supported skeleton")
+
+
 def validate_skeleton(skeleton: HumanoidSkeleton = CANONICAL_HUMANOID) -> None:
-    if skeleton.schema_version != SKELETON_SCHEMA_VERSION:
+    if skeleton.schema_version not in {
+        SKELETON_SCHEMA_VERSION,
+        DETAILED_SKELETON_SCHEMA_VERSION,
+    }:
         raise BodyValidationError("Unsupported humanoid skeleton schema")
     if not skeleton.joints or skeleton.joints[0].parent != -1:
         raise BodyValidationError("Humanoid skeleton must begin with one root")
@@ -423,12 +497,18 @@ class BodyTrack:
             "gnm_eye_rotations_xyzw",
             _readonly_array(self.gnm_eye_rotations_xyzw, np.float32),
         )
-        validate_body_track(self)
+        validate_body_track(self, skeleton=skeleton_for_joint_names(self.joint_names))
 
     def as_dict(self) -> dict[str, Any]:
+        skeleton = skeleton_for_joint_names(self.joint_names)
+        detailed = skeleton is DETAILED_HUMANOID
         return {
-            "schema_version": BODY_TRACK_SCHEMA_VERSION,
-            "skeleton_schema_version": SKELETON_SCHEMA_VERSION,
+            "schema_version": (
+                DETAILED_BODY_TRACK_SCHEMA_VERSION
+                if detailed
+                else BODY_TRACK_SCHEMA_VERSION
+            ),
+            "skeleton_schema_version": skeleton.schema_version,
             "timebase": {
                 "ticks_per_second": self.ticks_per_second,
                 "duration_ticks": self.duration_ticks,
@@ -478,10 +558,18 @@ class BodyTrack:
         }
         if set(value) != expected:
             raise BodyValidationError("Serialized body track fields are missing or unknown")
-        if value["schema_version"] != BODY_TRACK_SCHEMA_VERSION:
-            raise BodyValidationError("Unsupported body track schema")
-        if value["skeleton_schema_version"] != SKELETON_SCHEMA_VERSION:
-            raise BodyValidationError("Unsupported body-track skeleton schema")
+        schema_pair = (
+            value["schema_version"],
+            value["skeleton_schema_version"],
+        )
+        if schema_pair not in {
+            (BODY_TRACK_SCHEMA_VERSION, SKELETON_SCHEMA_VERSION),
+            (
+                DETAILED_BODY_TRACK_SCHEMA_VERSION,
+                DETAILED_SKELETON_SCHEMA_VERSION,
+            ),
+        }:
+            raise BodyValidationError("Unsupported body-track/skeleton schema pair")
         if value["attachment_schema_version"] != ATTACHMENT_SCHEMA_VERSION:
             raise BodyValidationError("Unsupported GNM attachment schema")
         if value["limitations"] != list(BODY_TRACK_LIMITATIONS):
@@ -650,9 +738,11 @@ def _validate_integer(value: Any, label: str, *, positive: bool = False) -> int:
 def validate_body_track(
     track: BodyTrack,
     *,
-    skeleton: HumanoidSkeleton = CANONICAL_HUMANOID,
+    skeleton: HumanoidSkeleton | None = None,
     contact_tolerance_m: float = CONTACT_TOLERANCE_M,
 ) -> None:
+    if skeleton is None:
+        skeleton = skeleton_for_joint_names(track.joint_names)
     validate_skeleton(skeleton)
     duration = _validate_integer(track.duration_ticks, "duration_ticks", positive=True)
     ticks_per_second = _validate_integer(
@@ -987,3 +1077,4 @@ def compile_body_track(
 
 
 validate_skeleton(CANONICAL_HUMANOID)
+validate_skeleton(DETAILED_HUMANOID)

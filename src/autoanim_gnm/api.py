@@ -1798,7 +1798,7 @@ UI_HTML = r"""<!doctype html>
     </form>
     <form class="card" id="image-form"><h2>Image → neutral GNM</h2><p>A confidence-gated visible-geometry estimate. This is not a metric 3D clone.</p>
       <label for="image-file">Single face photo</label><input id="image-file" name="file" type="file" accept="image/png,image/jpeg,image/webp" required>
-      <label for="modes">Observable identity modes</label><select id="modes" name="modes"><option value="20">20 · recommended</option><option value="10">10 · conservative</option></select>
+      <label for="modes">Observable identity modes</label><select id="modes" name="modes"><option value="20">20 · recommended</option><option value="10">10 · conservative</option><option value="40">40 · likeness study</option><option value="80">80 · likeness study</option><option value="120">120 · high-detail study</option><option value="170">170 · full observable study</option></select>
       <label><input style="width:auto" type="checkbox" name="allow_low_confidence" value="true"> Allow low-confidence download</label>
       <button>Fit GNM face</button><div class="status"></div><div class="result"></div>
     </form>

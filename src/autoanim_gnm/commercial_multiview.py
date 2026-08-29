@@ -1158,6 +1158,13 @@ def _sequence_jacobian_sparsity(
     )
 
 
+# A fixed 300 ms window at 30 fps. Measured cost: with *noiseless* 2D the smoother
+# alone contributes 0.65 mm of median error at the reference fixture's joint speeds
+# and 4.42 mm at six times those speeds, where its p95 reaches 34.9 mm. Named here
+# rather than inlined so the trade can be measured instead of assumed.
+SMOOTHING_WINDOW_FRAMES = 9
+
+
 def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
     output = np.asarray(values, dtype=np.float64).copy()
     if output.ndim != 3 or output.shape[2] != 3:
@@ -1184,7 +1191,8 @@ def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
                 frame_axis, frame_axis[valid], output[valid, joint, axis]
             )
         if len(output) >= 7:
-            window = min(9, len(output) if len(output) % 2 else len(output) - 1)
+            window = min(SMOOTHING_WINDOW_FRAMES,
+                         len(output) if len(output) % 2 else len(output) - 1)
             if window >= 5:
                 output[:, joint] = savgol_filter(
                     output[:, joint], window_length=window, polyorder=2, axis=0, mode="interp"

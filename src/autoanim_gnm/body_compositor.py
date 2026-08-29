@@ -257,6 +257,7 @@ def compose_unified_performance(
         )
     }
     body_manifest = json.loads(Path(body_manifest_path).read_text(encoding="utf-8"))
+    body_joint_count = len(body_manifest.get("skeleton", {}).get("joint_names", ()))
     attachment_calibrated = bool(
         body_manifest.get("gnm_head_socket", {}).get("attachment_calibrated", False)
     )
@@ -267,7 +268,11 @@ def compose_unified_performance(
         (
             "PROVIDER_HEAD_NOT_REMOVED",
             "NECK_SEAM_NOT_VALIDATED",
-            "SOMA_25_PROJECTION_PREVIEW_ONLY",
+            (
+                "SOMA_25_PROJECTION_PREVIEW_ONLY"
+                if body_joint_count == 25
+                else "SOMA_DETAILED_HANDS_PROVIDER_PREVIEW_ONLY"
+            ),
             "GNM_FACE_TRACK_NOT_PRODUCTION_CALIBRATED",
         )
     )
@@ -405,7 +410,7 @@ The panes remain separate until head-socket calibration, provider-head removal, 
 import * as THREE from 'three';
 import {{GLTFLoader}} from 'three/addons/loaders/GLTFLoader.js';
 const source=document.querySelector('#source'),play=document.querySelector('#play'),scrub=document.querySelector('#scrub'),time=document.querySelector('#time');
-const mixers=[];
+const animations=[];
 function stage(canvas,kind){{
  const renderer=new THREE.WebGLRenderer({{canvas,antialias:true,alpha:false}});renderer.outputColorSpace=THREE.SRGBColorSpace;
  const scene=new THREE.Scene();scene.background=new THREE.Color(0x111419);
@@ -418,11 +423,11 @@ function stage(canvas,kind){{
 }}
 const body=stage(document.querySelector('#body'),'body'),face=stage(document.querySelector('#face'),'face');
 function load(stage,url){{
- new GLTFLoader().load(url,gltf=>{{stage.scene.add(gltf.scene);if(gltf.animations.length){{const mixer=new THREE.AnimationMixer(gltf.scene);const action=mixer.clipAction(gltf.animations[0]);action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;action.play();mixers.push(mixer)}}}},undefined,error=>{{console.error(error);}});
+ new GLTFLoader().load(url,gltf=>{{stage.scene.add(gltf.scene);if(gltf.animations.length){{const clip=gltf.animations[0],mixer=new THREE.AnimationMixer(gltf.scene),action=mixer.clipAction(clip),duration=clip.duration;action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;action.play();action.paused=true;action.time=0;mixer.update(0);animations.push({{mixer,action,duration}})}}}},undefined,error=>{{console.error(error);}});
 }}
 load(body,{encoded["body"]});load(face,{encoded["face"]});
 function resize(stage){{const w=stage.canvas.clientWidth,h=stage.canvas.clientHeight;if(stage.canvas.width!==w||stage.canvas.height!==h){{stage.renderer.setSize(w,h,false);stage.camera.aspect=w/h;stage.camera.updateProjectionMatrix()}}}}
-function frame(){{resize(body);resize(face);for(const mixer of mixers)mixer.setTime(source.currentTime);body.renderer.render(body.scene,body.camera);face.renderer.render(face.scene,face.camera);if(source.duration){{scrub.value=source.currentTime/source.duration;time.textContent=`${{source.currentTime.toFixed(3)}} / ${{source.duration.toFixed(3)}} s`}}play.textContent=source.paused?'Play':'Pause';requestAnimationFrame(frame)}}requestAnimationFrame(frame);
+function frame(){{resize(body);resize(face);for(const {{mixer,action,duration}} of animations){{action.time=Math.min(Math.max(source.currentTime,0),duration);mixer.update(0)}}body.renderer.render(body.scene,body.camera);face.renderer.render(face.scene,face.camera);if(source.duration){{scrub.value=source.currentTime/source.duration;time.textContent=`${{source.currentTime.toFixed(3)}} / ${{source.duration.toFixed(3)}} s`}}play.textContent=source.paused?'Play':'Pause';requestAnimationFrame(frame)}}requestAnimationFrame(frame);
 play.addEventListener('click',()=>source.paused?source.play():source.pause());
 scrub.addEventListener('input',()=>{{if(source.duration)source.currentTime=Number(scrub.value)*source.duration}});
 fetch({encoded["manifest"]}).then(r=>r.json()).then(m=>{{if(m.production_validated||m.attachment.single_connected_character_mesh)throw new Error('Diagnostic manifest claimed unsafe readiness')}}).catch(console.error);

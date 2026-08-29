@@ -27,7 +27,7 @@ from .animated_gltf import (
     _fit_morph_normals,
     factor_vertex_animation,
 )
-from .body import BodyTrack, CANONICAL_HUMANOID, validate_body_track
+from .body import BodyTrack, skeleton_for_joint_names, validate_body_track
 from .body_binding import (
     GNM_TO_AUTOANIM_BASIS,
     array_sha256,
@@ -37,6 +37,7 @@ from .body_binding import (
 from .body_export import (
     _Builder,
     _atomic_bytes,
+    _canonical_arm_bind_alignment,
     _compose_rest_and_delta,
     _glb_bytes,
 )
@@ -165,8 +166,14 @@ def _skin_matrices(
     parents: np.ndarray,
     track: BodyTrack,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    target_skeleton = skeleton_for_joint_names(track.joint_names)
     translations, rotations = _compose_rest_and_delta(
-        local_rest, track.local_rotations_xyzw, parents
+        local_rest,
+        track.local_rotations_xyzw,
+        parents,
+        world_bind_alignment_xyzw=_canonical_arm_bind_alignment(
+            local_rest, parents, skeleton=target_skeleton
+        ),
     )
     frame_count, joint_count = rotations.shape[:2]
     local = np.repeat(
@@ -451,7 +458,8 @@ def export_unified_character_glb(
 ) -> UnifiedCharacterGLBExport:
     """Export one connected, ownership-safe diagnostic character."""
 
-    validate_body_track(track)
+    target_skeleton = skeleton_for_joint_names(track.joint_names)
+    validate_body_track(track, skeleton=target_skeleton)
     load_and_validate_body_asset(
         body_manifest_path, body_asset_path
     )
@@ -498,7 +506,7 @@ def export_unified_character_glb(
         raise UnifiedGLTFError("Body track may not own GNM eye rotation")
     for eye_name in ("LeftEye", "RightEye"):
         eye_delta = track.local_rotations_xyzw[
-            :, CANONICAL_HUMANOID.index(eye_name)
+            :, target_skeleton.index(eye_name)
         ]
         if not np.array_equal(eye_delta, eye_identity[:, 0]):
             raise UnifiedGLTFError("Body joint track may not own eye rotation")
@@ -545,13 +553,22 @@ def export_unified_character_glb(
     head_vertices = interpolate_clipped_attribute(
         factor.base_vertices, source_indices, source_weights
     )
-    head_morph_positions = np.stack(
-        [
-            interpolate_clipped_attribute(target, source_indices, source_weights)
-            for target in factor.morph_positions
-        ],
-        axis=0,
-    )
+    # A body-only capture can intentionally request a neutral GNM face.  That
+    # is a valid attachment review with zero expression targets, not an empty
+    # animation error.  Preserve the zero-width morph contract so the skin and
+    # body animation still export and the report makes the facial mode clear.
+    if factor.rank:
+        head_morph_positions = np.stack(
+            [
+                interpolate_clipped_attribute(target, source_indices, source_weights)
+                for target in factor.morph_positions
+            ],
+            axis=0,
+        )
+    else:
+        head_morph_positions = np.zeros(
+            (0, len(source_indices), 3), dtype=np.float32
+        )
     # Expression motion is exactly zero at the shared collar edge.
     head_loop = np.asarray(binding["gnm_neck_loop_indices"], dtype=np.int64)
     head_morph_positions[:, head_loop] = 0.0
@@ -587,7 +604,7 @@ def export_unified_character_glb(
         track,
     )
     dense = _dense_skin_weights(
-        body["joint_indices"], body["joint_weights"], len(CANONICAL_HUMANOID.names)
+        body["joint_indices"], body["joint_weights"], len(target_skeleton.names)
     )
     clipped_dense = interpolate_clipped_attribute(
         dense,
@@ -615,15 +632,15 @@ def export_unified_character_glb(
     ):
         raise UnifiedGLTFError("Connected neck still contains an open seam edge")
 
-    head_joint = CANONICAL_HUMANOID.index("Head")
+    head_joint = target_skeleton.index("Head")
     joint_indices = np.zeros((len(vertices), 4), dtype=np.uint16)
     joint_weights = np.zeros((len(vertices), 4), dtype=np.float32)
     joint_indices[:head_offset] = body_indices
     joint_weights[:head_offset] = body_weights
-    neck_joint = CANONICAL_HUMANOID.index("Neck")
+    neck_joint = target_skeleton.index("Neck")
     gnm_weights = np.asarray(gnm.model.skinning_weights, dtype=np.float64).T
     gnm_canonical_dense = np.zeros(
-        (gnm.model.num_vertices, len(CANONICAL_HUMANOID.names)),
+        (gnm.model.num_vertices, len(target_skeleton.names)),
         dtype=np.float64,
     )
     gnm_canonical_dense[:, neck_joint] = gnm_weights[:, 0]
@@ -662,7 +679,11 @@ def export_unified_character_glb(
         triangles,
         priority_vertex_indices=clipped_lip_indices + head_offset,
         boundary_vertex_indices=clipped_mouth_boundary + head_offset,
-        max_corrective_targets=4,
+        # Strong theatrical expressions can need more normal-only basis terms
+        # than restrained dialogue even when position reconstruction already
+        # passes. Keep the complete glTF morph set within the 64-target viewer
+        # budget instead of weakening lip and mouth-boundary angle limits.
+        max_corrective_targets=min(8, max(0, 64 - factor.rank)),
     )
     if (
         normal_fit.frame_p95_max_degrees
@@ -777,7 +798,7 @@ def export_unified_character_glb(
         rest_translations[0][None, :] + track.root_translation_m
     ).astype(np.float32)
     nodes: list[dict[str, Any]] = []
-    for index, name in enumerate(CANONICAL_HUMANOID.names):
+    for index, name in enumerate(target_skeleton.names):
         node: dict[str, Any] = {
             "name": name,
             "translation": (
@@ -792,14 +813,14 @@ def export_unified_character_glb(
             node["children"] = children
         nodes.append(node)
     mesh_node = len(nodes)
-    nodes.append(
-        {
-            "name": "AutoAnim_Connected_Character",
-            "mesh": 0,
-            "skin": 0,
-            "weights": morph_weights[0].astype(float).tolist(),
-        }
-    )
+    mesh_node_payload: dict[str, Any] = {
+        "name": "AutoAnim_Connected_Character",
+        "mesh": 0,
+        "skin": 0,
+    }
+    if len(morph_weights[0]):
+        mesh_node_payload["weights"] = morph_weights[0].astype(float).tolist()
+    nodes.append(mesh_node_payload)
     samplers: list[dict[str, Any]] = []
     channels: list[dict[str, Any]] = []
 
@@ -824,10 +845,10 @@ def export_unified_character_glb(
         "translation",
     )
     excluded_eyes = {
-        CANONICAL_HUMANOID.index("LeftEye"),
-        CANONICAL_HUMANOID.index("RightEye"),
+        target_skeleton.index("LeftEye"),
+        target_skeleton.index("RightEye"),
     }
-    for joint_index in range(len(CANONICAL_HUMANOID.names)):
+    for joint_index in range(len(target_skeleton.names)):
         if joint_index in excluded_eyes:
             continue
         channel(
@@ -839,15 +860,16 @@ def export_unified_character_glb(
             joint_index,
             "rotation",
         )
-    channel(
-        builder.accessor(
-            morph_weights.reshape(-1),
-            component_type=5126,
-            accessor_type="SCALAR",
-        ),
-        mesh_node,
-        "weights",
-    )
+    if len(morph_weights[0]):
+        channel(
+            builder.accessor(
+                morph_weights.reshape(-1),
+                component_type=5126,
+                accessor_type="SCALAR",
+            ),
+            mesh_node,
+            "weights",
+        )
 
     blockers = list(binding_manifest["publish_blockers"])
     if four_metrics["rms_m"] > FOUR_WEIGHT_RMS_GATE_M:
@@ -962,7 +984,7 @@ def export_unified_character_glb(
                 "name": "AutoAnim canonical humanoid",
                 "inverseBindMatrices": inverse_bind_accessor,
                 "skeleton": 0,
-                "joints": list(range(len(CANONICAL_HUMANOID.names))),
+                "joints": list(range(len(target_skeleton.names))),
             }
         ],
         "animations": [

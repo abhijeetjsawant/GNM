@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from typing import Any, Literal
@@ -63,6 +64,21 @@ class A2FValidationError(ValueError):
 
 class A2FRunnerError(RuntimeError):
     """Raised when the native Audio2Face runner cannot be resolved or fails."""
+
+
+_NATIVE_ADDRESS_RE = re.compile(r"0x[0-9a-fA-F]+")
+
+
+def _stable_runner_diagnostic(value: str) -> str:
+    """Remove per-process native addresses from persisted runner failures.
+
+    Native Apple crash reports include ASLR-dependent instruction addresses.
+    Keeping those raw addresses made otherwise identical API and CLI jobs differ
+    and exposed noisy implementation details in the production warning stream.
+    Symbol names and the exception message remain available for diagnosis.
+    """
+
+    return _NATIVE_ADDRESS_RE.sub("0x<address>", value.strip())
 
 
 @dataclass(frozen=True)
@@ -487,7 +503,12 @@ def run_a2f_runner(
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise A2FRunnerError(f"Audio2Face runner could not complete: {exc}") from exc
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip() or "no diagnostics"
+            raw_detail = completed.stderr.strip() or completed.stdout.strip()
+            detail = (
+                _stable_runner_diagnostic(raw_detail)
+                if raw_detail
+                else "no diagnostics"
+            )
             raise A2FRunnerError(
                 f"Audio2Face runner exited with status {completed.returncode}: {detail}"
             )

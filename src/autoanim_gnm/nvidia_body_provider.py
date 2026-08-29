@@ -32,7 +32,8 @@ from .soma_motion import (
 )
 
 
-GEM_X_RESPONSE_SCHEMA = "autoanim.gem-x-provider-response/1.0"
+GEM_X_RESPONSE_SCHEMA_LEGACY = "autoanim.gem-x-provider-response/1.0"
+GEM_X_RESPONSE_SCHEMA = "autoanim.gem-x-provider-response/1.1"
 GEM_X_COMMIT = "32992550dba114c62243fb55e361311972dce8f9"
 MAX_MANIFEST_BYTES = 1_000_000
 MAX_NPZ_BYTES = 160_000_000
@@ -214,11 +215,14 @@ def _load_npz(
     return arrays
 
 
-def load_gem_x_preview_response(manifest_path: str | Path) -> SomaMotion:
-    """Load an unattested local Apple-Silicon preview response.
-
-    The result is structurally/FK validated but never production validated.
-    """
+def _load_gem_x_response(
+    manifest_path: str | Path,
+    *,
+    expected_runtime_class: str,
+    expected_execution_provider: str,
+    require_regional_fidelity: bool,
+    allow_legacy_schema: bool,
+) -> SomaMotion:
 
     requested_path = Path(manifest_path)
     if requested_path.is_symlink():
@@ -227,9 +231,9 @@ def load_gem_x_preview_response(manifest_path: str | Path) -> SomaMotion:
         path = requested_path.resolve(strict=True)
     except OSError as error:
         raise NvidiaBodyProviderError("Provider manifest does not exist") from error
-    manifest = _exact_members(
-        _read_manifest(path),
-        {
+    raw_manifest = _read_manifest(path)
+    schema_version = raw_manifest.get("schema_version")
+    common_members = {
             "schema_version",
             "provider_id",
             "provider_git_commit_oid",
@@ -246,15 +250,24 @@ def load_gem_x_preview_response(manifest_path: str | Path) -> SomaMotion:
             "input_sha256",
             "provider_raw_motion_sha256",
             "motion_npz",
-        },
+    }
+    if schema_version == GEM_X_RESPONSE_SCHEMA:
+        expected_members = common_members | {"regional_reprojection"}
+    elif schema_version == GEM_X_RESPONSE_SCHEMA_LEGACY and allow_legacy_schema:
+        expected_members = common_members
+    else:
+        raise NvidiaBodyProviderError("Unexpected GEM-X response schema")
+    manifest = _exact_members(
+        raw_manifest,
+        expected_members,
         "provider manifest",
     )
     expected_scalars = {
-        "schema_version": GEM_X_RESPONSE_SCHEMA,
+        "schema_version": schema_version,
         "provider_id": "nvidia_gem_x",
         "provider_git_commit_oid": GEM_X_COMMIT,
-        "runtime_class": "apple_silicon_preview",
-        "execution_provider": "CPUExecutionProvider",
+        "runtime_class": expected_runtime_class,
+        "execution_provider": expected_execution_provider,
         "camera_model": "static_camera_assumed",
         "operation": "video_capture",
         "motion_kind": "observed",
@@ -263,6 +276,66 @@ def load_gem_x_preview_response(manifest_path: str | Path) -> SomaMotion:
     for name, expected in expected_scalars.items():
         if manifest[name] != expected or type(manifest[name]) is not type(expected):
             raise NvidiaBodyProviderError(f"Unexpected provider claim: {name}")
+    if schema_version == GEM_X_RESPONSE_SCHEMA:
+        reprojection = manifest["regional_reprojection"]
+        if not isinstance(reprojection, dict):
+            raise NvidiaBodyProviderError("regional_reprojection must be an object")
+        status = reprojection.get("status")
+        passed = reprojection.get("passed")
+        failures = reprojection.get("failure_reasons")
+        if (
+            reprojection.get("schema_version")
+            != "autoanim.arm-reprojection-audit/1.0"
+            or status not in {"passed", "failed", "not_run"}
+            or type(passed) is not bool
+            or not isinstance(failures, list)
+            or not all(isinstance(value, str) and value for value in failures)
+            or (status == "passed" and (not passed or failures))
+            or (status != "passed" and passed)
+        ):
+            raise NvidiaBodyProviderError("Invalid regional reprojection claim")
+        if status in {"passed", "failed"}:
+            required_audit_members = {
+                "schema_version",
+                "status",
+                "passed",
+                "confidence_threshold",
+                "p95_error_limit_bbox_height",
+                "sign_mismatch_limit",
+                "sides",
+                "failure_reasons",
+                "vitpose_sha256",
+                "bounding_boxes_sha256",
+            }
+            _exact_members(
+                reprojection,
+                required_audit_members,
+                "regional_reprojection",
+            )
+            for digest_name in ("vitpose_sha256", "bounding_boxes_sha256"):
+                digest = reprojection[digest_name]
+                if (
+                    not isinstance(digest, str)
+                    or len(digest) != 64
+                    or any(character not in "0123456789abcdef" for character in digest)
+                ):
+                    raise NvidiaBodyProviderError(
+                        f"Invalid regional reprojection digest: {digest_name}"
+                    )
+        else:
+            _exact_members(
+                reprojection,
+                {"schema_version", "status", "passed", "failure_reasons"},
+                "regional_reprojection",
+            )
+        if require_regional_fidelity and not passed:
+            raise NvidiaBodyProviderError(
+                "GEM-X regional reprojection fidelity gate did not pass"
+            )
+    elif require_regional_fidelity:
+        raise NvidiaBodyProviderError(
+            "Legacy GEM-X responses have no regional reprojection evidence"
+        )
     frame_count = manifest["frame_count"]
     if type(frame_count) is not int or not 2 <= frame_count <= 216_001:
         raise NvidiaBodyProviderError("Provider frame_count is outside limits")
@@ -353,13 +426,17 @@ def load_gem_x_preview_response(manifest_path: str | Path) -> SomaMotion:
     )
     if ticks[-1] <= 0:
         raise NvidiaBodyProviderError("Provider motion duration must be positive")
+    tick_steps = np.diff(ticks)
+    sample_rate_hz = int(
+        round(TICKS_PER_SECOND / float(np.median(tick_steps)))
+    )
     return SomaMotion(
         provider_id="nvidia_gem_x",
         provider_git_commit_oid=GEM_X_COMMIT,
         operation="video_capture",
         motion_kind="observed",
         duration_ticks=int(ticks[-1]),
-        sample_rate_hz=30,
+        sample_rate_hz=sample_rate_hz,
         ticks=ticks,
         source_pts=source_pts,
         root_translation_m=arrays["root_translation_m"],
@@ -379,4 +456,40 @@ def load_gem_x_preview_response(manifest_path: str | Path) -> SomaMotion:
         source_time_base_denominator=denominator,
         input_sha256=manifest["input_sha256"],
         provider_raw_motion_sha256=manifest["provider_raw_motion_sha256"],
+    )
+
+
+def load_gem_x_preview_response(
+    manifest_path: str | Path,
+    *,
+    require_regional_fidelity: bool = False,
+) -> SomaMotion:
+    """Load an unattested local Apple-Silicon preview response."""
+
+    return _load_gem_x_response(
+        manifest_path,
+        expected_runtime_class="apple_silicon_preview",
+        expected_execution_provider="CPUExecutionProvider",
+        require_regional_fidelity=require_regional_fidelity,
+        allow_legacy_schema=True,
+    )
+
+
+def load_gem_x_cuda_response(
+    manifest_path: str | Path,
+    *,
+    require_regional_fidelity: bool = True,
+) -> SomaMotion:
+    """Load the official full-image-conditioned CUDA response after 2D audit.
+
+    This proves observation fidelity and structural validity, not signed worker
+    attestation or production perceptual qualification.
+    """
+
+    return _load_gem_x_response(
+        manifest_path,
+        expected_runtime_class="cuda_pytorch_regression_full_image_conditioned",
+        expected_execution_provider="CUDAExecutionProvider",
+        require_regional_fidelity=require_regional_fidelity,
+        allow_legacy_schema=False,
     )

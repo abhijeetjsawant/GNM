@@ -28,8 +28,11 @@ import numpy as np
 from .body import (
     ATTACHMENT_SCHEMA_VERSION,
     CANONICAL_HUMANOID,
+    DETAILED_HUMANOID,
+    DETAILED_SKELETON_SCHEMA_VERSION,
     SKELETON_SCHEMA_VERSION,
     attachment_contract,
+    skeleton_for_joint_names,
 )
 
 
@@ -164,6 +167,21 @@ DEFAULT_MPFB_JOINT_MAP: dict[str, str] = {
     "RightFoot": "foot.L",
     "RightToes": "toe1-1.L",
 }
+
+DETAILED_MPFB_JOINT_MAP: dict[str, str] = dict(DEFAULT_MPFB_JOINT_MAP)
+for _side, _mpfb_side in (("Left", "R"), ("Right", "L")):
+    for _finger_index, _finger in enumerate(
+        ("Thumb", "Index", "Middle", "Ring", "Little"), start=1
+    ):
+        _segments = (
+            ("Metacarpal", "Proximal", "Distal")
+            if _finger == "Thumb"
+            else ("Proximal", "Intermediate", "Distal")
+        )
+        for _segment_index, _segment in enumerate(_segments, start=1):
+            DETAILED_MPFB_JOINT_MAP[
+                f"{_side}{_finger}{_segment}"
+            ] = f"finger{_finger_index}-{_segment_index}.{_mpfb_side}"
 
 
 def _exact_keys(value: Any, expected: set[str], label: str) -> dict[str, Any]:
@@ -461,9 +479,14 @@ def default_body_provider_request(
     system_assets_sha256: str,
     asset_npz: str = "neutral-body.npz",
     manifest_json: str = "neutral-body.json",
+    detailed_hands: bool = False,
 ) -> dict[str, Any]:
     """Build the pinned hm08/MPFB request using the corroborated official pack."""
 
+    skeleton = DETAILED_HUMANOID if detailed_hands else CANONICAL_HUMANOID
+    joint_map = (
+        DETAILED_MPFB_JOINT_MAP if detailed_hands else DEFAULT_MPFB_JOINT_MAP
+    )
     request = {
         "schema_version": BODY_PROVIDER_REQUEST_SCHEMA,
         "request_id": request_id,
@@ -482,8 +505,8 @@ def default_body_provider_request(
             "system_assets_sha256": system_assets_sha256,
         },
         "skeleton": {
-            "schema_version": SKELETON_SCHEMA_VERSION,
-            "joint_map": dict(DEFAULT_MPFB_JOINT_MAP),
+            "schema_version": skeleton.schema_version,
+            "joint_map": dict(joint_map),
         },
         "output": {"asset_npz": asset_npz, "manifest_json": manifest_json},
     }
@@ -549,12 +572,23 @@ def validate_body_provider_request(request: Any) -> dict[str, Any]:
     skeleton = _exact_keys(
         root["skeleton"], {"schema_version", "joint_map"}, "request.skeleton"
     )
-    if skeleton["schema_version"] != SKELETON_SCHEMA_VERSION:
+    skeleton_contract = {
+        SKELETON_SCHEMA_VERSION: (
+            CANONICAL_HUMANOID,
+            DEFAULT_MPFB_JOINT_MAP,
+        ),
+        DETAILED_SKELETON_SCHEMA_VERSION: (
+            DETAILED_HUMANOID,
+            DETAILED_MPFB_JOINT_MAP,
+        ),
+    }.get(skeleton["schema_version"])
+    if skeleton_contract is None:
         raise BodyProviderError("Request uses an unsupported skeleton schema")
+    target_skeleton, expected_mapping = skeleton_contract
     mapping = skeleton["joint_map"]
-    if not isinstance(mapping, dict) or set(mapping) != set(CANONICAL_HUMANOID.names):
-        raise BodyProviderError("joint_map keys must be the canonical 25 joints")
-    if mapping != DEFAULT_MPFB_JOINT_MAP:
+    if not isinstance(mapping, dict) or set(mapping) != set(target_skeleton.names):
+        raise BodyProviderError("joint_map keys must match the selected skeleton")
+    if mapping != expected_mapping:
         raise BodyProviderError("joint_map does not match the reviewed MPFB default-rig map")
     if len(set(mapping.values())) != len(mapping) or not all(
         isinstance(value, str) and value for value in mapping.values()
@@ -787,13 +821,18 @@ def validate_body_asset(
     skeleton = _exact_keys(
         root["skeleton"], {"schema_version", "joint_names", "parents"}, "manifest.skeleton"
     )
-    canonical_parents = [joint.parent for joint in CANONICAL_HUMANOID.joints]
+    try:
+        target_skeleton = skeleton_for_joint_names(skeleton["joint_names"])
+    except (BodyProviderError, ValueError) as exc:
+        raise BodyProviderError("Manifest skeleton joint order is unsupported") from exc
+    canonical_parents = [joint.parent for joint in target_skeleton.joints]
     if (
-        skeleton["schema_version"] != SKELETON_SCHEMA_VERSION
-        or skeleton["joint_names"] != list(CANONICAL_HUMANOID.names)
+        skeleton["schema_version"] != target_skeleton.schema_version
         or skeleton["parents"] != canonical_parents
     ):
-        raise BodyProviderError("Manifest skeleton is not the canonical 25-joint skeleton")
+        raise BodyProviderError(
+            "Manifest skeleton does not match its supported canonical contract"
+        )
 
     mesh = _exact_keys(
         root["mesh"], {"vertex_count", "triangle_count", "neutral_pose"}, "manifest.mesh"
@@ -915,7 +954,7 @@ def validate_body_asset(
         )
     vertex_count = mesh["vertex_count"]
     triangle_count = mesh["triangle_count"]
-    joint_count = len(CANONICAL_HUMANOID.joints)
+    joint_count = len(target_skeleton.joints)
     influences = skin["max_influences"]
     vertices = _require_array(arrays, "vertices_m", (vertex_count, 3), "f")
     triangles = _require_array(arrays, "triangles", (triangle_count, 3), "iu")
@@ -941,8 +980,8 @@ def validate_body_asset(
     if np.any(np.linalg.norm(np.cross(b - a, c - a), axis=1) <= 1e-12):
         raise BodyProviderError("Body mesh contains zero-area triangles")
 
-    if tuple(str(value) for value in names.tolist()) != CANONICAL_HUMANOID.names:
-        raise BodyProviderError("NPZ joint names do not match the canonical joint order")
+    if tuple(str(value) for value in names.tolist()) != target_skeleton.names:
+        raise BodyProviderError("NPZ joint names do not match the manifest joint order")
     if parents.tolist() != canonical_parents:
         raise BodyProviderError("NPZ parents do not match the canonical hierarchy")
     _validate_rigid_matrices(local, "local_rest_matrices")
@@ -970,8 +1009,8 @@ def validate_body_asset(
         raise BodyProviderError("Neck seam must contain at least three unique vertices")
     if np.any(seam < 0) or np.any(seam >= vertex_count):
         raise BodyProviderError("Neck seam vertex index is out of range")
-    head = CANONICAL_HUMANOID.index("Head")
-    neck = CANONICAL_HUMANOID.index("Neck")
+    head = target_skeleton.index("Head")
+    neck = target_skeleton.index("Neck")
     for vertex_index in seam.tolist():
         active = indices[vertex_index][weights[vertex_index] > 1e-8]
         if head not in active and neck not in active:

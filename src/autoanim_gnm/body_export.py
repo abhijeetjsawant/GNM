@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from .body import BodyTrack, CANONICAL_HUMANOID, validate_body_track
+from .body import BodyTrack, HumanoidSkeleton, skeleton_for_joint_names, validate_body_track
 from .body_provider import load_and_validate_body_asset, sha256_file
 from .serialization import write_npz
 
@@ -177,10 +177,186 @@ def _quaternion_inverse(value: np.ndarray) -> np.ndarray:
     return inverse / np.sum(quaternion * quaternion, axis=-1, keepdims=True)
 
 
+def _shortest_arc_quaternion(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+    source_direction = np.asarray(source, dtype=np.float64)
+    target_direction = np.asarray(target, dtype=np.float64)
+    source_direction /= np.linalg.norm(source_direction)
+    target_direction /= np.linalg.norm(target_direction)
+    dot = float(np.clip(np.dot(source_direction, target_direction), -1.0, 1.0))
+    if dot >= 1.0 - 1.0e-12:
+        return np.asarray((0.0, 0.0, 0.0, 1.0), dtype=np.float64)
+    if dot <= -1.0 + 1.0e-12:
+        axis = np.cross(source_direction, (1.0, 0.0, 0.0))
+        if np.linalg.norm(axis) <= 1.0e-8:
+            axis = np.cross(source_direction, (0.0, 1.0, 0.0))
+        axis /= np.linalg.norm(axis)
+        return np.asarray((*axis, 0.0), dtype=np.float64)
+    cross = np.cross(source_direction, target_direction)
+    quaternion = np.asarray((*cross, 1.0 + dot), dtype=np.float64)
+    return quaternion / np.linalg.norm(quaternion)
+
+
+def _orthonormal_frame(
+    primary_direction: np.ndarray,
+    secondary_direction: np.ndarray,
+) -> np.ndarray:
+    """Build a right-handed frame while preserving primary-axis direction."""
+
+    primary = np.array(primary_direction, dtype=np.float64, copy=True)
+    secondary = np.array(secondary_direction, dtype=np.float64, copy=True)
+    primary_norm = float(np.linalg.norm(primary))
+    if primary_norm <= 1.0e-8:
+        raise ValueError("Bind-frame primary direction is degenerate")
+    primary /= primary_norm
+    secondary -= primary * float(np.dot(primary, secondary))
+    secondary_norm = float(np.linalg.norm(secondary))
+    if secondary_norm <= 1.0e-8:
+        raise ValueError("Bind-frame secondary direction is degenerate")
+    secondary /= secondary_norm
+    normal = np.cross(primary, secondary)
+    normal_norm = float(np.linalg.norm(normal))
+    if normal_norm <= 1.0e-8:
+        raise ValueError("Bind-frame normal is degenerate")
+    normal /= normal_norm
+    secondary = np.cross(normal, primary)
+    secondary /= np.linalg.norm(secondary)
+    return np.column_stack((primary, secondary, normal))
+
+
+def _frame_alignment_quaternion(
+    provider_primary: np.ndarray,
+    provider_secondary: np.ndarray,
+    canonical_primary: np.ndarray,
+    canonical_secondary: np.ndarray,
+) -> np.ndarray:
+    """Return the world rotation mapping one provider bind frame to canonical."""
+
+    provider_frame = _orthonormal_frame(provider_primary, provider_secondary)
+    canonical_frame = _orthonormal_frame(canonical_primary, canonical_secondary)
+    return Rotation.from_matrix(canonical_frame @ provider_frame.T).as_quat()
+
+
+def _canonical_arm_bind_alignment(
+    local_rest_matrices: np.ndarray,
+    parents: np.ndarray,
+    *,
+    skeleton: HumanoidSkeleton,
+) -> np.ndarray:
+    """Align provider arm and detailed-hand bind frames to canonical axes."""
+
+    rest = np.asarray(local_rest_matrices, dtype=np.float64)
+    hierarchy = np.asarray(parents, dtype=np.int64)
+    joint_count = len(skeleton.joints)
+    if rest.shape != (joint_count, 4, 4) or hierarchy.shape != (joint_count,):
+        raise ValueError("Body rest skeleton does not match the canonical joint count")
+    rest_world = np.empty_like(rest)
+    for joint_index, parent in enumerate(hierarchy.tolist()):
+        rest_world[joint_index] = (
+            rest[joint_index]
+            if parent == -1
+            else rest_world[parent] @ rest[joint_index]
+        )
+    positions = rest_world[:, :3, 3]
+    canonical_positions = np.zeros((joint_count, 3), dtype=np.float64)
+    for joint_index, joint in enumerate(skeleton.joints):
+        canonical_positions[joint_index] = np.asarray(
+            joint.rest_translation_m, dtype=np.float64
+        )
+        if joint.parent >= 0:
+            canonical_positions[joint_index] += canonical_positions[joint.parent]
+    alignment = np.zeros((joint_count, 4), dtype=np.float64)
+    alignment[:, 3] = 1.0
+    for side in ("Left", "Right"):
+        chain = tuple(
+            side + suffix
+            for suffix in ("Shoulder", "UpperArm", "LowerArm", "Hand")
+        )
+        for parent_name, child_name in zip(chain[:-1], chain[1:], strict=True):
+            parent_index = skeleton.index(parent_name)
+            child_index = skeleton.index(child_name)
+            provider_direction = positions[child_index] - positions[parent_index]
+            canonical_direction = np.asarray(
+                skeleton.joints[child_index].rest_translation_m,
+                dtype=np.float64,
+            )
+            if (
+                np.linalg.norm(provider_direction) <= 1.0e-8
+                or np.linalg.norm(canonical_direction) <= 1.0e-8
+            ):
+                continue
+            alignment[parent_index] = _shortest_arc_quaternion(
+                provider_direction, canonical_direction
+            )
+        alignment[skeleton.index(chain[-1])] = alignment[
+            skeleton.index(chain[-2])
+        ]
+    finger_chains = (
+        ("ThumbMetacarpal", "ThumbProximal", "ThumbDistal"),
+        ("IndexProximal", "IndexIntermediate", "IndexDistal"),
+        ("MiddleProximal", "MiddleIntermediate", "MiddleDistal"),
+        ("RingProximal", "RingIntermediate", "RingDistal"),
+        ("LittleProximal", "LittleIntermediate", "LittleDistal"),
+    )
+    if all(
+        side + joint_name in skeleton.names
+        for side in ("Left", "Right")
+        for chain in finger_chains
+        for joint_name in chain
+    ):
+        for side in ("Left", "Right"):
+            hand_index = skeleton.index(side + "Hand")
+            index_root = skeleton.index(side + "IndexProximal")
+            middle_root = skeleton.index(side + "MiddleProximal")
+            little_root = skeleton.index(side + "LittleProximal")
+            provider_palm_primary = (
+                positions[middle_root] - positions[hand_index]
+            )
+            provider_palm_secondary = (
+                positions[index_root] - positions[little_root]
+            )
+            canonical_palm_primary = (
+                canonical_positions[middle_root] - canonical_positions[hand_index]
+            )
+            canonical_palm_secondary = (
+                canonical_positions[index_root] - canonical_positions[little_root]
+            )
+            provider_palm_frame = _orthonormal_frame(
+                provider_palm_primary, provider_palm_secondary
+            )
+            canonical_palm_frame = _orthonormal_frame(
+                canonical_palm_primary, canonical_palm_secondary
+            )
+            alignment[hand_index] = Rotation.from_matrix(
+                canonical_palm_frame @ provider_palm_frame.T
+            ).as_quat()
+            provider_palm_normal = provider_palm_frame[:, 2]
+            canonical_palm_normal = canonical_palm_frame[:, 2]
+            for finger_chain in finger_chains:
+                for parent_name, child_name in zip(
+                    finger_chain[:-1], finger_chain[1:], strict=True
+                ):
+                    parent_index = skeleton.index(side + parent_name)
+                    child_index = skeleton.index(side + child_name)
+                    alignment[parent_index] = _frame_alignment_quaternion(
+                        positions[child_index] - positions[parent_index],
+                        provider_palm_normal,
+                        canonical_positions[child_index]
+                        - canonical_positions[parent_index],
+                        canonical_palm_normal,
+                    )
+                distal_index = skeleton.index(side + finger_chain[-1])
+                intermediate_index = skeleton.index(side + finger_chain[-2])
+                # The asset has no fingertip/end joint to define a distal axis.
+                alignment[distal_index] = alignment[intermediate_index]
+    return alignment
+
+
 def _compose_rest_and_delta(
     local_rest_matrices: np.ndarray,
     local_delta_xyzw: np.ndarray,
     parents: np.ndarray,
+    *,
+    world_bind_alignment_xyzw: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     rest = np.asarray(local_rest_matrices, dtype=np.float64)
     delta = np.asarray(local_delta_xyzw, dtype=np.float64)
@@ -193,6 +369,21 @@ def _compose_rest_and_delta(
     target_world = np.zeros((frame_count, joint_count, 4), dtype=np.float64)
     animated_world = np.zeros_like(target_world)
     animated_local = np.zeros_like(target_world)
+    if world_bind_alignment_xyzw is None:
+        alignment = np.zeros((joint_count, 4), dtype=np.float64)
+        alignment[:, 3] = 1.0
+    else:
+        alignment = np.array(
+            world_bind_alignment_xyzw, dtype=np.float64, copy=True
+        )
+        if alignment.shape != (joint_count, 4):
+            raise ValueError("World bind alignment must have shape [joints, 4]")
+        alignment_norms = np.linalg.norm(alignment, axis=1, keepdims=True)
+        if not np.isfinite(alignment_norms).all() or np.any(
+            alignment_norms <= 1.0e-12
+        ):
+            raise ValueError("World bind alignment must contain finite quaternions")
+        alignment /= alignment_norms
     for joint_index, parent in enumerate(hierarchy.tolist()):
         if parent == -1:
             rest_world[joint_index] = rest_local[joint_index]
@@ -205,7 +396,10 @@ def _compose_rest_and_delta(
                 target_world[:, parent], delta[:, joint_index]
             )
         animated_world[:, joint_index] = _quaternion_multiply(
-            target_world[:, joint_index], rest_world[joint_index]
+            _quaternion_multiply(
+                target_world[:, joint_index], alignment[joint_index]
+            ),
+            rest_world[joint_index],
         )
         if parent == -1:
             animated_local[:, joint_index] = animated_world[:, joint_index]
@@ -239,7 +433,8 @@ def export_animated_body_glb(
 ) -> AnimatedBodyGLBExport:
     """Export an MPFB body animated by one validated canonical body track."""
 
-    validate_body_track(track)
+    target_skeleton = skeleton_for_joint_names(track.joint_names)
+    validate_body_track(track, skeleton=target_skeleton)
     manifest = load_and_validate_body_asset(
         body_manifest_path,
         body_asset_path,
@@ -248,8 +443,8 @@ def export_animated_body_glb(
     with np.load(body_asset_path, allow_pickle=False) as archive:
         arrays = {name: archive[name] for name in archive.files}
     joint_names = tuple(str(value) for value in arrays["joint_names"].tolist())
-    if joint_names != CANONICAL_HUMANOID.names or joint_names != track.joint_names:
-        raise ValueError("Body asset, track, and canonical joint orders do not match")
+    if joint_names != target_skeleton.names or joint_names != track.joint_names:
+        raise ValueError("Body asset, track, and selected joint orders do not match")
     parents = np.asarray(arrays["parents"], dtype=np.int64)
     vertices = np.asarray(arrays["vertices_m"], dtype=np.float32)
     triangles = np.asarray(arrays["triangles"], dtype=np.int32)
@@ -258,7 +453,12 @@ def export_animated_body_glb(
     local_rest = np.asarray(arrays["local_rest_matrices"], dtype=np.float32)
     inverse_bind = np.asarray(arrays["inverse_bind_matrices"], dtype=np.float32)
     rest_translations, animated_rotations = _compose_rest_and_delta(
-        local_rest, track.local_rotations_xyzw, parents
+        local_rest,
+        track.local_rotations_xyzw,
+        parents,
+        world_bind_alignment_xyzw=_canonical_arm_bind_alignment(
+            local_rest, parents, skeleton=target_skeleton
+        ),
     )
     root_translation = (
         rest_translations[0][None, :] + track.root_translation_m
