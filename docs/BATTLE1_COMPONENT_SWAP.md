@@ -451,3 +451,69 @@ Not the fork. **A target spec.** `1.44 / 2.50 / 4.29 / 6.99 / 10.37 / 13.08 px a
 candidate goes into the substitution slot — SAM 3D Body first — *"does its residual
 distribution look like this, particularly in the tail"* is the acceptance question,
 and it is now written down before the candidate arrives rather than after.
+
+## Rung 5 — SAM 3D Body, running on our own footage
+
+Downloaded, verified and working, 2026-08-29. Checkpoint sha256 `b5a2f9d3…`,
+matched against the HuggingFace LFS hash. Worker at
+`workers/commercial_multiview/sam3d_body_pose.py`, isolated venv beside the
+checkpoint.
+
+**One frame, one person, our camera, our calibration:**
+
+```
+Using provided camera intrinsics...        fx=849.9 fy=849.8 cx=633.2 cy=356.9
+inference 45.8s                            (CPU)
+
+pred_joint_coords     (127, 3)      pred_global_rots   (127, 3, 3)
+hand_pose_params      (108,)        shape_params       (45,)
+pred_keypoints_2d/3d  (70, ·)       pred_vertices      (18439, 3)
+mhr_model_params      (204,)        pred_cam_t         (3,)
+```
+
+**127 joints, and our `mhr-skeleton-v1.json` has 127.** Checked, not assumed. The
+largest systematic term this lane has measured — landmark convention disagreeing
+with the reference — cannot arise, because there is no convention to cross.
+
+**`pred_global_rots` is the one that changes what is possible.** Our reconstruction
+estimates positions only. That is precisely what blocked the local-frame
+calibration in the arm (i) work: a body-fixed offset was found and could not be
+applied for want of orientations. This supplies them per joint.
+
+**And it takes our intrinsics.** "Using provided camera intrinsics" — the whole MoGe
+stage the reference workflow needs exists to guess the camera from one image, and
+that is a monocular problem we do not have.
+
+### What it cost to get running, and where the shims live
+
+The upstream hardcodes `.cuda()` in at least three places with no CPU path, so
+`torch.Tensor.cuda` and every module's bound `recursive_to` are redirected — **in
+our worker, never in the vendored checkout**, whose licence forbids reverse
+engineering and which should stay pristine. Reversible by deleting one file.
+
+**MPS does not work**, and cannot be made to: the TorchScript MHR character module
+uses float64 internally, which MPS rejects and which no external shim can reach. CPU
+only, ~45 s per person-frame.
+
+Two more that cost time and are worth writing down: `cam_int` must be a **torch
+tensor of shape (B,3,3)**, not numpy and not (3,3); and the system Python 3.13 has a
+broken certificate store, so `torch.hub` reports "no internet connection" until
+`SSL_CERT_FILE` points at certifi's bundle.
+
+### Licences — both verified against the text, not the tags
+
+| | |
+|---|---|
+| **SAM License**, 19 Nov 2025 | commercial use permitted |
+| **DINOv3 License**, 19 Aug 2025 | pulled by `torch.hub` for the backbone architecture, `pretrained=False`, so code not weights |
+
+**Neither has a non-commercial clause, a monthly-active-user cap, a field-of-use
+restriction, or any clause restricting the use of outputs to train other models.**
+Obligations are publication attribution, redistribution under the same terms, no
+reverse engineering, trade-control compliance, and termination on breach.
+
+**And a confirmation that fell out:** the SAM 3D repo's `assets/mhr_model.pt` is
+**byte-identical** to GEM-X's `mhr_model_lod1.pt` — same 696,110,248 bytes, same
+sha256 `352e271a…`. NVIDIA and Meta ship the same MHR weights. Skipping it saved
+696 MB of the 2.81 GB, and it independently corroborates that both vendors mean the
+same body model when they say MHR.
