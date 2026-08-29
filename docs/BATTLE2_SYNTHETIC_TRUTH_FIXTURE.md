@@ -125,7 +125,7 @@ them, and a systematic component is exactly what a training campaign could remov
 
 **Arm (i) is now the highest-value remaining measurement in this document.**
 
-## 0b. Arm (i) — run, and it found the largest detector term yet measured
+## 0b. Arm (i) — run ⚠ **its headline is retracted by §0d; the numbers below are synthetic-domain only**
 
 A human skinned from `SOMA_neutral.npz`, posed by an owned somaskel77 motion,
 rendered through the **real calibrated rig** with our own `CalibratedCamera.project`
@@ -197,7 +197,7 @@ rotates the body too little to separate the two — a turning motion would. And 
 boxes come from projected truth, which isolates the keypoint head from detection and
 makes these figures an optimistic bound on a pipeline that has box error too.
 
-## 0c. The 61 mm is body-fixed, and 85% of it calibrates away
+## 0c. The 61 mm is body-fixed ⚠ **within the synthetic domain only — see §0d**
 
 The offset could be a landmark convention travelling with the body, or a
 registration artefact fixed in the world. No owned clip turns the body more than
@@ -247,6 +247,66 @@ but it is not free and it is the reason this is a finding rather than a fix.
 The residual after calibration, 9–12 mm, is close to what the incoherent estimate
 (2.75 px ≈ 15 mm at this range) predicts — the two instruments converge once the
 component only one of them could see is removed.
+
+## 0d. The 61 mm does **not** transfer to real footage — retracting §0b and §0c
+
+The calibration was tested where it would actually be used. `BATTLE1_BODY_PROFILE_VS_MAMMA.md`
+measures our per-joint bias against MAMMA's retained fit on real footage; MAMMA is
+not truth but it is closer to it than we are, so a real offset should move us
+**toward** MAMMA. Applying the synthetic-fitted offsets to the real body track:
+
+| | mean per-joint bias vs MAMMA |
+|---|---:|
+| before | **33.9 mm** |
+| after applying the calibration | **66.3 mm** |
+
+Worse on **every one of the fourteen joints**, by +13 to +65 mm.
+
+**And it is not a sign error.** Adding the offsets instead of subtracting them also
+makes things worse — 34.7 → 61.4 mm — which is what happens when a vector of the
+right magnitude points in an unrelated direction. The direct test says the same:
+the mean cosine between the synthetic bias field and the real-versus-MAMMA bias
+field, both expressed in the same body frame, is **+0.039**. Unrelated.
+
+### So the flat-shaded render cannot measure this, and my domain check did not catch it
+
+The domain-gap check in §0b compared the **one-sided epipolar ladder** — the
+*incoherent* component — and it matched real footage to within 10–15%. I then drew
+a conclusion about the **coherent** component. Those are different quantities, and
+the check licensed the wrong one.
+
+In hindsight the failure is predictable: incoherent error is dominated by
+localisation jitter, which an untextured figure reproduces reasonably; coherent
+bias is where the model *thinks the landmark is*, which is precisely what
+appearance drives. A grey mesh with no skin texture, no clothing, no hair and one
+key light is exactly the input on which a learned landmark convention should be
+expected to drift.
+
+**Retracted:** §0b's "SOMA-77's landmarks sit 61 mm from the rig's joints" and
+§0c's "85% of it calibrates away" hold **only within the synthetic domain**. They
+say nothing measured about the real detector.
+
+**Not retracted**, because they were tested on their own terms:
+
+* the skinning, the render path and the detection path all work end to end;
+* the offset is genuinely **body-fixed within that domain** — a local-frame
+  constant fitted at yaw 0 removes 85% at yaw 90 and 180, where a world-frame
+  constant gets worse. That is a real property of the measurement, and the
+  machinery for fitting and applying such a calibration is now built and validated;
+* the calibration frame can be built from **estimated positions alone** — a body
+  frame from root, neck and both shoulders performs as well as true joint
+  orientations (9.9 vs 9.3 mm), which removes the obstacle §0c named. If a real
+  bias is ever measured, applying it needs nothing we do not already compute.
+
+### What arm (i) actually needs
+
+Photoreal renders. Skin texture, clothing, hair, an environment and real lighting —
+the Blender/Cycles path §2 deferred, and the CC0 HDRIs the plan's Battle 3 already
+budgets for. Until then arm (i) measures the pipeline, not the detector.
+
+**And the general lesson, which is the third time today:** a control has to test the
+quantity the conclusion is about. The incoherent ladder matching was a real result
+about a real quantity; it simply was not the quantity the conclusion rested on.
 
 ## 1. What this measures, and what it cannot
 
