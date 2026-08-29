@@ -236,8 +236,18 @@ static average hand scores against these observations.
 
 **There is no setting in this sweep that is simultaneously as smooth as MAMMA and
 as mobile as MAMMA.** MAMMA holds 21–32 mm of amplitude at 0.19 mm of jitter — a
-roughness of 0.008. Our best roughness anywhere on the curve is 0.059, and we
-only get there by freezing the hand.
+roughness of 0.008. Our best roughness anywhere on the curve is 0.087, at weight 20, where the hand is
+still twice as mobile as MAMMA's and twenty times as rough. (The 0.059 at weight
+2000 is not a real number — 0.05 mm of jitter over 0.1 mm of amplitude is a ratio
+of two quantities that have both gone to zero.)
+
+**This is measured on the old angle-space prior, and it is provisional for the new
+one.** `pose_smooth_weight` is also a second-difference penalty, so the same
+amplitude-for-smoothness trade should apply — but it acts on positions rather than
+angles and it covers the wrist block, so its curve has to be measured rather than
+assumed. That sweep is running; until it reports, read this section as a property
+of the term that shipped before commit `015d8e7`, not of the one that shipped in
+it.
 
 That is a structural gap, not a tuning one, and the reason is visible in what the
 two systems know. A uniform L2 penalty on acceleration cannot tell *this frame's
@@ -271,3 +281,11 @@ genuinely bad observations instead of trusting them equally. More evidence and
 better-weighted evidence both reduce the per-frame noise the temporal prior is
 currently being asked to absorb on its own, which is exactly the term that has to
 collapse the hand to do its job.
+
+One thing an inverse-variance weight would **not** fix, and the next increment
+should not inherit the assumption: **correlated detector error.** Two views
+confidently wrong in the same way — which SOMA-77 demonstrably produces on
+occluded fingers, since it reports high heatmap confidence regardless — agree
+epipolarly and would sail through a median-distance weight exactly as they sail
+through the veto. The soft-l1 loss on the data block is the only remaining
+defence against that, and it is a weak one.
