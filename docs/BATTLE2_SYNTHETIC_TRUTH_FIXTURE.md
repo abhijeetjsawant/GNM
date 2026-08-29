@@ -604,6 +604,66 @@ usual direction**: a measurement was correct and the claim attached to it was no
 "Over-flagging breaks association" is now "over-flagging costs about 0.44 mm per
 point", which is a specification rather than a cliff.
 
+## 7f. Two checks on the anchor, one reassuring and one that narrows the claim
+
+### The estimator is already beating the single-frame information bound
+
+Everything above prices a better *detector*. The unasked question is whether the
+*estimator* is near the limit for the 2D it already receives. The Cramér-Rao bound
+gives the smallest covariance any unbiased estimator can achieve for one point from
+one frame — `inv(sum_i J_i^T Sigma_i^-1 J_i)` — computed here on the real rig
+geometry over 600 sampled joint-frames:
+
+| condition | single-frame CRB | what we measure |
+|---|---:|---:|
+| four clean views at 5.5 px | 33.2 mm | **16.4 mm** |
+| mixture, all views used | 36.5 mm | **23.5 mm** |
+| mixture, oracle drops bad views | 37.0 mm | **19.0 mm** |
+
+**We are at roughly half the single-frame bound.** That is not a contradiction —
+the bound is memoryless and our pipeline smooths temporally and constrains limb
+lengths, so it aggregates information across frames and is entitled to beat it. But
+the margin is the finding: **the temporal and structural priors contribute about as
+much as the per-frame geometry does.**
+
+Two consequences. The estimator is not leaving obvious accuracy on the table, which
+supports spending the next effort on the detector. And these millimetre figures
+lean heavily on smoothing, so they are **optimistic for fast motion** — the fixture
+clips are dialogue and acting, and a sharp gesture would not benefit as much. Gate
+G10 asks for speed stratification for exactly this reason and it has not been run.
+
+### The 5.5 px anchor is an upper bound, and the headroom claim should be a bracket
+
+§7c prices precision by reading across from "we are at 5.5 px". That figure was
+fitted to cross-view epipolar disagreement. Increment 4 reports a different number
+for the same detector — **2.91 px**, quoted as 16.2 mm at the subject.
+
+They are not in conflict; they measure different things, and each is biased in a
+known direction:
+
+- **2.91 px is a *lower* bound.** It is the reprojection residual *after* fitting,
+  so the fit absorbs part of the true error, and it is gate-censored by the inlier
+  threshold, so the tail is removed before averaging. Increment 4's own doc flags
+  both.
+- **5.5 px is an *upper* bound.** Epipolar disagreement is fit-free and uncensored,
+  but it is computed through fundamental matrices built from the real calibration,
+  so any calibration error is inside it, and it conflates two views' errors.
+
+**So the detector's true per-view sigma is somewhere between roughly 3 and 5.5 px,
+and §7c's 10.4 mm of headroom is the optimistic end of that bracket.** If we are
+already at 4 px, halving to 2 px is worth less in absolute terms.
+
+**What survives the bracket intact is the ordering**, because it is a ratio between
+levers measured at the same operating point: precision dominates outlier rate
+dominates visibility dominates sigma, and sigma is last by an order of magnitude at
+every point on the table. The decision — train for position and visibility — rests
+on the ordering, not on the absolute headroom.
+
+**Cheapest thing that would settle it:** the synthetic fixture can measure it
+directly. Render arm (i), run SOMA-77 on the renders, and compare its 2D against
+the projected truth. That is a fit-free, uncensored, per-view measurement of the
+detector's own error — the one number both existing estimates are proxies for.
+
 ## 8. What we still cannot claim afterwards — and why the marker session still happens
 
 ### 8.1 Claims the fixture supports
