@@ -375,3 +375,71 @@ dependency audit's standing requirement. And the model card declares the SAM Lic
 but is **silent on whether DINOv3's own licence applies in addition**; the backbone
 is Meta's own, so the SAM License plausibly governs the whole bundle, but "plausibly"
 is exactly what the asset gate exists to replace.
+
+## Rung 4 — MAMMA's empirical 2D residual, and the fork it was meant to settle
+
+Queued to settle the mixture-versus-lognormal fork the sigma/visibility ordering
+hung on. Run, and **the value came from somewhere else** — the fork had already
+stopped mattering, because the swap priced visibility on real data at 0.16 mm
+directly, without needing a noise model at all.
+
+MAMMA's fitted landmarks reprojected through the rig, minus its own 2D. Native
+3840 px, 307,200 observations:
+
+| | p10 | p25 | p50 | p75 | p90 | p95 | p99 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| all 512 landmarks | 1.87 | 3.30 | 5.84 | 10.18 | 19.33 | 36.23 | 122.51 |
+| **visibility ≥ 0.5** | **1.44** | **2.50** | **4.29** | **6.99** | **10.37** | **13.08** | 20.74 |
+| *ours, cross-view ladder, scaled to 3840* | 1.59 | 4.11 | 9.33 | 18.10 | 34.50 | 98.40 | — |
+
+**The tail is the story, not the bulk.** In the median we are ~2.2× wide of MAMMA;
+at p95 we are **7.5× wide** — 98 px against 13. That is the same shape every other
+instrument has pointed at: our detector's failures are catastrophic where MAMMA's
+are merely imprecise, which is what "amodal on occluded landmarks" buys.
+
+**Read the bulk comparison with care.** These are different statistics — MAMMA's is
+a fit residual, ours a cross-view disagreement — and MAMMA's is *deflated* because
+its fit consumed the very landmarks it is scored against. The median ratio is
+therefore unfair to us by an unknown amount. The tail ratio is large enough that it
+is unlikely to be entirely artefact, but it is not clean either.
+
+### The fork, answered weakly
+
+| shape fitted to the visibility ≥ 0.5 residual | best fit | quality |
+|---|---|---:|
+| two-point mixture | clean 4.50 px, **2%** bad at 14 px | |log ratio| **0.147** |
+| lognormal | median 4.50 px, σ_log 0.30 | 0.186 |
+
+**The mixture wins, but neither fits well** — both are far worse than the 0.043 the
+mixture achieved on our own cross-view ladder. That is expected: a fit residual is
+shaped by the regulariser as much as by the detector, so it is the wrong quantity to
+fit a *detector* noise model to. The fork is nudged, not closed.
+
+What the fit does say clearly is that **MAMMA's residual is nearly
+homoscedastic** — 2% bad at 14 px, against the 7% at 36 px our own ladder fits.
+Tight and uniform, which is the same finding as the tail comparison from the other
+side.
+
+### And a units hypothesis for the log-sigma channel
+
+The channel's median is −4.801, so exp is 0.00822. Against a residual median of
+4.29 px:
+
+| if the units are | implied σ |
+|---|---:|
+| normalised by image width (3840) | 31.58 px — far larger than the residual, wrong |
+| **normalised by the model crop (256)** | **2.11 px — within 2× of the residual** |
+| raw pixels | 0.008 px — absurd |
+
+**Crop-normalised is the only plausible reading**, and it puts σ at about half the
+observed residual, which is the right side to be on given the residual carries fit
+error the detector's own estimate does not. Suggestive, not settled — the actual
+crop size is unverified.
+
+### The durable output
+
+Not the fork. **A target spec.** `1.44 / 2.50 / 4.29 / 6.99 / 10.37 / 13.08 px at
+3840` is what a 13.5 mm-class detector's 2D looks like through its own fit. When a
+candidate goes into the substitution slot — SAM 3D Body first — *"does its residual
+distribution look like this, particularly in the tail"* is the acceptance question,
+and it is now written down before the candidate arrives rather than after.
