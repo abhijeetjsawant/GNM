@@ -200,7 +200,23 @@ End to end, the increment moves the hand fit:
 | jitter | 32.18 mm | 1.44 mm | **−96%** |
 
 Arm D is optimistic by construction — temporal weight 4.0 was chosen after seeing
-the sweep, on this fixture. It needs confirming on data it was not selected on.
+the sweep, and it was chosen on **one cell**: subj0's left hand, C001 fold. Every
+other cell is data the choice was not made on, so the selection bias can be
+bounded:
+
+| arm | all 16 cells | 15 cells, excluding the one the weight was chosen on |
+|---|---:|---:|
+| A | 50.3 mm | 51.3 mm |
+| C | 33.5 mm | 33.6 mm |
+| D | 33.9 mm | **34.1 mm** |
+
+**0.2 mm.** The temporal weight generalises across hands and folds rather than
+fitting the cell it was picked on.
+
+That is a bound on *this* selection, not a clean held-out confirmation: all sixteen
+cells come from one five-second take with the same two performers, so they are
+correlated in ways separate footage would not be. It rules out the crude failure —
+a weight tuned to one fold — and nothing larger.
 
 ## What this does and does not settle
 
