@@ -397,6 +397,7 @@ Re-running the sweep with the trap fixed:
 |---:|---:|---:|---:|---:|
 | 0.25 | 48.6 mm | 19.90 mm | 17.42 mm | 28.9 mm |
 | **1.00** | **46.2 mm** | **5.67 mm** | **5.80 mm** | **28.2 mm** |
+| **4.00** | **45.5 mm** | **1.76 mm** | **2.12 mm** | **29.0 mm** |
 
 The same weight that returned a frozen rest-pose hand at 98.3 mm before the warm
 start now gives **3.5× less jitter with the amplitude essentially intact and the
@@ -412,11 +413,26 @@ Struck rather than deleted, because the reason it was wrong matters: the collaps
 it described was real for the term it tested, and the temptation is to generalise
 a curve from one parameterisation to another that happens to share a name.
 
-We are still not at MAMMA's operating point — 5.67 mm of jitter against 0.19, and
-46 mm of amplitude against 21–32 — and **temporal coherence still fails its
-pre-registered 0.78 mm band.** But the direction of travel is now: more prior
-buys smoothness *and* accuracy, with the collapse cliff pushed somewhere past
-weight 1.
+At weight 4 the picture is unambiguous. **Jitter falls from 26.11 mm to 1.76 mm —
+15× — while amplitude moves 48.8 → 45.5 mm, which is 7%.** Held-out error stays
+flat at 29.0 mm against the baseline's 51.5 on this fold. Across the whole sweep
+the amplitude barely moves while the jitter falls by an order of magnitude:
+
+| weight | 0.25 | 1.00 | 4.00 |
+|---|---:|---:|---:|
+| amplitude | 48.6 | 46.2 | 45.5 mm |
+| jitter | 19.90 | 5.67 | 1.76 mm |
+
+The angle prior lost 38 mm of amplitude to get one order of magnitude of
+smoothness. This one loses 3 mm. **The position-space prior separates smoothness
+from amplitude almost cleanly, and the angle-space prior cannot** — which is the
+whole content of the retracted claim, inverted.
+
+We are still not at MAMMA's operating point: 1.76 mm of jitter against 0.19, and
+45 mm of amplitude against 21–32. Whether that amplitude gap is us over-moving or
+MAMMA over-smoothing is not decidable without ground truth, and should not be
+assumed in either direction. But 1.76 mm clears increment 6's pre-registered
+2 mm coherence band, where the shipped baseline was 26 mm.
 
 ## The wrist anchor is inside every hand number
 
