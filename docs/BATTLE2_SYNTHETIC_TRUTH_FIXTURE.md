@@ -458,8 +458,16 @@ That is the strategic answer, measured against truth rather than argued from
 analogy, and it inverts the hypothesis this line of work started from.
 
 It also sets a target rather than an aspiration. **A detector at 3.0 px clean error
-puts this pipeline at 13.1 mm — MAMMA's single-person figure** — with no change to
-the estimator at all. Our detector is at 5.5 px. The task is to halve it.
+takes the estimator-plus-detector-noise term of the budget from 23.5 mm to 13.1 mm**,
+with no change to the estimator at all. Our detector is at 5.5 px, so the task is
+to halve it.
+
+**That is not a claim of MAMMA parity, and the resemblance of 13.1 to MAMMA's
+13.5 mm is a coincidence of units.** MAMMA's figure is measured against Vicon with
+calibration error, lens distortion, sync error, soft-tissue artefact and
+joint-definition error all present; this one has none of them, because §1.3 says
+the fixture cannot contain them. 13.1 mm is one term of our budget. Real error adds
+the other five.
 
 That is precisely what a synthetic-data campaign is for, and precisely what
 MAMMA's contribution was: MammaNet is a better 2D predictor, and the fitting recipe
@@ -476,6 +484,59 @@ cross-view disagreement; real detector error may be shaped differently, and in
 particular is likely correlated *across joints* — a whole limb shifting — which
 nothing here models. Three seeds per cell, 84 frames, two subjects, one pair of
 clips. **The ratios are the finding; the absolute numbers are a floor.**
+
+## 7d. Visibility is worth thirteen times what sigma is worth
+
+MammaNet emits three things per landmark: a position, a sigma, and a **visibility
+probability**. Section 7b measured the sigma. Demoting "an uncertainty head" on
+that basis alone would have discarded the half that matters.
+
+Perfect visibility here means every observation drawn from the bad component is
+declared invisible and gated out — the strongest possible version of the channel,
+so an upper bound on a learned one. Five seeds, coverage reported because gate G8
+requires it:
+
+| channel | MPJPE | sd | coverage | buys |
+|---|---:|---:|---:|---:|
+| none | 23.46 mm | 0.88 | 100.00% | — |
+| perfect **sigma** | 23.11 mm | 0.84 | 100.00% | +0.35 mm (1.5%) |
+| perfect **visibility** | **18.96 mm** | 0.59 | 100.00% | **+4.50 mm (19.2%)** |
+| both | 18.96 mm | 0.59 | 100.00% | +4.50 mm |
+| *shuffled visibility (control)* | 29.52 mm | 3.12 | 100.00% | **−6.06 mm** |
+
+**Visibility is worth 4.50 mm; sigma is worth 0.35 mm.** Thirteen times. And sigma
+adds *nothing* on top of visibility — the two arms are identical to the decimal,
+because once the bad observations are gone there is nothing left for a weight to
+say about them.
+
+The control is decisive and it is not an identity: **shuffled visibility costs
+6.06 mm**, far worse than having no channel at all. Gating out the *wrong*
+observations is much more damaging than gating out none, which is exactly what
+makes the real signal valuable.
+
+**Why visibility works where sigma does not.** Both identify the same
+observations. But sigma asks the solver to *downweight* them inside a robust
+estimator that was already discounting them, while visibility *removes* them
+before the geometry runs — which also protects everything downstream that the
+robust triangulator does not: the association step, the per-take limb-length
+estimate, and the interpolation that fills whatever failed. Perfect visibility
+recovers 4.5 mm of the 7.1 mm the outliers cost; the remaining 2.6 mm is the
+coverage lost by removing observations at all.
+
+**Revised ranking of what a better detector buys**, all measured against truth on
+this fixture:
+
+| lever | worth |
+|---|---:|
+| precision — halve the clean sigma, 5.5 → 3.0 px | **10.4 mm** |
+| **visibility** — know which landmarks are occluded | **4.5 mm** |
+| outlier rate — halve it, 7.5% → 3% | 5.5 mm |
+| sigma — know how uncertain each landmark is | 0.4 mm |
+
+So the synthetic-detector campaign should predict **position and visibility**, and
+treat the uncertainty head as optional. That is a narrower and cheaper target than
+"reimplement MammaNet's output triple", and it was arrived at by measuring both
+axes rather than one.
 
 ## 8. What we still cannot claim afterwards — and why the marker session still happens
 
@@ -504,7 +565,7 @@ The fixture's MPJPE is against **MHR/SOMA joint centres**. MAMMA's 13.5 mm is ag
 
 ---
 
-## 7b. Result — a learned sigma is redundant with robust geometry
+## 7b. Result — a learned *sigma* is redundant with robust geometry. Visibility is not.
 
 The fixture's first strategic answer, and it is a negative one. Five seeds, noise
 calibrated from our own detector, confidence floor swept so the expressible weight
@@ -579,10 +640,10 @@ which correlated noise widens because runs cluster. It needs more seeds to
 separate; it is not evidence against the effect, only an absence of evidence for
 it at this sample size.)*
 
-**Visibility is a different signal from sigma** and has not been tested. Knowing a
-landmark is *occluded* is not the same as knowing its position is *uncertain*, and
-the veto experiment in increment 6 — where recovering vetoed evidence was worth
-16.9 mm — suggests the occlusion axis carries more than the noise axis does.
+~~**Visibility is a different signal from sigma** and has not been tested.~~ It has
+now, and it is the half that matters — see §7d. Demoting "an uncertainty head"
+on the strength of the sigma result alone would have thrown away the channel that
+is worth thirteen times more.
 
 And it says nothing about **mu**. The detector's *accuracy* remains the largest
 identified term: SOMA-77 cut 2D error 25.6 → 16.2 mm by being more accurate, not
