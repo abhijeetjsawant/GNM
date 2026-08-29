@@ -459,6 +459,35 @@ The fixture's MPJPE is against **MHR/SOMA joint centres**. MAMMA's 13.5 mm is ag
 
 ---
 
+## 8a. Correction to gate G6 — it cannot fail, and that is the problem
+
+G6 was specified as the vacuity control on the headline number: re-run arm (iii)
+with a **constant** sigma equal to the population mean, and require it to land on
+arm (ii). It does — to 0.00 mm, on every seed, at every floor.
+
+That is not a result. **It is an algebraic identity.** A constant confidence
+multiplies every residual by the same `sqrt(c)`, which scales the least-squares
+objective uniformly and cannot move its minimiser. Demonstrated on a 40x5 linear
+problem: uniform 0.99 against constant 0.30 changes the solution by 0.0 to
+numerical precision, while genuinely varying weights move it.
+
+So G6 checks the plumbing — that nothing level-dependent leaks in through the
+confidence *gate* — and nothing else. It is precisely the failure this project
+adopted a standing rule against: **a gate no configuration can fail.** It was
+written into the pre-registration, and it passed four times before the identity
+was noticed.
+
+**Replacement: G6b, the shuffled-sigma control.** Give each observation a sigma
+drawn from the *same distribution* as the true one but assigned to a random
+observation, so the weights have identical marginal statistics and carry no
+information about which observation is actually bad. Arm (iii) must beat that, not
+merely beat a constant. G6b can fail: if the informed and shuffled arms land
+together, the delta is coming from the shape of the weight distribution rather
+than from knowing which observations to distrust.
+
+Every G6 "PASS" recorded before this correction should be read as a plumbing
+check.
+
 ## 9a. Correction to flag 1 — the MHR parameter mapping is **still** unrecovered
 
 **Checked before acting on it, and it does not reproduce.** Flag 1 below claims the
