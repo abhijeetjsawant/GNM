@@ -1392,6 +1392,14 @@ def reconstruct_multiview(
     *,
     subject_count: int = 2,
     sample_rate_hz: int = 30,
+    # The confidence floor is both a gate and, through sqrt(confidence), the only
+    # channel an observation has to declare how much it should be trusted. Fixed
+    # at 0.25 it confines usable confidences to [0.26, 1.0] and so caps the weight
+    # ratio at 2x -- while the detector's own measured disagreement is a mixture
+    # with an 11.8x ratio between its components. A caller that has a real
+    # per-observation sigma cannot express it through a channel that narrow, which
+    # is why this is now reachable. Default unchanged.
+    minimum_confidence: float = 0.25,
     # Cycle-consistent graph matching by default: measured identical to the
     # exhaustive search on every frame of the reference fixture, ~2x faster
     # there, and the only tractable option beyond two subjects -- the exhaustive
@@ -1477,6 +1485,7 @@ def reconstruct_multiview(
                     associated[subject, :, joint, :2],
                     associated[subject, :, joint, 2],
                     pixel_scale=pixel_scale,
+                    minimum_confidence=minimum_confidence,
                 )
                 if result is None:
                     continue
@@ -1560,6 +1569,7 @@ def reconstruct_multiview(
             world[subject],
             retained_observations[subject],
             pixel_scale=pixel_scale,
+            minimum_confidence=minimum_confidence,
         )
         recovered_counts.append(float(np.mean(recovered)))
         positions, fraction = _fill_and_smooth_positions(resolved)

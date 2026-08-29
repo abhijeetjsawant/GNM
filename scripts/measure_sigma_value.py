@@ -54,14 +54,37 @@ CONFIDENCE_FLOOR, CONFIDENCE_CEILING = 0.26, 0.99
 # are good; a minority are confidently wrong -- SOMA-77 reports peak confidences
 # in [0.895, 0.992] whether or not the landmark is occluded, which is the whole
 # reason a geometric substitute for visibility had to be invented.
-CLEAN_SIGMA_PX = 2.0
-BAD_SIGMA_PX = 15.0
-BAD_FRACTION = 0.25
+#
+# These are **fitted to our own detector**, not chosen. Cross-view epipolar
+# disagreement was measured on the real fixture with subjects properly associated
+# -- 23,987 camera-pair observations, deciles 1.06 / 2.75 / 6.15 / 11.65 / 22.79 /
+# 63.33 px at 1280x720. Modelling a pair distance as |N(0,sa) + N(0,sb)| and
+# fitting the mixture reproduces all six deciles to a mean |log ratio| of 0.051.
+#
+# The first draft used 2.0 px and 25% at 15 px, hand-set. That was optimistic by
+# 2.8x on the bulk and 4.3x in the tail, which would have understated both the
+# error and what sigma can do about it.
+#
+# Note the ratio: 11.8x between the two components, against a solver weight model
+# that cannot express more than 1.95x. The real noise is far more heteroscedastic
+# than the channel available to describe it.
+CLEAN_SIGMA_PX = 5.5
+BAD_SIGMA_PX = 65.0
+BAD_FRACTION = 0.075
 
 
-def sigma_to_confidence(sigma: np.ndarray) -> np.ndarray:
+def sigma_to_confidence(sigma: np.ndarray, floor: float) -> np.ndarray:
+    """Lorentzian inverse variance, as in the hand fit, scaled to the usable band.
+
+    The solver reads `sqrt(confidence)` as the residual weight, so the expressible
+    weight ratio is `sqrt(ceiling / floor)`. Raising the floor does not merely
+    compress the scale -- it destroys the information, because two observations
+    whose true sigmas differ elevenfold are handed weights that differ twofold.
+    """
+
     weight = 1.0 / (1.0 + (sigma / CLEAN_SIGMA_PX) ** 2)
-    return CONFIDENCE_FLOOR + (CONFIDENCE_CEILING - CONFIDENCE_FLOOR) * weight
+    confidence = CONFIDENCE_CEILING * weight / float(weight.max())
+    return np.clip(confidence, floor + 1e-6, CONFIDENCE_CEILING)
 
 
 def build_records(base, noise, confidence):
@@ -87,9 +110,10 @@ def build_records(base, noise, confidence):
     return out
 
 
-def score(cameras, records, truth, scored_names):
+def score(cameras, records, truth, scored_names, floor):
     tracks, diagnostics, positions, _ = cm.reconstruct_multiview(
-        cameras, records, subject_count=2, sample_rate_hz=30
+        cameras, records, subject_count=2, sample_rate_hz=30,
+        minimum_confidence=floor,
     )
     columns = [cm.JOINT_INDEX[name] for name in scored_names]
     positions = positions[:, :, columns, :]
@@ -112,6 +136,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", type=Path, default=Path("artifacts/synthetic-truth"))
     parser.add_argument("--seeds", type=int, default=5)
+    # The floor is both the gate and the bottom of the weight scale. Sweeping it
+    # separates "sigma is worth little" from "sigma cannot be expressed".
+    parser.add_argument("--floors", type=str, default="0.25,0.05,0.01,0.001")
     args = parser.parse_args()
 
     rig = cm.load_camera_rig(args.fixture / "camera-rig.json")
@@ -132,20 +159,33 @@ def main() -> int:
           f"{args.seeds} seeds\nnoise: {CLEAN_SIGMA_PX} px clean / {BAD_SIGMA_PX} px on "
           f"{BAD_FRACTION*100:.0f}% of observations\n")
 
-    results = {"ii": [], "iii": [], "g6": []}
-    for seed in range(args.seeds):
-        generator = np.random.default_rng(20260829 + seed)
-        bad = generator.random(shape) < BAD_FRACTION
-        sigma = np.where(bad, BAD_SIGMA_PX, CLEAN_SIGMA_PX)
-        noise = generator.normal(0.0, 1.0, shape + (2,)) * sigma[..., None]
-        uniform = np.full(shape, CONFIDENCE_CEILING)
-        informed = sigma_to_confidence(sigma)
-        constant = np.full(shape, float(informed.mean()))
-        for key, confidence in (("ii", uniform), ("iii", informed), ("g6", constant)):
-            value = score(cameras, build_records(base, noise, confidence), truth, scored_names)
-            results[key].append(value)
-            print(f"  seed {seed} arm {key:>3}: MPJPE {value['mpjpe_mm']:7.2f} mm  "
-                  f"median {value['median_mm']:6.2f}  p95 {value['p95_mm']:7.2f}", flush=True)
+    floors = [float(v) for v in args.floors.split(",")]
+    table = {}
+    for floor in floors:
+        results = {"ii": [], "iii": [], "g6": []}
+        for seed in range(args.seeds):
+            generator = np.random.default_rng(20260829 + seed)
+            bad = generator.random(shape) < BAD_FRACTION
+            sigma = np.where(bad, BAD_SIGMA_PX, CLEAN_SIGMA_PX)
+            noise = generator.normal(0.0, 1.0, shape + (2,)) * sigma[..., None]
+            uniform = np.full(shape, CONFIDENCE_CEILING)
+            informed = sigma_to_confidence(sigma, floor)
+            constant = np.full(shape, float(informed.mean()))
+            for key, confidence in (("ii", uniform), ("iii", informed), ("g6", constant)):
+                results[key].append(
+                    score(cameras, build_records(base, noise, confidence), truth, scored_names, floor)
+                )
+        table[floor] = results
+        ratio = (CONFIDENCE_CEILING / max(floor, 1e-9)) ** 0.5
+        m2 = np.mean([r["mpjpe_mm"] for r in results["ii"]])
+        m3 = np.mean([r["mpjpe_mm"] for r in results["iii"]])
+        m6 = np.mean([r["mpjpe_mm"] for r in results["g6"]])
+        s2 = np.std([r["mpjpe_mm"] for r in results["ii"]])
+        print(f"floor {floor:<6} weight ratio up to {ratio:6.1f}x | "
+              f"(ii) {m2:6.2f}  (iii) {m3:6.2f}  G6 {m6:6.2f} | "
+              f"sigma buys {m2-m3:+6.2f} mm ({(m2-m3)/m2*100:+5.1f}%) | "
+              f"G6 {'PASS' if abs(m6-m2)<=max(2*s2,0.5) else 'FAIL'}", flush=True)
+    results = table[floors[0]]
 
     def summary(key):
         v = np.asarray([r["mpjpe_mm"] for r in results[key]])
