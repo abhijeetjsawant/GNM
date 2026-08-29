@@ -197,6 +197,57 @@ rotates the body too little to separate the two — a turning motion would. And 
 boxes come from projected truth, which isolates the keypoint head from detection and
 makes these figures an optimistic bound on a pipeline that has box error too.
 
+## 0c. The 61 mm is body-fixed, and 85% of it calibrates away
+
+The offset could be a landmark convention travelling with the body, or a
+registration artefact fixed in the world. No owned clip turns the body more than
+17 degrees, so the motion cannot separate them — but the fixture can. The same
+motion was rendered at **yaw 90 and 180 degrees**, showing the detector sides of
+the body it had not seen, and a per-joint offset fitted at **yaw 0** was applied to
+those renders held out:
+
+| held out | no calibration | world-frame constant | **local-frame constant** |
+|---|---:|---:|---:|
+| yaw 90° | 62.2 mm | 54.1 mm | **9.3 mm** |
+| yaw 180° | 62.1 mm | **71.6 mm** | **12.3 mm** |
+| yaw 0° *(in sample)* | 61.3 mm | 7.7 mm | 7.3 mm |
+
+**The local-frame calibration removes 85% of the error on orientations it never
+saw.** The world-frame one does not: it barely helps at 90 degrees and at 180 it is
+*worse than no calibration at all*, which is exactly what a body-fixed offset does
+to a world-fixed correction when the body turns around.
+
+So the largest detector term this project has measured is **a landmark convention,
+not noise** — SOMA-77 places its landmarks at a repeatable anatomical position that
+is not the rig's joint centre, and a single per-joint constant in the joint's own
+frame accounts for it. The generalisation gap is small: 7.3 mm in sample against
+9.3 and 12.3 held out.
+
+### What this changes
+
+**Calibrate before training.** A one-time per-joint offset is worth roughly 52 mm
+of the 61, costs no data, no rendering campaign and no GPU, and it applies to the
+detector we already have. Nothing in Battles 3 and 4 competes with that on
+cost-effectiveness.
+
+**And it re-reads the other measurements.** The per-joint systematic biases in
+`BATTLE1_BODY_PROFILE_VS_MAMMA.md` — neck 58 mm, ankles 27, pelvis 26 — are the
+same phenomenon seen from the other side, and much of what looked like our
+reconstruction disagreeing with MAMMA is our detector's landmark convention.
+
+### The obstacle, stated plainly
+
+Applying a local-frame offset needs the joint's **orientation**, and our pipeline
+estimates positions only. The synthetic fixture had orientations for free because it
+posed the skeleton. On real footage they would have to be derived — from limb
+directions, or by fitting the MHR chain and reading orientations off it, which is
+what `fit_hand_sequence` already does for hands. That is engineering, not research,
+but it is not free and it is the reason this is a finding rather than a fix.
+
+The residual after calibration, 9–12 mm, is close to what the incoherent estimate
+(2.75 px ≈ 15 mm at this range) predicts — the two instruments converge once the
+component only one of them could see is removed.
+
 ## 1. What this measures, and what it cannot
 
 ### 1.1 The problem

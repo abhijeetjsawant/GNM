@@ -89,6 +89,11 @@ def main() -> int:
     parser.add_argument("--clip", default="autoanim_dialogue/amy-cuddy-dialogue-body")
     parser.add_argument("--frames", type=int, default=8)
     parser.add_argument("--place", type=float, nargs=2, default=(-0.71, 4.76))
+    # No owned clip turns the body more than 17 degrees, so a body-fixed landmark
+    # offset and a world-fixed one cannot be told apart from the motion alone.
+    # Yawing the character about the vertical between renders separates them: a
+    # body-fixed offset rotates with the subject and a world-fixed one does not.
+    parser.add_argument("--yaw", type=float, default=0.0, help="degrees about world Z")
     args = parser.parse_args()
     import cv2
 
@@ -104,6 +109,13 @@ def main() -> int:
     )
     vertices = vertices @ SOMA_TO_WORLD.T
     joints = joints @ SOMA_TO_WORLD.T
+    if args.yaw:
+        angle = np.radians(args.yaw)
+        spin = np.asarray([[np.cos(angle), -np.sin(angle), 0.0],
+                           [np.sin(angle), np.cos(angle), 0.0], [0.0, 0.0, 1.0]])
+        pivot = joints[0, 0].copy()
+        vertices = (vertices - pivot) @ spin.T + pivot
+        joints = (joints - pivot) @ spin.T + pivot
     # Stand the character where a performer stood, feet on the floor.
     shift = np.zeros(3)
     shift[:2] = np.asarray(args.place) - joints[0, 0, :2]
@@ -132,7 +144,8 @@ def main() -> int:
         print(f"{name}: {frames} frames rendered")
     (args.out / "truth-2d.json").write_text(json.dumps({
         "schema": "autoanim.arm-i-truth/1",
-        "clip": args.clip, "frames": frames, "width": WIDTH, "height": HEIGHT,
+        "clip": args.clip, "frames": frames, "yaw_degrees": args.yaw,
+        "width": WIDTH, "height": HEIGHT,
         "projected_joints_px": truth,
     }, indent=1), encoding="utf-8")
     np.savez_compressed(args.out / "truth-3d.npz", joints_world_m=joints)
