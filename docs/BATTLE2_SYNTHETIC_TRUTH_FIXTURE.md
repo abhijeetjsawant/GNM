@@ -459,6 +459,41 @@ The fixture's MPJPE is against **MHR/SOMA joint centres**. MAMMA's 13.5 mm is ag
 
 ---
 
+## 9a. Correction to flag 1 — the MHR parameter mapping is **still** unrecovered
+
+**Checked before acting on it, and it does not reproduce.** Flag 1 below claims the
+249 MHR parameter names can be scraped from the TorchScript pickle in order, and
+recommends regenerating `mhr-skeleton-v1.json` with mapped limits and "correcting"
+the comment at `src/autoanim_gnm/hand_fit.py:71`. Independent attempt:
+
+- `mhr_model_lod6.pt` carries only 49 strings in `data.pkl` and no parameter names
+  at all; `mhr_model_lod1.pt` carries 522, of which **104** are parameter-shaped.
+- The three indices the flag cites do not land where it says. Against the raw
+  string pool, index 7 is `l_foot`, 24 is `r_talocrural`, 79 is `l_lowarm`.
+  Against the parameter-shaped subsequence, 7 is `root_rz`, 24 is
+  `l_uparm_twist`, 79 is `l_middle1_rz`. Neither reproduces `spine_twist0`,
+  `neck_twist`, `r_index1_rz`.
+- And the count is wrong in a way that settles it: `parameter_limits_unmapped`
+  carries 198 limits whose `parameter_index` reaches **203**, so the parameter
+  space has at least 204 entries. A scrape yielding 104 parameter-shaped strings
+  cannot be that list. `pickletools` emits each distinct string **once, at first
+  appearance** — it is a deduplicated pool, not an ordered list, so index
+  correspondence was never going to survive it.
+
+The "validated by anatomical coherence" caveat was carrying the whole claim, and
+coherence is not validation: any monotone subsequence of a joint-parameter
+vocabulary reads plausibly.
+
+**So the comment at `hand_fit.py:71` is correct and stands.** It says a wrong limit
+is worse than none, because it silently constrains the solve to the wrong
+manifold — and acting on flag 1 would have written exactly that wrong limit into
+the solver, on the strength of a plausible-looking triple. Recovering the mapping
+still needs `pymomentum` or a `get_parameter_names()` call on a machine that can
+load the 696 MB module; until then `ANATOMICAL_LIMITS_RAD` stays.
+
+**Flag 1 below is left as written, struck by this section, because the shape of the
+error is the useful part.**
+
 ## 9. Open flags — carried forward unresolved
 
 Recorded here rather than smoothed over. Each was raised by a scout who could not close it.
