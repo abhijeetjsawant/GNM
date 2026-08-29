@@ -554,6 +554,46 @@ treat the uncertainty head as optional. That is a narrower and cheaper target th
 "reimplement MammaNet's output triple", and it was arrived at by measuring both
 axes rather than one.
 
+## 7e. What the visibility head has to be — precision, not recall
+
+4.5 mm is what a *perfect* visibility channel buys, and perfection is not a
+specification. A trainable head has a recall — how many genuinely bad observations
+it flags — and a false-positive rate on the good ones, and flagging a good
+observation costs coverage. Sweeping both, three seeds per cell, against a 23.46 mm
+no-channel baseline and an 18.96 mm perfect-channel bound:
+
+| recall | 0% false positives | 2% | 5% | 10% |
+|---|---:|---:|---:|---:|
+| 50% | 21.3 mm | 22.3 mm | 24.0 mm | **fails** |
+| 70% | 20.9 mm | 21.9 mm | **fails** | **fails** |
+| 90% | 19.6 mm | 20.4 mm | **fails** | **fails** |
+| 100% | 19.1 mm | 19.8 mm | **fails** | **fails** |
+
+**"Fails" is literal.** Those runs raise
+`Cross-view subject association found no valid solution` — the pipeline does not
+degrade, it stops. Gating out enough good observations leaves too few views to
+match subjects across cameras, and association has no fallback for that.
+
+Two things follow, and they invert the intuition.
+
+**Precision matters far more than recall.** At zero false positives, even a head
+that catches only half the bad observations buys 2.2 mm, and a perfect one buys
+4.4 mm — so the whole useful range of recall is worth about 2 mm. But moving from
+0% to 5% false positives costs 2.7 mm at 50% recall and destroys the run at higher
+recall. **A cautious head that flags little is worth much more than an eager one
+that flags too much**, and at 5% false positives the channel is already worse than
+having no channel at all.
+
+**And our pipeline has a brittleness worth fixing independently of any detector.**
+Association failing hard rather than degrading is a robustness defect: a frame that
+loses too many observations should fall back, not raise. That is a pipeline item,
+not a Battle 4 item, and this fixture found it by accident while measuring
+something else.
+
+**The spec for Battle 4's visibility head, then:** optimise for precision at a
+false-positive rate at or below roughly 2%, and accept whatever recall that
+allows. Training a head to flag aggressively would be actively harmful.
+
 ## 8. What we still cannot claim afterwards — and why the marker session still happens
 
 ### 8.1 Claims the fixture supports
