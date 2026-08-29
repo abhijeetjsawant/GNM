@@ -475,11 +475,27 @@ it feeds is one we have already reimplemented. So Battle 3 and Battle 4 keep the
 place in the plan — **aimed at accuracy, with the uncertainty head demoted from
 headline feature to nice-to-have.**
 
+### Two things the table shows that are worth naming
+
+**Degradation is asymmetric around where we sit.** Between 1.5 and 5.5 px the error
+is very nearly linear in the 2D noise — 4.5 → 16.4 mm at zero outliers, a 3.64x
+rise for a 3.67x rise in sigma, which is what triangulation should do. Above 5.5 px
+it turns super-linear: 8.0 px gives 34.3 mm, 2.09x for a 1.45x rise. Something
+breaks rather than degrades there, most plausibly the association step, which has
+to match subjects across views before any triangulation happens. Untested, but it
+means **a detector that gets slightly worse costs more than one that gets equally
+better gains**, and our 5.5 px is close to that knee.
+
 ### What this table is not
 
 Synthetic, so it carries none of calibration error, lens distortion, sync error,
 soft-tissue artefact or joint-definition error, and §1.3 lists all five as
-first-order on real footage. The noise is a two-component Gaussian fitted to
+first-order on real footage. **One qualification on that, in our favour:** the
+noise model was fitted to cross-view epipolar disagreement, and those distances are
+computed through fundamental matrices built from the real calibration. Whatever
+calibration error that rig carries is therefore inside the fitted sigma already, so
+"no calibration error" is slightly overstated — a trace of it leaked in through the
+noise, which makes these figures marginally pessimistic rather than optimistic. The noise is a two-component Gaussian fitted to
 cross-view disagreement; real detector error may be shaped differently, and in
 particular is likely correlated *across joints* — a whole limb shifting — which
 nothing here models. Three seeds per cell, 84 frames, two subjects, one pair of
