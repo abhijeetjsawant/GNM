@@ -249,6 +249,13 @@ noise model fitted to our own detector's cross-view disagreement:
 | **p, visibility** | **4.5 mm** | and σ adds nothing on top of it |
 | σ, per-landmark uncertainty | **0.4 mm** | redundant with `triangulate_point`'s RANSAC |
 
+**And the visibility head has a spec, not just a value: one point of precision is
+worth ten of recall.** 50→100% recall at zero false positives buys 2.2 mm, 0.044 mm
+per point; 0→10% false positives at full recall costs 4.4 mm, 0.44 mm per point.
+Train it cautious — a head that flags half the bad observations and never flags a
+good one beats one that catches everything at a 10% false-positive rate. Useful
+region is false positives below about 5%.
+
 So **train for position and visibility; treat the σ head as optional.** A σ head is
 worth 1.5% of MPJPE to a pipeline that already triangulates robustly, because the
 inlier search identifies the same observations by geometry without being told. The
