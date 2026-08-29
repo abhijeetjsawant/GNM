@@ -459,6 +459,76 @@ The fixture's MPJPE is against **MHR/SOMA joint centres**. MAMMA's 13.5 mm is ag
 
 ---
 
+## 7b. Result — a learned sigma is redundant with robust geometry
+
+The fixture's first strategic answer, and it is a negative one. Five seeds, noise
+calibrated from our own detector, confidence floor swept so the expressible weight
+ratio runs from 2x to 31.5x:
+
+| floor | weight ratio | (ii) uniform | (iii) true sigma | shuffled sigma |
+|---|---:|---:|---:|---:|
+| 0.25 | 2.0x | 23.46 mm | 23.11 mm | 24.61 mm |
+| 0.01 | 9.9x | 23.46 mm | 23.62 mm | 27.37 mm |
+| 0.001 | 31.5x | 23.46 mm | 23.62 mm | 27.37 mm |
+
+**A perfect per-observation sigma buys nothing — 0.35 mm at best, negative at the
+wider settings, against a 0.88 mm seed spread.** Widening the channel does not
+help, so the earlier suspicion that the 0.25 floor was the binding constraint is
+wrong. The floor was worth exposing; it was not the answer.
+
+The control says the machinery works. **Shuffled sigma — the same weights, assigned
+to the wrong observations — costs 1.2 to 3.9 mm**, and the penalty grows as the
+channel widens. The solver is demonstrably sensitive to these weights. It simply
+has nothing to gain from being told what it already knows.
+
+### Why, measured rather than assumed
+
+Three hypotheses, two of them mine and wrong, recorded because the eliminations are
+the argument:
+
+**"The outliers cost nothing, so there is nothing to recover."** Wrong. Removing
+the bad component entirely takes MPJPE from 23.5 mm to **16.4 mm**; raising it to
+30% takes it to **88.0 mm**. The contamination costs 7.1 mm and the pipeline is
+very far from immune to it.
+
+**"The cost concentrates where several views are bad at once, which no weighting
+can repair."** Also wrong. Stratifying error by how many of the four views were
+drawn from the bad component gives 23.4 / 23.4 / 27.4 / 16.2 mm for zero, one, two
+and three bad views. **Flat.** Two-or-more-bad accounts for 3.0% of joint-frames
+and 3.4% of the error.
+
+**What is actually happening.** Contamination costs coverage and raw accuracy
+together — raw triangulation coverage falls 99.4% → 91.8% and raw error rises
+31.6 → 38.3 mm — and `triangulate_point` already runs a RANSAC-style inlier search
+at a 40 px threshold. An observation drawn at sigma 65 px is identified as an
+outlier **by geometry**, without being told. So the sigma channel is not redundant
+with the noise; it is redundant with **the robust estimator we already have**, and
+handing it a sigma tells it what it has already worked out.
+
+### What this means for the strategy, and what it does not
+
+It removes one plank from the argument for training our own detector. "MammaNet
+emits a per-landmark sigma and we cannot" was the strongest-sounding reason to
+believe the detector is the battle. On this evidence a sigma head is worth
+approximately nothing to a pipeline that already triangulates robustly.
+
+**Three things it does not settle, and they matter.**
+
+The noise here is **independent across frames**, which is the friendliest case for
+the temporal prior that follows and the least friendly for a sigma. Real occlusion
+persists; a landmark hidden this frame is hidden next frame, and no smoother
+averages that away. The correlated run is arm (iv) and it is not done.
+
+**Visibility is a different signal from sigma** and has not been tested. Knowing a
+landmark is *occluded* is not the same as knowing its position is *uncertain*, and
+the veto experiment in increment 6 — where recovering vetoed evidence was worth
+16.9 mm — suggests the occlusion axis carries more than the noise axis does.
+
+And it says nothing about **mu**. The detector's *accuracy* remains the largest
+identified term: SOMA-77 cut 2D error 25.6 → 16.2 mm by being more accurate, not
+by being better calibrated. A synthetic-data campaign aimed at accuracy is
+untouched by this result; one aimed at an uncertainty head is not.
+
 ## 7a. A consistency check the fixture passed without being asked to
 
 Two independent measurements land in the same place, and neither was tuned to the

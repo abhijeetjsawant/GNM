@@ -179,6 +179,29 @@ earlier number came from.** The four-hand mean is 40.5 and 33.5. Arm A is now
 running on all four hands so the baseline is a like-for-like figure rather than
 an extrapolation from the easiest case.
 
+## Arm D — the same weighting at temporal weight 4
+
+| arm | held-out mean | worst fold | jitter | amplitude |
+|---|---:|---:|---:|---:|
+| **A** baseline | 50.3 mm | 93.0 mm | 32.18 mm | 52.6 mm |
+| **C** weights, prior at 1.0 | 33.5 mm | 60.0 mm | 4.57 mm | 39.0 mm |
+| **D** weights, prior at 4.0 | 33.9 mm | **53.0 mm** | **1.44 mm** | 35.7 mm |
+
+**Arm D clears the jitter clause** — 1.44 mm against the pre-registered 2 mm — and
+takes another 7 mm off the worst fold, at no cost in mean held-out error. Two of
+the three clauses now pass. The band still fails, on held-out alone.
+
+End to end, the increment moves the hand fit:
+
+| | baseline | arm D | |
+|---|---:|---:|---:|
+| mean held-out | 50.3 mm | 33.9 mm | **−33%** |
+| worst fold | 93.0 mm | 53.0 mm | **−43%** |
+| jitter | 32.18 mm | 1.44 mm | **−96%** |
+
+Arm D is optimistic by construction — temporal weight 4.0 was chosen after seeing
+the sweep, on this fixture. It needs confirming on data it was not selected on.
+
 ## What this does and does not settle
 
 Pre-registered reading: *fail, with the recovered evidence and both priors in* →
