@@ -237,6 +237,31 @@ same way.
   farthest-point-sampled from the MHR surface, weighted to hands/feet/head)
 - Outputs: μ, uncertainty σ, visibility p. Gaussian NLL on landmarks, BCE on
   visibility
+
+**Priced, 2026-08-29, against synthetic ground truth.** The three outputs are not
+worth the same, and the ordering is the opposite of what this plan assumed. From
+`BATTLE2_SYNTHETIC_TRUTH_FIXTURE.md` §7b–7d, measured on true 3D error with the
+noise model fitted to our own detector's cross-view disagreement:
+
+| output | what it buys | note |
+|---|---:|---|
+| **μ, halving clean error 5.5 → 3.0 px** | **10.4 mm** | the dominant term by far |
+| **p, visibility** | **4.5 mm** | and σ adds nothing on top of it |
+| σ, per-landmark uncertainty | **0.4 mm** | redundant with `triangulate_point`'s RANSAC |
+
+So **train for position and visibility; treat the σ head as optional.** A σ head is
+worth 1.5% of MPJPE to a pipeline that already triangulates robustly, because the
+inlier search identifies the same observations by geometry without being told. The
+visibility head is worth thirteen times as much, because it removes bad
+observations *before* the geometry — which also protects association, the per-take
+limb-length estimate and the interpolation, none of which the robust triangulator
+covers.
+
+Two scope notes. This pricing is for the **body** pipeline; `fit_hand_sequence` has
+no per-observation RANSAC, and there the same geometric signal was worth 7.1 mm
+(increment 6). And the fixture contains no calibration, distortion, sync,
+soft-tissue or joint-definition error, so these are ratios between levers, not
+absolute error budgets.
 - Then: robust reprojection fit to MHR weighted by σ and p, shared per-subject
   shape, temporal term, L-BFGS
 
