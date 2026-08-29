@@ -554,45 +554,55 @@ treat the uncertainty head as optional. That is a narrower and cheaper target th
 "reimplement MammaNet's output triple", and it was arrived at by measuring both
 axes rather than one.
 
-## 7e. What the visibility head has to be — precision, not recall
+## 7e. What the visibility head has to be — one point of precision is worth ten of recall
 
 4.5 mm is what a *perfect* visibility channel buys, and perfection is not a
 specification. A trainable head has a recall — how many genuinely bad observations
 it flags — and a false-positive rate on the good ones, and flagging a good
 observation costs coverage. Sweeping both, three seeds per cell, against a 23.46 mm
-no-channel baseline and an 18.96 mm perfect-channel bound:
+no-channel baseline and an 18.96 mm perfect-channel bound. Coverage is 100% in
+every cell, as gate G8 requires:
 
-| recall | 0% false positives | 2% | 5% | 10% |
+| recall | 0% FP | 2% FP | 5% FP | 10% FP |
 |---|---:|---:|---:|---:|
-| 50% | 21.3 mm | 22.3 mm | 24.0 mm | **fails** |
-| 70% | 20.9 mm | 21.9 mm | **fails** | **fails** |
-| 90% | 19.6 mm | 20.4 mm | **fails** | **fails** |
-| 100% | 19.1 mm | 19.8 mm | **fails** | **fails** |
+| 50% | 21.3 mm | 22.3 | 24.0 | 26.5 |
+| 70% | 20.9 | 21.9 | 23.5 | 25.4 |
+| 90% | 19.6 | 20.4 | 21.7 | 24.3 |
+| 100% | **19.1** | 19.8 | 21.0 | 23.5 |
 
-**"Fails" is literal.** Those runs raise
-`Cross-view subject association found no valid solution` — the pipeline does not
-degrade, it stops. Gating out enough good observations leaves too few views to
-match subjects across cameras, and association has no fallback for that.
+**The exchange rate is the finding.** Going from 50% to 100% recall at zero false
+positives buys 2.2 mm — 0.044 mm per point of recall. Going from 0% to 10% false
+positives at full recall costs 4.4 mm — 0.44 mm per point. **One point of
+false-positive rate costs what ten points of recall gain.**
 
-Two things follow, and they invert the intuition.
+So the head should be trained to be cautious. A conservative predictor that flags
+half the bad observations and never flags a good one (21.3 mm) beats an eager one
+that catches everything at a 10% false-positive rate (23.5 mm, which is the
+no-channel baseline — the whole benefit spent).
 
-**Precision matters far more than recall.** At zero false positives, even a head
-that catches only half the bad observations buys 2.2 mm, and a perfect one buys
-4.4 mm — so the whole useful range of recall is worth about 2 mm. But moving from
-0% to 5% false positives costs 2.7 mm at 50% recall and destroys the run at higher
-recall. **A cautious head that flags little is worth much more than an eager one
-that flags too much**, and at 5% false positives the channel is already worse than
-having no channel at all.
+Useful region: **false positives below about 5%**, where every recall level still
+beats no channel. Above that only high recall stays ahead, and at 10% the channel
+is worth nothing at any recall.
 
-**And our pipeline has a brittleness worth fixing independently of any detector.**
-Association failing hard rather than degrading is a robustness defect: a frame that
-loses too many observations should fall back, not raise. That is a pipeline item,
-not a Battle 4 item, and this fixture found it by accident while measuring
-something else.
+### Correction: an earlier version of this table said "fails", and that was our bug
 
-**The spec for Battle 4's visibility head, then:** optimise for precision at a
-false-positive rate at or below roughly 2%, and accept whatever recall that
-allows. Training a head to flag aggressively would be actively harmful.
+The first run of this grid produced seven cells that did not degrade but **stopped**,
+raising `Cross-view subject association found no valid solution`. I read that as a
+property of visibility gating — "over-flagging breaks association" — and wrote it
+down as a finding.
+
+It was a defect in `reconstruct_multiview`: a single unmatchable frame aborted the
+entire take instead of falling through to interpolation. Fixed, counted in
+diagnostics as `frames_without_association`, and the seven cells then produced the
+ordinary numbers above.
+
+Two things worth keeping from that. **The fixture found a real pipeline defect
+while measuring something else**, and it is a nasty one — the pipeline failed
+hardest precisely where a detector improvement was being evaluated, so the
+improvement would have read as harmful. And **the first conclusion was wrong in the
+usual direction**: a measurement was correct and the claim attached to it was not.
+"Over-flagging breaks association" is now "over-flagging costs about 0.44 mm per
+point", which is a specification rather than a cliff.
 
 ## 8. What we still cannot claim afterwards — and why the marker session still happens
 
