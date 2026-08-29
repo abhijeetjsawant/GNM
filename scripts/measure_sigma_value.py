@@ -11,10 +11,16 @@ Three arms over the same noise realisation, so the comparison is paired:
 * **(ii)** heteroscedastic noise, every observation declared equally reliable --
   the solver cannot tell the good from the bad;
 * **(iii)** the same noise, with the true sigma handed to the solver;
-* **G6**, the vacuity control -- arm (iii) re-run with a *constant* sigma equal to
-  the population mean. It must land on arm (ii). If it does not, the (ii)->(iii)
-  delta is a prior rebalance rather than a sigma effect, and the headline number
-  means nothing.
+* **G6**, a plumbing check -- arm (iii) re-run with a *constant* sigma. It lands on
+  arm (ii) to 0.00 mm, and it always will: a constant confidence multiplies every
+  residual by the same sqrt(c), which scales the objective uniformly and cannot
+  move its minimiser. It confirms nothing level-dependent leaks in through the
+  confidence *gate*, and nothing more. It is not a control.
+* **G6b**, the control that can actually fail -- the same sigmas, **shuffled**
+  across observations. The weights keep their exact marginal distribution and lose
+  all information about *which* observation is bad. Arm (iii) has to beat this, not
+  beat a constant. If informed and shuffled land together, the delta comes from the
+  shape of the weight distribution rather than from knowing what to distrust.
 
 The sigma channel is `confidence`, which `solve_sequence_positions` already
 consumes as `sqrt(clip(confidence, 0, 1))` on the residual -- the same form as the
@@ -162,7 +168,7 @@ def main() -> int:
     floors = [float(v) for v in args.floors.split(",")]
     table = {}
     for floor in floors:
-        results = {"ii": [], "iii": [], "g6": []}
+        results = {"ii": [], "iii": [], "g6": [], "g6b": []}
         for seed in range(args.seeds):
             generator = np.random.default_rng(20260829 + seed)
             bad = generator.random(shape) < BAD_FRACTION
@@ -171,7 +177,9 @@ def main() -> int:
             uniform = np.full(shape, CONFIDENCE_CEILING)
             informed = sigma_to_confidence(sigma, floor)
             constant = np.full(shape, float(informed.mean()))
-            for key, confidence in (("ii", uniform), ("iii", informed), ("g6", constant)):
+            shuffled = generator.permutation(informed.ravel()).reshape(shape)
+            for key, confidence in (("ii", uniform), ("iii", informed),
+                                    ("g6", constant), ("g6b", shuffled)):
                 results[key].append(
                     score(cameras, build_records(base, noise, confidence), truth, scored_names, floor)
                 )
@@ -180,11 +188,13 @@ def main() -> int:
         m2 = np.mean([r["mpjpe_mm"] for r in results["ii"]])
         m3 = np.mean([r["mpjpe_mm"] for r in results["iii"]])
         m6 = np.mean([r["mpjpe_mm"] for r in results["g6"]])
+        m6b = np.mean([r["mpjpe_mm"] for r in results["g6b"]])
         s2 = np.std([r["mpjpe_mm"] for r in results["ii"]])
         print(f"floor {floor:<6} weight ratio up to {ratio:6.1f}x | "
-              f"(ii) {m2:6.2f}  (iii) {m3:6.2f}  G6 {m6:6.2f} | "
-              f"sigma buys {m2-m3:+6.2f} mm ({(m2-m3)/m2*100:+5.1f}%) | "
-              f"G6 {'PASS' if abs(m6-m2)<=max(2*s2,0.5) else 'FAIL'}", flush=True)
+              f"(ii) {m2:6.2f}  (iii) {m3:6.2f}  shuffled {m6b:6.2f} | "
+              f"sigma buys {m2-m3:+6.2f} mm over uniform, "
+              f"{m6b-m3:+6.2f} mm over shuffled | "
+              f"G6b {'PASS' if (m6b - m3) > max(s2, 0.3) else 'FAIL'}", flush=True)
     results = table[floors[0]]
 
     def summary(key):
