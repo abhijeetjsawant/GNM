@@ -204,3 +204,50 @@ a statement about temporal coherence, and the two must now be quoted separately:
 
 The increment's headline should therefore be read as *the geometry is right and
 the motion is not yet usable*, not as a pass.
+
+## The fix, and what the sweep says about how far it goes
+
+### The prediction held: smoothing improves accuracy, it does not just tidy it
+
+Sweeping the old angle-space weight on subj0's left hand, held out against C001
+(the worst of the four folds, so these are the pessimistic column):
+
+| `smooth_weight` | amplitude | jitter | held-out C001 |
+|---:|---:|---:|---:|
+| 2 (shipped) | 48.8 mm | 26.11 mm | 51.5 mm |
+| **20** | 47.1 mm | **4.10 mm** | **38.1 mm** |
+| 100 | 9.0 mm | 0.73 mm | 42.0 mm |
+| 500 | 0.9 mm | 0.05 mm | 42.6 mm |
+| 2000 | 0.1 mm | 0.00 mm | 42.6 mm |
+
+At weight 20 the jitter falls 6× **and the held-out error falls by 13 mm.** That
+is the prediction from the mechanism section, confirmed: the fit was chasing
+per-frame detector noise, and noise independent across frames averages down. A
+prior that was only trading accuracy for smoothness would have moved the last
+column the other way.
+
+### But a plain second-difference penalty cannot reach MAMMA's operating point
+
+Look at what happens between 20 and 100. Amplitude falls from 47.1 mm to 9.0 mm —
+through the whole of MAMMA's 21–32 mm band and out the far side, into the
+pre-registered **collapsed** band. By 500 the hand is frozen: 0.9 mm of
+excursion, and the held-out error plateaus at 42.6 mm, which is simply what a
+static average hand scores against these observations.
+
+**There is no setting in this sweep that is simultaneously as smooth as MAMMA and
+as mobile as MAMMA.** MAMMA holds 21–32 mm of amplitude at 0.19 mm of jitter — a
+roughness of 0.008. Our best roughness anywhere on the curve is 0.059, and we
+only get there by freezing the hand.
+
+That is a structural gap, not a tuning one, and the reason is visible in what the
+two systems know. A uniform L2 penalty on acceleration cannot tell *this frame's
+observation is noise* from *this frame the hand really moved* — it damps both in
+proportion. MAMMA can, because MammaNet emits a per-landmark σ and a visibility
+probability, and the fit weights each observation by them. Our substitute is the
+binary cross-view gate: it discards 60–77% and then treats everything it keeps as
+equally trustworthy.
+
+**So the next lever after this one is per-observation uncertainty, not a bigger
+weight.** The cross-view agreement distance the gate already computes is a
+continuous quantity that is being thresholded into a bit; using it as an inverse
+variance instead costs nothing new to measure.
