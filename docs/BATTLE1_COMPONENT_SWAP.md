@@ -555,7 +555,7 @@ right for MAMMA, is still right today, and the compute split is worth re-opening
 *after* the substitution is measured rather than before. It would be the third time
 this session that a plausible inference got ahead of a measurement.
 
-## Rung 5 result — SAM 3D Body's 2D is **worse** than SOMA-77's, and that was predictable
+## ~~Rung 5 result — SAM 3D Body's 2D is worse than SOMA-77's~~ — **REFUTED, see the correction below**
 
 Through the substitution slot: same footage, same frames, same four cameras, same
 statistic — one-sided cross-view epipolar disagreement, which needs no reference and
@@ -614,3 +614,64 @@ untested and neither is touched by this result:
 **Limits.** Ten frames, two subjects, one clip, CPU inference, and the 2D compared
 here is a by-product of the model rather than its purpose. This is a negative about
 one integration shape, recorded before it could become an assumption about three.
+
+## Rung 5 correction — the negative does not survive, and the comparison was three variables
+
+The published ratios compared SAM 3D's **10-frame** ladder against SOMA-77's
+**hard-coded full-take row** — 23,987 pairs over 150 frames, produced by a different
+association path. Advertised as one variable; it was at least three. Re-measured
+through the *same* harness, the *same* ten frames, the *same* association rule:
+
+| | p10 | p25 | p50 | p75 | p90 | p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| SOMA-77, **identical frames and harness** | 0.63 | 1.70 | 4.00 | 9.65 | 57.58 | 93.83 |
+| SAM 3D Body | 1.02 | 2.72 | 5.68 | 10.04 | 51.65 | 88.44 |
+| **corrected ratio** | 1.61 | 1.60 | **1.42** | 1.04 | **0.90** | **0.94** |
+| *as published, against the wrong row* | | | *1.83* | | | *2.70* |
+
+**In the tail SAM 3D is slightly better, not 2.7× worse.** The median gap shrinks
+from 1.83× to 1.42×. And SOMA-77's own tail on these ten frames — 57.58 / 93.83 —
+is five times its full-take tail of 11.49 / 32.79, which says the tail here is
+**association contamination affecting both detectors**, not detector behaviour: the
+160 px gate on a clip where two people are pushing and lifting each other admits
+cross-person pairs, and a cross-person pair lands straight in the epipolar tail.
+That was the exact number I quoted as the mechanism's signature.
+
+### And the instrument was measuring the wrong axis anyway
+
+The deeper objection, and it is the load-bearing one. §0b of the fixture doc states
+this instrument's limit verbatim: **epipolar disagreement sees only the
+cross-view-incoherent component.** The 2D rung decomposed SOMA-77's error against the
+shared reference into **18.6 px of coherent bias plus 16.6 px of spread** — the bias
+is the *larger* term, and it passes through triangulation untouched while incoherent
+error averages down over four views and is tail-gated by the inlier search.
+
+SAM 3D's 2D are reprojections of a monocular fit, so the ladder sees essentially
+**all** of its error. For SOMA-77 it sees roughly **half**. And on the axis it cannot
+see, SAM 3D emits `pred_joint_coords` on our own 127-joint rig, so its convention
+bias against our body model is zero by construction, where SOMA-77 carries the
+33.9 mm this project spent a day excavating plus two permanently absent joints.
+
+**A detector 1.4× worse on the axis that averages away and near-zero on the axis that
+does not can win end to end.** So the ladder cannot rank these two families, and
+"SAM 3D is worse" is withdrawn.
+
+**Seventh instance today of a correct measurement carrying a claim it does not
+support** — and the first where the claim was already committed before the check.
+The measurement was real; the sentence was not.
+
+### What would actually rank them
+
+Not this. Two reference-free instruments, neither run:
+
+* **cross-view consistency of SAM 3D's four per-view fits in world frame**, decomposed
+  **along-ray versus transverse**. Monocular depth is the weak axis, and that single
+  decomposition also settles whether fusion is well-conditioned — mostly along-ray
+  means four rays intersect; large transverse means fusion averages four bad fits.
+  Its blindness must be named in advance: four monocular fits can agree and be wrong
+  the same way through shared appearance bias, so it is a **necessary condition for
+  fusion, never an accuracy claim**;
+* **the coherent axis, surface-to-surface** — SAM 3D's 18,439-vertex mesh against
+  MAMMA's 10,475-vertex mesh, point-to-surface in both directions. Not joint-to-joint:
+  that needs an MHR-to-SMPL-X mapping research §9a says is unrecovered, and
+  hand-authoring one is the defect class this project has banned.
