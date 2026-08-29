@@ -92,19 +92,69 @@ temporal prior, and a smooth answer can still be a wrong one.** This measurement
 separates *coherent* from *thrashing*. It says nothing about accuracy — that
 claim rests on the 35 mm held-out number and nothing else.
 
-## Result — **thrashing, confirmed**
+## Result — **thrashing, confirmed on all four hands**
 
-| | hand | amplitude | jitter | roughness |
-|---|---:|---:|---:|---:|
-| ours, subj0 left | 82.1 mm | 48.8 mm (59.5%) | **26.11 mm** | 0.535 |
-| MAMMA, subj0 left | 108.9 mm | 21.0 mm (19.3%) | 0.19 mm | 0.008 |
+Amplitude and jitter are in the wrist-local frame (articulation only). The two
+right-hand columns remove only wrist *translation*, so they also carry wrist
+rotation — see the section below on why that distinction turned out to matter.
 
-**137× MAMMA's jitter, against a pre-registered thrashing threshold of 0.78 mm.**
-Not close to the band, not ambiguous. The angle variance was not gauge freedom —
-the fingertips genuinely jump between frames. Amplitude is 59.5% of hand length
-against MAMMA's 19.3%, which is not a hand articulating, it is a hand flailing.
+| hand | length | amplitude | jitter | roughness | ampl. +wrist | jitter +wrist |
+|---|---:|---:|---:|---:|---:|---:|
+| **ours** subj0 l | 82.1 mm | 48.8 mm (59.5%) | **26.11 mm** | 0.535 | 108.1 mm | **50.65 mm** |
+| MAMMA subj0 l | 119.0 mm | 22.8 mm (19.1%) | 0.18 mm | 0.008 | 107.7 mm | 3.20 mm |
+| **ours** subj0 r | 82.1 mm | 51.4 mm (62.6%) | **31.53 mm** | 0.613 | 116.0 mm | **81.85 mm** |
+| MAMMA subj0 r | 117.1 mm | 26.5 mm (22.6%) | 0.19 mm | 0.007 | 114.6 mm | 3.13 mm |
+| **ours** subj1 l | 82.1 mm | 58.9 mm (71.8%) | **30.06 mm** | 0.510 | 130.1 mm | **119.67 mm** |
+| MAMMA subj1 l | 108.9 mm | 21.0 mm (19.3%) | 0.19 mm | 0.009 | 68.8 mm | 1.62 mm |
+| **ours** subj1 r | 82.1 mm | 53.1 mm (64.6%) | **35.21 mm** | 0.664 | 121.5 mm | **65.18 mm** |
+| MAMMA subj1 r | 107.2 mm | 32.2 mm (30.0%) | 0.26 mm | 0.008 | 112.1 mm | 2.98 mm |
 
-The remaining hands are in the table below once their fits land.
+**26–35 mm of fingertip jitter against MAMMA's 0.18–0.26 mm**, on a pre-registered
+thrashing threshold of 0.78 mm. Between 100× and 190×. Not close to the band, not
+ambiguous, and not one bad hand. The angle variance was **not** gauge freedom —
+the fingertips genuinely jump between frames. Amplitude is 60–72% of hand length
+against MAMMA's 19–30%, which is not a hand articulating; it is a hand flailing.
+
+### The wrist-local frame was hiding half of it
+
+The knuckles hang rigidly off the wrist, so the local basis turns with the wrist.
+That is exactly what makes it the right frame for comparing *articulation* — and
+it also makes it blind to a thrashing wrist. The fit's temporal term covers
+`state[:, 3:]`, the joint angles; the three wrist-orientation parameters per frame
+have **no prior at all**.
+
+Removing only wrist translation exposes it: **50–120 mm of jitter, against
+MAMMA's 1.6–3.2 mm.** The wrist block is thrashing *harder than the fingers*. Any
+fix that raises `smooth_weight` alone would drive the local-frame number into
+MAMMA's range and leave the hand still flailing in world space. Both blocks need
+the term, and `_jacobian_sparsity` needs the matching three-frame span over the
+wrist columns or the solve misconverges silently.
+
+### Two findings that fell out of the comparison
+
+**Our body track agrees with MAMMA's to 19–29 mm at the wrists.** Subject pairing
+was done by wrist separation in the shared world frame, and it is unambiguous —
+19 mm and 29 mm for the true pairing against 1.19 m and 1.20 m for the swap (our
+subj0 is MAMMA's `body_id-01`; the ordering is crossed). That number was not the
+point of the exercise, but it is the first direct check of our body reconstruction
+against MAMMA's on the same footage, and it is a good one.
+
+**MHR's hand root is not SMPL-X's wrist.** Our phalanges are the right size — the
+knuckle-to-fingertip span is 97% of MAMMA's — but our wrist→knuckle offset is
+7.4–8.6 cm against MAMMA's 10.4–11.9 cm. The whole 15% chain-length difference
+sits in that one segment. It is a joint-definition difference, not a scale error,
+and it is the same class of discrepancy Battle 0 found between Apple Vision and
+MediaPipe. It matters when the fingers are wired onto the body track, because the
+chain is driven from *our* wrist estimate.
+
+### Agreement with MAMMA's fingers: 43–88 mm
+
+Anchoring at the knuckle centroid and normalising by knuckle-to-tip span — which
+removes the wrist-definition difference above — our fingertips sit 43.4, 75.4,
+88.2 and 71.0 mm from MAMMA's. That is roughly the length of a finger. Consistent
+with the thrashing, and clearly labelled as **agreement with a reference system,
+not accuracy**: MAMMA is not ground truth here, and its own two-person hand error
+is ~48 mm.
 
 ## Why — the temporal term is 1.9% of the objective
 
