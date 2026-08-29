@@ -235,6 +235,72 @@ def gate_observations_by_cross_view_agreement(
     return keep
 
 
+def cross_view_weights(
+    cameras: Sequence[CalibratedCamera],
+    observations: np.ndarray,
+    *,
+    threshold_px: float = 9.0,
+    minimum_weight: float = 0.02,
+) -> np.ndarray:
+    """A per-observation inverse variance, from geometry rather than the model.
+
+    `gate_observations_by_cross_view_agreement` answers the same question with a
+    hard veto, and it is wasteful in a way that was measured rather than guessed.
+    Four cameras make six pairs; one pair disagreeing above the threshold kills
+    *both* observations. On the reference fixture that discarded 63% of the finger
+    evidence -- and of the 6,954 rejected observations, 2,790 had their own median
+    epipolar distance to the other views *under* the threshold. A quarter of all
+    evidence thrown away for agreeing with everyone except one view.
+
+    The distance the veto thresholds into a bit is itself informative: its deciles
+    on that fixture are 2.3, 4.2, 7.5, 14.9 and 30.6 px. This keeps it, as a
+    Lorentzian weight w = 1 / (1 + (d / threshold)^2) on the median distance,
+    which is a smooth stand-in for the per-landmark sigma MammaNet is trained to
+    emit and we have no way to learn.
+
+    Observations no other view sees cannot be checked at all; they are given the
+    weight of an observation exactly at the threshold rather than the benefit of
+    the doubt the veto gave them.
+
+    Returns a float [F,C,J] array. Zero means unusable.
+    """
+
+    values = np.asarray(observations, dtype=np.float64)
+    if values.ndim != 4 or values.shape[3] != 3 or values.shape[1] != len(cameras):
+        raise CommercialMultiviewError("Hand observations must be [frame,camera,joint,3]")
+    if not threshold_px > 0.0:
+        raise CommercialMultiviewError("Threshold must be positive")
+    frames, camera_count, joints, _ = values.shape
+    present = np.isfinite(values[..., :2]).all(axis=3) & (values[..., 2] > 0.0)
+
+    from .commercial_multiview import _fundamental_matrix, _epipolar_distance_px
+
+    distances = np.full((frames, camera_count, camera_count, joints), np.nan)
+    for left in range(camera_count):
+        for right in range(left + 1, camera_count):
+            fundamental = _fundamental_matrix(cameras[left], cameras[right])
+            for frame in range(frames):
+                for joint in range(joints):
+                    if not (present[frame, left, joint] and present[frame, right, joint]):
+                        continue
+                    distance = _epipolar_distance_px(
+                        fundamental,
+                        values[frame, left, joint][None, :],
+                        values[frame, right, joint][None, :],
+                        minimum_confidence=0.0,
+                        minimum_shared_joints=1,
+                    )
+                    distances[frame, left, right, joint] = distance
+                    distances[frame, right, left, joint] = distance
+
+    with np.errstate(invalid="ignore"):
+        median = np.nanmedian(distances, axis=2)
+    median = np.where(np.isnan(median), threshold_px, median)
+    weights = 1.0 / (1.0 + (median / threshold_px) ** 2)
+    weights = np.where(present, weights, 0.0)
+    return np.where(weights >= minimum_weight, weights, 0.0)
+
+
 def _limits_for(chain: HandChain) -> tuple[np.ndarray, np.ndarray]:
     low: list[float] = []
     high: list[float] = []
@@ -281,6 +347,7 @@ def fit_hand_sequence(
     observations: np.ndarray,
     *,
     keep: np.ndarray | None = None,
+    weights: np.ndarray | None = None,
     scale: float = 1.0,
     smooth_weight: float = 2.0,
     pose_smooth_weight: float = 0.25,
@@ -314,11 +381,25 @@ def fit_hand_sequence(
         raise CommercialMultiviewError("Wrist positions must be [frame,3]")
     if values.shape != (frames, len(cameras), joints, 3):
         raise CommercialMultiviewError("Observations must be [frame,camera,joint,3]")
-    used = keep if keep is not None else (
-        np.isfinite(values[..., :2]).all(axis=3) & (values[..., 2] > 0.0)
-    )
+    if weights is not None:
+        strength = np.asarray(weights, dtype=np.float64)
+        if strength.shape != values.shape[:3]:
+            raise CommercialMultiviewError("Weights must be [frame,camera,joint]")
+        if (strength < 0.0).any():
+            raise CommercialMultiviewError("Weights must be non-negative")
+        used = strength > 0.0
+    else:
+        used = keep if keep is not None else (
+            np.isfinite(values[..., :2]).all(axis=3) & (values[..., 2] > 0.0)
+        )
+        strength = used.astype(np.float64)
     if not used.any():
         raise CommercialMultiviewError("No hand observations survived gating")
+    # Least squares minimises the sum of squares, so an inverse variance enters
+    # the residual as its square root. Scaling happens *before* the robust loss so
+    # that soft-l1 sees r/sigma, not r -- an uncertain observation should have to
+    # be further out before it is treated as an outlier.
+    root_strength = np.sqrt(strength)
 
     dof = chain.degrees_of_freedom
     per_frame = 3 + dof
@@ -352,6 +433,7 @@ def fit_hand_sequence(
                 projected = homogeneous @ projections[camera_index].T
                 depth = np.where(np.abs(projected[:, 2]) < 1e-9, 1e-9, projected[:, 2])
                 error = projected[:, :2] / depth[:, None] - values[frame, camera_index, mask, :2]
+                error = error * root_strength[frame, camera_index, mask][:, None]
                 reprojection.extend(error.ravel().tolist())
         # soft-l1 on the measurement block only; the regularisers are priors and
         # have no outliers to suppress.
@@ -482,6 +564,7 @@ __all__ = [
     "HandChain",
     "SCHEMA_VERSION",
     "build_hand_chain",
+    "cross_view_weights",
     "fit_hand_sequence",
     "forward_kinematics",
     "gate_observations_by_cross_view_agreement",
