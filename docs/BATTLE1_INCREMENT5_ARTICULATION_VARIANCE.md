@@ -289,3 +289,58 @@ occluded fingers, since it reports high heatmap confidence regardless — agree
 epipolarly and would sail through a median-distance weight exactly as they sail
 through the veto. The soft-l1 loss on the data block is the only remaining
 defence against that, and it is a weak one.
+
+## The new prior had a trap in it, and I shipped it as the default
+
+The first sweep of `pose_smooth_weight` on subj0's left hand:
+
+| weight | amplitude | jitter | jitter +wrist | held-out C001 | time |
+|---:|---:|---:|---:|---:|---:|
+| 0.25 | 48.1 mm | 18.87 mm | 17.13 mm | **29.4 mm** | 651 s |
+| 1.00 | 0.1 mm | 0.05 mm | 0.06 mm | 98.3 mm | 28 s |
+| 4.00 | 0.0 mm | 0.01 mm | 0.02 mm | 98.3 mm | 28 s |
+| 16.00 | 0.0 mm | 0.00 mm | 0.00 mm | 98.3 mm | 28 s |
+
+Three different weights returning **byte-identical** held-out error, in 28 s
+against 651 s, is not a prior collapsing a hand. It is a solver that never left
+its start point.
+
+**A constant pose has zero acceleration, so the rest pose is a global minimum of
+the position prior — and the solve starts there.** Once the prior outweighs the
+data the first trust-region step is tiny, `ftol` fires, and `least_squares`
+returns the rest pose having barely moved. The degeneracy is in the objective;
+the 28 s is the tell.
+
+**1.0 was the default two commits earlier.** Anyone who had called
+`fit_hand_sequence` without naming the weight would have got a rest-pose hand and
+a 98 mm held-out error, and the metric that would have caught it — jitter — reads
+0.05 mm, which is *better than MAMMA's*. A perfectly smooth, perfectly wrong hand
+passing the smoothness gate outright. That is the same failure mode as the vacuous
+bone-length gate in the increment 5 result, arrived at from the opposite
+direction, and it is the second time in this increment that a number improving
+has meant something had stopped working.
+
+Fixed by fitting the data first with the prior off and warm-starting the
+regularised pass from that solution, which removes the trap without weakening the
+prior. Default lowered to 0.25.
+
+### What the one valid row already shows
+
+At weight 0.25, against the shipped baseline on the same hand and the same fold:
+
+| | amplitude | jitter | jitter +wrist | held-out C001 |
+|---|---:|---:|---:|---:|
+| baseline, angle prior at 2 | 48.8 mm | 26.11 mm | 50.65 mm | 51.5 mm |
+| angle prior at 20 | 47.1 mm | 4.10 mm | — | 38.1 mm |
+| **position prior at 0.25** | 48.1 mm | 18.87 mm | **17.13 mm** | **29.4 mm** |
+
+The position prior is the weaker smoother of the two and the better estimator:
+it cuts articulation jitter only 1.4× where the angle prior cuts it 6×, but it
+cuts **wrist-relative** jitter 3× — which the angle prior cannot touch at all —
+and it takes the held-out error to 29.4 mm, the best figure measured on this
+fixture and 22 mm better than the shipped baseline.
+
+That is consistent with the diagnosis: the wrist block was the larger error, so
+covering it buys more accuracy than damping the fingers harder. It also suggests
+the two priors are complementary rather than alternatives, which has not been
+tested. The warm-started sweep is running.
