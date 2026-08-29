@@ -514,10 +514,25 @@ approximately nothing to a pipeline that already triangulates robustly.
 
 **Three things it does not settle, and they matter.**
 
-The noise here is **independent across frames**, which is the friendliest case for
-the temporal prior that follows and the least friendly for a sigma. Real occlusion
-persists; a landmark hidden this frame is hidden next frame, and no smoother
-averages that away. The correlated run is arm (iv) and it is not done.
+~~The noise here is **independent across frames**~~ — **this one is now closed, and
+it did not change the answer.** Arm (iv) runs the bad-observation mask as a
+two-state chain, verified to produce runs averaging 10.2 frames against iid's 1.1,
+and at a marginal bad rate of 9.6% against the iid arm's 7.5% — slightly *more*
+contamination, not less. Result at the 2x channel: uniform 23.22 mm, true sigma
+22.82 mm, shuffled 23.93 mm. Sigma buys 0.40 mm, statistically the same 0.35 mm it
+bought under independent noise.
+
+The reason is the same mechanism. Persistence defeats a *temporal* filter, but
+`triangulate_point`'s inlier search is **per-frame and per-joint** — it does not
+care whether an outlier persisted, because it never looks across time. So the
+robust step absorbs a ten-frame run exactly as it absorbs a one-frame one, and
+sigma has nothing more to add in either case.
+
+*(One caveat on this arm: the shuffled control was inconclusive rather than
+passing. The informed-versus-shuffled gap of 1.11 mm sits inside the seed spread,
+which correlated noise widens because runs cluster. It needs more seeds to
+separate; it is not evidence against the effect, only an absence of evidence for
+it at this sample size.)*
 
 **Visibility is a different signal from sigma** and has not been tested. Knowing a
 landmark is *occluded* is not the same as knowing its position is *uncertain*, and
