@@ -156,3 +156,45 @@ MAMMA's source*. Running is not reading, but whoever does it should not be whoev
 implements Battle 4.
 
 Given the result above, it is also no longer the urgent question.
+
+## Rung 1 — the temporal smoother, isolated on real footage
+
+Gate G10 in the fixture doc measured the smoother imposing **4.4 mm of median and
+34.9 mm of p95 lag** with perfect 2D on synthetic motion played back at 6x, and I
+recorded that as estimator error no detector could touch. The substitution harness
+tests it on real data: MAMMA's 2D through our triangulator gives per-landmark tracks
+on the one genuinely fast clip, MAMMA's own landmarks are the reference, and the
+smoothing is applied per track — 512 landmarks need no joint contract.
+
+Measured speed p50 0.59 m/s, **p95 1.93 m/s**, so the motion is genuinely fast.
+
+| landmark speed | n | raw | smoothed | change |
+|---|---:|---:|---:|---:|
+| 0.00–0.23 m/s | 30,720 | 11.2 mm | 10.8 mm | −0.4 |
+| 0.23–0.47 | 30,720 | 10.4 | 9.9 | −0.6 |
+| 0.47–0.71 | 30,720 | 9.0 | 8.7 | −0.3 |
+| 0.71–1.11 | 30,720 | 9.8 | 9.2 | −0.6 |
+| 1.11–1.93 | 23,040 | 10.6 | 10.0 | −0.6 |
+| **1.93–5.29** | 7,680 | 11.8 | **12.5** | **+0.7** |
+| **all** | 153,600 | **10.2 mm** | **9.8 mm** | **−0.4** |
+| p95 | | 39.8 mm | **34.0 mm** | −5.8 |
+
+**The smoother helps.** Median 10.2 → 9.8 mm and p95 39.8 → 34.0, and it helps in
+every speed band except the fastest 5%, where it costs 0.7 mm.
+
+### So §7g of the fixture doc overstates, and here is why
+
+G10 measured the lag with **noiseless** 2D, where a smoother can only hurt — there
+is no noise for it to remove, so the measurement captured one side of a
+bias–variance trade and reported it as a cost. On real data the 2D is noisy and the
+variance reduction outweighs the lag at every speed that occurs.
+
+The lag is real; it is just small relative to what the smoothing buys.
+"4.4 mm of median error the detector cannot touch" should read: **at 1.93 m/s and
+above the smoother costs 0.7 mm, and below that it pays for itself.** The
+velocity-adaptive window is still the right refinement — it would recover that
+0.7 mm in the top 5% — but it is a 0.7 mm refinement, not a 4 mm defect.
+
+This is the substitution method paying for itself twice: it isolated the smoother,
+and in doing so it corrected a number produced by an instrument that could not
+isolate it.
