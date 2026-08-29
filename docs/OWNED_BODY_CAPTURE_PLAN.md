@@ -238,6 +238,17 @@ same way.
 - Outputs: μ, uncertainty σ, visibility p. Gaussian NLL on landmarks, BCE on
   visibility
 
+**⚠ THIS PRICING IS UNDER CORRECTION — see the banner at the top of
+`BATTLE2_SYNTHETIC_TRUTH_FIXTURE.md`.** Adversarial review found the detector's
+noise was overstated by exactly 2x (the model was fitted to the *symmetric*
+epipolar distance as though it were one-sided; measured ratio 1.962). The corrected
+operating point is **~2.75 px, not 5.5**, which means the 10.4 mm attributed to
+"halving precision" is largely already banked and the ordering below does not
+survive at the corrected anchor. Two further defects — a byte-identical `both` arm
+and a weight applied after the robust loss rather than before — mean the sigma
+figure was measured through a channel that could not express sigma. **Do not act on
+the table below.** A corrected measurement is in progress.
+
 **Priced, 2026-08-29, against synthetic ground truth.** The three outputs are not
 worth the same, and the ordering is the opposite of what this plan assumed. From
 `BATTLE2_SYNTHETIC_TRUTH_FIXTURE.md` §7b–7d, measured on true 3D error with the
