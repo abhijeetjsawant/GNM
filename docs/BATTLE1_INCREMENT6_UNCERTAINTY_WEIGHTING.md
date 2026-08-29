@@ -92,6 +92,86 @@ sweep, and "we need a detector that emits μ, σ and visibility" is earned with 
 Either way the plumbing is not wasted: a detector that emits σ is useless until
 the fit consumes per-observation weights, and this is that code.
 
-## Result
+## Result — **FAIL** against the pre-registered band
 
-Pending.
+| | measured | band | |
+|---|---:|---|---|
+| mean held-out | **33.5 mm** | ≤ 30 | ✗ |
+| mean jitter | **4.57 mm** | ≤ 2 (partial 2–6) | partial |
+| mean amplitude | **39.0 mm** | ≥ 20 | ✓ |
+
+**Verdict: fail.** The held-out clause misses by 3.5 mm, and jitter lands in the
+partial band rather than the pass band. Recorded as it fell.
+
+## But the weighting works, and the failure is not its fault
+
+Paired, on all sixteen cells — same hands, same folds, same held-out observation
+set for both arms so that a change in what each arm *trusts* cannot move the test
+set:
+
+| hand | A001 | B001 | C001 | D001 |
+|---|---:|---:|---:|---:|
+| subj0 left | 23.0 → 22.4 | 29.3 → 29.5 | 28.2 → 31.4 | 36.3 → 41.5 |
+| subj0 right | 24.9 → 26.7 | 28.0 → **25.0** | 34.3 → **25.5** | 29.3 → 29.5 |
+| subj1 left | 39.9 → 42.0 | **91.9 → 60.0** | **63.1 → 35.1** | **80.7 → 41.7** |
+| subj1 right | 22.4 → 22.1 | 37.4 → 33.5 | 47.8 → **37.9** | 31.8 → 31.6 |
+| | | | | |
+| **mean** | | | **40.5 → 33.5 mm** | **−7.1** |
+| **worst fold** | | | **91.9 → 60.0 mm** | **−31.9** |
+
+Arm C wins 10 of 16 folds, takes 7.1 mm off the mean, and takes 31.9 mm off the
+worst. It also holds 2.3–3.9× more evidence: 4,106 → 10,655 observations on
+subj0's left hand, 2,316 → 8,950 on subj1's left.
+
+**And the gain lands exactly where the mechanism predicts.** subj1's left hand is
+the evidence-starved one — 2,316 observations under the veto, the fewest of the
+four — and it is the hand that improves most, by 28, 32 and 39 mm on three of its
+four folds. The veto was starving the hardest hand hardest, because a hand that is
+difficult to see is a hand whose camera pairs disagree.
+
+Jitter improves in the same direction: 4.57 mm mean against arm B's 6.70, and
+against increment 5's 26–35 mm.
+
+## A comparison I nearly got wrong
+
+Increment 5's headline of **35.0 mm was subj0's left hand only**, across its four
+folds. It was never a four-hand figure. Setting it beside a sixteen-cell mean
+would have made arm C look like a 1.5 mm improvement on a baseline that does not
+exist.
+
+On the hand the 35.0 mm was actually measured on:
+
+| | subj0 left, four folds |
+|---|---:|
+| increment 5 baseline | 35.0 mm |
+| arm B — veto + position prior | **29.2 mm** |
+| arm C — weights + position prior | 31.2 mm |
+
+Both beat it; arm B beats arm C on *this* hand. Which is the same lesson as
+before, pointed at myself: **subj0-left is an easy hand, and it is the one every
+earlier number came from.** The four-hand mean is 40.5 and 33.5. Arm A is now
+running on all four hands so the baseline is a like-for-like figure rather than
+an extrapolation from the easiest case.
+
+## What this does and does not settle
+
+Pre-registered reading: *fail, with the recovered evidence and both priors in* →
+the detector hypothesis survives its first genuine test.
+
+**It survives, provisionally, and one qualification is load-bearing.** The
+temporal weight for these arms was fixed at 1.0 before the sweep finished. The
+sweep then found 4.0 gives 1.76 mm of jitter at the same held-out error — inside
+the pass band, where 1.0's 4.57 mm is not. So the jitter clause may have failed on
+a configuration choice rather than on anything about uncertainty.
+
+**Arm D** — the same weighting at temporal weight 4.0 — is running against the
+same band. It is a configuration chosen after seeing the sweep, so it is
+optimistic by construction and cannot settle the strategic question on its own;
+what settles it is the synthetic fixture, which measures against truth on data no
+configuration was selected on.
+
+What is already settled, and does not depend on arm D: **the veto was throwing
+away information that mattered, and the estimator was the waster of it.** 7.1 mm
+of mean held-out error and 31.9 mm on the worst fold came back from nothing but
+keeping observations the old gate discarded. That is not an argument for a new
+detector. It is an argument that we had not finished using the one we have.
