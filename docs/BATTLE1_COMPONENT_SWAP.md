@@ -360,6 +360,14 @@ have, so the ask is **one asset, not four**:
 | `rt_detr_v4-o-hgnet` | person bounding boxes | **probably not** — we already source boxes, and the Apple Vision dependency is separately audited |
 | **`sam-3d-body-dinov3`** | **the body model itself, predicting into MHR** | **yes — this is the whole ask** |
 
+**It is promptable, and that changes the integration.** From the model's own README:
+*"3DB employs an encoder-decoder architecture and supports auxiliary prompts,
+including 2D keypoints and masks, enabling user-guided inference similar to the SAM
+family of models."* So it need not be run blind per view — it can be **prompted with
+the 2D we already have**, which means SOMA-77's detections stop being the final word
+and become a hint to a model with a full-body prior. It also opens a multi-view
+option the workflow does not use: prompt all four views toward a consistent pose.
+
 **Take `facebook/sam-3d-body-dinov3`**, not `sam-3d-body-vith`: it is the variant the
 workflow loads, the one carrying the published EMDB figure, and by download count
 the one in use (8.04k against 787). The model card confirms what matters — *"body,
