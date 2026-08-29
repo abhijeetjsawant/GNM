@@ -78,6 +78,16 @@ CLEAN_SIGMA_PX = 5.5
 BAD_SIGMA_PX = 65.0
 BAD_FRACTION = 0.075
 
+# Real occlusion persists: a landmark hidden in one frame is hidden in the next.
+# Independent draws per frame are the *friendliest* possible noise for a temporal
+# prior, which averages them away and leaves little for a sigma to repair -- so a
+# small delta under iid noise says as much about the noise model as about sigma.
+# `--correlated` runs the bad mask as a two-state chain with this mean run length,
+# which is the design's arm (iv) and the case where knowing what to distrust should
+# matter most, because no amount of smoothing can average away an error that
+# persists.
+BAD_RUN_FRAMES = 10.0
+
 
 def sigma_to_confidence(sigma: np.ndarray, floor: float) -> np.ndarray:
     """Lorentzian inverse variance, as in the hand fit, scaled to the usable band.
@@ -145,6 +155,8 @@ def main() -> int:
     # The floor is both the gate and the bottom of the weight scale. Sweeping it
     # separates "sigma is worth little" from "sigma cannot be expressed".
     parser.add_argument("--floors", type=str, default="0.25,0.05,0.01,0.001")
+    parser.add_argument("--correlated", action="store_true",
+                        help="persist the bad-observation mask over time (arm iv)")
     args = parser.parse_args()
 
     rig = cm.load_camera_rig(args.fixture / "camera-rig.json")
@@ -171,7 +183,19 @@ def main() -> int:
         results = {"ii": [], "iii": [], "g6": [], "g6b": []}
         for seed in range(args.seeds):
             generator = np.random.default_rng(20260829 + seed)
-            bad = generator.random(shape) < BAD_FRACTION
+            if args.correlated:
+                # Two-state chain per (camera, person, joint): enter the bad state
+                # at the stationary rate, leave it at 1/run-length.
+                leave = 1.0 / BAD_RUN_FRAMES
+                enter = leave * BAD_FRACTION / (1.0 - BAD_FRACTION)
+                bad = np.zeros(shape, dtype=bool)
+                state = generator.random(shape[:1] + shape[2:]) < BAD_FRACTION
+                for frame in range(shape[1]):
+                    draw = generator.random(state.shape)
+                    state = np.where(state, draw > leave, draw < enter)
+                    bad[:, frame] = state
+            else:
+                bad = generator.random(shape) < BAD_FRACTION
             sigma = np.where(bad, BAD_SIGMA_PX, CLEAN_SIGMA_PX)
             noise = generator.normal(0.0, 1.0, shape + (2,)) * sigma[..., None]
             uniform = np.full(shape, CONFIDENCE_CEILING)
