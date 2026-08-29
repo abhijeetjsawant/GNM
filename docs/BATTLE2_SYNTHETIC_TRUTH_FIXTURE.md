@@ -690,11 +690,16 @@ care whether an outlier persisted, because it never looks across time. So the
 robust step absorbs a ten-frame run exactly as it absorbs a one-frame one, and
 sigma has nothing more to add in either case.
 
-*(One caveat on this arm: the shuffled control was inconclusive rather than
-passing. The informed-versus-shuffled gap of 1.11 mm sits inside the seed spread,
-which correlated noise widens because runs cluster. It needs more seeds to
-separate; it is not evidence against the effect, only an absence of evidence for
-it at this sample size.)*
+Re-run at **15 seeds** to settle it: sigma buys **0.16 mm**, against 0.35 and
+−0.16 mm under independent noise. Statistically indistinguishable from zero in all
+three, and now well enough determined to say so. **Correlated occlusion does not
+change the sigma answer.**
+
+*(The shuffled control remains underpowered on this arm even at 15 seeds — the
+informed-versus-shuffled gap of 0.83 mm still sits inside the seed spread, which
+correlated noise widens because runs cluster. That is a limitation on the secondary
+question of whether the channel is informational here, not on the primary result,
+which is that sigma buys nothing over no channel at all.)*
 
 ~~**Visibility is a different signal from sigma** and has not been tested.~~ It has
 now, and it is the half that matters — see §7d. Demoting "an uncertainty head"
