@@ -246,3 +246,58 @@ finger work found.
 So Battle 0's conclusion — resolution is not a lever — survives its extension to a
 detector with a completely different architecture, for a reason Battle 0 did not
 know.
+
+## Rung 3 — SAM 3D Body, assessed
+
+Both advisors named it as the strongest untested asset, and both said verify rather
+than trust the option-space survey's one-liner. Verified, 2026-08-29.
+
+**Licence: usable, and more so than the survey recorded.** Meta's custom SAM
+License, last updated 19 November 2025. Commercial use permitted; **no**
+non-commercial clause, **no** monthly-active-user cap, **no** field-of-use
+restriction. Obligations are attribution in publications, redistribution only under
+the same terms with a copy attached, no reverse engineering, trade-control
+compliance, and termination on breach. **And there is no clause restricting the use
+of outputs to train other models** — which is the clause that matters for Battle 3,
+and its absence is worth more than the rest.
+
+**It cannot replace our pipeline.** It is single-image human mesh recovery: 72.5 mm
+PVE on EMDB for the DINOv3 variant, state of the art for its category and an order
+of magnitude worse than the ~10 mm our multiview geometry already achieves against
+MAMMA's. A monocular model has depth ambiguity that four calibrated cameras do not.
+Anyone reading "state-of-the-art 3D human mesh recovery" as a replacement for a
+13.5 mm multiview system has compared two different problems.
+
+**Where it could help is precisely the term we measured as dominant.** Two reasons:
+
+* **It predicts into MHR** — the same Apache-2.0 body model this plan already chose.
+  So its landmark definitions *are* our body model's, which directly attacks the
+  largest systematic term we have measured: SOMA-77's convention offsets against the
+  reference, 39.9 px at the neck, 27.8 at the ankles, 20–25 at the hips, and no ear
+  landmarks at all.
+* **It is a full-body model with a learned shape and pose prior**, so its predictions
+  for occluded landmarks should be *amodal*. That is the property this session
+  identified as unpriced and as the likeliest home for much of the 25–34 mm gap:
+  MAMMA's occluded predictions are good enough that all 512 landmarks triangulate to
+  ~10 mm with no visibility gating, where SOMA-77's occluded predictions are the
+  confidently-wrong ones the entire cross-view veto exists to filter.
+
+**And we now have the instrument to test it in one variable.** Project its MHR mesh
+joints into each view, drop them into the same substitution slot the swap used, score
+against the same reference. If its 2D lands closer than SOMA-77's 18.6 px bias +
+16.6 px spread, it is the cheapest available move on the dominant term — no training,
+no corpus, no GPU campaign.
+
+**Status: one download away.** The dependency audit records the code worktree as
+incomplete; that is stale — `.cache/autoanim_gnm/gem-x/third_party/sam-3d-body` is
+present at 23 MB with `LICENSE`, `INSTALL.md` and `tools/`. Only the checkpoint is
+missing, at `facebook/sam-3d-body-dinov3`, behind licence acceptance on HuggingFace.
+That acceptance is a user action, and it is the gate.
+
+**Caveats before it is treated as the answer.** Its accuracy is reported on
+single-image benchmarks in the wild, not at 4.7 m on a four-camera stage — the
+framing this project actually has, where the subject is ~286 px tall. Its per-view
+outputs would need fusing, which is a design question our triangulation does not
+answer. And the licence, while permissive, is bespoke: the plan's standing rule is a
+licence-verification pass before download, and this document is that pass for the
+terms, not a substitute for the legal review the dependency audit already schedules.
