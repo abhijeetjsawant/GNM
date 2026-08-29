@@ -28,6 +28,11 @@ their problem, not ours.
 
     python workers/commercial_multiview/sam3d_body_pose.py RIG.json BOXES.jsonl FRAME...
 
+Writes JSONL to stdout, one object per frame. The upstream prints progress with
+bare `print()` on the same stream, so records are emitted with a leading marker and
+readers should take only lines beginning with `{` -- or set AUTOANIM_SAM3D_OUT to a
+path and the records go there instead, cleanly.
+
 Requires the venv at `.cache/autoanim_gnm/sam-3d-body/venv` and the checkpoint
 beside it. See `docs/BATTLE1_COMPONENT_SWAP.md`.
 
@@ -133,6 +138,10 @@ def main() -> int:
 
     import cv2
 
+    import os
+
+    sink = os.environ.get("AUTOANIM_SAM3D_OUT")
+    handle = open(sink, "w", encoding="utf-8") if sink else sys.stdout
     for path in frames:
         image = cv2.imread(str(path))
         height, width = image.shape[:2]
@@ -155,11 +164,14 @@ def main() -> int:
             record = {k: np.asarray(out[0][k]).tolist() for k in KEEP if k in out[0]}
             record["index"] = len(people)
             people.append(record)
-        print(json.dumps({
+        handle.write(json.dumps({
             "schema_version": SCHEMA_VERSION, "estimator": ESTIMATOR,
             "frame_index": index, "width": width, "height": height,
             "camera": camera.name, "image_path": str(path), "people": people,
-        }, separators=(",", ":")))
+        }, separators=(",", ":")) + "\n")
+        handle.flush()
+    if sink:
+        handle.close()
     return 0
 
 
