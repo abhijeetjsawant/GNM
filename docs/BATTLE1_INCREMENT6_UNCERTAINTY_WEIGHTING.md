@@ -132,6 +132,32 @@ difficult to see is a hand whose camera pairs disagree.
 Jitter improves in the same direction: 4.57 mm mean against arm B's 6.70, and
 against increment 5's 26–35 mm.
 
+## The like-for-like baseline: 50.3 mm, not 35.0
+
+Arm A finished on all four hands. It changes how the verdict should be read.
+
+| | held-out mean | worst fold | jitter | amplitude |
+|---|---:|---:|---:|---:|
+| **A** — the shipped baseline | **50.3 mm** | 93.0 mm | 32.18 mm | 52.6 mm |
+| **B** — + position prior | 40.5 mm (−9.8) | 91.9 mm | 6.70 mm | 47.3 mm |
+| **C** — + inverse-variance weights | **33.5 mm (−16.9)** | **60.0 mm** | **4.57 mm** | 39.0 mm |
+
+**Arm C beats the baseline on 14 of 16 folds, takes 16.9 mm off the mean, 33 mm
+off the worst fold, and cuts jitter sevenfold.** The increment moved the hand fit
+by a third. That is the result; "fail" is the verdict on a band, and the band was
+set against a number that was wrong.
+
+**The band was mis-set, and that is my error, not the experiment's.** It asked for
+≤30 mm because I believed the baseline was 35.0 — a 14% ask. Against the real
+baseline of 50.3 it was a 40% ask. The band still fails, and it stands as written;
+but the reason it looked reachable was that the figure it was calibrated against
+did not exist.
+
+(Consistency check: arm A restricted to subj0-left across its four folds is
+34.4 mm, against increment 5's 35.0 for the same hand and folds. The small gap is
+the warm-start change. The two measurements agree, which is why the four-hand
+figure is the one that was missing rather than wrong.)
+
 ## A comparison I nearly got wrong
 
 Increment 5's headline of **35.0 mm was subj0's left hand only**, across its four
