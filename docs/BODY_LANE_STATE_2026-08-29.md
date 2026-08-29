@@ -37,7 +37,7 @@ gap, stated as narrowly as the evidence allows.
 |---|---|
 | **substitution** — MAMMA's 2D into our triangulation | lands **8.9 mm** from MAMMA's own landmarks, **10.2 mm** at full coverage. MAMMA's *own* fit sits 9.3–11.7 mm from its *own* triangulation, so we are as close to their fit as they are |
 | **Cramér-Rao** on this rig | single-frame bound is 33.2 mm at four clean views; we measure 16.4 mm. We are at half the memoryless bound, because the temporal and limb priors aggregate across frames |
-| **smoother isolated** on real fast motion (p95 1.93 m/s) | it **helps**: 10.2 → 9.8 mm median, 39.8 → 34.0 p95, improving every speed band except the fastest 5% where it costs 0.7 mm |
+| ~~**smoother isolated** on real fast motion~~ | **verdict withdrawn.** It was scored against MAMMA's *fitted* mesh, which is 2.6–2.9× smoother than MAMMA's own raw triangulation — so the test structurally rewards smoothing, and the p95 improvement is mimicry of a smoothed reference. What survives is the *re-reading*: G10's "4.4 mm of lag" was one side of a bias–variance trade measured on noiseless 2D. The quantitative claim needs the synthetic fixture with corrected noise |
 
 **Scoped deliberately:** this licenses *"triangulation is not the bottleneck"*, not
 *"the estimator has no headroom"*. The swap stops at `triangulate_point` and never
@@ -82,7 +82,7 @@ shift between different landmark populations.
 |---|---|
 | input resolution 1280 → 3840 | **not a lever.** 14.5 → 14.8 px spread. At 1280 the person crop is already 286 px against the model's 256 px input, so it is downsampled either way. Would still matter for **hands**, at ~20 px |
 | a per-joint calibration offset | **body-fixed within the synthetic domain**, 85% removable, frame buildable from positions alone — but it **does not transfer to real footage** (cosine +0.039 against the real bias field), so the synthetic renders cannot measure detector bias |
-| SAM 3D Body as a 2D drop-in | **worse than SOMA-77**: 1.83× median, 2.70× p95. Its 2D are reprojections of a monocular fit, so four plausible bodies disagree in 3D and therefore epipolarly |
+| ~~SAM 3D Body as a 2D drop-in~~ | **negative withdrawn.** Re-measured on identical frames and association, the median gap is 1.42× and **in the tail SAM 3D is slightly better** (0.90, 0.94), not 2.70× worse. Both tails are association-contaminated. And the instrument sees only the incoherent axis — the one where SOMA's error averages down over four views — while being blind to the coherent bias that is SOMA's *larger* term (18.6 px) and SAM 3D's zero-by-construction |
 
 ---
 
@@ -101,7 +101,10 @@ estimate; and it takes our calibrated intrinsics, retiring the monocular FoV pro
 License, neither with a non-commercial clause, an MAU cap, a field-of-use
 restriction, or any restriction on using outputs to train other models.
 
-**Two shapes remain untested, and both are more expensive than they first looked:**
+**And the ranking question is now open rather than closed.** The negative that
+looked like it settled SAM 3D's fate was withdrawn within the hour. Two shapes remain
+untested, both more expensive than they first looked — but "more expensive" is not
+"refuted":
 
 * **fuse four per-view MHR estimates with known extrinsics** — this means optimising
   *through* the MHR forward model, and the only differentiable MHR here is the
@@ -146,6 +149,8 @@ Two standing rules came out of the failures:
 * **score both arms on the same denominator.** A composition shift masqueraded as an
   effect twice.
 
-**Six times today a correct measurement carried a claim it did not support.** The
+**Seven times today a correct measurement carried a claim it did not support**, and
+the seventh — the SAM 3D negative — was committed to a document before the check
+caught it. The
 pattern is stable enough to plan around: the measurement is usually right, and the
 sentence attached to it is where the error lives.
