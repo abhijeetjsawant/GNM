@@ -198,3 +198,51 @@ velocity-adaptive window is still the right refinement — it would recover that
 This is the substitution method paying for itself twice: it isolated the smoother,
 and in doing so it corrected a number produced by an instrument that could not
 isolate it.
+
+## Rung 2 — the resolution confound, and it is not a lever
+
+The swap has an uncontrolled variable inside it: **our detector consumed 1280-wide
+frames and MAMMA's ran at 3840 native.** Nine times the pixels. And the architectural
+argument said it should matter — SOMA-77 is **top-down**, cropping the person and
+resampling into a 256×192 input, so unlike Battle 0's whole-image Apple Vision it
+could plausibly be starved at 1280. This was ranked the highest-value next move
+precisely because it might close part of the gap for free.
+
+One variable. Same source video, same ffmpeg quality, same person boxes in
+normalised coordinates, same model. Reference is MAMMA's fitted joints projected
+into A001 — not SOMA's joint definitions, so the bias term is meaningless, but it is
+*identical between the arms*, so **spread** is a fair comparison and spread is what
+the ablation is about. Reported in native-3840 pixels so the arms are commensurable.
+
+| | mean bias | mean spread |
+|---|---:|---:|
+| 1280 wide | 12.2 px | **14.5 px** |
+| 3840 wide | 11.3 px | **14.8 px** |
+
+**Nine times the pixels buys nothing** — the spread is 0.2 px *worse*, which is
+noise. Joint by joint it is a wash: seven improve, seven degrade, none by more than
+2.6 px.
+
+### The mechanism, so the negative is conclusive rather than mysterious
+
+| | person crop side |
+|---|---:|
+| at 1280 | **286 px** median (166–343) |
+| at 3840 | 857 px median |
+| the model's input | **256 px** |
+
+**At 1280 the crop is already 1.1× the model's input — it is being *downsampled*,
+not upsampled.** There was never any lost detail for 3840 to restore. The
+architectural argument was right about the mechanism and wrong about which side of
+the threshold we sit on.
+
+**The generalisation, which is worth more than the result:** for a top-down crop
+model, input resolution stops mattering once the person crop exceeds the model
+input, and our 1280 lane is already past that threshold at this framing. It would
+still matter at wider framing, at greater subject distance, or for **hands**, where
+the crop is ~20 px and nowhere near 256 — which is consistent with everything the
+finger work found.
+
+So Battle 0's conclusion — resolution is not a lever — survives its extension to a
+detector with a completely different architecture, for a reason Battle 0 did not
+know.
