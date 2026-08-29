@@ -595,9 +595,21 @@ untested and neither is touched by this result:
 * **Fuse the per-view MHR parameters** with known extrinsics, rather than comparing
   reprojections. Four monocular estimates constrained to one body is a different and
   far better-conditioned problem than four independent fits.
-* **Prompt it.** It accepts 2D keypoints, so SOMA-77's better-localised 2D can anchor
-  SAM 3D's body prior — combining the thing SOMA is good at with the thing it is not.
-  That is the combination neither model offers alone.
+* ~~**Prompt it.** It accepts 2D keypoints…~~ — **corrected, and the correction
+  matters.** The README says the model "supports auxiliary prompts, including 2D
+  keypoints and masks", and I read that as an available integration. It is not, at
+  least not through the shipped API. `process_one_image` takes
+  `(img, bboxes, masks, cam_int, det_cat_id, bbox_thr, nms_thr, use_mask,
+  inference_type)` — **there is no keypoint-prompt parameter.** The machinery exists
+  internally (`_get_keypoint_prompt`, `keypoint_prompt_sampler`, `_one_prompt_iter`)
+  but `sam3d_body.py:863` samples the prompt from **its own** `pred_keypoints_2d`:
+  it is iterative self-refinement, not user-guided inference from external
+  keypoints. Feeding SOMA-77's 2D in would mean reaching below the public entry
+  point into model internals, which is a different order of work and brushes
+  against the licence's no-reverse-engineering clause in spirit. **Not cheap, and
+  not next.** Recorded because I asserted it from a README line without checking
+  the signature — the same failure as every other one this session, caught this
+  time before it was acted on.
 
 **Limits.** Ten frames, two subjects, one clip, CPU inference, and the 2D compared
 here is a by-product of the model rather than its purpose. This is a negative about
