@@ -210,6 +210,10 @@ class ReconstructionDiagnostics:
     valid_joint_fraction: float
     constraint_recovered_joint_fraction: float
     frames_deferred_to_exhaustive_association: int
+    # Frames the associator could not solve at all. Previously these aborted the
+    # run; they now fall through to interpolation and are counted here, because a
+    # silently interpolated frame is worse than a reported one.
+    frames_without_association: int
     median_reprojection_error_px: float
     p95_reprojection_error_px: float
     maximum_reprojection_error_px: float
@@ -233,6 +237,7 @@ class ReconstructionDiagnostics:
             # succeeded from two or more views.
             "constraint_recovered_joint_fraction": self.constraint_recovered_joint_fraction,
             "frames_deferred_to_exhaustive_association": self.frames_deferred_to_exhaustive_association,
+            "frames_without_association": self.frames_without_association,
             "median_reprojection_error_px": self.median_reprojection_error_px,
             "p95_reprojection_error_px": self.p95_reprojection_error_px,
             "maximum_reprojection_error_px": self.maximum_reprojection_error_px,
@@ -1457,6 +1462,7 @@ def reconstruct_multiview(
     previous_velocity = np.zeros((subject_count, 3), dtype=np.float64)
     last_good_frame = np.full(subject_count, -1, dtype=np.int64)
     temporally_rejected_subject_frames = 0
+    frames_without_association = 0
     for frame in range(frames):
         detections = [
             [_person_array(person) for person in values[frame]["people"]]
@@ -1464,15 +1470,28 @@ def reconstruct_multiview(
         ]
         if frame_is_ambiguous(detections, subject_count):
             deferred_frames += 1
-        associated, cost = associator(
-            scaled_cameras,
-            detections,
-            subject_count=subject_count,
-            previous_roots_world_m=previous_roots,
-            previous_positions_world_m=previous_positions,
-            previous_observations_xyc=previous_observations,
-            pixel_scale=pixel_scale,
-        )
+        try:
+            associated, cost = associator(
+                scaled_cameras,
+                detections,
+                subject_count=subject_count,
+                previous_roots_world_m=previous_roots,
+                previous_positions_world_m=previous_positions,
+                previous_observations_xyc=previous_observations,
+                pixel_scale=pixel_scale,
+            )
+        except CommercialMultiviewError:
+            # A frame with too few usable detections used to abort the whole take.
+            # Found by the synthetic fixture: a visibility channel that gates 5% of
+            # good observations leaves some frames unmatchable, and the run raised
+            # rather than degrading -- so the pipeline failed hardest exactly where
+            # a detector improvement was being evaluated. One frame's worth of
+            # missing association is what interpolation is for.
+            frames_without_association += 1
+            associated = np.full(
+                (subject_count, len(scaled_cameras), len(JOINT_NAMES), 3), np.nan
+            )
+            cost = float("nan")
         association_costs.append(cost)
         candidate_world = np.full(
             (subject_count, len(JOINT_NAMES), 3), np.nan, dtype=np.float64
@@ -1597,7 +1616,10 @@ def reconstruct_multiview(
         median_reprojection_error_px=float(np.median(errors)),
         p95_reprojection_error_px=float(np.percentile(errors, 95)),
         maximum_reprojection_error_px=float(np.max(errors)),
-        association_objective_median=float(np.median(association_costs)),
+        association_objective_median=float(np.nanmedian(association_costs))
+        if np.isfinite(association_costs).any()
+        else float("nan"),
+        frames_without_association=frames_without_association,
         interpolated_joint_fraction=float(np.mean(interpolated)),
         temporally_rejected_subject_frames=temporally_rejected_subject_frames,
         contact_frames=tuple(contacts),
