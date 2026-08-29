@@ -15,3 +15,6 @@ output/
 gnm/shape/build/
 native/a2f-runner/.build/
 .gstack/
+
+# Local secrets. Never commit.
+.env
