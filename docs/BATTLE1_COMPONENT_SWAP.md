@@ -517,3 +517,40 @@ reverse engineering, trade-control compliance, and termination on breach.
 sha256 `352e271a…`. NVIDIA and Meta ship the same MHR weights. Skipping it saved
 696 MB of the 2.81 GB, and it independently corroborates that both vendors mean the
 same body model when they say MHR.
+
+## Does the CPU run mean we could drop Modal?
+
+Asked because SAM 3D Body ran here. Measured rather than reasoned:
+
+| | this machine | MAMMA's |
+|---|---|---|
+| | Apple M2 Max, 12 cores, **32 GB unified** | **NVIDIA A100-SXM4-40GB** |
+| MAMMA `ma_masks` stage | — | 9 min 24 s |
+| MAMMA `ma_3d` optimisation | — | 302 s |
+| SAM 3D Body, per person-frame | **45.8 s** | — |
+
+**"It ran" is a correctness result, not a capacity one.** At 45.8 s per person-frame,
+our own fixture — 150 frames × 2 people × 4 cameras — is **1,200 inferences, 15.3
+hours** on this machine. That is why the sweep above samples ten frames rather than
+all hundred and fifty. The thing that ran on CPU does not run *at scale* on CPU.
+
+**MAMMA specifically is further out of reach than that.** Its GPU alone had 40 GB;
+this machine has 32 GB of unified memory shared with the OS. Its mask stage took
+nine and a half minutes on an A100, and mask segmentation and dense-landmark
+transformers are exactly the workloads where CPU is one to two orders of magnitude
+slower. A five-second clip would plausibly be tens of hours, if it fitted at all.
+
+**But the reason for Modal may be about to change, and that is the interesting
+part.** MAMMA's cost is concentrated in two stages the SAM 3D path does not have:
+a SAM2 mask pass that emitted 1.4 GB for this clip, and an L-BFGS fit over 512 dense
+landmarks × 150 frames × 2 subjects. SAM 3D Body needs neither — we hand it boxes,
+and it emits MHR parameters directly rather than fitting them.
+
+So **if** the substitution works, the requirement drops from A100-40GB-class to a
+commodity GPU: 1,200 inferences at roughly a second each is about 20 minutes.
+
+**That last figure is an extrapolation and is labelled as one** — SAM 3D has not been
+measured on any GPU here, only on this CPU. The honest conclusion is that Modal was
+right for MAMMA, is still right today, and the compute split is worth re-opening
+*after* the substitution is measured rather than before. It would be the third time
+this session that a plausible inference got ahead of a measurement.
