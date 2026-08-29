@@ -554,3 +554,51 @@ measured on any GPU here, only on this CPU. The honest conclusion is that Modal 
 right for MAMMA, is still right today, and the compute split is worth re-opening
 *after* the substitution is measured rather than before. It would be the third time
 this session that a plausible inference got ahead of a measurement.
+
+## Rung 5 result — SAM 3D Body's 2D is **worse** than SOMA-77's, and that was predictable
+
+Through the substitution slot: same footage, same frames, same four cameras, same
+statistic — one-sided cross-view epipolar disagreement, which needs no reference and
+no joint-convention mapping, and only asks whether a detector agrees with *itself*
+across views. 10 frames, both subjects, 7,770 camera-pair observations.
+
+| | p10 | p25 | p50 | p75 | p90 | p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| SOMA-77 (19 body joints) | 0.53 | 1.37 | **3.11** | 6.04 | 11.49 | **32.79** |
+| SAM 3D Body (all 70 keypoints) | 1.24 | 3.33 | 6.92 | 13.66 | 61.87 | 101.49 |
+| SAM 3D Body (19 best-behaved) | 1.02 | 2.72 | **5.68** | 10.04 | 51.65 | **88.44** |
+| **ratio, like for like** | 1.92 | 1.99 | **1.83×** | 1.66 | 4.50 | **2.70×** |
+
+**About twice as inconsistent across views, and worse in the tail.**
+
+**The obvious confound was checked and does not explain it.** SOMA-77's ladder was
+measured on 19 body joints; SAM 3D emits 70 including face and fingers, which would
+naturally disagree more. But the per-keypoint spread is narrow — the best keypoint
+sits at 5.0 px and the worst at 9.6 — so there is no subset that reaches SOMA-77's
+3.11 px. Restricting to the 19 best-behaved still leaves it 1.83× wide.
+
+### Why, and why this does not close the question
+
+SOMA-77 is a **direct 2D detector**: it looks at the image and says where the pixel
+is. SAM 3D Body's `pred_keypoints_2d` are **reprojections of a monocular 3D fit**.
+Each view's fit is independently plausible, but monocular depth and scale are
+ambiguous and the model's prior fills the gap differently in each view — so four
+plausible bodies do not agree in 3D, and therefore do not agree epipolarly. The
+p90 blowing out to 51.65 px is the signature: a minority of views land on a grossly
+different pose, which is what monocular HMR does.
+
+**So this refutes the naive substitution and only that.** Using its 2D reprojections
+as if they were detections throws away the thing that makes it interesting — a
+parametric body in our own rig — and exposes precisely its weakness. Two uses remain
+untested and neither is touched by this result:
+
+* **Fuse the per-view MHR parameters** with known extrinsics, rather than comparing
+  reprojections. Four monocular estimates constrained to one body is a different and
+  far better-conditioned problem than four independent fits.
+* **Prompt it.** It accepts 2D keypoints, so SOMA-77's better-localised 2D can anchor
+  SAM 3D's body prior — combining the thing SOMA is good at with the thing it is not.
+  That is the combination neither model offers alone.
+
+**Limits.** Ten frames, two subjects, one clip, CPU inference, and the 2D compared
+here is a by-product of the model rather than its purpose. This is a negative about
+one integration shape, recorded before it could become an assumption about three.
