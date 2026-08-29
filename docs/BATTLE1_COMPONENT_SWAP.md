@@ -301,3 +301,49 @@ outputs would need fusing, which is a design question our triangulation does not
 answer. And the licence, while permissive, is bespoke: the plan's standing rule is a
 licence-verification pass before download, and this document is that pass for the
 terms, not a substitute for the legal review the dependency audit already schedules.
+
+### What the ComfyUI `utility_sam3d_body` workflow shows
+
+Read from the running graph, 2026-08-29. It is a complete **monocular video →
+animated MHR** pipeline, and it answers several questions the licence page could
+not.
+
+| stage | node | model |
+|---|---|---|
+| person boxes | Run Real-Time Detection (RT-DETR), class `person`, max 100 | `rt_detr_v4-o-hgnet_fp32` |
+| multi-person tracking | Run SAM3 Video Track, threshold 0.50, max_objects 4 | `sam3_1_multiplex_fp16` |
+| field of view | Run MoGe Inference → Get FoV from MoGe Geometry | `moge_2_vitl_normal_fp16` |
+| **body** | **Run SAM3D Body Prediction** — takes image, `track_data`, `bboxes`, `fov`, and a **`run_hand_refinement`** toggle | **`sam_3d_body_dinov3_bf16`** |
+| face | Face Expression to SAM3D Body — *"sam3d-body does not detect face expressions, this node adds them through MediaPipe"* | — |
+| smoothing | Smooth SAM3D Body Pose Data, method `gaussian` | — |
+| export | Create 3D Animation File — `glb`, `include_hands` on, `bone_smooth_window`, fps 24 | — |
+
+**Four things follow that matter to us.**
+
+**It emits `mhr_pose_data`.** Not landmarks — **MHR pose parameters**, our body
+model, straight out of the node. The joint-convention offsets that are our largest
+systematic term (neck 39.9 px, ankles 27.8, hips 20–25, no ears) do not arise,
+because there is no convention to cross.
+
+**It has a dedicated hand refinement stage**, exposed as a toggle. Battle 1's
+increments 5 and 6 built a 27-DoF constrained hand chain by hand and finished at
+33.9 mm held-out. This is a learned alternative into the same rig.
+
+**Its weakest link is our strongest.** The whole MoGe stage exists to *guess the
+camera* from a single image. We have a bundle-adjusted four-camera rig with
+byte-verified intrinsics. That stage is not merely unnecessary for us — the
+uncertainty it is compensating for is a large part of why monocular HMR sits at
+72.5 mm PVE.
+
+**And that reframes how it should be used.** The workflow is monocular and
+per-frame. We would run it **per view and fuse four MHR estimates with known
+extrinsics** — a parametric estimate per camera rather than 2D points, which is
+strictly more to fuse than the landmark triangulation we do now. That is a
+different and much better-conditioned problem than the one the workflow solves,
+and it aims directly at the term this document measured as dominant.
+
+The model files are named, so a local reproduction needs no reverse engineering of
+the graph: `sam_3d_body_dinov3_bf16`, `sam3_1_multiplex_fp16`,
+`moge_2_vitl_normal_fp16`, `rt_detr_v4-o-hgnet_fp32`. Note these are **Comfy-Org
+mirrors**; the SAM License governs the SAM materials wherever they are hosted, and
+SAM 3 and MoGe carry their own terms that this pass has **not** checked.
