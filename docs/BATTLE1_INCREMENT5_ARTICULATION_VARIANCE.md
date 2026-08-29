@@ -226,7 +226,7 @@ per-frame detector noise, and noise independent across frames averages down. A
 prior that was only trading accuracy for smoothness would have moved the last
 column the other way.
 
-### But a plain second-difference penalty cannot reach MAMMA's operating point
+### ~~But a plain second-difference penalty cannot reach MAMMA's operating point~~ — see the correction at the end of this document
 
 Look at what happens between 20 and 100. Amplitude falls from 47.1 mm to 9.0 mm —
 through the whole of MAMMA's 21–32 mm band and out the far side, into the
@@ -388,3 +388,55 @@ also a correct measurement attached to a wrong claim about what was possible. If
 it does not close the gap, then "the real battle is a detector that emits μ, σ and
 visibility" is earned, with data, and the synthetic-training-data campaign has a
 measured justification rather than a plausible one.
+
+## The warm start changed the answer, and the "structural gap" claim is now wrong
+
+Re-running the sweep with the trap fixed:
+
+| weight | amplitude | jitter | jitter +wrist | held-out C001 |
+|---:|---:|---:|---:|---:|
+| 0.25 | 48.6 mm | 19.90 mm | 17.42 mm | 28.9 mm |
+| **1.00** | **46.2 mm** | **5.67 mm** | **5.80 mm** | **28.2 mm** |
+
+The same weight that returned a frozen rest-pose hand at 98.3 mm before the warm
+start now gives **3.5× less jitter with the amplitude essentially intact and the
+held-out error slightly better.** 48.6 → 46.2 mm of excursion for 19.90 → 5.67 mm
+of jitter is not a trade; it is close to free.
+
+That is the opposite shape to the angle prior's curve, which fell from 47 mm of
+amplitude to 9 mm across the same kind of step. **So the section above titled "a
+plain second-difference penalty cannot reach MAMMA's operating point" is wrong as
+a general claim** — it was measured on the angle-space term, it was marked
+provisional for this one, and the position-space term does not behave that way.
+Struck rather than deleted, because the reason it was wrong matters: the collapse
+it described was real for the term it tested, and the temptation is to generalise
+a curve from one parameterisation to another that happens to share a name.
+
+We are still not at MAMMA's operating point — 5.67 mm of jitter against 0.19, and
+46 mm of amplitude against 21–32 — and **temporal coherence still fails its
+pre-registered 0.78 mm band.** But the direction of travel is now: more prior
+buys smoothness *and* accuracy, with the collapse cliff pushed somewhere past
+weight 1.
+
+## The wrist anchor is inside every hand number
+
+`fit_hand_sequence` takes `wrist_positions_m` as a fixed **input**. The chain
+hangs off the body track, so every hand figure in this document silently includes
+the body track's wrist error. Measured:
+
+| | agreement with MAMMA | our wrist jitter | MAMMA's wrist jitter |
+|---|---:|---:|---:|
+| subj0 left | 18.0 mm | 8.83 mm | 6.87 mm |
+| subj0 right | 20.3 mm | 6.79 mm | 5.46 mm |
+| subj1 left | 30.0 mm | 8.18 mm | 4.82 mm |
+| subj1 right | 27.9 mm | 7.60 mm | 6.06 mm |
+
+Two things follow. The anchor is 18–30 mm from MAMMA's, against a hand held-out
+error of 28.2 mm — **the same order.** A meaningful share of what we have been
+calling hand error may be wrist error the hand fit inherited and cannot fix.
+
+And at weight 1.0 the fitted hand's wrist-relative jitter is 5.80 mm, **below the
+anchor's own 8.83 mm of translational jitter.** The articulation is now smoother
+than the thing it is attached to. That caps what any further hand smoothing can
+achieve in world space, and it moves the next question from the fingers to the
+body track.
