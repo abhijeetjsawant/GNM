@@ -109,14 +109,29 @@ Runs at ~45.8 s/person-frame on CPU. Emits `pred_joint_coords` on **exactly our
 calibrated intrinsics.
 - *Fusing four per-view fits:* **do not build.** 118.2 mm cross-view disagreement,
   67% along the viewing ray but **42.8 mm transverse**, which fusion cannot fix;
-  averaging four leaves ~21 mm against our existing ~10 mm.
+  averaging four leaves ~21 mm against our existing ~10 mm — and **~21 mm is a floor**,
+since that division by √4 assumes independent errors while monocular models share
+appearance biases across views. "Do not build" holds a fortiori.
   (`tools/swap-harness/sam3d_fusion_conditioning.py`)
 - *Bone direction:* raw 6.9° median / 72.1° p90; after cross-view majority at 15°,
-  **3.2° median / 6.9° p90 on 74% of bone-frames**. At a 0.25 m forearm, 3.2° ≈ 13 mm.
-  **74% is n=160 bone-frames — a ±8-point binomial band. Do not treat it as precise.**
-  (`tools/swap-harness/sam3d_orientation_agreement.py`)
+  **3.2° median / 6.9° p90 — measured *inside* the 74% of bone-frames that keep ≥3
+  views.** Always quote the denominator with the degrees; without it this is the
+  survivorship shape again. 74% is n=160 bone-frames, a **±8-point binomial band**.
+  The 15° gate was tuned on MAMMA footage and is **provisional until re-derived on
+  owned data.** (`tools/swap-harness/sam3d_orientation_agreement.py`)
+- *…but for long segments this channel is redundant.* Two endpoints at our own ~10 mm
+  give a direction uncertainty of √2·10/L: **thigh 2.0°, upper arm 2.9°, forearm
+  3.2°, head 3.5°** — at or better than SAM 3D's 3.2°. The channel only pays where the
+  segment is short: **hands past the wrist, 9.0° from positions against 3.2°**, and
+  marginally feet at 4.5°. **So the "orientation channel" is in substance a hand
+  channel**, and an evaluation that includes limbs would "pass" by re-measuring what
+  triangulation already had.
 - *Twist:* **not usable.** 10.7° median, 139.7° p90, forearms 22–26° — the textbook
   monocular blind spot. **The orientation source is scoped to direction only.**
+*On the world transform:* verified only to **gross error** — 0.28 m rules out an axis
+swap and nothing finer. That is sufficient here for one specific reason: **directions
+are translation-invariant, so the 88.4 mm along-ray disagreement — 67% of the total
+that killed fusion — cannot contaminate the orientation result at all.**
 *Blindness of both orientation results:* reference-free. Four monocular fits can agree
 and be wrong together through shared appearance bias. **Agreement is a necessary
 condition, never an accuracy claim.**
@@ -130,7 +145,7 @@ listed so a fresh session does not rediscover them as findings.
 
 | withdrawn claim | why |
 |---|---|
-| "SAM 3D's 2D is 1.83× worse, 2.70× in the tail" | compared its 10-frame ladder against SOMA's hard-coded **full-take** row. On identical frames: 1.42× median, and **0.90/0.94 in the tail — SAM 3D is slightly better**. Both tails are association-contaminated |
+| "SAM 3D's 2D is 1.83× worse, 2.70× in the tail" | compared its 10-frame ladder against SOMA's hard-coded **full-take** row. On identical frames the median gap is 1.42×. **The tail is not readable for either detector** — SOMA's same-frames tail is ~5× its full-take tail, so the harness association contaminates both, and reading it was itself the error being corrected |
 | "the epipolar ladder can rank detector families" | it sees only the **incoherent** component. SOMA's error is 18.6 px coherent bias + 16.6 px spread — bias is the larger term and passes through triangulation untouched |
 | "the temporal smoother helps on real footage" | scored against MAMMA's *fitted* mesh, which is 2.6–2.9× smoother than its own raw triangulation. The test rewards smoothing. **G10's re-reading survives; the number does not** |
 | "μ 10.4 mm / visibility 4.5 / σ 0.4" | noise fitted to `_epipolar_distance_px`, which returns the **symmetric** distance, as if one-sided — 2.00× overstatement |
@@ -157,60 +172,93 @@ listed so a fresh session does not rediscover them as findings.
 
 ## 6. Build sequence
 
+Co-authored with both advisors; where they differed the choice is noted inline.
 Each step names what it changes, what measures it, the pre-registered band, and the
-degenerate solution that band must reject. **Do not skip the degenerate check** — four
-gates in this lane could not fail, and each cost a day of false confidence.
+degenerate solution that band must reject. **Do not skip the degenerate check.**
 
-### Step 1 — association under contact *(measure, do not build)*
+### Step 0 — book the marker session *(calendar action, today, parallel to everything)*
 
-MAMMA's retained `ma_2d` is **pre-associated by subject**, which makes it a
-truth-grade reference for the one stage nothing else can check. Strip the labels,
-pool 2×512 detections per camera, run `associate_frame_graph`, score against MAMMA's
-split. The clip is two people pushing and lifting each other — the hard case.
+Both advisors' rank 0. And this week's failures turn into **hard acquisition
+requirements**, because each names a term no owned footage can currently exercise:
 
-*Band:* switch rate ≤ 2% of subject-frames, **and** the inter-subject 3D distance and
-epipolar-affinity margin distributions published alongside the count.
-*Degenerate solution the band must reject:* "zero switches" is passable by a constant
-when bodies are far apart. **The margin distribution is what makes the count mean
-anything** — without it, report nothing.
-*Why first:* it is needed under every candidate architecture, it is the cheapest rung
-with a truth-grade reference, and it doubles as the fix for the orientation harness's
-own association confound (a 160 px gate currently admits cross-person pairs and
-inflates every tail measured through it).
+- **a turning sequence, ≥90° of yaw.** No owned clip turns more than 17°, which is
+  exactly why body-fixed and world-fixed offsets could not be separated on real
+  footage. Without it that question stays unanswerable;
+- **fast acting, p95 joint speed ≥ 1.9 m/s**, so the temporal smoother can be scored
+  against truth rather than against a smoothed reference;
+- **checkerboard, a distortion model, and a measured sync residual** — the terms the
+  synthetic fixture lists as absent by construction and which therefore have never
+  been measured at all;
+- **two subjects in physical contact**, the hard case for association.
 
-### Step 2 — bone directions into the solver *(build, and it is a real estimator change)*
+*Until this lands, every band below is a consistency band, not an accuracy band.*
 
-`solve_sequence_positions` is position-only. Consuming bone directions means adding an
-orientation residual, with its own weight, its own Jacobian sparsity, and the same
-increment discipline as the hand fit's temporal prior.
+### Step 1 — association under contact *(measure; build only if it fails)*
 
-*Band, pre-registered:* held-out reprojection **must not regress**, and the
-G10-corrected synthetic fixture must show the directions actually reduce true 3D
-error. Coverage is 74% of bone-frames (**±8 points at n=160**) so the term must
-degrade gracefully where directions are absent.
-*Degenerate solution the band must reject:* a zero-weight orientation term reproduces
-the current solver exactly and would pass any "does not regress" test. **The band
-requires a measured improvement, not the absence of harm.**
+MAMMA's retained `ma_2d` is **pre-associated by subject** — truth-grade labels for the
+one stage nothing else can check, on a contact clip. Strip the labels, pool 2×512 per
+camera, run `associate_frame_graph` (commits `9eb0393`, `7750c98`), score against
+MAMMA's split. Add a ±1-frame stream-offset arm to price sync sensitivity.
 
-### Step 3 — the hands question, reopened
+*Band:* zero switches over the take, **with the inter-subject distance and
+epipolar-affinity margin distributions published beside the count.**
+*Degenerate solution:* "zero switches" is passable by a constant when bodies are far
+apart. **Without the margin distribution, report nothing.**
+*Why first:* needed under every candidate architecture, cheapest rung with a
+truth-grade reference, and it **fixes a defect in our own harness** — the 160 px
+root-proximity association currently admits cross-person pairs and contaminated the
+epipolar tail for *both* detectors (SOMA's same-frames tail 57.58/93.83 against its
+full-take 11.49/32.79).
+
+### Step 2 — the orientation channel, scoped to short segments only
+
+**Rescoped after fable's redundancy check, and the rescoping nearly eliminates it.**
+Our own positions already give 2.0–3.5° of direction on limbs and spine — at or
+better than SAM 3D's 3.2°. The channel pays only where the segment is short: **hands
+past the wrist (9.0° from positions against 3.2°)** and marginally feet. So this is
+**a hand channel**, and it merges with Step 3.
+
+*What it changes:* `solve_sequence_positions` is position-only; consuming directions
+means an orientation residual with its own weight and Jacobian sparsity — **a real
+estimator change, not a data hookup.**
+*Band:* marginal value **over position-derived directions**, on the scoped segments
+only; held-out reprojection must not regress; acceptance quota per segment on the
+**full denominator**.
+*Degenerate solutions:* a zero-weight term reproduces the current solver and passes
+any "does not regress" test — **the band requires measured improvement, not absence
+of harm**; a channel computed from triangulated positions passes any limb band, which
+is why limbs are out of scope; and a frozen direction passes on low-rotation
+dialogue, so the eval set must include a turning sequence or the yaw-90/180 renders.
+
+### Step 3 — the hands question, where the orientation channel actually lives
 
 SAM 3D's `hand_pose_params` come from a learned prior into our own rig, against the
-27-DoF chain built by hand that finished at 33.9 mm held-out. It has not been
-compared. Note the resolution finding cuts the other way here: at a ~20 px hand crop,
-**resolution should matter**, unlike for the body.
+27-DoF chain that finished at **33.9 mm held-out**. Never compared. The resolution
+finding cuts the *other* way here: at a ~20 px hand crop, resolution should matter.
 
-*Band:* held-out leave-one-camera-out on the same four folds and four hands as
-increment 6, against arm D's 33.9 mm.
+*Band:* leave-one-camera-out on the same four folds and four hands as increment 6.
 *Degenerate solution:* a frozen mean hand scores ~98 mm; the band must reject it.
 
-### Step 4 — Battle 3/4, informed by the above
+### Step 4 — pseudo-label campaign for Battle 4 *(build, gated)*
 
-Unchanged in shape, corrected in content: **train for the full μ/σ/visibility triple**,
-because σ and visibility cannot be ranked. The target the detector must hit is
-MAMMA's residual distribution and **especially its tail** — 13.08 px at p95 against
-our 98.40.
+**Fable's, and it is the strongest idea in this plan.** Labels = our triangulated
+positions on **owned footage**, filtered by our own gates. Training a per-view
+detector on **our own convention** kills the ~18.6 px coherent bias *by construction*
+— the largest measured term in the budget — because there is no convention to cross.
 
----
+*Licence preconditions, pre-registered as gates rather than footnotes:* archive the
+NVIDIA OML text bound to our revision, and establish the exact attribution string —
+**do not invent one.** Label provenance recorded per clip.
+*Degenerate solution:* the detector learns the smoother's lag. **Train on unsmoothed
+triangulation; test stratified by speed.**
+
+### Explicitly not built
+
+MHR parameter fusion (gate failed). The reverse swap (firewall impossible on a
+one-person project; their fitter cannot consume 19 joints; question already
+answered). Separate visibility and σ heads as *requirements* (+0.15/+0.16 mm, three
+independent confirmations — they stay in the triple, they do not drive the design).
+Resolution work (refuted).
 
 ## 7. What of MAMMA stays in the loop, and until when
 
@@ -225,6 +273,17 @@ a delivered artifact, a trained model's weights, or a calibration constant that 
 | `triangulated_3d_pts` | shows what *their* fitter does to *their* input, so our geometry can be scored against a like stage | nothing needed after Battle 2 | Battle 2 delivers |
 | `verts_512.pkl` regressor | exact landmark correspondence, so comparisons are not nearest-vertex approximations | — | with the above |
 | `ma_masks` | **not used.** We consume no masks | — | already retired |
+| `gt_vertices` / `gt_joints` | **nothing — byte-copies of `pred_*`, verified. A decoy.** | — | never use |
+| the fixture's camera rig + footage | the fixture itself | owned calibration | **MPI-derived and barred from shipping**; retires at the first owned multicam fixture, which can precede Battle 2 |
+
+**No shipped constant, threshold, weight or calibration may be fitted or tuned on a
+MAMMA-derived artifact.** Structural go/no-go decisions may cite them; numbers that
+ship must be re-derived on owned data. **First casualty: Step 2's 15° majority gate,
+provisional until re-derived.**
+
+**And one dependency is now dual-provenance:** `mhr_model.pt` is sha256-identical
+between NVIDIA GEM-X and Meta SAM 3D Body, so MHR can be re-homed under the SAM
+License if the NVIDIA OML ever becomes a problem.
 
 **A calibration constant fitted on MAMMA outputs cannot ship** — that is a licence
 trap, not a technical one, and it is why the arm (i) offset work would have been
@@ -234,15 +293,18 @@ unusable even had it transferred.
 
 ## 8. Instrument table — what can produce a readable number
 
-| instrument | readable to | blind to |
-|---|---|---|
-| 3D vs MAMMA's fit | **~10 mm floor** — its own fit sits 9.3–11.7 mm from its own triangulation | anything below that is reference wobble |
-| 2D vs fit projections, **spread** | ~4–5 px (~8–10 mm) per camera | bias, without convention caveats |
-| cross-view epipolar ladder | the **incoherent** component only | coherent bias — which is SOMA's *larger* term. **Cannot rank detector families** |
-| cross-view consistency of monocular fits | fully readable, reference-free | shared appearance bias — necessary condition, never accuracy |
-| synthetic fixture, corrected noise | sub-mm, truth-referenced | calibration, distortion, sync, soft tissue, joint definition — all first-order on real footage |
-| association vs MAMMA's subject split | truth-grade labels | — |
-| marker session | **the only absolute accuracy instrument** | not yet booked |
+| instrument | readable to | blind to | **banned uses** |
+|---|---|---|---|
+| 3D vs MAMMA's fit | **~10 mm floor** — its fit sits 9.3–11.7 mm from its own triangulation | anything below that | any sub-10 mm claim; **scoring the smoother** — the reference is 2.6–2.9× temporally smoothed |
+| 3D vs `triangulated_3d_pts` | ~9–12 mm self-noise | — | scoring the smoother — its noise is *correlated* with the 2D being smoothed, the opposite bias to the fit |
+| 2D vs fit projections, **spread** | ~4–5 px per camera | bias appears as convention offset | quoting bias as detector error |
+| cross-view epipolar ladder | the **incoherent** component only | **the entire coherent axis** — SOMA's *larger* term | **cross-family detector verdicts**; any comparison not same-frames-same-harness; **reading the tail without an association audit** |
+| cross-view consistency of monocular fits | mm, reference-free | shared appearance bias | quoting "fits agree to X mm" as accuracy |
+| majority-vote orientation residual | ~1° | survivorship by construction | quoting the residual **without per-segment acceptance on the full denominator** |
+| synthetic fixture, corrected noise | sub-mm, truth-referenced | calibration, distortion, sync, soft tissue, joint definition | any "our MPJPE" claim; **detector pricing** |
+| association vs MAMMA's subject split | truth-grade labels | this take only | generalisation beyond the contact case |
+| reprojection onto our own detections | — | — | **banned as a gate entirely** |
+| marker session | **the only absolute accuracy instrument** | — | not yet booked |
 
 ---
 
