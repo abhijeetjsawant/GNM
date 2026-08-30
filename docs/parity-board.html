@@ -1,0 +1,472 @@
+<title>Body Lane Parity Board</title>
+<style>
+  :root {
+    --ground:      #F5F7FA;
+    --surface:     #FFFFFF;
+    --surface-alt: #EEF1F6;
+    --ink:         #14181F;
+    --ink-muted:   #59636F;
+    --ink-faint:   #838D9A;
+    --rule:        #DCE1E9;
+    --rule-strong: #C3CBD6;
+    --accent:      #1D5A87;
+    --accent-soft: #E4EEF6;
+
+    --proven:      #3C7550;
+    --proven-bg:   #E6F0E8;
+    --partial:     #8A6416;
+    --partial-bg:  #F6EEDC;
+    --dark:        #A8541C;
+    --dark-bg:     #F8EBE1;
+    --missing:     #9C3A31;
+    --missing-bg:  #F8E7E5;
+    --inert:       #667080;
+    --inert-bg:    #ECEFF3;
+
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0E1217;
+      --surface:     #151A21;
+      --surface-alt: #1B2129;
+      --ink:         #E6EAF0;
+      --ink-muted:   #97A1AE;
+      --ink-faint:   #6F7986;
+      --rule:        #262D37;
+      --rule-strong: #364050;
+      --accent:      #74B4DF;
+      --accent-soft: #162835;
+
+      --proven:      #6BA37D;
+      --proven-bg:   #16241B;
+      --partial:     #C99B45;
+      --partial-bg:  #2A2216;
+      --dark:        #D08551;
+      --dark-bg:     #2B1F16;
+      --missing:     #D1786E;
+      --missing-bg:  #2B1918;
+      --inert:       #8A93A1;
+      --inert-bg:    #1C222A;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #0E1217;
+    --surface:     #151A21;
+    --surface-alt: #1B2129;
+    --ink:         #E6EAF0;
+    --ink-muted:   #97A1AE;
+    --ink-faint:   #6F7986;
+    --rule:        #262D37;
+    --rule-strong: #364050;
+    --accent:      #74B4DF;
+    --accent-soft: #162835;
+
+    --proven:      #6BA37D;
+    --proven-bg:   #16241B;
+    --partial:     #C99B45;
+    --partial-bg:  #2A2216;
+    --dark:        #D08551;
+    --dark-bg:     #2B1F16;
+    --missing:     #D1786E;
+    --missing-bg:  #2B1918;
+    --inert:       #8A93A1;
+    --inert-bg:    #1C222A;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.6rem;
+  }
+  h1 {
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.75rem;
+    text-wrap: balance;
+  }
+  h2 {
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.35rem;
+    text-wrap: balance;
+  }
+  h3 { font-size: 1rem; margin: 0 0 0.3rem; }
+  p { margin: 0 0 0.9rem; max-width: 62ch; }
+  .lede { color: var(--ink-muted); font-size: 1.06rem; max-width: 60ch; }
+
+  header { border-bottom: 2px solid var(--rule-strong); padding-bottom: 1.6rem; margin-bottom: 2.4rem; }
+  .stamp {
+    display: flex; flex-wrap: wrap; gap: 1.4rem;
+    font-family: var(--mono); font-size: 0.74rem; color: var(--ink-faint);
+    margin-top: 1.1rem;
+  }
+  .stamp b { color: var(--ink-muted); font-weight: 600; }
+
+  section { margin-bottom: 3rem; }
+  .sec-head { display: flex; align-items: baseline; gap: 0.8rem; margin-bottom: 1.1rem;
+              border-bottom: 1px solid var(--rule); padding-bottom: 0.6rem; }
+  .sec-head .n { font-family: var(--mono); font-size: 0.78rem; color: var(--accent); font-weight: 600; }
+
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--missing);
+    border-radius: 3px;
+    padding: 1.2rem 1.4rem;
+  }
+  .callout.accent { border-left-color: var(--accent); }
+
+  /* ---- the millimetre axis ---- */
+  .axis-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 1.4rem 1.5rem 1.1rem; }
+  .axis { position: relative; height: 108px; margin: 1.6rem 0 0.4rem; }
+  .axis-line { position: absolute; left: 0; right: 0; top: 62px; height: 2px; background: var(--rule-strong); }
+  .band {
+    position: absolute; top: 46px; height: 34px; border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em;
+  }
+  .band.target { background: var(--proven-bg); border: 1px solid var(--proven); color: var(--proven); }
+  .band.unknown {
+    background: repeating-linear-gradient(45deg, var(--partial-bg), var(--partial-bg) 6px, transparent 6px, transparent 12px);
+    border: 1px dashed var(--partial); color: var(--partial);
+  }
+  .tick { position: absolute; top: 84px; font-family: var(--mono); font-size: 0.68rem; color: var(--ink-faint); transform: translateX(-50%); }
+  .tick::before { content: ""; position: absolute; left: 50%; top: -22px; width: 1px; height: 12px; background: var(--rule-strong); }
+  .axis-label { position: absolute; top: 8px; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; }
+
+  /* ---- pipeline ladder ---- */
+  .ladder { display: flex; flex-direction: column; gap: 0.5rem; }
+  .stage {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr auto;
+    gap: 0 1rem;
+    align-items: start;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--inert);
+    border-radius: 3px;
+    padding: 0.95rem 1.1rem;
+  }
+  .stage.s-proven  { border-left-color: var(--proven); }
+  .stage.s-partial { border-left-color: var(--partial); }
+  .stage.s-dark    { border-left-color: var(--dark); }
+  .stage.s-missing { border-left-color: var(--missing); }
+  .stage .idx { font-family: var(--mono); font-size: 0.82rem; color: var(--ink-faint); padding-top: 0.15rem; font-weight: 600; }
+  .stage .body h3 { font-size: 1rem; }
+  .stage .body p { margin: 0.2rem 0 0; font-size: 0.9rem; color: var(--ink-muted); max-width: 54ch; }
+  .stage .metric {
+    font-family: var(--mono); font-size: 0.86rem; font-weight: 600;
+    font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; padding-top: 0.1rem;
+  }
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 0.65rem; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 0.16rem 0.45rem;
+    border-radius: 2px; margin-bottom: 0.3rem;
+  }
+  .c-proven  { background: var(--proven-bg);  color: var(--proven); }
+  .c-partial { background: var(--partial-bg); color: var(--partial); }
+  .c-dark    { background: var(--dark-bg);    color: var(--dark); }
+  .c-missing { background: var(--missing-bg); color: var(--missing); }
+  .c-inert   { background: var(--inert-bg);   color: var(--inert); }
+
+  .blind { font-size: 0.83rem; color: var(--ink-faint); margin-top: 0.35rem; }
+  .blind b { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.07em;
+             text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+
+  /* ---- legend ---- */
+  .legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; margin-bottom: 1.2rem; }
+  .legend span { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--ink-muted); }
+  .swatch { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+
+  /* ---- readings ---- */
+  .readings { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.75rem; }
+  .reading { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 1rem 1.1rem; }
+  .reading .v { font-family: var(--mono); font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums;
+                letter-spacing: -0.02em; display: block; margin-bottom: 0.15rem; }
+  .reading .k { font-size: 0.88rem; color: var(--ink); font-weight: 600; }
+  .reading .d { font-size: 0.8rem; color: var(--ink-faint); margin-top: 0.35rem; }
+
+  /* ---- next actions ---- */
+  .actions { display: flex; flex-direction: column; gap: 0.55rem; }
+  .action { display: grid; grid-template-columns: auto 1fr; gap: 0 0.9rem; align-items: start;
+            background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 0.9rem 1.1rem; }
+  .action .rank { font-family: var(--mono); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+                  color: var(--surface); background: var(--accent); padding: 0.18rem 0.42rem; border-radius: 2px; }
+  .action .rank.own { background: var(--missing); }
+  .action p { margin: 0.25rem 0 0; font-size: 0.88rem; color: var(--ink-muted); }
+
+  .closed { display: flex; flex-direction: column; gap: 0.5rem; }
+  .closed div { background: var(--surface-alt); border-radius: 3px; padding: 0.75rem 1rem; font-size: 0.9rem; }
+  .closed b { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+              color: var(--proven); margin-right: 0.5rem; }
+
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--surface-alt);
+         padding: 0.08em 0.32em; border-radius: 2px; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+  footer { border-top: 1px solid var(--rule); padding-top: 1.2rem; color: var(--ink-faint); font-size: 0.82rem; }
+
+  @media (max-width: 34rem) {
+    .stage { grid-template-columns: 1.6rem 1fr; }
+    .stage .metric { grid-column: 2; text-align: left; padding-top: 0.4rem; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">In-house markerless multi-camera body capture</p>
+    <h1>Body Lane Parity Board</h1>
+    <p class="lede">Where each stage of the capture pipeline actually stands — what is measured and holding, what is unmeasured, and what does not exist yet. The target is MAMMA/Vicon parity. We cannot yet say how far away we are, and that is the most important thing on this page.</p>
+    <div class="stamp">
+      <span><b>Snapshot</b> 2026-08-30</span>
+      <span><b>Plan of record</b> docs/BODY_LANE_PLAN.md</span>
+      <span><b>Body model</b> Meta MHR (Apache-2.0)</span>
+      <span><b>Clean-room</b> no MAMMA in runtime</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="n">01</span><h2>The honest position</h2></div>
+    <div class="callout">
+      <h3>No number in this project has ever been checked against ground truth.</h3>
+      <p>Every millimetre figure is measured against MAMMA's own output — an estimate, not truth — or against synthetic data that contains none of calibration error, lens distortion, sync error, soft-tissue artefact or joint-definition error. All five are first-order on real footage.</p>
+      <p style="margin-bottom:0"><b>The marker session is the only path to an accuracy claim, and it is not booked.</b> Until it lands, every band below is a consistency band, not an accuracy band.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">02</span><h2>Distance to target</h2></div>
+    <div class="axis-card">
+      <p style="font-size:0.9rem;color:var(--ink-muted);margin-bottom:0"><b>Held-out marker error</b> — the only axis on which "Vicon parity" means anything. Our position on it is <b>not measured</b>; the band shown is the plan's stated uncertainty, not a result.</p>
+      <div class="axis">
+        <div class="axis-label" style="left:26%;color:var(--proven)">Target</div>
+        <div class="axis-label" style="left:56%;color:var(--partial)">Us — unmeasured</div>
+        <div class="axis-line"></div>
+        <div class="band target"  style="left:33.3%;width:6.7%">20–22</div>
+        <div class="band unknown" style="left:43.3%;width:33.3%">somewhere 26 – 46 mm</div>
+        <div class="tick" style="left:0%">0</div>
+        <div class="tick" style="left:33.3%">20</div>
+        <div class="tick" style="left:43.3%">26</div>
+        <div class="tick" style="left:76.7%">46</div>
+        <div class="tick" style="left:100%">60 mm</div>
+      </div>
+      <p style="font-size:0.83rem;color:var(--ink-faint);margin:0.8rem 0 0"><b>The target is not 13.5 mm, and this board said so until 2026-08-30.</b> That figure is MPJPE against a <i>fitted</i> reference — Vicon markers passed through a model fit — and it is read off a chart, not a published table. On held-out markers, the measurement behind the parity claim, the reference system scores <span class="num">22.48 mm</span> against a marker pipeline's own <span class="num">21.62 mm</span>. State three numbers, never one: MPJPE <span class="num">12.96</span> · PVE <span class="num">17.18</span> · held-out marker <span class="num">22.48</span>.</p>
+      <p style="font-size:0.83rem;color:var(--partial);margin:0.6rem 0 0"><b>And this is why the session gate matters more than the number.</b> Two marker-grade instruments sit <span class="num">0.86 mm</span> apart at ~22 mm, so <b>marker ground truth cannot discriminate below about 20 mm.</b> The session can tell us whether we are at 25 or 45. It can never tell us whether we are at 13 or 18 — a sub-20 mm claim needs a different instrument entirely, a body scan or synthetic truth.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">03</span><h2>Pipeline, stage by stage</h2></div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--proven)"></i>Measured and holding</span>
+      <span><i class="swatch" style="background:var(--partial)"></i>Measured, known problem</span>
+      <span><i class="swatch" style="background:var(--dark)"></i>Unmeasured — no instrument</span>
+      <span><i class="swatch" style="background:var(--missing)"></i>Does not exist / not owned</span>
+    </div>
+
+    <div class="ladder">
+
+      <div class="stage s-partial">
+        <div class="idx">01</div>
+        <div class="body">
+          <span class="chip c-partial">Measured · known problem</span>
+          <h3>2D detection <span style="color:var(--ink-faint);font-weight:400">— SOMA-77 / Apple Vision / MediaPipe</span></h3>
+          <p>The gap, and it moved today. Not the tail — the <b>bulk and the coherent bias</b>. Our p50 is 9.33 px against MAMMA's 4.29 (~2.2×), plus roughly 18.6 px of convention offset that passes through triangulation untouched.</p>
+          <p class="blind"><b>Blind to</b> — no ground truth. Scored against MAMMA's own fit, which is deflated because its fit consumed the landmarks it is scored against.</p>
+        </div>
+        <div class="metric" style="color:var(--partial)">2.2×<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">bulk vs MAMMA</span></div>
+      </div>
+
+      <div class="stage s-proven">
+        <div class="idx">02</div>
+        <div class="body">
+          <span class="chip c-proven">Measured · holding</span>
+          <h3>Subject association</h3>
+          <p>Zero identity switches across 300 slot-frames and 1,200 camera-slot decisions, on a clip where the two performers' surfaces close to <span class="num">2 mm</span>. Holds under a ±1-frame sync offset. Contact halves the decision margin but never inverts it.</p>
+          <p class="blind"><b>Blind to</b> — tested with a geometrically perfect, count-correct detector. The ambiguous and ghost-detection paths were never exercised.</p>
+        </div>
+        <div class="metric" style="color:var(--proven)">0<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">switches</span></div>
+      </div>
+
+      <div class="stage s-proven">
+        <div class="idx">03</div>
+        <div class="body">
+          <span class="chip c-proven">Measured · holding</span>
+          <h3>Triangulation</h3>
+          <p>Given MAMMA's own 2D, our unchanged triangulator lands <span class="num">8.9 mm</span> from MAMMA's own landmarks — inside the range MAMMA's own fitter moves from its own triangulation. We are at the instrument's floor and cannot be distinguished from it. Its inlier gate also absorbs the detector tail for free.</p>
+          <p class="blind"><b>Blind to</b> — anything below ~10 mm. Not the bottleneck; single-frame CRLB says little headroom remains.</p>
+        </div>
+        <div class="metric" style="color:var(--proven)">8.9 mm<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">at floor</span></div>
+      </div>
+
+      <div class="stage s-dark">
+        <div class="idx">04</div>
+        <div class="body">
+          <span class="chip c-dark">Unmeasured · no instrument</span>
+          <h3>Sequence solve</h3>
+          <p>Recovers <span class="num">6</span> of roughly <span class="num">20</span> eligible slots on the reference run — under-exercised, not broken. It only fires on joints seen by exactly one camera, and no fixture we have produces those. An uncommitted correctness fix sits in the tree, provably inert on every fixture available to test it.</p>
+          <p class="blind"><b>Blind to</b> — everything. Measuring it needs single-ray slots, which no current fixture contains.</p>
+        </div>
+        <div class="metric" style="color:var(--dark)">6 / 20<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">recovered</span></div>
+      </div>
+
+      <div class="stage s-dark">
+        <div class="idx">05</div>
+        <div class="body">
+          <span class="chip c-dark">Unmeasured · both references banned</span>
+          <h3>Fill &amp; temporal smoothing</h3>
+          <p>Touches every joint and moves already-triangulated ones by <span class="num">5.6–7.9 mm</span> median, with a tail past <span class="num">0.9 m</span>. Those large moves are outlier repair, not damage — joints it moves furthest had 34–46× the raw temporal acceleration. It is the pipeline's de facto outlier filter.</p>
+          <p class="blind"><b>Blind to</b> — whether any move went toward truth. MAMMA's fitted mesh is itself 2.6–2.9× smoothed, and its triangulation is correlated with the 2D being smoothed. Both candidate references are banned for scoring this.</p>
+        </div>
+        <div class="metric" style="color:var(--dark)">±7 mm<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">displacement</span></div>
+      </div>
+
+      <div class="stage s-partial">
+        <div class="idx">06</div>
+        <div class="body">
+          <span class="chip c-partial">Measured · known problem</span>
+          <h3>Positions → rotations, and ground projection</h3>
+          <p>The largest displacement between what we reconstruct and what we deliver: <span class="num">75–79 mm</span> root-relative median. Analytic and closed-form — there is no IK solver. Of that, <span class="num">36–47 mm</span> on the arms is a converter defect: the clavicle direction is measured from a synthetic torso anchor but applied about the rig's own shoulder origin, 15–19° off. <b>Fixable now.</b></p>
+          <p class="blind"><b>Blind to</b> — this is delivered-vs-captured, a different reference and population from the detector numbers. Do not subtract them.</p>
+        </div>
+        <div class="metric" style="color:var(--partial)">75–79 mm<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">root-relative</span></div>
+      </div>
+
+      <div class="stage s-missing">
+        <div class="idx">07</div>
+        <div class="body">
+          <span class="chip c-missing">Does not exist</span>
+          <h3>Parametric body fit</h3>
+          <p>Nothing in the delivery path fits MHR, SMPL-X or any shape model. Every performer is driven onto one <b>generic mesh with canonical proportions</b> — arms <span class="num">16–29 mm</span> too long, legs <span class="num">15–30 mm</span> too short. MAMMA fits a dense shape per subject.</p>
+          <p><b>It splits in two.</b> The solver already measures each performer's bone lengths and the retarget discards them; putting them back recovers <span class="num">19–35%</span> of the proportion gap. But the delivered track is <b>bit-identical</b> either way — the benefit lives in the export skeleton, which carries no rest offsets. So that half is a <b>schema change</b>, not a code edit. Dense shape stays deferred to the body scan.</p>
+          <p class="blind"><b>Consequence</b> — this is the majority of stage 06, and <b>no detector improvement can reach it</b>. The silent-failure risk is the hard part: a performer-proportioned track validates as canonical and is indistinguishable once serialised.</p>
+        </div>
+        <div class="metric" style="color:var(--missing)">—<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">not built</span></div>
+      </div>
+
+      <div class="stage s-missing">
+        <div class="idx">08</div>
+        <div class="body">
+          <span class="chip c-missing">Not owned</span>
+          <h3>Calibration, sync, lens distortion</h3>
+          <p>Every result runs on MAMMA's camera rig, which is MPI-derived and <b>barred from shipping</b>. We have never measured a sync residual on anything of ours. Half a frame at 30 Hz costs <span class="num">29–48 mm</span> at our joint speeds — and MAMMA's own genlocked rig still slipped two frames.</p>
+          <p><b>A sixth absent term, and it cuts both ways.</b> Rolling shutter is tracked nowhere — per-row readout means genlocked cameras still sample head and feet at different instants, and measured readouts run <span class="num">8.7–26.8 ms</span> against a <span class="num">5 ms</span> budget. But that same row structure is <b>the cheapest sub-millisecond sync instrument there is</b>: a flash lights only a band of scanlines, and the band's row index encodes sub-frame phase to <span class="num">0.3–0.5 ms</span> under an MIT licence. Global shutter removes the error term <i>and</i> the instrument.</p>
+          <p><b>The dominant answer is neither.</b> A GPIO hardware trigger holds <span class="num">under 100 ns</span> — three to four orders of magnitude better than any software method. If the cameras accept one, nothing else here matters.</p>
+          <p class="blind"><b>Consequence</b> — no shipped constant may be fitted on a MAMMA-derived artifact. An owned multicam fixture can precede the marker session, would retire this, and is now load-bearing for three separate questions: sync, the sequence solve, and Step 4's training data.</p>
+        </div>
+        <div class="metric" style="color:var(--missing)">—<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">no owned rig</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">04</span><h2>What runs today</h2></div>
+    <div class="readings">
+      <div class="reading">
+        <span class="v" style="color:var(--proven)">End&#8209;to&#8209;end</span>
+        <span class="k">The pipeline produces a character</span>
+        <p class="d" style="margin:0.35rem 0 0">Frames → detection → association → triangulation → solve → smoothing → 55-joint rig → GLB. It runs. What is missing is any defensible claim about how good it is.</p>
+      </div>
+      <div class="reading">
+        <span class="v" style="color:var(--proven)">89.1%</span>
+        <span class="k">Joints triangulated directly</span>
+        <p class="d">Against a structural ceiling of 89.5% — we are at 99.6% of what this detector can reach. The remaining 10% is two ear joints SOMA-77 never emits, not a quality signal.</p>
+      </div>
+      <div class="reading">
+        <span class="v" style="color:var(--proven)">Clean</span>
+        <span class="k">Licence position</span>
+        <p class="d">No MAMMA code, weights or outputs in the runtime. MHR is dual-provenance and can be re-homed if the NVIDIA terms ever become a problem.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">05</span><h2>Closed today — questions that will not come back</h2></div>
+    <div class="closed">
+      <div><b>Opened — the largest lever found so far</b> Most of what we call "coherent joint-definition bias" is not per-joint at all. It is <b>one 2D translation per camera</b>, static rather than per-frame — and removing those four constants moves 3D error from <span class="num">45.1</span> to <span class="num">37.9 mm</span> median, and <span class="num">126.9</span> to <span class="num">94.6</span> at p95. A shuffled control makes p95 <i>worse</i>, so the gain is real. The cause is not yet established: calibration error, a crop convention, or the shared part of a genuine convention offset. <b>If it is four numbers rather than nineteen conventions, it is far cheaper to kill than the detector campaign assumes.</b></div>
+      <div><b>Closed</b> A <b>perfect</b> veto of every bad detector observation is worth <span class="num">+0.05 mm</span>. The triangulator's inlier gate already discards 98% of them. No veto of any provenance is worth building on this rig — <b>SAM 3D closes entirely</b>.</div>
+      <div><b>Closed</b> The detector's <b>tail is not the driver</b>. It is the most visible difference in 2D and the least consequential in 3D. What remains is the bulk and the coherent bias — which is what the pseudo-label campaign attacks.</div>
+      <div><b>Corrected</b> σ and visibility were never two channels being compared — they were the same information on opposite sides of one threshold. A confidence acts as a <b>gate</b>, not a weight.</div>
+      <div><b>Corrected</b> A synthetic result is only as good as its noise model's agreement with the real error's <i>shape</i>. Ours matched the deciles and still put the mass in the wrong place.</div>
+      <div><b>Opened</b> The solver measures each performer's own bone lengths, one set per subject per take — and the retarget throws them away. Restoring them recovers <span class="num">19–35%</span> of the body-proportion gap.</div>
+      <div><b>Corrected</b> That finding was first written up at "44%" off a pooled median. The landmark population is bimodal — legs ~25 mm, arms ~180 mm — so the same statistic reads <span class="num">2%</span> on the other performer. <b>A rank statistic over a bimodal population is not a summary.</b></div>
+      <div><b>Corrected</b> "Rescaling the torso is harmful" was a bug in the measuring script, not a finding — an <span class="num">80 mm</span> origin offset. Corrected, torso scaling is the single largest proportion win on one performer.</div>
+      <div><b>Corrected</b> The target on this page was wrong until today. <b>13.5 mm is MPJPE against a fitted reference, not marker error.</b> On held-out markers the reference system scores <span class="num">22.48 mm</span> against a marker pipeline's own <span class="num">21.62</span> — parity is a <span class="num">0.86 mm</span> gap between two ~21 mm instruments.</div>
+      <div><b>Closed</b> Camera count. The geometry bound improves as one-over-root-N — six cameras buy 18% — but the real system does not move: the reference's own ablation is <b>flat from four to eight cameras</b>, because the detector dominates, not the geometry. <b>Do not buy cameras for single-person accuracy.</b> Buy them, if at all, for two-person, hands, or training-label purity.</div>
+      <div><b>Opened</b> Occlusion is strongly <i>correlated</i> across views. Assuming independence predicts <span class="num">6.2%</span> of joints starved of views; the measured figure is <span class="num">35.3%</span> — a <span class="num">5.7×</span> miss on the one case we can check.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">06</span><h2>What happens next</h2></div>
+    <div class="actions">
+      <div class="action">
+        <span class="rank own">Yours</span>
+        <div>
+          <h3>Book the marker session</h3>
+          <p>Rank 0 for the second time, and nothing else can unblock it. Weeks of lead time on the marker reference, days-to-weeks on genlock, plus performer releases covering ML training. Stronger option: build an owned multicam fixture and physical-constraint kit first, so it becomes <i>bring markers to our stage</i> rather than renting someone else's.</p>
+        </div>
+      </div>
+      <div class="action">
+        <span class="rank own">Yours</span>
+        <div>
+          <h3>Two licence gates, both unmet, both blocking the detector work</h3>
+          <p><b>NVIDIA's model licence is not archived</b> against any model revision, so whether we may fine-tune SOMA-77 into commercial weights cannot be answered from what we hold — and the question of what its DINOv3 initialisation carries is still unsent. Separately and more urgently: <b>performer releases covering ML training use</b>. Training on owned footage is illegal without them, and no amount of engineering routes around it.</p>
+        </div>
+      </div>
+      <div class="action">
+        <span class="rank">Study</span>
+        <div>
+          <h3>Pose2Sim — the commercially clean cousin, doing what we do not</h3>
+          <p>Same architecture as ours, but it <b>scales a skeleton to each subject</b> and runs IK against it. BSD-3, Apache-2.0 detector and IK, no restricted body model anywhere. Two things it may hand us at once: the pattern for the per-performer skeleton, and a fix for our systematic joint-convention bias — it reports the same failure mode and absorbs it in that same layer.</p>
+          <p class="blind"><b>Do not inherit its sync</b> — verified in source, it takes the correlation peak at integer frames only, which quantises to <span class="num">±16.7 ms</span> at 30 fps, or <span class="num">83 mm</span> at a fast wrist. OpenCap has the same defect and publishes no sync accuracy at all.</p>
+        </div>
+      </div>
+      <div class="action">
+        <span class="rank">Next</span>
+        <div>
+          <h3>Pseudo-label campaign for the detector</h3>
+          <p>Train on our own triangulated labels from owned footage. It kills the ~18.6 px coherent bias <b>by construction</b> — there is no convention to cross — and attacks the bulk. Now the top engineering priority, because it is aimed at the half of the gap that still matters.</p>
+        </div>
+      </div>
+      <div class="action">
+        <span class="rank">Study</span>
+        <div>
+          <h3>Rig joint placement — attempted, band failed, reverted</h3>
+          <p>The collarbone fix was tried and made things worse: the canonical round-trip control went from <span class="num">0.00</span> to <span class="num">46–67 mm</span> on the legs, and the change was reverted the same hour. The reason is the useful part. <b>No rig joint origin sits where its captured landmark does</b> — the rig puts the hips at the pelvis while the leg joints hang 80 mm below and 90 mm to each side, and its hip separation is 180 mm against a measured 207. So the collarbone was a symptom. The real fix is the root and hip placement convention, and it belongs with the per-performer skeleton work rather than ahead of it.</p>
+        </div>
+      </div>
+      <div class="action">
+        <span class="rank">Small</span>
+        <div>
+          <h3>Land the weighting fix and its harness together</h3>
+          <p>A committed script passes a parameter the committed source does not accept, so a clean checkout raises <code>TypeError</code>. Land them as one change, and do not flip the default — the fix is correct but no instrument for it exists yet.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Every figure carries the instrument that produced it and what that instrument is blind to. Numbers measured against MAMMA are structurally floored at ~10 mm; numbers from the synthetic fixture contain none of calibration, distortion, sync, soft-tissue or joint-definition error. Nothing here is an accuracy claim.
+  </footer>
+
+</div>

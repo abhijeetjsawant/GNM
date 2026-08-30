@@ -18,6 +18,17 @@
 - **Start at `docs/BODY_LANE_PLAN.md`.** It is the plan of record: what is measured,
   what has been withdrawn, what is open, and the build sequence with its bands. Read
   sections 0–2 before doing anything in this lane.
+- **Keep the parity board current: `docs/parity-board.html`**, published at
+  <https://claude.ai/code/artifact/cf83ef29-a4b7-4afd-9031-0918e8eb6f35>. It is the
+  one-page view of where each pipeline stage stands — measured and holding,
+  measured with a known problem, unmeasured for want of an instrument, or not built.
+  **Update it in the same pass as the plan**, whenever a measurement changes a
+  stage's status, closes a question, or moves the target. Edit the file and
+  republish it with the Artifact tool, passing that URL as `url` so the link stays
+  stable; publishing without it creates a second board and the link people hold
+  goes stale. Two rules the board itself must keep: **every stage carries what its
+  instrument is blind to**, and **numbers from different references never share an
+  axis** — the detector figures and the retarget figures are not comparable.
 - Two standing rules, and they are not optional. **No gate a constant can pass** —
   every acceptance band ships with a demonstration that a degenerate solution fails
   it. **Same denominator** — score both arms of a comparison on the same population.
