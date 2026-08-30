@@ -770,6 +770,33 @@ already takes, and it is measured rather than assumed.
 **Caveats, and the first is the same one rung 6 carried.** This is reference-free:
 four views agreeing is a necessary condition, not an accuracy claim — they can agree
 and be wrong together through shared appearance bias. Ten frames, two subjects, one
-clip. And it measures bone **direction** only; twist about the bone axis is a separate
-degree of freedom, is the one monocular estimation is worst at, and has not been
-measured.
+clip. And it measured bone **direction** only. Twist is measured below, and it does not
+survive.
+
+### Rung 7b — twist does not survive, and forearms are the worst of it
+
+Measured from positions rather than from `pred_global_rots` — whose column 0 is only
+*approximately* the bone axis (|cos| 0.87–0.99), so it carries a rest prerotation and
+is not a clean twist reference. Instead a child joint off the bone gives the
+reference direction in the plane perpendicular to it: the knuckle relative to the
+wrist for a forearm.
+
+| bone | twist median | p90 |
+|---|---:|---:|
+| left forearm | **26.2°** | 148.4° |
+| right forearm | **22.5°** | 125.3° |
+| left upper arm | 10.5° | 145.5° |
+| right upper arm | 7.6° | 144.3° |
+| thighs | 6.3–7.7° | 116° |
+| **all** | **10.7°** | **139.7°** |
+| *bone direction, for comparison* | *6.9°* | *72.1°* |
+
+**Forearm twist — pronation and supination — is the worst single quantity measured
+here at 22–26°**, which is the textbook monocular blind spot appearing exactly where
+the textbook says it will: a forearm rotating about its own axis barely changes its
+silhouette. Twist is also twice as bad as direction in the tail, 140° against 72°.
+
+**So the orientation source is scoped to bone direction.** Twist stays with whatever
+the hand fit and the body track can infer from position geometry, and SAM 3D is not
+consulted for it. That is a narrower claim than "orientations from SAM 3D" and it is
+the one the measurement supports.
