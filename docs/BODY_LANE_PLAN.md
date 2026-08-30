@@ -176,6 +176,88 @@ across frames.
 *Instrument:* `tools/swap-harness/crlb.py`. *Blindness:* single-frame; says nothing
 about the sequence solve.
 
+**EVERY DELIVERED CHARACTER FACES 180° THE WRONG WAY.** Found 2026-08-31, by the
+user, on sight — and confirmed by the first thing this pipeline has ever done that
+holds a render against the footage it came from. Evidence:
+`docs/facing-defect.html`, instrument `tools/swap-harness/camera_overlay.py`.
+
+| measurement | result | establishes |
+|---|---:|---|
+| rig `LeftHand` vs captured **left** wrist | 196 mm | joints are on the correct side — |
+| rig `LeftHand` vs captured **right** wrist | 558 mm | — so this is **not** a left/right swap |
+| `LeftToes` relative to `LeftFoot`, rest pose | −Y (Blender) | the mesh faces rig **+Z** |
+| vertices skinned to `LeftUpperArm` | x = **−0.245** | joints named *Left* sit at rig **−X** |
+| anatomy: facing +Z, up +Y | left = **+X** | **the naming is mirrored** |
+| delivered forward vs true facing, both subjects | dot **−0.90** | exactly opposed |
+
+**Mechanism.** `_frame_alignment((0,1,0), (−1,0,0), torso_up, hip_across)` maps the
+rig's third basis vector (+Z) onto `cross(up, left)`. Anatomically forward is
+`cross(left, up)` — the negative. Because the rig's *Left* joints sit on the mesh's
+anatomical *right*, driving it with correct anatomical data yields a **pure 180° yaw**,
+not a reflection. A 180° rotation about each character's own vertical axis makes the
+render match the footage exactly.
+
+**Why it survived.** A mirrored-but-self-consistent human still looks like a human.
+It is invisible in isolation and obvious the moment a render sits beside its source
+frame — a comparison nothing in this pipeline performed until now. **That absence is
+the real defect; the yaw is only its first symptom.**
+
+**ARBITRATED 2026-08-31, and the answer is external: our rig is the wrong one.**
+The user pointed at `artifacts/macap-hik/macap-HIK-Model-v2.ma` — a Maya ASCII scene
+carrying a **characterised HumanIK skeleton**, 62 joints, a `skinCluster`, and a
+`HIKCharacterNode`.
+
+**The reference rig is verified anatomically correct three independent ways**, from
+the SMPL-X model file itself rather than from anyone's reasoning: `J_regressor @
+v_template` puts `left_hip` at **x = +0.061** against `right_hip` at −0.060 and
+`left_wrist` at **+0.670**; the toe joint sits at **z = +0.063** against the ankle's
+−0.055, so the body faces **+Z**; and the mesh's extreme **+X** vertex carries weight
+**0.996** on skinning column 30, `left_middle3`. Facing +Z, up +Y, right-handed ⟹
+anatomical left = **+X**. Read straight from the file:
+
+| | left/right | up | facing | consistent? |
+|---|---|---|---|---|
+| **HumanIK** (`macap-HIK-Model-v2.ma`) | `LeftUpLeg` at **x = +8.34**, Right at −8.34 | +Y | toes at **z = +11.23** ⟹ **+Z** | **cross(left, up) = +Z ✓** |
+| **`DETAILED_HUMANOID`** (ours) | Left at **−X** | +Y | mesh faces **+Z** | cross(left, up) = −Z ✗ |
+
+**The two rigs are mirror images of each other**, and the one that is independently
+verifiable is theirs. So the authoritative end is settled without appeal to my own
+reasoning: **our rig naming is mirrored, and the retarget alignment is correct.** The
+fix belongs in `DETAILED_HUMANOID` and the mesh bound to it, not in `_frame_alignment`.
+
+**⚠ One claim withdrawn before it hardened.** I asserted that Maya *validates*
+handedness when characterising, so a mirrored rig would be refused. **That is
+untested** — every recorded run in `artifacts/macap-hik/` fed HumanIK the
+correct-handed SMPL-X rig, so its validator was never given a mirrored one, and
+nothing in `build_macap_hik_skeleton.py`, `bind_macap_mesh_to_hik.py` or
+`retarget_macap_to_maya_hik.py` checks that a joint named `left_*` sits at +X.
+**HumanIK's characterisation is name-keyed, exactly like the path that produced the
+yaw** — feed it a mirrored rig and nothing would object. The verdict above rests on
+the three SMPL-X measurements, not on a validator. Do not repeat the validator claim.
+
+*Blast radius, still real.* `DETAILED_HUMANOID` is shared by the capture retarget,
+`speech_motion`, `soma_motion`, `body_export`, `unified_gltf`'s skin matrices and
+`body_binding`'s socket geometry. Changing the convention moves all of them at once,
+and any lane that has silently compensated for the mirror will break when it is
+removed. **Every lane needs a camera-overlay check before and after.**
+
+*A second prize in the same file.* That HIK skeleton carries **40 finger joints** —
+full thumb/index/middle/ring/pinky chains, four deep — and a bound mesh. It is a ready
+target for hand work **if** the source of finger motion is ever solved. It is not that
+source: our detector emits no finger landmarks, and the macap path's fingers came from
+SMPL-X.
+*The blocker on reusing it as-is:* `retarget_macap_to_maya_hik.py` characterises a
+**SMPL-X** skeleton (`"macap SMPL-X joint -> HumanIK slot"`), and
+`export_macap_base_model_fbx.py` exports **"the mean-shape locked-head SMPL-X body"**.
+SMPL-X is non-commercial and patent-encumbered to ~2036 — the exact thing this lane
+exists to escape. **The HumanIK *convention* is reusable and free; that particular
+skeleton is not.** Writing an MHR→HIK characterisation, using the existing SMPL-X
+mapping table as the template, is the clean path.
+
+*Standing requirement from here:* **every capture run renders one frame through
+`camera_overlay.py` and stores it beside the source frame.** No band, no argument —
+if the character does not sit on the person, nothing downstream is worth measuring.
+
 **Most of the "coherent joint-definition bias" is not per-joint at all — it is ONE
 2D translation per camera, and removing four numbers buys ~7 mm.** Hypothesis C2 from
 the external research pass, tested the same day.
