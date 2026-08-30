@@ -167,6 +167,14 @@ listed so a fresh session does not rediscover them as findings.
 - **Forearm twist**, which nothing available estimates well.
 - **Association under contact.** MAMMA's pre-associated 2D is a truth-grade reference
   for it and has not been used.
+- **`pred_global_rots`' basis convention, per joint.** Column 0 aligns with the bone
+  at |cos| 0.87–0.99 — and 0.87 is **30° of slack**, so the convention must be pinned
+  *per joint* against `src/autoanim_gnm/data/mhr-skeleton-v1.json` rest directions,
+  not assumed globally. Every orientation result so far was measured convention-free
+  from positions precisely to avoid this; using the matrices directly requires it
+  first.
+- **Whether the 74% acceptance holds on owned footage**, or is a property of this
+  clip. The 15° gate is provisional for the same reason.
 
 ---
 
