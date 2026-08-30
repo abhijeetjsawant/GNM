@@ -349,7 +349,18 @@ integration banked and working. And **one candidate role surviving: hands.**
 shims, ~80 CPU inferences, four measurement rungs, and a published negative that had
 to be withdrawn.
 
-**The honest ledger, and it is not "diversion".** All three of those doors were live
+**Reconciled verdict: neither helping nor diverting — it was mandatory de-risking,
+and it is now complete.** The counterfactual was never "skip it". It was an untested
+*"shouldn't we be using SAM 3D?"* haunting every architecture decision from here to
+Battle 4. One session bought its permanent removal.
+
+**And one item was on the wrong side of the ledger.** The withdrawn negative is not a
+SAM cost. Evaluating SAM **exposed a defect in the ladder harness** — association
+contamination and unequal frames — that would have silently mismeasured the *next*
+cross-family comparison too, including any Battle 4 candidate ranked against SOMA-77.
+Finding that on a low-stakes comparison is a benefit, and I had it filed as a cost.
+
+**The honest ledger.** All three of those doors were live
 candidates 48 hours ago; fusion was a numbered build step in this plan. Closing them
 by *building* one and discovering the same answer would have cost weeks each. A day
 for three confirmed dead ends is an acceptable scouting trade, and recording it as
@@ -364,12 +375,37 @@ detour, the Step 4 pseudo-label campaign, does not use SAM 3D at all.** The plan
 ranking — Step 0 Battle 2, Step 1 association, Step 4 pseudo-labels — survives the
 question unchanged. That is the weight it deserves.
 
-**Standing decision, so this is not relitigated:** SAM 3D gets **exactly one more
-pass**, the hands test already specified as Step 3 — leave-one-camera-out on the same
-four folds and hands as increment 6, against arm D's 33.9 mm, with the frozen-hand
-degenerate check. **If it does not beat 33.9 mm on that first pass, close it in this
-document and stop.** Iterating after a first-pass loss is the sunk-cost failure, and
-it is pre-committed against here rather than argued about later.
+**Standing decision — and it is stricter than the one I first wrote.** I had
+pre-committed to "one more pass" on hands as a guard against iterating. Fable pointed
+out that running it *at all, now,* is itself the sunk-cost move in the opposite
+direction: **hands are Battle 5 by this plan's own ordering**, and testing them today
+would be retroactive justification for the detour. Accepted.
+
+**So: zero days on SAM 3D hands now.** Record the pointer and walk away —
+*"SAM 3D hand-root direction 9.0° from positions against 3.2°; test against the
+27-DoF chain that reached 33.9 mm held-out"* becomes **Battle 5's first
+pre-registered rung**, and nothing more.
+
+**And the direction channel narrows once more.** With head at 3.5° from our own
+positions, head drops out alongside the limbs. Hands defer to Battle 5. **The
+channel's entire near-term content is feet.** That is the honest residue.
+
+**What to do instead — and it acts on the one number that is the gap.** The 98-vs-13
+px p95 is currently a *ratio*, not a design spec. **Classify the tail events** on the
+existing fixture — occlusion, left/right swap, person confusion inside the crop, box
+failure — using `ma_masks` and the fit projections as reference. That converts "7.5×
+at p95" into *what Battle 3's synthetic corpus must contain and what Battle 4's
+training must be robust to*. Solo-executable today.
+
+**And measure the ceiling first, because it may close SAM 3D entirely for free.**
+Flag our observations with >30 px residual against the fit projection, check whether
+`triangulate_point`'s subset enumeration actually *used* them, and compare the 3D
+error of tail-contaminated against clean triangulations. That number is the value of
+a **perfect oracle veto**. If it is under ~2 mm — plausible, since the gate already
+rejects single-view outliers when four views exist, and the +0.16 mm visibility result
+points the same way — **then no veto of any provenance is worth building, SAM's
+occlusion prior included, and SAM 3D closes without spending the day.** It falls out
+of the same pass as the attribution study.
 
 **One untested use exists and is deliberately not being run.** SAM 3D carries a
 full-body prior, so its behaviour on *occluded* landmarks specifically — the tail —
