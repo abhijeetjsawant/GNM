@@ -336,6 +336,50 @@ unusable even had it transferred.
 
 ---
 
+## 9a. Was SAM 3D Body worth it? — the scoping verdict
+
+Asked directly, and recorded because a future session will ask it again.
+
+**What it bought, measured:** three doors closed — fusing per-view MHR fits (118 mm
+disagreement, ~21 mm floor against our existing ~10), monocular HMR as a 3D source,
+and twist (forearms 22–26°). One licence family verified as commercially clean. One
+integration banked and working. And **one candidate role surviving: hands.**
+
+**What it cost:** about a day — a 2.8 GB gated download, an isolated venv, four
+shims, ~80 CPU inferences, four measurement rungs, and a published negative that had
+to be withdrawn.
+
+**The honest ledger, and it is not "diversion".** All three of those doors were live
+candidates 48 hours ago; fusion was a numbered build step in this plan. Closing them
+by *building* one and discovering the same answer would have cost weeks each. A day
+for three confirmed dead ends is an acceptable scouting trade, and recording it as
+pure waste would teach the wrong lesson — that scouting is waste. What made it *feel*
+like a diversion is the reversal pattern, not the information yield.
+
+**But the mission path does not route through it, and that is the answer.** The
+measured gap is the detector's tail — 7.5× MAMMA's at p95 — and SAM 3D does not touch
+it: its own 2D is worse in the bulk and its tail is unreadable through the only
+instrument available. Note too that **the strongest idea to come out of the whole
+detour, the Step 4 pseudo-label campaign, does not use SAM 3D at all.** The plan's own
+ranking — Step 0 Battle 2, Step 1 association, Step 4 pseudo-labels — survives the
+question unchanged. That is the weight it deserves.
+
+**Standing decision, so this is not relitigated:** SAM 3D gets **exactly one more
+pass**, the hands test already specified as Step 3 — leave-one-camera-out on the same
+four folds and hands as increment 6, against arm D's 33.9 mm, with the frozen-hand
+degenerate check. **If it does not beat 33.9 mm on that first pass, close it in this
+document and stop.** Iterating after a first-pass loss is the sunk-cost failure, and
+it is pre-committed against here rather than argued about later.
+
+**One untested use exists and is deliberately not being run.** SAM 3D carries a
+full-body prior, so its behaviour on *occluded* landmarks specifically — the tail —
+is genuinely unmeasured, because the ladder pooled everything. It is not being tested
+because **no readable instrument exists for it**: per-landmark occlusion labels would
+have to come from MAMMA's visibility channel, re-entering MAMMA as reference, and the
+epipolar ladder is already banned for cross-family verdicts. Anyone proposing this
+test must **name the instrument and its blindness first.** That is this document's own
+discipline, and this is the first place a future session will be tempted to skip it.
+
 ## 10. Where we stand against MAMMA — the honest paragraph
 
 Our geometry is not the problem: given MAMMA's own 2D, our unchanged triangulator
