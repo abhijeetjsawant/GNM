@@ -987,6 +987,7 @@ def solve_sequence_positions(
     smooth_weight: float = 2.0,
     length_weight: float = 2.0,
     minimum_confidence: float = 0.25,
+    weight_before_loss: bool = False,
     robust_scale_px: float = 14.0,
     maximum_evaluations: int = 200,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -1059,10 +1060,31 @@ def solve_sequence_positions(
         # leave the regularisers quadratic. Handing scipy a global `loss` would
         # down-weight the limb and temporal terms too, which are priors rather
         # than measurements and have no outliers to suppress.
-        compressed = 2.0 * robust * (np.sqrt(1.0 + error / robust) - 1.0)
-        safe = np.where(error < 1e-9, 1.0, error)
-        parts = [((projected[:, :2] / depth[:, None] - observed_uv)
-                  * (compressed / safe * observed_weight)[:, None]).ravel()]
+        # Where the weight enters matters and was got wrong here. Applying it
+        # *after* the compression scales an already-robustified residual, so a
+        # confidence can shrink an outlier's contribution but cannot change what
+        # counts as an outlier -- which is most of what a per-observation sigma is
+        # for. `fit_hand_sequence` multiplies before the loss, so its loss sees
+        # r/sigma, and that is the statistically correct ordering.
+        #
+        # UNMEASURED, and not measurable on anything we currently have. Flipping the
+        # flag gives bit-identical output on every available fixture, because this
+        # function returns triangulation on any slot that triangulated and
+        # early-returns when nothing failed -- so the branch is only reachable on
+        # single-ray slots, of which the synthetic fixture has none and the reference
+        # take has ~20 in 5,700. The default stays False until a fixture exists that
+        # exercises it. See docs/CONFIDENCE_GATE_NOT_WEIGHT.md.
+        if weight_before_loss:
+            scaled = error * observed_weight
+            compressed = 2.0 * robust * (np.sqrt(1.0 + scaled / robust) - 1.0)
+            safe = np.where(scaled < 1e-9, 1.0, scaled)
+            parts = [((projected[:, :2] / depth[:, None] - observed_uv)
+                      * (compressed / safe * observed_weight)[:, None]).ravel()]
+        else:
+            compressed = 2.0 * robust * (np.sqrt(1.0 + error / robust) - 1.0)
+            safe = np.where(error < 1e-9, 1.0, error)
+            parts = [((projected[:, :2] / depth[:, None] - observed_uv)
+                      * (compressed / safe * observed_weight)[:, None]).ravel()]
         for parent, child, value in limb_pairs:
             measured = np.linalg.norm(current[:, parent] - current[:, child], axis=1)
             # Percentage length error, so one weight covers a forearm and a
@@ -1327,6 +1349,15 @@ def positions_to_body_track(
         for name in ("LeftEye", "RightEye"):
             _set_world(local, world, frame, name, torso_world)
 
+        # NOTE: measuring these directions from the joint's own forward-kinematic
+        # origin instead of from the captured landmarks was tried on 2026-08-30 and
+        # REVERTED -- it is correct in principle and fails in practice, because no
+        # rig joint origin coincides with its captured landmark. `root_translation`
+        # places Hips *at* the captured pelvis while the upper legs hang 80 mm below
+        # and 90 mm to each side of it, so a leg direction measured from the rig's
+        # own hip origin starts 80 mm off. The canonical round trip went 0.00 mm ->
+        # 46-67 mm on the legs. Fix the root/hip placement convention first; see the
+        # retarget entry in docs/BODY_LANE_PLAN.md.
         chains = (
             ("LeftShoulder", "LeftUpperArm", at("left_shoulder") - (pelvis + 0.72 * torso_up)),
             ("LeftUpperArm", "LeftLowerArm", at("left_elbow") - at("left_shoulder")),
@@ -1413,6 +1444,7 @@ def reconstruct_multiview(
     # per-observation sigma cannot express it through a channel that narrow, which
     # is why this is now reachable. Default unchanged.
     minimum_confidence: float = 0.25,
+    weight_before_loss: bool = False,
     # Cycle-consistent graph matching by default: measured identical to the
     # exhaustive search on every frame of the reference fixture, ~2x faster
     # there, and the only tractable option beyond two subjects -- the exhaustive
@@ -1597,6 +1629,7 @@ def reconstruct_multiview(
             retained_observations[subject],
             pixel_scale=pixel_scale,
             minimum_confidence=minimum_confidence,
+            weight_before_loss=weight_before_loss,
         )
         recovered_counts.append(float(np.mean(recovered)))
         positions, fraction = _fill_and_smooth_positions(resolved)
