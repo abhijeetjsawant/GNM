@@ -1,9 +1,12 @@
 # Head and neck — measured, 2026-08-31
 
-**Status: the head is on the delivery path and does NOT uniformly pass.** On the shipped
+**Status: the head solve is in the pipeline, does NOT uniformly pass, and the delivered
+artifacts have NOT been regenerated.** On the shipped
 configuration (§6f) performer 0 passes all four bands; performer 1 passes P1's median, P2,
-P3 and P4 and misses **P1's p95 by 0.28°**. A capture ships `Head` local rotation where it
-carried the identity quaternion on every frame. The earlier "passes on both" was measured
+P3 and P4 and misses **P1's p95 by 0.28°**. A capture *would now* ship a moving `Head`; the
+`subject-*.body-track.npz` on disk predate the stage and still carry the identity
+quaternion on every frame. **Regenerating them is the outstanding delivery step**, and
+until it happens no user has received a solved head. The earlier "passes on both" was measured
 on the prototype's rotations, not the pipeline's — corrected in §6f. Both degenerate controls fail, the oracle passes, and the fit's
 head-on-torso spread matches the reference to within 2.5°. The solve is a pipeline stage —
 `src/autoanim_gnm/head_orientation.py` — and `reconstruct_multiview` threads it into the

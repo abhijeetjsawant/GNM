@@ -100,7 +100,7 @@ for frame in FRAMES:
     sheet = Image.new('RGB',(W,H),(14,16,20)); sd = ImageDraw.Draw(sheet)
     sd.text((14,12), f"Solve frame {frame} of 150  ·  plate {60+frame:06d}  ·  all four cameras, same instant",
             font=font(19), fill=(238,240,245))
-    sd.text((14,38), "solid = the fitted head   ·   grey dashed = the shipped head, welded to the torso and frozen at this take's average pose   ·   yellow up, blue right, red forward",
+    sd.text((14,38), "solid = the fitted head   ·   grey dashed = the shipped head: CARRIED BY THE TORSO, holding this take's average head pose   ·   yellow up, blue right, red forward",
             font=font(13), fill=(150,158,170))
     seps=[]
     for ci,cn in enumerate(CAMS):

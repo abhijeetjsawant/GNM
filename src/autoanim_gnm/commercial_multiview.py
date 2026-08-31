@@ -1600,11 +1600,21 @@ def _solve_head_for_subject(
             thorax_world=thorax,
             neck_origin_world_m=positions_world_z_up_m[:, JOINT_INDEX["neck"]],
             minimum_confidence=minimum_confidence,
+            pixel_scale=float(observations_by_camera[0][0]["width"]) / REFERENCE_DETECTOR_WIDTH_PX,
         )
     except HeadOrientationError as error:
+        return None, {"status": "fell_back_to_torso_frame", "reason": str(error)}
+    except Exception as error:  # noqa: BLE001 -- deliberate, see below
+        # The head is ONE joint of fifty-five. Catching only HeadOrientationError let any
+        # other exception escape reconstruct_multiview, which has no handler -- so a
+        # numeric degeneracy in the head solve destroyed the whole capture: root, spine,
+        # arms, legs and feet along with it. Demonstrated: positions whose `root` and
+        # `neck` coincide raise LinAlgError from the thorax orthonormalisation, and the
+        # body build died with them. A head that cannot be solved must cost the head only.
         return None, {
             "status": "fell_back_to_torso_frame",
-            "reason": str(error),
+            "reason": f"{type(error).__name__}: {error}",
+            "unexpected": True,
         }
     return solved.rotations_world, {"status": "solved", **solved.as_dict()}
 
@@ -1694,7 +1704,10 @@ def reconstruct_multiview(
     # association instead of being re-derived. Recovered by identity against the arrays the
     # associator returned -- it hands back the very rows it was given.
     head_assignment = np.full((frames, subject_count, len(cameras)), -1, dtype=np.int64)
-    head_rows_unmatched = 0
+    # Per subject: a run-global counter stamped onto every subject's report makes a
+    # whole-run total look like that subject's, which is the wrong denominator on a
+    # per-subject diagnostic.
+    head_rows_unmatched = np.zeros(subject_count, dtype=np.int64)
     for frame in range(frames):
         detections = [
             [_person_array(person) for person in values[frame]["people"]]
@@ -1739,7 +1752,7 @@ def reconstruct_multiview(
                     if len(hits) == 1:
                         head_assignment[frame, subject, camera] = hits[0]
                     else:
-                        head_rows_unmatched += 1
+                        head_rows_unmatched[subject] += 1
         candidate_world = np.full(
             (subject_count, len(JOINT_NAMES), 3), np.nan, dtype=np.float64
         )
@@ -1852,7 +1865,7 @@ def reconstruct_multiview(
             positions,
             minimum_confidence=minimum_confidence,
         )
-        head_report["unmatched_association_rows"] = head_rows_unmatched
+        head_report["unmatched_association_rows"] = int(head_rows_unmatched[subject])
         head_reports.append(head_report)
         track = positions_to_body_track(
             positions,

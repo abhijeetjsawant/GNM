@@ -74,6 +74,7 @@ class HeadOrientation:
     positions_world_m: np.ndarray        # [frame, 3]
     template_m: np.ndarray               # [landmark, 3], head-local, constant over the take
     temporal_weight: float
+    robust_scale: float
     reprojection_px: float
     observed_frame_fraction: float
     landmark_names: tuple[str, ...]
@@ -83,6 +84,7 @@ class HeadOrientation:
             "temporal_weight": self.temporal_weight,
             "reprojection_px": self.reprojection_px,
             "observed_frame_fraction": self.observed_frame_fraction,
+            "robust_scale": self.robust_scale,
             "landmarks": list(self.landmark_names),
             "template_extent_mm": {
                 name: float(np.linalg.norm(self.template_m[index]) * 1000.0)
@@ -137,7 +139,8 @@ def orthonormalise(matrices: np.ndarray) -> np.ndarray:
 
 
 def _initialise(
-    observations: np.ndarray, cameras: Sequence, minimum_confidence: float
+    observations: np.ndarray, cameras: Sequence, minimum_confidence: float,
+    pixel_scale: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Seed the optimiser from independent per-frame triangulation.
 
@@ -154,7 +157,7 @@ def _initialise(
             sample = observations[frame, :, mark]
             result = triangulate_point(
                 cameras, sample[:, :2], np.nan_to_num(sample[:, 2]),
-                minimum_confidence=minimum_confidence,
+                minimum_confidence=minimum_confidence, pixel_scale=pixel_scale,
             )
             if result is not None:
                 points[frame, mark] = result.position_world_m
@@ -195,6 +198,7 @@ def _solve_once(
     neck_sigma_m: float,
     template_prior: float,
     minimum_confidence: float,
+    robust_scale: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     frames, camera_count, marks, _ = observations.shape
     projections = np.stack([camera.projection_matrix for camera in cameras])
@@ -228,8 +232,23 @@ def _solve_once(
         projected = np.einsum("nij,nj->ni", projections[camera_index], homogeneous)
         depth = np.where(np.abs(projected[:, 2]) < 1e-6, 1e-6, projected[:, 2])
         raw = ((projected[:, :2] / depth[:, None] - observed) * confidence[:, None]).ravel()
-        # Robust: the detector tail reaches decimetres and an L2 fit inherits it.
-        parts = [np.sign(raw) * np.sqrt(2.0 * (np.sqrt(1.0 + np.abs(raw)) - 1.0)) * 3.0]
+        # Soft-L1, correctly. `least_squares` applies a loss rho to the SQUARED residual,
+        # so emulating it by transforming the residual needs r' with r'^2 = rho(r^2) --
+        # that is, rho evaluated at r**2, not at |r|.
+        #
+        # This previously read `np.sqrt(1.0 + np.abs(raw))` with a bare gain of 3.0, which
+        # is rho(|r|): sub-linear even at r = 0.1, so it flattened INLIERS and weighted a
+        # 5 px residual almost the same as a 0.5 px one. A robust loss is supposed to be
+        # quadratic on inliers and bend over only past its scale; that one bent everywhere,
+        # which is a fit that cannot sharpen on its good observations.
+        #
+        # `robust_scale` is derived from the take's own residuals (see the caller), never
+        # fixed, so it is not a constant calibrated on one fixture.
+        scaled = raw / robust_scale
+        parts = [
+            robust_scale * np.sign(scaled)
+            * np.sqrt(2.0 * (np.sqrt(1.0 + scaled * scaled) - 1.0))
+        ]
         if frames > 2 and weight > 0.0:
             if thorax_world is None:
                 relative = np.einsum("fji,fjk->fik", matrices[:-1], matrices[1:])
@@ -259,12 +278,57 @@ def _solve_once(
         base_t = 3 * marks + 3 * frames + 3 * frame
         sparsity[2 * row : 2 * row + 2, base_r : base_r + 3] = 1
         sparsity[2 * row : 2 * row + 2, base_t : base_t + 3] = 1
-    sparsity[2 * len(frame_index) :, :] = 1
+    # The prior blocks, written sparsely. A previous version set this whole tail dense
+    # (`sparsity[2*len(frame_index):, :] = 1`), which defeats scipy's column grouping
+    # COMPLETELY -- one dense column group means a full finite-difference Jacobian per
+    # iteration, and the head solve ran ~25x slower than the rest of the pipeline for no
+    # reason. Each prior row touches only the parameters it actually references.
+    row = 2 * len(frame_index)
+    if frames > 2 and weight > 0.0:
+        for f in range(frames - 2):
+            for axis in range(3):
+                for j in (f, f + 1, f + 2):
+                    sparsity[row + 3 * f + axis, 3 * marks + 3 * j : 3 * marks + 3 * j + 3] = 1
+        row += 3 * (frames - 2)
+        for f in range(frames - 2):
+            for axis in range(3):
+                for j in (f, f + 1, f + 2):
+                    base = 3 * marks + 3 * frames + 3 * j
+                    sparsity[row + 3 * f + axis, base : base + 3] = 1
+        row += 3 * (frames - 2)
+    if neck_origin_world_m is not None and thorax_world is not None:
+        # Each offset row depends on its own frame's translation and, through the mean,
+        # on every frame's -- so this block is genuinely dense in the translation columns.
+        sparsity[row : row + 3 * frames, 3 * marks + 3 * frames :] = 1
+        row += 3 * frames
+    sparsity[row:, : 3 * marks] = 1
     solution = least_squares(
         residuals, start, jac_sparsity=sparsity, method="trf",
         ftol=1e-4, xtol=1e-8, max_nfev=120, verbose=0,
     )
     return unpack(solution.x)
+
+
+def _residuals_px(
+    template: np.ndarray, rotations: np.ndarray, translations: np.ndarray,
+    observations: np.ndarray, cameras: Sequence, minimum_confidence: float,
+) -> np.ndarray:
+    """Every per-observation pixel residual, flat. Used to derive the robust scale."""
+    matrices = rodrigues(rotations)
+    world = np.einsum("fij,kj->fki", matrices, template) + translations[:, None, :]
+    out: list[float] = []
+    for camera_index, camera in enumerate(cameras):
+        projection = camera.projection_matrix
+        for frame in range(observations.shape[0]):
+            for mark in range(observations.shape[2]):
+                sample = observations[frame, camera_index, mark]
+                if not np.isfinite(sample).all() or sample[2] < minimum_confidence:
+                    continue
+                projected = projection @ np.append(world[frame, mark], 1.0)
+                if abs(projected[2]) < 1e-6:
+                    continue
+                out.append(float(np.linalg.norm(projected[:2] / projected[2] - sample[:2])))
+    return np.asarray(out)
 
 
 def _reprojection_px(
@@ -377,6 +441,7 @@ def solve_head_orientation(
     weights: Sequence[float] = DEFAULT_WEIGHTS,
     template_prior: float = 0.5,
     minimum_confidence: float = 0.25,
+    pixel_scale: float = 1.0,
 ) -> HeadOrientation:
     """Solve one rigid head over a whole take against every calibrated view at once.
 
@@ -416,9 +481,32 @@ def solve_head_orientation(
             f"below the {MINIMUM_SOLVED_FRACTION:.0%} floor"
         )
 
+    # The seed's inlier gate must be the body path's, not a default. `triangulate_point`
+    # quotes its threshold at REFERENCE_DETECTOR_WIDTH_PX and scales it by pixel_scale;
+    # taking the default 1.0 here silently gave the head a tighter gate than the body at
+    # any detector width other than 1280.
     template0, rotations0, translations0 = _initialise(
-        observations, cameras, minimum_confidence
+        observations, cameras, minimum_confidence, pixel_scale
     )[:3]
+    # The robust loss's scale, from this take's own residuals rather than a constant.
+    #
+    # 1.4826 x the MEDIAN ABSOLUTE DEVIATION is the standard robust estimate of a normal
+    # spread -- deviations ABOUT the median, not the median itself. A first version of this
+    # multiplied 1.4826 by the median residual, which is not a spread estimate at all: it
+    # put the robust knee at ~1.5x the typical residual, above nearly every observation,
+    # leaving the loss quadratic everywhere and the fit no more robust than plain L2.
+    # Measured, that cost 3.6 deg of agreement on one performer.
+    #
+    # The floor keeps a freakishly clean take from driving the scale to zero and turning
+    # the loss into an outlier-only objective.
+    seed = _residuals_px(
+        template0, rotations0, translations0, observations, cameras, minimum_confidence
+    )
+    if seed.size:
+        spread = 1.4826 * float(np.median(np.abs(seed - np.median(seed))))
+        robust_scale = float(max(spread, 1.0))
+    else:
+        robust_scale = 4.0
     thorax = None if thorax_world is None else orthonormalise(np.asarray(thorax_world, float))
     neck = None if neck_origin_world_m is None else np.asarray(neck_origin_world_m, float)
 
@@ -429,7 +517,7 @@ def solve_head_orientation(
             observations, cameras, template0, rotations0, translations0,
             weight=float(weight), thorax_world=thorax, neck_origin_world_m=neck,
             neck_sigma_m=neck_sigma_m, template_prior=template_prior,
-            minimum_confidence=minimum_confidence,
+            minimum_confidence=minimum_confidence, robust_scale=robust_scale,
         )
         error = _reprojection_px(
             template, rotations, translations, observations, cameras, minimum_confidence
@@ -456,6 +544,7 @@ def solve_head_orientation(
     gauge = _anatomical_gauge(template, landmark_names)
     return HeadOrientation(
         rotations_world=orthonormalise(rodrigues(rotations) @ gauge),
+        robust_scale=robust_scale,
         positions_world_m=translations,
         template_m=template,
         temporal_weight=weight,
