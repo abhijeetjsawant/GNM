@@ -775,6 +775,15 @@ moves only 2.72 → 3.24 px across five orders of magnitude of weight — so *th
 constrain the head's temporal behaviour at all*. That is itself a finding about this
 framing, and the first result to fold into the next attempt.
 
+**One suspect ruled out.** The fitted template's per-landmark radii are lopsided
+(96.5 mm against 50.7 mm for the two eyes on subject 1), which looked like the gauge
+prior distorting the shape. It is not: dropping the prior tenfold changes in-frame
+reprojection by 0.01 px and the template by under 2 mm, and the meaningful quantity —
+**eye separation — comes out at 56.1–56.6 mm on both subjects**, consistent and
+anatomically sane for joint centres inside the skull. The radii are lopsided only because
+the gauge centres the template on five arbitrary points, not on the skull. **The P1 gap
+is not the template.**
+
 > **A weight that scores better on the gate exists, and was not chosen.** Subject 0 at
 > weight 3,000 gives P1 8.36 / 20.89 and travel 13.17 — closer to passing than the
 > 10,000 the rule selects. **Selecting it would be gate-tuning**, which is the
