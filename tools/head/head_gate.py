@@ -136,7 +136,17 @@ def score(deviation: np.ndarray, reference: np.ndarray, valid: np.ndarray,
 
 
 def main() -> None:
-    solved = np.load(OUT / "head-solve.npz")
+    # Which solve to score. Default is the prototype's; pass a path to score the one the
+    # PIPELINE ships. They are different estimators with different selection paths, and on
+    # this fixture they chose different temporal weights -- so "passes the gate" and "is
+    # delivered" must be shown of the SAME rotations or they are two claims about two
+    # heads. See tools/head/gate_the_shipped_head.py.
+    source = Path(sys.argv[1]) if len(sys.argv) > 1 else OUT / "head-solve.npz"
+    print(f"scoring {source}")
+    solved = np.load(source)
+    # The pipeline applies an anatomical gauge, so its head's local frame is canonical
+    # rather than the raw template frame. P3 must ask for the skull's up axis accordingly.
+    gauge_applied = "gauge_applied" in solved.files
     soma = triangulate([SOMA_FRAME[n] for n in SOMA_FRAME] + [HEAD[n] for n in NAMES])[0]
     fslot = {n: i for i, n in enumerate(SOMA_FRAME)}
     hslot = {n: len(SOMA_FRAME) + i for i, n in enumerate(NAMES)}
@@ -222,7 +232,14 @@ def main() -> None:
         )
 
         # --- P3, on the candidate: the skull long axis against neck-up -----------
-        head_up_local = unit((template[NAMES.index("HeadEnd")] - template[NAMES.index("Head")])[None])[0]
+        if gauge_applied:
+            from autoanim_gnm.head_orientation import CANONICAL_HEAD_AXES
+
+            head_up_local = CANONICAL_HEAD_AXES[:, 1]
+        else:
+            head_up_local = unit(
+                (template[NAMES.index("HeadEnd")] - template[NAMES.index("Head")])[None]
+            )[0]
         skull = np.einsum("nij,j->ni", candidate_world, head_up_local)
         neck_up = up
         p3_ok = torso_ok & np.isfinite(skull).all(axis=1)
@@ -271,7 +288,8 @@ def main() -> None:
             "arms": arms,
         }
 
-    (OUT / "head-gate.json").write_text(json.dumps(report, indent=2))
+    destination = OUT / ("head-gate-shipped.json" if gauge_applied else "head-gate.json")
+    destination.write_text(json.dumps(report, indent=2))
     for subject in ("subject_00", "subject_01"):
         block = report[subject]
         print(f"\n=== {subject}  (MAMMA spread {block['mamma_reference']['spread_about_take_mean_deg_median']:.2f}deg, "

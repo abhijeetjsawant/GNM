@@ -102,10 +102,10 @@ footer{border-top:1px solid var(--rule);padding-top:1.1rem;color:var(--ink-faint
 <header>
   <p class="eyebrow">In-house markerless multi-camera body capture</p>
   <h1>Head Orientation Solve</h1>
-  <p class="lede">The head we ship today is a constant, welded to the chest. This is the solve that replaces it, what it was scored against, and the four qualifications that belong in the same breath as the word &ldquo;passes&rdquo;.</p>
+  <p class="lede">The head we shipped was a constant, welded to the chest. This is the solve that replaced it, what it was scored against, and the four qualifications that belong in the same breath as the word &ldquo;passes&rdquo;.</p>
   <div class="stamp">
     <span><b>Fixture</b> 4 cameras · 2 performers · 150 frames · ~5 m</span>
-    <span><b>Status</b> passes its gate · not shipped</span>
+    <span><b>Status</b> passes its gate · on the delivery path</span>
     <span><b>Full working</b> docs/HEAD_ORIENTATION_MEASURED.md</span>
   </div>
 </header>
@@ -114,7 +114,7 @@ footer{border-top:1px solid var(--rule);padding-top:1.1rem;color:var(--ink-faint
   <div class="callout">
     <h3>Where it stands</h3>
     <p style="margin-bottom:.6rem">A rigid head is fitted across all four views and all 150 frames at once — no head landmark is ever triangulated on its own. It clears every band of a pre-registered gate on <b>both</b> performers, at one temporal weight chosen by a rule that never consults the reference. Two degenerate controls fail, and fail differently. An oracle arm confirms the bands are reachable.</p>
-    <p style="margin-bottom:0"><b>None of it is shipped.</b> <code>commercial_multiview.py:1350</code> still assigns the delivered head the torso&rsquo;s frame verbatim, so nothing a user receives has changed.</p>
+    <p style="margin-bottom:0"><b>And it now ships.</b> The solve is a pipeline stage, and a delivered track carries <span class="num">26.5&deg;</span> and <span class="num">20.7&deg;</span> of median head rotation where it carried the identity quaternion on every frame. Wiring it exposed two defects the gate is structurally blind to &mdash; see the corrections below.</p>
   </div>
   <div class="quals">
     <div class="qual"><b>Qualification 1</b><span>Two of the four bands are <b>knob settings</b> for the candidate — the fit regularises exactly what they measure. They discriminate the controls. <b>The substance is per-frame agreement alone.</b></span></div>
@@ -230,6 +230,6 @@ footer{border-top:1px solid var(--rule);padding-top:1.1rem;color:var(--ink-faint
 </section>
 
 <footer>
-Every figure here regenerates from <code>tools/head/</code> against retained inputs. The gate measures <b>parity with an instrument on a tracking metric</b> — not accuracy, which nothing in this lane can yet claim. The solve is not on the delivery path: the head a user receives is still welded to the chest.
+Every figure here regenerates from <code>tools/head/</code> against retained inputs. The gate measures <b>parity with an instrument on a tracking metric</b> &mdash; not accuracy, which nothing in this lane can yet claim. The solve is now a pipeline stage; the neck still keeps the torso frame, which is deliberate and unmeasured rather than solved.
 </footer>
 </div>

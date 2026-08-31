@@ -42,7 +42,9 @@ from scipy.sparse import lil_matrix
 # cannot be tuned through it. The grid is swept per take rather than hardcoded: a weight
 # fitted once on one fixture and then shipped would be a constant calibrated on that
 # fixture, which this lane forbids.
-DEFAULT_WEIGHTS: tuple[float, ...] = (0.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0)
+DEFAULT_WEIGHTS: tuple[float, ...] = (
+    0.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0, 30000.0, 100000.0,
+)
 MINIMUM_LANDMARKS_PER_VIEW = 3
 MINIMUM_SOLVED_FRACTION = 0.5
 # A hard physical reject, not a tuning knob. A human head peaks around 500-800 deg/s, so
@@ -269,11 +271,22 @@ def _reprojection_px(
     template: np.ndarray, rotations: np.ndarray, translations: np.ndarray,
     observations: np.ndarray, cameras: Sequence, minimum_confidence: float,
 ) -> float:
+    """Mean over cameras of each camera's median residual -- NOT one pooled median.
+
+    Same denominator, which is this lane's standing rule. A camera that sees more of the
+    head contributes more observations, so a single pooled median is weighted by coverage
+    and lets the best-placed view decide. Averaging per-camera medians gives every view
+    equal say. The distinction is not cosmetic: pooling and averaging selected *different*
+    temporal weights on the reference fixture, and the pooled choice failed the gate that
+    the averaged one passed -- discovered only when the delivered configuration was scored
+    rather than the prototype's.
+    """
     matrices = rodrigues(rotations)
     world = np.einsum("fij,kj->fki", matrices, template) + translations[:, None, :]
-    errors: list[float] = []
+    per_camera: list[float] = []
     for camera_index, camera in enumerate(cameras):
         projection = camera.projection_matrix
+        errors: list[float] = []
         for frame in range(observations.shape[0]):
             for mark in range(observations.shape[2]):
                 sample = observations[frame, camera_index, mark]
@@ -284,7 +297,9 @@ def _reprojection_px(
                 if abs(projected[2]) < 1e-6:
                     continue
                 errors.append(float(np.linalg.norm(projected[:2] / projected[2] - sample[:2])))
-    return float(np.median(errors)) if errors else float("nan")
+        if errors:
+            per_camera.append(float(np.median(errors)))
+    return float(np.mean(per_camera)) if per_camera else float("nan")
 
 
 def _maximum_frame_travel_deg(

@@ -1,8 +1,10 @@
 # Head and neck — measured, 2026-08-31
 
-**Status: the head passes the pre-registered gate on both performers, and is now ON THE
-DELIVERY PATH** — a capture ships `Head` local rotation of **26.5° / 20.7° median** where
-it carried the identity quaternion on every frame. Both degenerate controls fail, the oracle passes, and the fit's
+**Status: the head is on the delivery path and does NOT uniformly pass.** On the shipped
+configuration (§6f) performer 0 passes all four bands; performer 1 passes P1's median, P2,
+P3 and P4 and misses **P1's p95 by 0.28°**. A capture ships `Head` local rotation where it
+carried the identity quaternion on every frame. The earlier "passes on both" was measured
+on the prototype's rotations, not the pipeline's — corrected in §6f. Both degenerate controls fail, the oracle passes, and the fit's
 head-on-torso spread matches the reference to within 2.5°. The solve is a pipeline stage —
 `src/autoanim_gnm/head_orientation.py` — and `reconstruct_multiview` threads it into the
 delivered track, so a capture now ships a head that moves. §9a records what wiring cost.
@@ -1082,6 +1084,60 @@ subject and buys the right not to have fitted a delivered constant on one clip.
 (7 tests, 24 green with the existing suite).
 *Blind to:* everything §6 is blind to. Wiring changes what ships; it changes nothing about
 what has been measured, and no accuracy claim follows from it.
+
+---
+
+## 6f THE SHIPPED CONFIGURATION, SCORED — and what the last 0.28° actually is
+
+**Scored on the rotations the pipeline delivers, not the prototype's.** They are different
+estimators with different selection paths, and until this was run *"the head passes the
+gate"* and *"the head is on the delivery path"* were two true statements about **two
+different heads** — this lane's recurring defect, one sentence away. `head_gate.py` now
+takes a path, so from here the gate scores what ships.
+
+| shipped fit | P1 median | P1 p95 | P2 spread | P3 | P4 travel | verdict |
+|---|---:|---:|---:|---:|---:|---|
+| **performer 0** | **7.09°** | **17.75°** | 17.18° | 0 | 3.69° | **PASS** |
+| **performer 1** | **7.00°** | **20.28°** | 16.57° | 0 | 4.76° | **FAIL** — p95 by 0.28° |
+| *oracle* | *5.46 / 4.87°* | *17.22 / 17.59°* | | | | *PASS* |
+| *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *= 0* | *≤ 7.14 / 12.51* | |
+
+**A defect of mine caused the first divergence, and it is worth naming precisely.** Porting
+the solver into the library I replaced *"average each camera's median residual"* with *"one
+median over all observations."* A camera that sees more of the head contributes more
+observations, so pooling is weighted by coverage and lets the best-placed view decide the
+temporal weight — a **same-denominator violation**, this lane's own standing rule, inside
+the selection rule. Restored, both performers select the same weight and performer 0 moved
+from **fail to pass** (8.48 → 7.09 median, 22.25 → 17.75 p95).
+
+### The remaining 0.28° is not in the head, and three measurements say so
+
+| ruled out | measurement |
+|---|---|
+| **the optimiser had not converged** | reprojection at `max_nfev` 120 and 400 is identical to four decimals on both performers |
+| **the weight grid was too coarse** | on a fine grid (50, 70, 100, 150, 200, 300, 500) weight 100 is the true argmin for both — the 3×-spaced grid was not hiding a better fit |
+| **a better thorax frame exists** | five constructions scored **by the oracle alone**, an arm containing none of our head: the current one is the **best of the five** (17.22 / 17.59 p95) and every alternative is worse, up to 32.33 |
+
+**What is left is the instrument floor.** The oracle — *a perfect head* — sits at
+**17.59°** of performer 1's 20° band, consuming **88 %** of it. Our candidate at 20.28°
+adds about **10.1°** of its own in quadrature. An independent audit had already reached
+this from the other direction and it is recorded above in §6d: *"P1's p95 arm is nearly
+saturated by frame mismatch and discriminates almost nothing; the load-bearing number is
+the P1 median."* **On that number the shipped head passes on both performers**, 7.09° and
+7.00° against a ≤ 8° band, as do P2, P3 and P4.
+
+> **This is a report of a failure, not an argument for excusing one.** The band is
+> pre-registered and is **not being moved**; performer 1 fails and the boards say so. What
+> the three measurements establish is *where the work is*: closing 0.28° on a statistic
+> 88 % consumed by torso-frame mismatch is a **better-torso** problem, not a better-head
+> one — and a better torso is `FITTER_PLAN.md`'s parametric body fit, a different build
+> with its own identifiability wall. Any re-derivation of the p95 band must be argued and
+> written **before** anything is re-scored against it, or it is band-moving with extra
+> steps.
+
+*Instruments:* `tools/head/gate_the_shipped_head.py`, `tools/head/head_gate.py <path>`.
+*Blind to:* everything §6 is blind to. The oracle bounds the frame mismatch; it does not
+tell us whether the mismatch is our error or the reference's, and nothing here can.
 
 ---
 
