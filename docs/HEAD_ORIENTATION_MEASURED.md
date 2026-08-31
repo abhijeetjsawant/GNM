@@ -635,6 +635,57 @@ temporal weight and its travel barely moved (13.17° → 13.13°) while P1 got *
 the remaining travel is not high-frequency noise the prior can absorb; it is a smaller
 number of poorly-conditioned frames where the rotation jumps.
 
+### Adding the ears made it worse — and the reason is the lane's own founding finding
+
+§7.4 recommended, and §6a's own next-step list repeated, that Apple Vision's ears belong
+**in the objective of a multi-frame fit**: widest head baseline on this footage, most
+epipolar-consistent landmarks measured (§2b), survivors of a null template (§4). The fit
+was extended to seven landmarks and re-run under the identical selection rule. Apple
+Vision's subjects were matched to ours by 3D root agreement — straight, 32× margin, 43 mm
+median — never by index, per §0's trap.
+
+**It did not help, and on one subject it clearly hurt:**
+
+| P1 median / p95 | subject 0 | subject 1 |
+|---|---:|---:|
+| SOMA-77 head points only | **9.11° / 22.38°** | **7.05° / 28.93°** |
+| plus Apple Vision's ears | 9.29° / 23.61° | 10.36° / 34.67° |
+
+**One thing the ears did do, and it is worth keeping.** The fit recovers an ear
+separation of **153.2 mm and 153.6 mm** on the two subjects — anatomically right and
+consistent between them, where independent triangulation of the same points gave
+160 / 185 mm with standard deviations of 17.6 / 61.7 mm. The fit *can* see the ears. It
+just cannot use them.
+
+**Why, measured rather than guessed.** In the joint fit the ears carry the **worst**
+per-landmark reprojection residual — 3.8–4.5 px median against 2.3–3.5 px for the SOMA-77
+head joints, with a p95 to 24 px — despite §2b showing them to be the *most* cross-view
+consistent landmarks in the entire study. Those two facts are only compatible one way:
+**the ears agree across cameras within a frame and do not sit rigidly on the skull across
+frames.**
+
+> **This is `soma77_pose.py`'s own founding argument, arriving at the head.** That
+> adapter's docstring says SOMA-77 was adopted because *"surface landmarks move relative
+> to the underlying bone as a subject turns, which is the mechanism behind the
+> limb-length instability. Interior joint centres should not."* An ear is a surface
+> landmark: as the head turns, the detected point slides over the skull. Every camera
+> sees the same *apparent* point, so epipolar consistency is excellent and triangulation
+> is well-conditioned — and the point it converges on is **not a fixed place on the
+> skull**. A rigid-template fit across a whole take is precisely the estimator that
+> exposes that, and it is the first instrument in this lane that could have.
+>
+> **So my own stated assumption was wrong and is now refuted:** the fit's docstring
+> claimed rigidity to the skull was *"true of ears and of skull joints alike."* It is
+> true of the joints and false of the ears. Cross-view consistency was never evidence of
+> it — that is a within-frame property, and rigidity is a between-frame one.
+
+**Consequence for §4 and §7.4, both of which now carry a correction.** The ear axis's
+conditioning advantage is real and its usefulness is not. Recovering the head does not
+need a wider baseline; it needs landmarks that stay put on the bone, which is what
+SOMA-77 already emits. **The SOMA-77-only fit is the reported candidate**, and the
+ear-augmented arm is retained at `head-solve-with-ears.npz` as the measurement that
+closed the question.
+
 ### The selection rule was replaced, after it failed, and the reason is structural
 
 The first fit chose its temporal weight by **held-out-camera cross-validation** and chose
@@ -697,14 +748,22 @@ the mean-removal that makes the comparison a tracking comparison at all.
 3a. **What the built fit says to do next — three items, in order, all named by its own
    failure mode.** §6a's candidate fails on P4, and more smoothing does not help, so the
    remaining travel is a minority of badly-conditioned frames rather than broadband noise.
-   - **Add Apple Vision's ears to the objective.** This is §7.4's recommendation and it
-     is still untried: the ears are the widest and best-conditioned head baseline on this
-     footage (§4), and a fit is exactly where their per-frame yaw scatter can be averaged
-     down (§1). It needs a cross-detector subject match, which `subject_map.py` shows how
-     to do from 3D positions.
-   - **Find and gate the jumping frames.** Report travel against per-frame camera support
-     and confidence; if the tail is concentrated where the head is seen by two cameras, a
-     support-conditioned prior is the fix, not a stronger global one.
+   - ~~**Add Apple Vision's ears to the objective.**~~ **DONE, and it does not work** —
+     §6a. The ears fit a rigid skull 1.3–1.6× worse than SOMA-77's joints despite being
+     the most cross-view-consistent landmarks measured, because an ear is a *surface*
+     landmark that slides over the skull as the head turns. **The question is closed:
+     the head does not need a wider baseline, it needs landmarks that stay on the bone.**
+   - **Find and gate the jumping frames — now the first item.** P4 is what defeats the
+     candidate and more smoothing does not touch it, so the residual is a minority of
+     badly-conditioned frames. Report travel against per-frame camera support and
+     confidence; if the tail concentrates where the head is seen by two cameras, a
+     support-conditioned prior is the fix rather than a stronger global one. Untried.
+   - **Reconsider P4 itself — but only against a stated argument, never against the
+     score.** The band was pre-registered at 3× MAMMA's travel p95, and MAMMA's travel is
+     small *because it carries a strong temporal prior of its own*. A band set from a
+     smoothed reference may be asking a per-frame estimator for smoothness the reference
+     gets for free. That is an argument to be made and recorded **before** any candidate
+     is re-scored against a changed band, or it is gate-tuning.
    - **Then, and only then, momentum + MHR.** `FITTER_PLAN.md` §5's fitter already carries
      `c_neck`, `c_head`, `c_jaw`, `l_eye`, `r_eye` and takes multi-view 2D directly. The
      bespoke fit here exists to establish whether the *architecture* recovers the head at

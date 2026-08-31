@@ -58,6 +58,13 @@
   invisible in every per-subject statistic taken *separately*, corrupting only the
   comparisons. Resolve it from 3D pelvis agreement (MAMMA's world frame **is** the
   camera-rig world frame): `tools/head/subject_map.py`.
+- **Cross-view consistency is a within-frame property; rigidity is a between-frame one,
+  and neither implies the other.** Apple Vision's ears are the *most* epipolar-consistent
+  landmarks measured in this lane (0.29–0.76x the body control) and fit a rigid skull
+  *worst* (1.3–1.6x the residual of SOMA-77's head joints). A surface landmark slides
+  over the bone as the subject turns: every camera sees the same apparent point, and it
+  is not a fixed place on the skeleton. This is `soma77_pose.py`'s founding argument, and
+  a rigid-template fit over a take is the instrument that exposes it.
 - **A length invariant cannot score direction.** For an axis roughly perpendicular to the
   camera's depth direction, a differential depth error between its endpoints is *first
   order* in the axis's direction and *second order* in its length — at 160 mm, a 50 mm
