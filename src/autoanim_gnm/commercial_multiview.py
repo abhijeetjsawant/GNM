@@ -1532,7 +1532,8 @@ THORAX_SMOOTHING_FRAMES = 15
 
 
 def _thorax_frames(
-    positions_world_z_up_m: np.ndarray, *, smoothing_frames: int = THORAX_SMOOTHING_FRAMES
+    positions_world_z_up_m: np.ndarray, *, smoothing_frames: int = THORAX_SMOOTHING_FRAMES,
+    across_from: str = "shoulders",
 ) -> np.ndarray:
     """Per-frame torso frame, [frame, 3, 3], columns (across, back, up).
 
@@ -1561,10 +1562,27 @@ def _thorax_frames(
     lose real torso motion. 15 is the p95 minimum before that turn.
     """
     up = positions_world_z_up_m[:, JOINT_INDEX["neck"]] - positions_world_z_up_m[:, JOINT_INDEX["root"]]
-    across = (
-        positions_world_z_up_m[:, JOINT_INDEX["left_shoulder"]]
-        - positions_world_z_up_m[:, JOINT_INDEX["right_shoulder"]]
-    )
+    # `across_from` exists so the alternatives can be measured through THIS function rather
+    # than a copy of it -- a reimplementation of this construction disagreed with it by
+    # 1.4 deg of oracle p95, which is the size of the effect being tested. Default is
+    # unchanged and the shoulders path is byte-identical to before.
+    def _pair(left: str, right: str) -> np.ndarray:
+        return (
+            positions_world_z_up_m[:, JOINT_INDEX[left]]
+            - positions_world_z_up_m[:, JOINT_INDEX[right]]
+        )
+
+    def _unit(v: np.ndarray) -> np.ndarray:
+        return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+    if across_from == "shoulders":
+        across = _pair("left_shoulder", "right_shoulder")
+    elif across_from == "hips":
+        across = _pair("left_hip", "right_hip")
+    elif across_from == "mean":
+        across = _unit(_pair("left_shoulder", "right_shoulder")) + _unit(_pair("left_hip", "right_hip"))
+    else:
+        raise ValueError(f"unknown across_from {across_from!r}")
     z = up / np.linalg.norm(up, axis=1, keepdims=True)
     x = across - z * np.einsum("ni,ni->n", across, z)[:, None]
     x = x / np.linalg.norm(x, axis=1, keepdims=True)

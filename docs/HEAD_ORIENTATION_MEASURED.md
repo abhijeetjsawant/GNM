@@ -1724,6 +1724,57 @@ a failure already on the books rather than by discovering a new one.
 
 ---
 
+## 6o THE TORSO FRAME IS ALREADY THE SHARPEST ONE — and the rule cost us a pass
+
+§6h says the **oracle floor is the larger half of the gate score** — 14.14°/16.30° against
+our own head error of 9.91°/9.80°. The floor is not the head: it is our landmark-derived
+thorax disagreeing with MAMMA's fitted chain. So the frame, not the solver, is where the
+leverage is. §6i already killed a rigid multi-point fit (the torso is not rigid). This tests
+the remaining degree of freedom: **the across-axis**.
+
+Shoulders articulate — the glenohumeral joints swing with the arms, which is exactly why
+§6i's Procrustes failed. The pelvis does not. So a hip-derived across-axis is the obvious
+candidate, with the up-axis and orthogonalisation left identical.
+
+**Pre-registered in the commit before running: adopt the frame with the lowest ORACLE
+error, whatever it does to the candidate.** The oracle is a perfect head, so every degree
+it scores is pure frame mismatch — minimising it makes the gate sharper. Instrument repair,
+not candidate tuning, and the same move §6g made in the unflattering direction.
+
+| across-axis | ORACLE p95 s0 / s1 | sum | candidate p95 s0 / s1 | verdict |
+|---|---:|---:|---:|---|
+| **shoulders** (incumbent) | **14.14 / 16.30** | **30.44** | 17.77 / 21.18 | PASS / FAIL |
+| hips | 20.71 / 17.52 | 38.23 | 23.67 / 20.92 | FAIL / FAIL |
+| mean of both | 16.70 / 14.86 | 31.56 | 19.90 / 19.57 | FAIL / PASS |
+
+**The incumbent wins, and the rule cost us something to say so.** The `mean` variant brings
+subject 1's p95 to **19.57°, inside the ≤ 20° band** — the failing performer would pass.
+It is **not adopted**, because the oracle says that frame is blurrier (31.56 against 30.44),
+and adopting it would be selecting a reference frame by whether the candidate passes
+through it. *That is the definition of gate-tuning, and it is the first time in this
+document that the pre-registered rule has had a pass available and refused it.*
+
+The hips result is also a real anatomical finding rather than a null: a hip across-axis is
+**substantially worse** (20.71° against 14.14° on subject 0). Rigidity is not the only
+virtue in a reference axis — the shoulders are closer to the head, share its motion, and
+MAMMA's own thorax is built from *its* shoulder joints, so the shoulder axis is comparing
+like with like in a way the pelvis does not.
+
+### One defect found and fixed in the writing of this
+
+The first version of this tool **reimplemented** the frame construction and its rotation
+smoothing rather than calling the pipeline's. It disagreed with the real function by
+**1.4° of oracle p95 on subject 0 — the same size as the effect being tested**, so the
+ranking would have been measuring the reimplementation. `_thorax_frames` now takes an
+`across_from` argument and the tool calls it; the default path is byte-identical, verified.
+**CLAUDE.md banks this exact rule — *wrap the pipeline to instrument it, never re-implement
+it* — and I broke it within a day of writing it down.**
+
+**Twelfth exclusion.** The torso frame does not rescue the head, and the frame we ship is
+already the sharpest of the three. **Subject 0 passes, subject 1 misses at 21.18°.**
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only

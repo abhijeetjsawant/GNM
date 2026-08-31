@@ -37,43 +37,22 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import head_gate as hg  # noqa: E402
-from autoanim_gnm.commercial_multiview import JOINT_INDEX  # noqa: E402
+from autoanim_gnm.commercial_multiview import _thorax_frames  # noqa: E402
 
 TRACKS = Path("artifacts/commercial-multiview-soma77")
-SMOOTH = 15
-
-
-def smooth_rotation(frames_matrices: np.ndarray, window: int) -> np.ndarray:
-    """Smooth a frame sequence AS ROTATIONS (a frame is nonlinear in its landmarks)."""
-    out = np.array(frames_matrices, dtype=float, copy=True)
-    n = len(out)
-    half = window // 2
-    for i in range(n):
-        lo, hi = max(0, i - half), min(n, i + half + 1)
-        block = frames_matrices[lo:hi]
-        block = block[np.isfinite(block).all(axis=(1, 2))]
-        if len(block) == 0:
-            continue
-        u, _, vt = np.linalg.svd(block.mean(axis=0))
-        d = np.sign(np.linalg.det(u @ vt))
-        out[i] = u @ np.diag([1.0, 1.0, d]) @ vt
-    return out
 
 
 def build(pos: np.ndarray, across: str) -> np.ndarray:
-    up = pos[:, JOINT_INDEX["neck"]] - pos[:, JOINT_INDEX["root"]]
-    sh = pos[:, JOINT_INDEX["left_shoulder"]] - pos[:, JOINT_INDEX["right_shoulder"]]
-    hip = pos[:, JOINT_INDEX["left_hip"]] - pos[:, JOINT_INDEX["right_hip"]]
-    if across == "shoulders":
-        ax = sh
-    elif across == "hips":
-        ax = hip
-    elif across == "mean":
-        ax = hg.unit(sh) + hg.unit(hip)
-    else:
-        raise ValueError(across)
-    raw = hg.frame_from(up, ax)
-    return smooth_rotation(raw, SMOOTH)
+    """The PIPELINE's own frame, parameterised -- never a copy of it.
+
+    The first version of this tool reimplemented the construction and its rotation
+    smoothing. It disagreed with the pipeline by 1.4 deg of oracle p95 on subject 0 --
+    the same size as the effect being tested, so the ranking would have been measuring
+    the reimplementation. `_thorax_frames` now takes `across_from`, and this calls it.
+    CLAUDE.md banks the rule: wrap the pipeline to instrument it, never re-implement it.
+    """
+
+    return _thorax_frames(pos, across_from=across)
 
 
 def main() -> None:
