@@ -1826,6 +1826,64 @@ turn that gap into a target. This one cannot.
 
 ---
 
+## 6q THE INPUT LIMIT, QUANTIFIED — the head is thirty pixels across
+
+Twelve exclusions and every one of them a *solver* lever, while the goal's own headline said
+from the start that these regions fail for **input** reasons. §6n found the input is
+uniformly bad but not *why*. This is why, and it is a single number.
+
+**At the detector width the pipeline runs — 1280 — the five head landmarks span a bounding
+box of 30.6 px.** Median across the take; and it is not one bad camera:
+
+| | A001 | B001 | C001 | D001 |
+|---|---:|---:|---:|---:|
+| head landmark bbox, px | **30.6** | 30.3 | 33.0 | 29.1 |
+| whole-body bbox, px | 280.1 | 263.2 | 300.7 | 293.7 |
+| head as fraction of body | 0.109 | 0.115 | 0.110 | 0.099 |
+
+**The entire head — skull top, jaw, both eyes — is thirty pixels across, on every camera.**
+The eyes are ~6 px apart. `HeadEnd` and `Head` are separated by about a dozen pixels.
+
+**This explains every head finding in this document at once, and it should have been
+measured first.**
+
+- Why §2's `HeadEnd` failed at 66.5–115 % length variation, and why the eye baseline is
+  59 mm ± 133–201 mm: these are sub-ten-pixel separations being triangulated at 5 m.
+- Why §6n found all five landmarks bad *together* rather than unequally: they are not five
+  independent measurements, they are five points inside one 30-pixel blob, and they share
+  its localisation error.
+- Why the error is **depth**-dominated (CLAUDE.md's standing "reprojection cannot score
+  depth"): triangulated depth error goes as *depth² ÷ baseline × pixel error*, so a 5 m
+  subject with a 1–2 px landmark error yields exactly the 100–300 mm skull-internal scatter
+  §6n measured.
+- Why twelve solver interventions moved nothing. **They were all downstream of a 30-pixel
+  head.**
+
+### The lever, and the prerequisite that comes with it
+
+Native footage is **3840** — the pipeline downsamples by 3×. Running the detector at native
+width makes the head **~92 px**, and since depth error is linear in pixel error, it is the
+only intervention identified in this document with the right *order of magnitude* to move a
+9.9° estimation error.
+
+> **It is not free, and BATTLE0 already found the trap.**
+> `docs/BATTLE0_DETECTOR_WIDTH_FINDINGS.md` measured widths 1280/1920/3840 for the body and
+> found the naive improvement was **an artifact of survivorship**: the pipeline's pixel
+> gates are hardcoded and **do not scale with detector width** —
+> `triangulate_point(inlier_threshold_px=14.0)`, `inlier_threshold_px=40.0` in association,
+> and a mixed-unit association cost capped at 250 px. At 3840 that 14 px gate is a 26 mm
+> physical gate instead of 78 mm, and it discarded **41.8 %** of observations, keeping the
+> easy ones. **Any head-at-native-width experiment must scale those gates first, or it will
+> reproduce exactly that artifact and flatter itself.**
+
+**So the honest state of the head lane.** The estimator is not where the remaining error
+lives; §6h showed our error is uniform across performers and §6p showed the residual gap is
+below what this fixture resolves. **The error lives in a thirty-pixel head**, and the fix is
+an input change with a known prerequisite — not another solver pass. That is the goal's
+original diagnosis, arrived at the long way round, and now with a number attached.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
