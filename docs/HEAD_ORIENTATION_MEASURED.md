@@ -567,6 +567,18 @@ instrument.** Per frame, compose our world head and thorax rotations, form the r
 rotation, and score the geodesic angle against MAMMA's relative rotation on the same
 frame, both computed by the same functions.
 
+**Reference frames, amended 2026-08-31 — read this before reproducing the gate.**
+*Thorax frame:* built from the pipeline's own **smoothed** torso positions
+(`triangulated_world_positions_z_up_m`, joints `neck`/`root`/shoulders), **not** raw
+triangulation. The first version used raw and it dominated P4 — see §6a. MAMMA's thorax
+uses the same positional construction on its own `pred_joints`.
+*Head frame:* ours from the fitted rotation, MAMMA's from its composed SMPL-X chain.
+*P2's 8° derivation:* half of MAMMA's spread **as the gate computes it**, 14.96° / 15.99°
+with the positional thorax — not the 13.3° / 16.3° chain-thorax figures quoted in §1,
+which are a different construction. The two happen to give the same band; do not
+re-derive it from the §1 pair.
+*Fourth arm:* an **ORACLE** — MAMMA's head through our thorax — is mandatory, per §6a.
+
 **Every threshold below is per-subject, and the subject labels are OUR indices.** MAMMA's
 `body_id-00` is our subject 1; a gate spec with crossed labels mis-scores a candidate
 just as silently as a crossed parity table did in §0. Resolve through `subject_map.py`.
@@ -582,6 +594,10 @@ just as silently as a crossed parity table did in §0. Resolve through `subject_
 |---|---|
 | **C1 — the locked head** | today's delivered track. Spread 0.000000°, so **P2 fails by construction**, while its frame-to-frame world rotation *passes* a naive jitter gate at 6.87° against MAMMA's 6.62°. |
 | **C2 — the noisy head** | independently triangulated SOMA-77 eye/skull axes. **P1 and P4 fail**: the eye axis alone turns 90–117° at p95 and the skull invariant fails at 66–134 %. |
+
+| must PASS, or the gate is miscalibrated | |
+|---|---|
+| **ORACLE — MAMMA's own head through our thorax frame** | *"No gate a constant can pass"* has a dual: **a gate no oracle can pass is miscalibrated.** P1 compares two mean-removed relative rotations built on different thorax definitions, so a floor exists that no head can beat. If the oracle fails, the bands are measuring frame mismatch rather than head quality and must be re-derived — not the candidate's fault. Measured: it **passes**, at P1 5.46° / 4.87° median. |
 
 A gate reporting P1–P4 without C1 and C2 beside them is not this gate. **C1 and C2 are
 real artefacts on disk, not constructions** — the whole point of §0.
@@ -609,22 +625,55 @@ verdict turned into an estimator and the same architecture MAMMA uses.
 
 | subject 0 · MAMMA spread 14.96°, travel p95 2.38° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
 |---|---:|---:|---:|---:|---|
-| **candidate — multi-view fit** | 9.39° | 21.36° | **18.94°** | **7.06°** | **FAIL** (P1 only) |
+| **ORACLE — MAMMA's head, our thorax** | **5.46°** | **17.22°** | 17.51° | 7.08° | **PASS** |
+| **candidate — multi-view fit** | 9.39° | 21.36° | **18.94°** | 7.06° | **FAIL** (P1) |
 | **C2 — noisy, per-frame triangulated** | 6.52° | 65.62° | 18.66° | 86.93° | **FAIL** (P1, P4) |
 | **C1 — locked head, as delivered** | 14.96° | 30.76° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
 | *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 7.14* | |
 
 | subject 1 · MAMMA spread 15.99°, travel p95 4.17° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
 |---|---:|---:|---:|---:|---|
-| **candidate — multi-view fit** | **7.13°** | 22.47° | **16.36°** | **5.94°** | **FAIL** (P1 only) |
+| **ORACLE — MAMMA's head, our thorax** | **4.87°** | **17.59°** | 15.88° | 7.32° | **PASS** |
+| **candidate — multi-view fit** | **7.13°** | 22.47° | **16.36°** | 5.94° | **FAIL** (P1) |
 | **C2 — noisy, per-frame triangulated** | 7.60° | 88.68° | 18.84° | 98.65° | **FAIL** (P1, P4) |
 | **C1 — locked head, as delivered** | 15.99° | 27.18° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
 | *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 12.51* | |
 
-**The gate works, and that is the result worth keeping.** Three arms, three *different*
-failure signatures: the locked head dies on spread (P2, exactly 0.00°), the noisy head
-dies on jitter (P4, at 87–99°), and the candidate clears **P2, P3 and P4 on both
-subjects** and misses only P1. No arm passes by accident, and no constant can reach P2.
+### The oracle arm, and why a gate without one is only half-checked
+
+*"No gate a constant can pass"* has a dual that this lane had not written down: **a gate
+no oracle can pass is miscalibrated.** The two controls show that degenerate solutions
+fail. They cannot show that a *passing* candidate exists — and P1 compares two
+mean-removed relative rotations whose thorax frames come from different definitions
+(ours landmark-derived, MAMMA's from its fitted chain). Mean-removal kills the constant
+offset between them; the **pose-dependent** part survives and lands straight in P1. That
+imposes a floor no head, however perfect, can get under.
+
+So the oracle arm feeds **MAMMA's own head rotations** through **our** thorax frame and
+the identical scoring path. It **passes on both subjects**, which settles two things at
+once:
+
+1. **The bands are achievable.** P1 median 5.46° / 4.87° against a ≤ 8° band. The gate is
+   not asking for something the instrument pair cannot deliver.
+2. **The candidate's P1 gap is real, and it is ours.** Against the floor, the candidate
+   is **+3.93° / +2.26°** on median and **+4.14° / +4.88°** on p95. That is estimator
+   error, not frame-definition mismatch, and it is what the next build has to close.
+
+> **An oracle arm passing is not "MAMMA passes, so ship MAMMA".** MAMMA is a measuring
+> instrument and never enters a delivered artifact (CLAUDE.md). The arm exists to
+> calibrate the gate, and for nothing else.
+
+**And it re-reads P4.** The oracle's P4 is 7.08° / 7.32° against the candidate's 7.06° /
+5.94° — indistinguishable. **P4 is measuring our thorax frame's residual jitter, not the
+head's**, on both arms. Subject 0 therefore passes P4 at 7.06 against a 7.14 ceiling — a
+**1 % margin**, and one that a perfect head would not improve. Report it as *passes,
+marginally, and bounded by the reference frame* — never as headroom.
+
+**The gate works, and that is the result worth keeping.** Four arms, four *different*
+outcomes: the locked head dies on spread (P2, exactly 0.00°), the noisy head dies on
+jitter (P4, at 87–99°), the candidate clears **P2, P3 and P4 on both subjects** and
+misses only P1, and the oracle passes. No arm passes by accident, no constant can reach
+P2, and the bands are demonstrably reachable.
 
 ### An instrument defect in the gate itself, found and fixed — the third this session
 

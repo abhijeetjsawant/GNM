@@ -160,6 +160,17 @@ def main() -> None:
 
         arms = {}
         for label, head_world, ok in (
+            # ORACLE: MAMMA's OWN head rotations, scored through our thorax frame and
+            # the identical path. A perfect head cannot do better than this, so its P1
+            # is the floor the two thorax DEFINITIONS impose -- ours landmark-derived,
+            # MAMMA's from its fitted chain. Mean-removal kills the constant offset
+            # between them; the pose-dependent part survives and lands in P1. Without
+            # this arm the gate demonstrates that degenerate solutions fail and never
+            # that a passing candidate exists. A gate no oracle can pass is
+            # miscalibrated, which is the dual of "no gate a constant can pass".
+            # NOTE: an oracle arm passing is not "MAMMA passes, ship MAMMA" -- MAMMA is
+            # an instrument and never ships (CLAUDE.md).
+            ("ORACLE_mamma_head_our_thorax", m_head, torso_ok),
             ("candidate_multiview_fit", candidate_world, torso_ok),
             ("C2_noisy_per_frame_triangulated", noisy_world, torso_ok & noisy_ok),
         ):
