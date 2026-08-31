@@ -38,7 +38,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from autoanim_gnm.commercial_multiview import JOINT_INDEX  # noqa: E402
+from autoanim_gnm.commercial_multiview import JOINT_INDEX, _thorax_frames  # noqa: E402
 from mamma_head_bar import chain_world, geodesic_deg, rodrigues  # noqa: E402
 from solve_head import HEAD, NAMES, gather, initialise, log_so3  # noqa: E402
 from subject_map import mamma_index_for  # noqa: E402
@@ -180,11 +180,12 @@ def main() -> None:
             f"artifacts/commercial-multiview-soma77/subject-{subject:02d}.body-track.npz"
         )["triangulated_world_positions_z_up_m"]
         up = smoothed[:, JOINT_INDEX["neck"]] - smoothed[:, JOINT_INDEX["root"]]
-        across = (smoothed[:, JOINT_INDEX["left_shoulder"]]
-                  - smoothed[:, JOINT_INDEX["right_shoulder"]])
-        torso_ok = np.isfinite(up).all(axis=1) & np.isfinite(across).all(axis=1)
+        # ONE definition of the torso frame, imported from the pipeline rather than
+        # rebuilt here. The gate and the solver having their own copies is how they drift,
+        # and this lane has already been caught scoring one head while shipping another.
+        torso_ok = np.isfinite(smoothed).all(axis=(1, 2))
         thorax = np.full((len(smoothed), 3, 3), np.nan)
-        thorax[torso_ok] = frame_from(up[torso_ok], across[torso_ok])
+        thorax[torso_ok] = _thorax_frames(smoothed)[torso_ok]
 
         # --- candidate: the multi-view, multi-frame rigid head fit ---------------
         candidate_world = solved[f"subject_{subject:02d}_head_world"]

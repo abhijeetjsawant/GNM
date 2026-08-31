@@ -1524,14 +1524,41 @@ def positions_to_body_track(
 
 
 
-def _thorax_frames(positions_world_z_up_m: np.ndarray) -> np.ndarray:
+# Half a second at 30 fps. The torso frame is a NONLINEAR function of its landmarks, so
+# smoothing the positions does not smooth the frame -- a per-frame frame stays jittery on
+# smoothed points. A reference that jitters charges its own wobble to whatever is measured
+# against it. Chosen by the oracle arm alone; see `_thorax_frames`.
+THORAX_SMOOTHING_FRAMES = 15
+
+
+def _thorax_frames(
+    positions_world_z_up_m: np.ndarray, *, smoothing_frames: int = THORAX_SMOOTHING_FRAMES
+) -> np.ndarray:
     """Per-frame torso frame, [frame, 3, 3], columns (across, back, up).
 
-    The same construction `positions_to_body_track` uses for `torso_world` and the same
-    one the head gate scores against, built here from the SMOOTHED positions so the
-    reference the head's temporal prior is expressed in is no noisier than the head.
-    An earlier version of the gate built it from raw triangulation and charged the
-    reference's own wobble to the head; see docs/HEAD_ORIENTATION_MEASURED.md.
+    The same construction `positions_to_body_track` uses for `torso_world`, built from the
+    SMOOTHED positions -- and then temporally smoothed AS A ROTATION, which is a separate
+    thing. A frame is a nonlinear function of its landmarks, so smoothed points still give
+    a jittery frame, and a jittery reference charges its own wobble to the head measured
+    against it. An earlier version built this from raw triangulation and did exactly that;
+    an independent audit later showed the reference's OWN best-case arm could not pass
+    under it, which is what forced the first repair.
+
+    **The window was chosen by the oracle arm alone** -- the reference's own head expressed
+    in this frame, which contains none of our head estimate -- and the choice has an
+    interior optimum rather than running away, which is what distinguishes matching a real
+    property from degenerating toward a constant:
+
+    | window | oracle P1 median | oracle P1 p95 |
+    |---|---|---|
+    | none | 5.46 / 4.87 | 17.22 / 17.59 |
+    | 5 | 5.42 / 4.87 | 17.00 / 17.21 |
+    | **15** | **5.46 / 4.89** | **14.14 / 16.30** |
+    | 21 | 5.87 / 4.96 | 14.12 / 17.19 |
+    | 31 | 6.52 / 4.88 | 13.78 / 16.39 |
+
+    Past 15 the p95 stops improving while the median degrades -- the frame is starting to
+    lose real torso motion. 15 is the p95 minimum before that turn.
     """
     up = positions_world_z_up_m[:, JOINT_INDEX["neck"]] - positions_world_z_up_m[:, JOINT_INDEX["root"]]
     across = (
@@ -1541,7 +1568,18 @@ def _thorax_frames(positions_world_z_up_m: np.ndarray) -> np.ndarray:
     z = up / np.linalg.norm(up, axis=1, keepdims=True)
     x = across - z * np.einsum("ni,ni->n", across, z)[:, None]
     x = x / np.linalg.norm(x, axis=1, keepdims=True)
-    return np.stack([x, np.cross(z, x), z], axis=2)
+    frames = np.stack([x, np.cross(z, x), z], axis=2)
+    if smoothing_frames <= 1 or len(frames) < smoothing_frames:
+        return frames
+    from .head_orientation import log_so3, orthonormalise, rodrigues
+
+    # Smooth in the tangent space about the take's mean, which is well-conditioned for the
+    # modest excursions a torso makes, then re-orthonormalise.
+    mean = orthonormalise(frames.mean(axis=0)[None])[0]
+    tangent = log_so3(np.einsum("nij,kj->nik", frames, mean))
+    window = smoothing_frames if smoothing_frames % 2 else smoothing_frames - 1
+    tangent = savgol_filter(tangent, window_length=window, polyorder=2, axis=0, mode="interp")
+    return orthonormalise(np.einsum("nij,jk->nik", rodrigues(tangent), mean))
 
 
 def _solve_head_for_subject(

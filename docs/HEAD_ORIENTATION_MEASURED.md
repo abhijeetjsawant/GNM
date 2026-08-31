@@ -1,7 +1,9 @@
 # Head and neck — measured, 2026-08-31
 
 **Status: the head solve is in the pipeline, does NOT uniformly pass, and the delivered
-artifacts have NOT been regenerated.** On the shipped
+artifacts have NOT been regenerated.** Performer 0 clears all four bands; performer 1
+misses P1's p95 by **1.18°** (§6g). That gap grew from 0.28° when a sharper reference frame
+stopped hiding it — §6f's claim that the residual was instrument floor is **withdrawn**. On the shipped
 configuration (§6f) performer 0 passes all four bands; performer 1 passes P1's median, P2,
 P3 and P4 and misses **P1's p95 by 0.28°**. A capture *would now* ship a moving `Head`; the
 `subject-*.body-track.npz` on disk predate the stage and still carry the identity
@@ -1143,6 +1145,66 @@ the P1 median."* **On that number the shipped head passes on both performers**, 
 *Instruments:* `tools/head/gate_the_shipped_head.py`, `tools/head/head_gate.py <path>`.
 *Blind to:* everything §6 is blind to. The oracle bounds the frame mismatch; it does not
 tell us whether the mismatch is our error or the reference's, and nothing here can.
+
+---
+
+## 6g A SHARPER INSTRUMENT — and it corrects §6f's conclusion, in the unwelcome direction
+
+§6f concluded that performer 1's remaining 0.28° was *"the instrument floor"*, on the
+grounds that the oracle consumed 88 % of the band. **That conclusion was wrong, and a
+sixth measurement is what shows it.**
+
+**The thorax frame was jittery in a way five earlier checks did not reach.** Our torso
+frame is built per frame from landmark geometry, and **a frame is a nonlinear function of
+its landmarks** — so smoothing the positions, which the pipeline already does, leaves the
+*frame* jittery. MAMMA's comes from a fitted kinematic chain and is smooth by
+construction. Comparing the two charged our reference's own wobble to the head.
+
+Smoothing our thorax **as a rotation**, with the window chosen by the **oracle arm alone**:
+
+| window | oracle P1 median | oracle P1 p95 |
+|---|---|---|
+| none | 5.46 / 4.87 | 17.22 / 17.59 |
+| 5 | 5.42 / 4.87 | 17.00 / 17.21 |
+| **15 — chosen** | **5.46 / 4.89** | **14.14 / 16.30** |
+| 21 | 5.87 / 4.96 | 14.12 / 17.19 |
+| 31 | 6.52 / 4.88 | 13.78 / 16.39 |
+
+**It has an interior optimum, which is what separates matching a real property from
+degenerating toward a constant.** Past 15 frames — half a second — the p95 stops improving
+while the median degrades, because real torso motion is being lost. That turn is the
+evidence the window is not a knob.
+
+### And the candidate got worse
+
+| shipped fit, smoothed thorax | P1 median | P1 p95 | P2 | P3 | P4 | verdict |
+|---|---:|---:|---:|---:|---:|---|
+| performer 0 | **6.69°** | **17.77°** | 16.84° | 0 | 3.76° | **PASS** |
+| performer 1 | 7.20° | **21.18°** | 16.63° | 0 | 5.09° | **FAIL** — p95 by 1.18° |
+| *oracle* | *5.46 / 4.89°* | *14.14 / 16.30°* | | | | *PASS* |
+
+**Performer 1 now misses by 1.18° where it missed by 0.28°.** The floor fell 1.29° and the
+candidate rose 0.90°, so the gap between our head and a perfect one widened from **+2.69°
+to +4.88°**.
+
+> **This is the gate working, and the result is kept even though it reads worse.** The
+> window was chosen on the oracle — an arm with none of our head in it — and the
+> candidate's own reprojection *improved* slightly under it (2.715/2.631 → 2.704/2.615 px).
+> A sharper reference did not make our head worse; it stopped hiding how wrong our head
+> already was. **Reverting to the jittery frame because it flatters us would be
+> gate-tuning with the sign flipped**, and it is the exact move this document has refused
+> five times in the other direction.
+
+**So §6f's "the remaining gap is the instrument floor" is withdrawn.** With the floor at
+16.30° and the candidate at 21.18°, **+4.88° of performer 1's p95 is ours.** There is real
+estimator work here after all, and the five exclusions in §6f narrow *where* it is rather
+than proving it absent: not convergence, not the grid, not the thorax definition, not the
+loss, not the seed — and now, not the floor either.
+
+**One structural fix landed with it.** The gate had been rebuilding its own copy of the
+torso frame instead of importing the pipeline's. Two copies of one definition is how they
+drift, and this lane was already caught once scoring one head while shipping another
+(§6f). There is now one `_thorax_frames`, imported by both.
 
 ---
 
