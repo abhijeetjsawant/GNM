@@ -679,10 +679,28 @@ tail, not the bulk.
 it is retained as harmless rather than reported as a fix. And the **template** was ruled
 out as a suspect, below.
 
+**A third idea, tried and null: per-landmark inverse-variance weighting.** §2b measures
+each head landmark's epipolar consistency, so weighting each one's residual by 1/σ² is
+textbook and free. It changes in-frame reprojection by **+0.005 px and +0.041 px** —
+nothing, and slightly the wrong way. The reason is visible in the σ's themselves: they
+span only 1.56–2.09 px on subject 0 and 2.30–2.49 px on subject 1, so there is no variance
+to exploit. **Rejected on its own MAMMA-free criterion, without consulting the gate.**
+
 **Where subject 0's remaining 0.97° lives.** Per-frame disagreement correlates **−0.60**
 with camera support, and its worst decile averages **2.8** supporting cameras against
 **3.69** for the rest. The evidence, not the estimator, is thin on those frames — which is
 why the support-conditioned prior was the right idea and why it was not enough on its own.
+
+> **And that suggests the next move is a product decision rather than more estimator
+> work.** If the head is genuinely under-observed on a minority of frames — two cameras,
+> a turned-away performer — then no prior recovers information that was never captured,
+> and the honest output is a **flag**, not a better guess. The pipeline already has the
+> precedent and the rule: *"missing or untrusted hand observations remain explicitly
+> `review_required`; they do not fall back to an unreported canned gesture"*
+> (`FINGER_TRIANGULATION_GATE.md`). A head gate that reports *"passes on 90 % of frames,
+> flags the rest"* is worth more to a fidelity product than one that quietly interpolates
+> through them — but that changes what the gate scores, so **pre-register it before
+> measuring it**, or it is the tuning trap wearing a product hat.
 
 ### The oracle arm, and why a gate without one is only half-checked
 
