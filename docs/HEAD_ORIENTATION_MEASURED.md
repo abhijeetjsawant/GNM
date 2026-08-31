@@ -1,6 +1,9 @@
 # Head and neck — measured, 2026-08-31
 
-**Status: measured, and a first estimator built and scored — it does not pass.** No
+**Status: measured; an estimator built and scored; it passes on one performer of two.**
+Subject 1 clears all four bands, subject 0 misses P1's median by 0.97°. **The head is
+therefore not solved** — the bar is both performers, and nothing is wired into the
+shipping path. No
 *shipping* head code was changed; the fit in §6a is a new instrument in `tools/head/`,
 not on the delivery path. This is the
 instrument pass the goal asked for — score MAMMA's head on this footage first, measure
@@ -623,21 +626,63 @@ and **position**, minimising robust reprojection into all four calibrated camera
 temporal prior. **No head landmark is ever triangulated on its own**, which is §2b's
 verdict turned into an estimator and the same architecture MAMMA uses.
 
-| subject 0 · MAMMA spread 14.96°, travel p95 2.38° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
-|---|---:|---:|---:|---:|---|
-| **ORACLE — MAMMA's head, our thorax** | **5.46°** | **17.22°** | 17.51° | 7.08° | **PASS** |
-| **candidate — multi-view fit** | 9.39° | 21.36° | **18.94°** | 7.06° | **FAIL** (P1) |
-| **C2 — noisy, per-frame triangulated** | 6.52° | 65.62° | 18.66° | 86.93° | **FAIL** (P1, P4) |
-| **C1 — locked head, as delivered** | 14.96° | 30.76° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
-| *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 7.14* | |
+| subject 0 · MAMMA spread 14.96°, travel p95 2.38° | P1 med | P1 p95 | P2 spread | P3 | P4 travel | verdict |
+|---|---:|---:|---:|---:|---:|---|
+| **ORACLE — MAMMA's head, our thorax** | 5.46° | 17.22° | 17.51° | — | 7.08° | **PASS** |
+| **candidate — neck-space fit** | 8.97° | **18.81°** | **11.25°** | **0** | **0.59°** | **FAIL** (P1 median, by 0.97°) |
+| **C2 — noisy, per-frame triangulated** | 6.52° | 65.62° | 18.66° | — | 86.93° | **FAIL** (P1, P4) |
+| **C1 — locked head, as delivered** | 14.96° | 30.76° | **0.00°** | — | 0.00° | **FAIL** (P1, P2) |
+| *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *= 0* | *≤ 7.14* | |
 
-| subject 1 · MAMMA spread 15.99°, travel p95 4.17° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
-|---|---:|---:|---:|---:|---|
-| **ORACLE — MAMMA's head, our thorax** | **4.87°** | **17.59°** | 15.88° | 7.32° | **PASS** |
-| **candidate — multi-view fit** | **7.13°** | 22.47° | **16.36°** | 5.94° | **FAIL** (P1) |
-| **C2 — noisy, per-frame triangulated** | 7.60° | 88.68° | 18.84° | 98.65° | **FAIL** (P1, P4) |
-| **C1 — locked head, as delivered** | 15.99° | 27.18° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
-| *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 12.51* | |
+| subject 1 · MAMMA spread 15.99°, travel p95 4.17° | P1 med | P1 p95 | P2 spread | P3 | P4 travel | verdict |
+|---|---:|---:|---:|---:|---:|---|
+| **ORACLE — MAMMA's head, our thorax** | 4.87° | 17.59° | 15.88° | — | 7.32° | **PASS** |
+| **candidate — neck-space fit** | **7.46°** | **17.28°** | **13.28°** | **0** | **1.10°** | **PASS** |
+| **C2 — noisy, per-frame triangulated** | 7.60° | 88.68° | 18.84° | — | 98.65° | **FAIL** (P1, P4) |
+| **C1 — locked head, as delivered** | 15.99° | 27.18° | **0.00°** | — | 0.00° | **FAIL** (P1, P2) |
+| *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *= 0* | *≤ 12.51* | |
+
+**One performer passes the gate outright. The other misses one band by 0.97°.** So the
+head is not solved — the goal's bar is both — but it is no longer a constant, and on
+subject 1 a from-scratch estimator matches a research SMPL-X fitter closely enough to
+clear every band that fitter's own head clears.
+
+### What closed most of the gap: smooth the neck, not the head
+
+The change that did it adds **no parameter** and is pure anatomy. The temporal prior was
+acting on the head's **world** rotation. It now acts on the head's rotation **relative to
+the thorax** — the neck.
+
+The head in world carries the torso's motion as well as the neck's, so a world-space
+prior fights the body while under-constraining the joint that is actually smooth. The
+measurement says the same thing: the reference's head-relative-to-thorax travel is
+**1.06–1.46°** median against **1.32–1.93°** in world.
+
+| | P1 med | P1 p95 | P2 spread | P4 travel |
+|---|---:|---:|---:|---:|
+| world-space prior, subject 0 / 1 | 9.39° / 7.13° | 21.36° / 22.47° | 18.94° / 16.36° | 7.06° / 5.94° |
+| **neck-space prior**, subject 0 / 1 | **8.97° / 7.46°** | **18.81° / 17.28°** | 11.25° / 13.28° | **0.59° / 1.10°** |
+
+P1 p95 falls **2.6° and 5.2°**, P4 collapses by an order of magnitude, and both p95s land
+inside the band for the first time.
+
+**Two costs, stated because the gate exists to surface them.** P2 falls from 18.9°/16.4°
+to 11.25°/13.28° — the fit now explains 75 % and 83 % of the reference's head-on-torso
+spread rather than over-shooting it. That is still clear of the ≥ 8° band, and **P2 is
+exactly the guard that stops this prior being pushed further**: smoothing the neck harder
+converges on C1. And subject 0's P1 median moved only 0.42°, so the neck prior fixed the
+tail, not the bulk.
+
+**Two things that did *not* work, both kept so they are not retried.** A
+**support-conditioned** prior — scaling the temporal term by how few cameras see the head
+— is correct in principle (inverse variance) and worth ~0.1–0.7° here, within noise, so
+it is retained as harmless rather than reported as a fix. And the **template** was ruled
+out as a suspect, below.
+
+**Where subject 0's remaining 0.97° lives.** Per-frame disagreement correlates **−0.60**
+with camera support, and its worst decile averages **2.8** supporting cameras against
+**3.69** for the rest. The evidence, not the estimator, is thin on those frames — which is
+why the support-conditioned prior was the right idea and why it was not enough on its own.
 
 ### The oracle arm, and why a gate without one is only half-checked
 
@@ -669,11 +714,10 @@ head's**, on both arms. Subject 0 therefore passes P4 at 7.06 against a 7.14 cei
 **1 % margin**, and one that a perfect head would not improve. Report it as *passes,
 marginally, and bounded by the reference frame* — never as headroom.
 
-**The gate works, and that is the result worth keeping.** Four arms, four *different*
-outcomes: the locked head dies on spread (P2, exactly 0.00°), the noisy head dies on
-jitter (P4, at 87–99°), the candidate clears **P2, P3 and P4 on both subjects** and
-misses only P1, and the oracle passes. No arm passes by accident, no constant can reach
-P2, and the bands are demonstrably reachable.
+**The gate works, and it discriminates.** Four arms, four *different* outcomes: the
+locked head dies on spread (P2, exactly 0.00°), the noisy head dies on jitter (P4, at
+87–99°), the oracle passes, and the candidate passes on one performer and misses one band
+on the other. No arm passes by accident, and no constant can reach P2.
 
 ### An instrument defect in the gate itself, found and fixed — the third this session
 

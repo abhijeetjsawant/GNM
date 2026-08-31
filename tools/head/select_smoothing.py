@@ -35,13 +35,15 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from associate import CAMERAS, OUT  # noqa: E402
-from solve_head import NAMES, gather, held_out_px, initialise, rodrigues, solve  # noqa: E402
+from solve_head import (  # noqa: E402
+    NAMES, gather, held_out_px, initialise, rodrigues, solve, thorax_frames,
+)
 
 # Pre-registered before running: the sweep, and the tolerance.
 # Extended from (0 ... 3000) after subject 0's selection landed on the grid's top
 # value -- a boundary hit, which is visible in the L-curve itself and needs no reference
 # to the gate. The rule is unchanged; only the range it searches.
-WEIGHTS = (0.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0, 30000.0)
+WEIGHTS = (0.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0, 30000.0, 100000.0, 300000.0)
 TOLERANCE = 0.10  # accept up to 10% worse in-frame reprojection than the unsmoothed fit
 
 
@@ -53,10 +55,12 @@ def main() -> None:
         observations, cameras = gather(subject)
         template0, rotations0, translations0 = initialise(subject)
         every = np.ones(len(CAMERAS), dtype=bool)
+        thorax = thorax_frames(subject)
         curve: dict[float, float] = {}
         fits: dict[float, dict] = {}
         for weight in WEIGHTS:
-            fit = solve(observations, cameras, template0, rotations0, translations0, weight, every)
+            fit = solve(observations, cameras, template0, rotations0, translations0, weight,
+                        every, thorax=thorax)
             fits[weight] = fit
             curve[weight] = float(np.nanmean(
                 [held_out_px(fit, observations, cameras, c) for c in range(len(CAMERAS))]))
