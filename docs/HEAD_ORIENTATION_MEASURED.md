@@ -1485,13 +1485,71 @@ part in ten thousand.
   principled criterion for this parameter is now an open question**, and CLAUDE.md already
   says why the obvious one is suspect: *reprojection cannot score depth.*
 
-### Pre-registered, before the fix is chosen
+### The fix was pre-registered on the monotonicity property. It did not work, and that
+### is the more useful answer
 
-The convergence setting will be chosen by **the monotonicity property** — the tightest
-tolerance at which the curve stops violating its own arithmetic — and **never by which
-setting scores best at the gate.** The gate will then be re-run on the shipped solve and
-**its result reported whatever it is**, pass or fail, on both performers. The bands do not
-move. They have not moved once in this document and they do not move here.
+Pre-registered above: choose the tolerance at which the curve stops violating its own
+arithmetic, never by what scores best at the gate. Run, on the region where monotonicity
+breaks:
+
+| subject 0, `ftol` / `max_nfev` | w=0 | w=30 | w=100 | w=300 | w=1000 | monotonic? |
+|---|---:|---:|---:|---:|---:|---|
+| **1e-4 / 120** — shipped | 2.7353 | 2.7061 | 2.7052 | 2.7328 | 2.7762 | **no** |
+| 1e-6 / 400 | 2.7351 | 2.7123 | **2.7024** | 2.7427 | 2.7926 | **no** |
+| 1e-8 / 1200 | 2.7351 | 2.7124 | **2.7024** | 2.7427 | 2.7926 | **no** |
+
+**The last two rows are identical to four decimal places on every weight.** The tolerance
+has stopped binding — at `1e-8` and twelve hundred evaluations the optimiser has genuinely
+converged, and **the curve is still not monotonic.**
+
+**So it is not an iteration budget. It is a local minimum.** The objective is non-convex —
+rotations composed through a robust loss — and from the shared cold seed, weight 0 settles
+into a worse basin than weight 100 does. The warm-start result above is the same fact seen
+from the other side: the identical objective reaches 2.7044 instead of 2.7351 purely by
+starting nearer.
+
+**This lands on a second of the nine exclusions.** "Optimiser seed" was excluded in §6f;
+a seed change demonstrably finds a better optimum, so that exclusion is **weakened too** —
+though not in the way it was originally tested, which varied the seed randomly rather than
+warm-starting along the regularisation path.
+
+### What the rule is actually doing, which is worse than being wrong
+
+Put the two halves together. A *converged* argmin-reprojection rule must select **weight
+0** — and weight 0 is exactly what the anatomical travel gate **rejects on subject 1 at
+127 °/frame** as physically impossible. The rule therefore does not select 100 because 100
+is well-regularised. **It selects 100 because the weight-0 basin happens to be worse.**
+
+> **The rule reaches a defensible answer for an indefensible reason**, and that is the most
+> dangerous state a criterion can be in: it will keep looking correct until the landscape
+> shifts under it, and then it will fail silently. It is the same shape as the constant
+> head that scored parity on jitter — right-looking output, no supporting mechanism.
+
+### What is NOT being changed, and why that is the disciplined answer
+
+**The shipped behaviour is unchanged.** Every candidate repair — warm-starting, continuation
+down the regularisation path, a tighter tolerance — separates solutions by **thousandths of
+a pixel**, and choosing among them by reprojection is choosing by the criterion this
+section just showed to be unsound. *Fixing an unprincipled rule by applying it harder is
+not a fix.* Descending continuation was tried and lands at 2.7342 at weight 0 — worse than
+the single warm start — so there is not even a clean optimisation answer to adopt.
+
+**And it would not close the gate.** The entire spread here is **~0.4 % of a pixel
+residual**, against a band missed by **1.18° of orientation**, while §6h shows our own head
+error is 9.9° on *both* performers. No arithmetic connects those.
+
+**So this is logged as an open question, not a repair**, and it is the honest state:
+
+> **A principled criterion for the temporal weight does not exist in this lane yet.**
+> Held-out cross-validation was tried and fails — detector noise is correlated across
+> cameras within a frame. The L-curve was tried and replaced. Argmin reprojection is now
+> shown to be unsound in principle. What remains untried is a **physical** criterion —
+> selecting the weight whose head kinematics match human neck angular-speed limits — which
+> is independent of both the reference and the gate. **Unmeasured.**
+
+**The gate result is unchanged and is reported as pre-registered: subject 0 passes, subject
+1 misses P1's p95 at 21.18° against ≤ 20°.** The head still does not uniformly hold on this
+fixture. The bands did not move.
 
 ---
 
