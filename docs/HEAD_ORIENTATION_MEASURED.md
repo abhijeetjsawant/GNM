@@ -3,7 +3,9 @@
 **Status: the head solve is in the pipeline, does NOT uniformly pass, and the delivered
 artifacts have NOT been regenerated.** Performer 0 clears all four bands; performer 1
 misses P1's p95 by **1.18°** (§6g). That gap grew from 0.28° when a sharper reference frame
-stopped hiding it — §6f's claim that the residual was instrument floor is **withdrawn**. On the shipped
+stopped hiding it. **§6h decomposes it**: our head scores 9.91° / 9.80° p95 against a
+perfect head in the same frame — *identical on both performers* — so the pass/fail split is
+the reference frame, not the head. On the shipped
 configuration (§6f) performer 0 passes all four bands; performer 1 passes P1's median, P2,
 P3 and P4 and misses **P1's p95 by 0.28°**. A capture *would now* ship a moving `Head`; the
 `subject-*.body-track.npz` on disk predate the stage and still carry the identity
@@ -1205,6 +1207,57 @@ loss, not the seed — and now, not the floor either.
 torso frame instead of importing the pipeline's. Two copies of one definition is how they
 drift, and this lane was already caught once scoring one head while shipping another
 (§6f). There is now one `_thorax_frames`, imported by both.
+
+---
+
+## 6h THE DECOMPOSITION — our head is the same on both performers; the frame is not
+
+Seven hypotheses had been excluded by guessing at mechanisms. This asks the data instead:
+score **our head against the oracle's head in the SAME frame**, which cancels the frame
+mismatch and leaves only our own error.
+
+| p95, performer 0 / 1 | |
+|---|---:|
+| what the gate scores (candidate vs the reference in *its own* frame) | **17.77° / 21.18°** |
+| the oracle floor (a *perfect* head through *our* frame) | 14.14° / **16.30°** |
+| **our head against a perfect one, same frame — purely our error** | **9.91° / 9.80°** |
+| *…median* | *5.26° / 4.90°* |
+
+**Our head estimator performs identically on the two performers — 9.91° against 9.80° at
+p95, 5.26° against 4.90° at median.** The gate passes one and fails the other, and the
+difference between them is almost entirely the frame: the floors differ by **2.16°**
+(14.14 vs 16.30) while our own error differs by **0.11°**.
+
+> **So performer 1 does not fail because our head is worse there. It is not worse there.**
+> It fails because the reference-frame mismatch is 2.2° larger on that performer, and the
+> band has no room for it. That is a sharper statement than either §6f's *"the gap is the
+> floor"* — withdrawn as too strong — or §6g's *"+4.88° is ours"* — true of the total, but
+> it conflates a term that is constant across performers with one that is not.
+
+**Where our own 9.8° lives.** It is **episodic**, not scattered: the worst decile occupies
+**3–4 contiguous runs** on each performer, a handful of moments rather than broadband
+noise. On performer 1 it correlates with detector confidence (−0.386) and torso angular
+speed (+0.329); on performer 0 with camera support (−0.363) and trunk tilt (+0.281). Those
+are different mechanisms per performer, which is consistent with a handful of hard moments
+rather than one systematic defect.
+
+### Two more exclusions, both from this pass
+
+| ruled out | measurement |
+|---|---|
+| **the jaw is not rigid to the skull** | it is, on this footage. Its per-landmark residual is the *lowest* of the five (2.38 / 2.40 px against 1.78–2.83), and removing it makes the fit **worse** on the four landmarks both fits share (+0.079 / +0.048 px, same denominator). The ears' failure mode does not repeat here |
+| **the thorax smoother's chart is bad** | it is a tangent-space linearisation about the take's mean, only valid for modest excursions, and performer 1 goes supine — so a chart-free quaternion smoother should differ. It does not: 14.14 / 16.29 against 14.14 / 16.30, identical to two decimals |
+
+**That is eight exclusions.** Not convergence, not grid resolution, not the thorax landmark
+choice, not the robust loss, not the seed, not the jaw, not the smoothing chart — and not
+"the floor" alone either, since our head contributes a real 9.8°.
+
+**What this says to build, and it is not more head work.** Our head is as good on the
+failing performer as on the passing one. The lever that separates them is the torso frame,
+and the torso frame is landmark geometry where the reference's is a fitted kinematic
+chain. Closing it means fitting the body, which is `FITTER_PLAN.md`'s parametric body fit —
+**the lane's largest structural gap, named long before this session** — and not another
+head estimator.
 
 ---
 
