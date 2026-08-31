@@ -1,7 +1,8 @@
 # Head and neck — measured, 2026-08-31
 
 **Status: the head passes the pre-registered gate on both performers, and is now ON THE
-DELIVERY PATH.** Both degenerate controls fail, the oracle passes, and the fit's
+DELIVERY PATH** — a capture ships `Head` local rotation of **26.5° / 20.7° median** where
+it carried the identity quaternion on every frame. Both degenerate controls fail, the oracle passes, and the fit's
 head-on-torso spread matches the reference to within 2.5°. The solve is a pipeline stage —
 `src/autoanim_gnm/head_orientation.py` — and `reconstruct_multiview` threads it into the
 delivered track, so a capture now ships a head that moves. §9a records what wiring cost.
@@ -1046,8 +1047,8 @@ skull's long axis, the eyes for the lateral one. **Never from the reference**, b
 aligning to a research fitter's head would be a shipped constant fitted on a
 reference-derived artifact, which `BODY_LANE_PLAN.md` forbids outright. Absent those
 landmarks the solve **refuses** rather than delivering an arbitrary orientation.
-*Delivered local head rotation fell from 80° / 112° median to* **26° / 23°** *— the right
-order for real head-on-torso motion.*
+*Delivered local head rotation fell from 80° / 112° median to* **26.5° / 20.7°**, *max
+40.2° / 37.6° — the right order for real head-on-torso motion.*
 
 **2. Minimum reprojection has no notion of anatomy.** An unsmoothed solve delivered a
 **140° single-frame head flip** that reprojected perfectly well — because much of the flip
@@ -1055,6 +1056,12 @@ lay along the viewing rays, which is the same blindness §2b exploits in the oth
 direction. Solutions whose frame-to-frame **neck** travel exceeds 60° are now discarded
 before the reprojection rule chooses. 60° at 30 fps is 1800°/s against a human peak near
 500–800°/s: a hard physical reject, not a tuning knob.
+
+**Measured end to end, it fires and it is not vacuous.** On subject 1 it discarded the
+unsmoothed solve the reprojection rule had chosen, moving the selected weight **0 → 100**
+and the delivered maximum **140.2° → 37.6°**. Subject 0 was untouched at weight 30. So the
+filter changed exactly the take that needed it and left the other alone — and the same
+contrast is asserted in the tests, where lifting the bound restores the impossible step.
 
 > **Measured at the neck, not in world, and the distinction is load-bearing.** A head on a
 > turning body travels in world while the neck is perfectly still. Scoring world rotation
