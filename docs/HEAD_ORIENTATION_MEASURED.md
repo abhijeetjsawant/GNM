@@ -1423,6 +1423,78 @@ is written here.**
 
 ---
 
+## 6k THE CONVERGENCE EXCLUSION IS RETRACTED — the solve is not converging
+
+§6f listed **convergence** as the first of nine excluded mechanisms. That exclusion was
+made on the pre-audit code and **it does not survive**. This section withdraws it, and the
+route in was a property nobody had checked: not the head's accuracy, but whether the
+*selection rule* obeys its own arithmetic.
+
+### The property, and why it is not gate-tuning to ask
+
+The pipeline picks the temporal weight by **argmin in-sample reprojection**. Adding a
+temporal prior to a data term can only make the data fit worse — the unpenalised problem
+is strictly less constrained, so any solution feasible at weight *w* is feasible at weight
+0. **Reprojection must therefore rise monotonically in the weight, and argmin must always
+land at 0.** It does not; the shipped solve selects 100 on both subjects.
+
+*Nothing in that paragraph mentions the gate.* It is a statement about the objective, which
+is why asking it is not the move this document has refused nine times.
+
+### The curve, and the proof
+
+`tools/head/weight_curve.py`, subject 0, each weight solved from the shared cold seed:
+
+| weight | 0 | 30 | **100** | 300 | 1 000 | 3 000 | 10 000 | 30 000 | 100 000 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| reprojection px | 2.7148 | 2.7256 | **2.7039** | 2.7273 | 2.7872 | 2.7682 | 2.8722 | 2.9466 | 3.1928 |
+
+**Not monotonic, and it is not a rounding wobble.** Weight 100 reaches **2.7039 px** where
+weight 0 reaches only 2.7148 px. The weight-100 solution is *feasible for the weight-0
+problem and scores better on it*, so the weight-0 optimum is at most 2.7039 — and the
+solver is not finding it.
+
+**Confirmed by a second, independent construction**, per the standing rule about
+confirming a suspected defect before acting. Re-solving weight 0 **warm-started from the
+weight-100 solution** — the identical objective, only a different starting point:
+
+| weight 0, cold | weight 100, cold | **weight 0, warm from 100** |
+|---:|---:|---:|
+| 2.7353 px | 2.7052 px | **2.7044 px** |
+
+A better optimum of *the same objective*, reached only by starting closer. **The solve is
+under-converged.** `least_squares` is called with `ftol=1e-4` and `max_nfev=120` on a
+problem carrying roughly nine hundred parameters — it stops when the cost moves by one
+part in ten thousand.
+
+### What this does and does not overturn
+
+- **It retracts the convergence exclusion, and only that one.** Eight of the nine remain:
+  grid resolution, thorax landmark choice, robust loss, seed, jaw rigidity, the smoothing
+  chart, the floor alone, and the rigid multi-point torso fit.
+- **It does not predict a pass.** The gap between converged and unconverged here is
+  **~0.4 % of reprojection**, and §6h's decomposition says our own head error is 9.9° on
+  *both* performers while the band is missed by 1.18° on one. There is no arithmetic in
+  which 0.4 % of a pixel residual obviously closes 1.18° of orientation. **This is a real
+  defect worth fixing because it is a defect, not because it is expected to flip a
+  verdict.**
+- **It also indicts the selection rule itself.** Even fully converged, argmin reprojection
+  would then always select weight 0 — no temporal regularisation at all — and weight 0 is
+  precisely what the anatomical travel gate *rejects* on subject 1 at **127 °/frame**. So
+  the rule is either picking on non-convergence or picking the degenerate end. **A
+  principled criterion for this parameter is now an open question**, and CLAUDE.md already
+  says why the obvious one is suspect: *reprojection cannot score depth.*
+
+### Pre-registered, before the fix is chosen
+
+The convergence setting will be chosen by **the monotonicity property** — the tightest
+tolerance at which the curve stops violating its own arithmetic — and **never by which
+setting scores best at the gate.** The gate will then be re-run on the shipped solve and
+**its result reported whatever it is**, pass or fail, on both performers. The bands do not
+move. They have not moved once in this document and they do not move here.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
