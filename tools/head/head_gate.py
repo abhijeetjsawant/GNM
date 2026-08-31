@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from autoanim_gnm.commercial_multiview import JOINT_INDEX  # noqa: E402
 from mamma_head_bar import chain_world, geodesic_deg, rodrigues  # noqa: E402
-from solve_head import HEAD, NAMES, initialise, log_so3  # noqa: E402
+from solve_head import HEAD, NAMES, gather, initialise, log_so3  # noqa: E402
 from subject_map import mamma_index_for  # noqa: E402
 from triangulate_soma import triangulate  # noqa: E402
 
@@ -52,6 +52,20 @@ PELVIS, SPINE1, SPINE2, SPINE3, NECK, HEAD_J = 0, 3, 6, 9, 12, 15
 
 BANDS = {"P1_median_deg": 8.0, "P1_p95_deg": 20.0, "P2_spread_min_deg": 8.0,
          "P3_opposing_frames": 0, "P4_travel_multiple": 3.0}
+# Pre-registered in HEAD_ORIENTATION_MEASURED.md §6b, before measuring: a frame is
+# review_required when fewer than this many cameras see at least MINIMUM_HEAD_LANDMARKS
+# of the five head landmarks. Chosen from geometry -- two rays fix a 3D point but leave
+# the rotation of a ~120 mm object at 5 m badly conditioned.
+MINIMUM_HEAD_CAMERAS = 3
+MINIMUM_HEAD_LANDMARKS = 3
+
+
+def observed_frames(subject: int) -> np.ndarray:
+    """Frames whose head is observed well enough to be reported without a flag."""
+    observations, _ = gather(subject)
+    seen = (np.isfinite(observations[..., :2]).all(axis=3)
+            & (observations[..., 2] >= 0.25))
+    return (seen.sum(axis=2) >= MINIMUM_HEAD_LANDMARKS).sum(axis=1) >= MINIMUM_HEAD_CAMERAS
 
 
 def unit(v: np.ndarray) -> np.ndarray:
@@ -206,7 +220,32 @@ def main() -> None:
         arms["candidate_multiview_fit"]["verdict"] = (
             "PASS" if all(arms["candidate_multiview_fit"]["passes"].values()) else "FAIL")
 
+        # --- §6b: the same four arms, re-scored on the un-flagged population -------
+        # The verdict above does NOT move; this reports what a flagged output delivers.
+        reported = observed_frames(subject)
+        gated: dict[str, dict] = {}
+        for label, head_world, ok in (
+            ("ORACLE_mamma_head_our_thorax", m_head, torso_ok & reported),
+            ("candidate_multiview_fit", candidate_world, torso_ok & reported),
+            ("C2_noisy_per_frame_triangulated", noisy_world, torso_ok & noisy_ok & reported),
+        ):
+            relative = np.einsum("nji,njk->nik", np.nan_to_num(thorax, nan=0.0), head_world)
+            relative[~ok] = np.eye(3)
+            gated[label] = score(mean_removed(relative), m_dev, ok, m_travel_p95)
+        gated["C1_locked_head_delivered"] = score(
+            np.broadcast_to(np.eye(3), (len(m_dev), 3, 3)), m_dev, torso_ok & reported,
+            m_travel_p95)
+
         report[f"subject_{subject:02d}"] = {
+            "review_flag": {
+                "rule": f"fewer than {MINIMUM_HEAD_CAMERAS} cameras seeing >= "
+                        f"{MINIMUM_HEAD_LANDMARKS} of 5 head landmarks",
+                "frames_reported": int(reported.sum()),
+                "frames_flagged": int((~reported).sum()),
+                "flagged_fraction": float((~reported).mean()),
+                "over_25pct_ceiling": bool((~reported).mean() > 0.25),
+            },
+            "gated_arms_verdict_not_binding": gated,
             "mamma_reference": {
                 "spread_about_take_mean_deg_median": float(np.median(geodesic_deg(
                     m_dev, np.broadcast_to(np.eye(3), m_dev.shape)))),

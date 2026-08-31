@@ -65,6 +65,12 @@
   over the bone as the subject turns: every camera sees the same apparent point, and it
   is not a fixed place on the skeleton. This is `soma77_pose.py`'s founding argument, and
   a rigid-template fit over a take is the instrument that exposes it.
+- **A gate needs an ORACLE arm, not just failing controls.** "No gate a constant can
+  pass" has a dual: *a gate no oracle can pass is miscalibrated*. Score the reference's
+  own answer through your pipeline's frames — it measures the floor your frame
+  definitions impose, tells you whether a candidate's gap is yours or the instrument's,
+  and it is the only arm that can expose a proposed remedy aimed at the wrong term. On
+  the head it did all three.
 - **A length invariant cannot score direction.** For an axis roughly perpendicular to the
   camera's depth direction, a differential depth error between its endpoints is *first
   order* in the axis's direction and *second order* in its length — at 160 mm, a 50 mm

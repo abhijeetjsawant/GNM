@@ -728,6 +728,39 @@ fixed here first.
    under-observed"* rather than *"the estimator works"*. Stated before the number is known.
 5. **Nothing is tuned to the outcome.** The fit, its weights and the bands are unchanged.
 
+### 6c MEASURED — the flag does not help, and the oracle is why we know
+
+Run under §6b's rules, nothing changed after the fact. Flagged **19/150 (12.7 %)** and
+**23/150 (15.3 %)** — comfortably under the pre-registered 25 % ceiling, so the fixture is
+not simply under-observed.
+
+| on the **reported** frames only | P1 med | P1 p95 | P2 | P4 | |
+|---|---:|---:|---:|---:|---|
+| **ORACLE**, subject 0 / 1 | 9.06° / 12.07° | 22.66° / 21.31° | 21.37° / 17.20° | 6.81° / 7.33° | **FAIL both** |
+| candidate, subject 0 / 1 | 9.38° / 11.64° | 27.83° / 24.78° | 15.34° / 13.85° | 0.59° / 1.10° | FAIL both |
+| *…the same arms ungated* | *5.46° / 4.87°* | *17.22° / 17.59°* | | | *ORACLE PASSES* |
+
+**Every arm gets worse, and the oracle gets worse most** — 5.46° → 9.06° and 4.87° →
+12.07°. **That is the finding.** The oracle's head is MAMMA's own and owes nothing to our
+head landmarks, so if *its* agreement collapses on the retained frames, the flag is not
+removing frames where our head is bad. It is removing frames where **the two thorax
+frames happen to agree**, and those were holding the median down.
+
+**So the −0.60 correlation with camera support was real and the inference from it was
+wrong.** Low head-landmark support does predict disagreement — and it also predicts
+*favourable* thorax agreement, because both track the same thing: which way the performer
+is facing. Conditioning on it is a composition shift, the defect this lane has now been
+caught by three times, and **only the oracle arm could have exposed it.** A gate with two
+controls and no oracle would have reported "flagging improves nothing" and left the reason
+unknown; with the oracle it reports *why*, and that the proposed remedy is aimed at the
+wrong term.
+
+**Verdict unchanged, exactly as §6b pre-registered:** pass/fail comes from the ungated
+arm. **Subject 1 passes; subject 0 fails P1's median by 0.97°.** The flag is **rejected**
+— not adopted, not tuned, and recorded so it is not proposed again without a different
+threshold variable. If a flag is revisited, it must key on something that does *not*
+covary with facing direction.
+
 ### The oracle arm, and why a gate without one is only half-checked
 
 *"No gate a constant can pass"* has a dual that this lane had not written down: **a gate
