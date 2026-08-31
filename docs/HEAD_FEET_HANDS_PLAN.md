@@ -21,9 +21,13 @@ the repair does not start from the wrong premise. Read `docs/BODY_LANE_PLAN.md` 
 >    integrated, already run on this footage — are the best-conditioned head input
 >    found. **The ear lead was then closed by two further measurements**; see §2.
 > 5. **The head now PASSES a pre-registered gate on both performers**, with both
->    degenerate controls failing and an oracle arm confirming the bands are reachable.
->    It is **not shipped** — `commercial_multiview.py:1350` still welds the delivered
->    head to the torso. `docs/HEAD_ORIENTATION_MEASURED.md` §6a.
+>    degenerate controls failing and an oracle arm confirming the bands are reachable —
+>    and it **now ships**. The solve is a pipeline stage and the delivered head carries
+>    26°/23° of median local rotation where it was the identity quaternion on every
+>    frame. `docs/HEAD_ORIENTATION_MEASURED.md` §6a and §6e.
+> 6. **The head half of §0's table is therefore stale.** "orientation is noise — p95 44°"
+>    described the momentum prototype; the delivered head was a *constant*, and is now
+>    solved. The feet and hand rows still stand.
 
 ---
 

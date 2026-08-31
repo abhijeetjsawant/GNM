@@ -84,6 +84,18 @@
   bootstrap put a 7.54° median against an 8° band at P(fail) = 0.48. Quote a margin only
   with a block bootstrap behind it, and pair it against the oracle on identical draws so
   the fragility is attributed to the right term.
+- **A tracking gate is blind to absolute orientation, and delivery is not.** A rigid fit
+  determines pose only up to a constant, and a gate that mean-removes each take scores
+  *tracking* — so it cannot see an 80–176° constant offset that would ship a head pointing
+  sideways, smoothly, on every frame. Fix the zero from the subject's own anatomy, never
+  from a reference: aligning to a research fitter's answer is a shipped constant fitted on
+  a reference-derived artifact.
+- **A fit criterion made of pixels is blind to what a body can do.** Minimum reprojection
+  accepted a 140° single-frame head flip, because much of the flip lay along the viewing
+  rays — the same blindness that makes head depth ambiguous in the first place. Add a hard
+  physical reject (here 60°/frame of *neck* travel, against a human peak near 500–800°/s)
+  and measure it at the joint, not in world: a head on a turning body travels in world
+  with the neck perfectly still.
 - **A gate needs an ORACLE arm, not just failing controls.** "No gate a constant can
   pass" has a dual: *a gate no oracle can pass is miscalibrated*. Score the reference's
   own answer through your pipeline's frames — it measures the floor your frame

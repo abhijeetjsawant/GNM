@@ -1,10 +1,11 @@
 # Head and neck — measured, 2026-08-31
 
-**Status: the head passes the pre-registered gate on both performers, and is not yet
-shipped.** Both degenerate controls fail, the oracle passes, and the fit's head-on-torso
-spread matches the reference to within 2.5°. **What remains is delivery**:
-`commercial_multiview.py:1350` still welds the shipped head to the torso, so nothing a
-user receives has changed. No
+**Status: the head passes the pre-registered gate on both performers, and is now ON THE
+DELIVERY PATH.** Both degenerate controls fail, the oracle passes, and the fit's
+head-on-torso spread matches the reference to within 2.5°. The solve is a pipeline stage —
+`src/autoanim_gnm/head_orientation.py` — and `reconstruct_multiview` threads it into the
+delivered track, so a capture now ships a head that moves. §9a records what wiring cost.
+No
 *shipping* head code was changed; the fit in §6a is a new instrument in `tools/head/`,
 not on the delivery path. This is the
 instrument pass the goal asked for — score MAMMA's head on this footage first, measure
@@ -1028,7 +1029,60 @@ the mean-removal that makes the comparison a tracking comparison at all.
 
 ---
 
+## 6e DELIVERY — what wiring it cost, and the two defects that only appeared there
+
+The gate is a measurement; delivery is a different problem, and it exposed two things the
+gate is structurally incapable of noticing.
+
+**1. A rigid fit is correct only up to a constant, and the gate removes exactly that
+constant.** Nothing in the objective observes where the skull's zero is — the template's
+local frame is wherever the optimiser landed. P1 mean-removes each take and scores
+*tracking*, so it never saw the offset. **Delivery cannot**: shipped raw, the solve put an
+**80–176° constant offset** on the `Head` joint. A head pointing sideways, smoothly, on
+every frame.
+
+The zero is now fixed from the template's own anatomy — `HeadEnd` above `Head` for the
+skull's long axis, the eyes for the lateral one. **Never from the reference**, because
+aligning to a research fitter's head would be a shipped constant fitted on a
+reference-derived artifact, which `BODY_LANE_PLAN.md` forbids outright. Absent those
+landmarks the solve **refuses** rather than delivering an arbitrary orientation.
+*Delivered local head rotation fell from 80° / 112° median to* **26° / 23°** *— the right
+order for real head-on-torso motion.*
+
+**2. Minimum reprojection has no notion of anatomy.** An unsmoothed solve delivered a
+**140° single-frame head flip** that reprojected perfectly well — because much of the flip
+lay along the viewing rays, which is the same blindness §2b exploits in the other
+direction. Solutions whose frame-to-frame **neck** travel exceeds 60° are now discarded
+before the reprojection rule chooses. 60° at 30 fps is 1800°/s against a human peak near
+500–800°/s: a hard physical reject, not a tuning knob.
+
+> **Measured at the neck, not in world, and the distinction is load-bearing.** A head on a
+> turning body travels in world while the neck is perfectly still. Scoring world rotation
+> would reject that honest motion *and* accept a genuine neck flip during a still moment —
+> both errors at once.
+
+**What delivery does not include, stated so it is not assumed.** The whole head-on-torso
+rotation is placed on `Head`; **`Neck` keeps the torso frame**. Distributing it across the
+neck chain would look better on a mesh and is **unmeasured** — the gate scores the head,
+and the obvious source for a split, the reference's own neck/head ratio, is barred by the
+same rule as above. Splitting it is a named next step, not a guess to make here.
+
+**And the temporal weight is swept per take, not hardcoded.** A weight chosen once on this
+fixture and then shipped is a constant calibrated on this fixture. It costs a sweep per
+subject and buys the right not to have fitted a delivered constant on one clip.
+
+*Instruments:* `src/autoanim_gnm/head_orientation.py`, `tests/test_head_orientation.py`
+(7 tests, 24 green with the existing suite).
+*Blind to:* everything §6 is blind to. Wiring changes what ships; it changes nothing about
+what has been measured, and no accuracy claim follows from it.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
+
+0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
+   at delivery: the gauge and the anatomical reject. Both are fixed and tested; both were
+   invisible to the gate by construction.
 
 1. ~~**Settle §5's ownership question.**~~ **SETTLED** — body lane owns head and neck
    rigid world orientation, face lane owns expression within that frame. See §5 for the
