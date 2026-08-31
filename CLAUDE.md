@@ -65,6 +65,14 @@
   over the bone as the subject turns: every camera sees the same apparent point, and it
   is not a fixed place on the skeleton. This is `soma77_pose.py`'s founding argument, and
   a rigid-template fit over a take is the instrument that exposes it.
+- **What fixed the head was removing freedom and repairing instruments — never adding
+  capacity.** Every idea that gave the model more to work with failed (extra landmarks
+  from a second detector, a support-conditioned prior, per-landmark inverse-variance
+  weighting, a frame-quality flag). Every constraint drawn from anatomy paid (fit instead
+  of triangulate, smooth the neck rather than the world head, anchor the skull to the
+  neck), and so did every instrument repair (the crossed subject map, the gate's own
+  thorax frame, the weight-selection rule). **When a fit is short, suspect the instrument
+  and the free parameters before reaching for more input.**
 - **A gate needs an ORACLE arm, not just failing controls.** "No gate a constant can
   pass" has a dual: *a gate no oracle can pass is miscalibrated*. Score the reference's
   own answer through your pipeline's frames — it measures the floor your frame
