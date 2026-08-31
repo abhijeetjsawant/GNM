@@ -13,6 +13,11 @@
 - HumanIK headless: `hikCharacterLock(char, 1, 1)` before `hikSetCharacterInput`, and set retarget properties *after* it — `hikSetCharacterInput` resets them. A generated skeleton arrives unlocked.
 - SMPL-X's `v_template` is mirror-symmetric but `J_regressor` is not; joints regressed from it are asymmetric by up to 3 cm.
 - `artifacts/` is gitignored. Scripts must regenerate everything under it.
+- momentum writes glTF keyframe times in **seconds**; Blender's importer converts them
+  with the *scene* fps. A 30 fps motion imported into the default 24 fps scene runs 25%
+  fast and freezes after the last converted frame. Set `scene.render.fps` before importing.
+  The symptom is an overlay that drifts off the performer as the shot runs — it reads as a
+  placement error and is a timebase error.
 
 ## Body capture lane
 - **Start at `docs/BODY_LANE_PLAN.md`.** It is the plan of record: what is measured,

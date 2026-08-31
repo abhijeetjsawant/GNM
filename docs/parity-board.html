@@ -236,7 +236,7 @@
     <h1>Body Lane Parity Board</h1>
     <p class="lede">Where each stage of the capture pipeline actually stands — what is measured and holding, what is unmeasured, and what does not exist yet. The target is MAMMA/Vicon parity. We cannot yet say how far away we are, and that is the most important thing on this page.</p>
     <div class="stamp">
-      <span><b>Snapshot</b> 2026-08-30</span>
+      <span><b>Snapshot</b> 2026-08-31</span>
       <span><b>Plan of record</b> docs/BODY_LANE_PLAN.md</span>
       <span><b>Body model</b> Meta MHR (Apache-2.0)</span>
       <span><b>Clean-room</b> no MAMMA in runtime</span>
@@ -350,16 +350,17 @@
         <div class="metric" style="color:var(--partial)">75–79 mm<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">root-relative</span></div>
       </div>
 
-      <div class="stage s-missing">
+      <div class="stage s-partial">
         <div class="idx">07</div>
         <div class="body">
-          <span class="chip c-missing">Does not exist</span>
-          <h3>Parametric body fit</h3>
-          <p>Nothing in the delivery path fits MHR, SMPL-X or any shape model. Every performer is driven onto one <b>generic mesh with canonical proportions</b> — arms <span class="num">16–29 mm</span> too long, legs <span class="num">15–30 mm</span> too short. MAMMA fits a dense shape per subject.</p>
-          <p><b>It splits in two.</b> The solver already measures each performer's bone lengths and the retarget discards them; putting them back recovers <span class="num">19–35%</span> of the proportion gap. But the delivered track is <b>bit-identical</b> either way — the benefit lives in the export skeleton, which carries no rest offsets. So that half is a <b>schema change</b>, not a code edit. Dense shape stays deferred to the body scan.</p>
-          <p class="blind"><b>Consequence</b> — this is the majority of stage 06, and <b>no detector improvement can reach it</b>. The silent-failure risk is the hard part: a performer-proportioned track validates as canonical and is indistinguishable once serialised.</p>
+          <span class="chip c-partial">Built · prototype · off the delivery path</span>
+          <h3>Parametric body fit <span style="color:var(--ink-faint);font-weight:400">— MHR + momentum</span></h3>
+          <p><b>This stage now exists.</b> Meta's momentum (MIT) calibrates an MHR body per performer against our own four-camera landmarks and solves pose per frame. Mean segment error <span class="num">20.4 mm</span> against <span class="num">26.1 mm</span> for MHR's untuned mean body — it beats doing nothing, which the first attempt did not. Both performers render onto the plate at <a href="fitted-character.html">fitted-character.html</a>.</p>
+          <p><b>What it does not fix.</b> Only the skeleton is fitted. Girth and mass stay at MHR's mean body, because 19 joint centres carry no surface information — perturbing all 45 identity parameters moves the joints by <span class="num">0.000000 mm</span>. Dense shape still waits on the body scan.</p>
+          <p><b>A hard stop, and it is new.</b> Bone length and locator offset are <b>not separately identifiable</b> from sparse landmarks. Free, the solver puts a median <span class="num">84 mm</span> between landmark and joint — not anatomically plausible. Pinned at zero, it asserts the landmark <i>is</i> the joint, false by up to <span class="num">33.9 mm</span>. This is an independent argument that the marker session <b>unblocks a build</b>, not merely a validation.</p>
+          <p class="blind"><b>Blind to</b> — the overlay proves placement, never accuracy: error along the camera's own ray is invisible in projection. The silhouette check is coarse — at <span class="num">5.9 mm/px</span> its scatter is <span class="num">61 mm</span>, good only for catching a gross fault. Placement rests on the 3D figure, <span class="num">32.9 mm</span> root-to-root. Still off the delivery path; the export schema gap below is unchanged.</p>
         </div>
-        <div class="metric" style="color:var(--missing)">—<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">not built</span></div>
+        <div class="metric" style="color:var(--partial)">20.4 mm<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">vs 26.1 mean body</span></div>
       </div>
 
       <div class="stage s-missing">

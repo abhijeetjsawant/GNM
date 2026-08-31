@@ -374,3 +374,50 @@ tied and the choice between them is a guess.
 *Interim recommendation until then:* ship **pinned offsets** — 20.4 mm, honest, all of it
 in the skeleton — and record that it under-fits by exactly the convention offset it
 refuses to model.
+
+---
+
+## 8. The fitted character on the footage — and one instrument defect
+
+`docs/fitted-character.html` shows both fitted characters composited over camera A001's
+plate. This is the first character the lane has *fitted* rather than posed.
+
+**What the picture is worth.** It confirms placement, not accuracy. Error along the
+camera's own viewing ray is invisible in projection — a body too distant and too large
+overlays perfectly — which is exactly why reprojection is barred as an acceptance gate
+here. Read it as "the solve puts a plausible body where the performer is", nothing more.
+
+**The overlay looked broken, and the defect was not in the fit.** The first render put
+each character beside its performer, worsening through the shot. Root placement measured
+**32.9 mm** and the Blender camera agreed with the analytic projection to **0.1 px**, so
+two independent measurements said the geometry was right while the picture said otherwise.
+
+The tell was in the pixels, not the geometry: rendered frames 120, 130 and 140 produced
+the *identical* silhouette centroid. The animation had stopped. momentum writes glTF
+keyframe times in seconds (150 frames, 4.967 s at 30 fps); Blender's importer converts
+them with the **scene** frame rate, which defaults to 24 — putting the last key at frame
+119.2 and holding the pose thereafter. Every rendered frame carried a pose from a *later*
+moment than the plate under it. Setting `scene.render.fps = 30` before import fixed it.
+
+| | before | after |
+|---|---|---|
+| silhouette vs projected markers, mean | 27.6 px | 20.8 px |
+| tail (frames 120/130/140) | 22 / 31 / 25 px | 12 / 10 / 11 px |
+
+The residual 20.8 px decomposes into a **constant bias** of (−15.5, +12.0) px with only
+**10.3 px** of scatter about it. That bias is definitional: a silhouette-area centroid and
+a mean of 19 sparse joints — three of them on the head — are not the same quantity.
+
+**Do not convert that scatter into an accuracy claim.** At the measured image scale —
+`1000·Z/fx` with mean subject depth **5.03 m** and fx **849.9 px** at 1280×720, giving
+**5.92 mm/px**, cross-checked by reprojecting a 10 mm lateral shift to 1.78 px — 10.3 px
+is **61 mm**, not the centimetre this first read glossed it as. The two centroids are
+different quantities whose relationship moves with pose, so the scatter is dominated by
+that mismatch rather than by fit error. The silhouette test is fit for catching a gross
+fault such as a stopped clock, and for nothing finer. **Placement is carried by the 3D
+number — 32.9 mm root-to-root — which is measured in metres and never passes through a
+projection.**
+
+**The methodological point.** Two correct measurements (33 mm root, 0.1 px camera) coexisted
+with a visibly wrong picture for as long as it took to ask what the instrument was blind to.
+Neither measurement could see time. Recorded in CLAUDE.md as a standing gotcha.
