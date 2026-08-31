@@ -44,11 +44,26 @@ from solve_head import (  # noqa: E402
 # value -- a boundary hit, which is visible in the L-curve itself and needs no reference
 # to the gate. The rule is unchanged; only the range it searches.
 WEIGHTS = (0.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0, 30000.0, 100000.0, 300000.0)
-TOLERANCE = 0.10  # accept up to 10% worse in-frame reprojection than the unsmoothed fit
+# **The rule changed a second time, after a failure, and the reason is that the old one
+# selected a strictly worse-fitting model on its own criterion.** "Largest weight within
+# +10% of the UNSMOOTHED fit" was written when the L-curve was flat and had no interior
+# optimum, so "smooth as hard as the data permits" was the only sensible reading. Once
+# the head was anchored to the neck the curve acquired a clear interior minimum, and the
+# old rule then chose weight 30,000 at 2.935 px over weight 100 at 2.719 px and 3,000 at
+# 2.742 px -- a worse fit, by its own measure, purely because the tolerance was anchored
+# to a point that is no longer the reference. **That is visible without the gate**, and a
+# rule that prefers a model it can see is worse is wrong regardless of what it scores.
+#
+# The replacement is the standard answer and removes a parameter rather than adding one:
+# **minimise in-frame reprojection.** The interior minimum is what makes it legitimate --
+# reprojection is not monotone in flexibility here, so this is not "pick the least
+# smoothing".
+TOLERANCE = None
 
 
 def main() -> None:
-    report: dict = {"rule": "largest weight within +10% in-frame reprojection of weight 0",
+    report: dict = {"rule": "minimum in-frame reprojection (replaced the +10% tolerance "
+                            "rule, which selected a strictly worse-fitting model)",
                     "weights": list(WEIGHTS)}
     output: dict[str, np.ndarray] = {}
     for subject in range(2):
@@ -66,8 +81,7 @@ def main() -> None:
             curve[weight] = float(np.nanmean(
                 [held_out_px(fit, observations, cameras, c) for c in range(len(CAMERAS))]))
             print(f"  subject {subject}  weight {weight:7.1f} -> in-frame {curve[weight]:.3f} px")
-        ceiling = curve[0.0] * (1.0 + TOLERANCE)
-        best = max(w for w in WEIGHTS if curve[w] <= ceiling)
+        best = min(WEIGHTS, key=lambda w: curve[w])
         fit = fits[best]
         matrices = rodrigues(fit["rotations"])
         output[f"subject_{subject:02d}_head_world"] = matrices
@@ -76,7 +90,6 @@ def main() -> None:
         report[f"subject_{subject:02d}"] = {
             "in_frame_px_by_weight": {str(k): v for k, v in curve.items()},
             "unsmoothed_px": curve[0.0],
-            "ceiling_px": ceiling,
             "chosen_weight": best,
             "chosen_in_frame_px": curve[best],
             "template_extent_mm": {
@@ -84,7 +97,7 @@ def main() -> None:
                 for i, name in enumerate(NAMES)},
         }
         print(f"subject {subject}: chose weight {best} at {curve[best]:.3f} px "
-              f"(ceiling {ceiling:.3f})")
+              f"(minimum in-frame reprojection)")
     np.savez(OUT / "head-solve.npz", **output)
     (OUT / "head-solve-lcurve.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))

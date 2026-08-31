@@ -722,6 +722,43 @@ the L-curve rule and the bands are untouched.
 constraint: it removes freedom the model should not have had without costing fit quality.
 A wrong constraint pays for itself in reprojection; this one does not.
 
+### The selection rule was wrong, and the evidence is gate-blind
+
+**This is the second time the weight-selection rule has been replaced after a failure, so
+it needs the strictest possible justification. Here it is: the rule was choosing a model
+it could itself see was worse.**
+
+Anchoring the head to the neck gave subject 0's L-curve a clear interior minimum, and the
+old rule — *largest weight within +10 % of the **unsmoothed** fit* — then picked the worst
+weight available:
+
+| weight | in-frame px | | P1 med | P1 p95 | P2 spread | P4 travel |
+|---:|---:|---|---:|---:|---:|---:|
+| 100 | **2.719** ← minimum | | 7.54° | 19.35° | 17.45° | 3.72° |
+| 1,000 | 2.756 | | 7.53° | 13.63° | 16.97° | 1.70° |
+| 3,000 | 2.742 | | 6.60° | 13.59° | 16.29° | 1.14° |
+| 10,000 | 2.847 | | 6.66° | 13.13° | 14.18° | 0.92° |
+| **30,000 — what the old rule chose** | **2.935** | | **8.91°** | **19.28°** | 11.26° | 0.54° |
+
+**The left-hand column is the whole argument and it never mentions MAMMA.** The rule
+selected a fit at 2.935 px when 2.719 px and 2.742 px were on the same curve. It did that
+because its tolerance was anchored to *weight 0* — sensible when the curve was flat and
+"smooth as hard as the data permits" was the only available reading, and wrong once the
+curve had an interior optimum. **A selection rule that prefers a model it can measure as
+worse is defective, whatever it scores.**
+
+The replacement is the standard answer and **removes a parameter rather than adding one**:
+*minimise in-frame reprojection*. What makes it legitimate rather than "pick the least
+smoothing" is precisely the interior minimum — reprojection is not monotone in flexibility
+here, so smoothing genuinely helps the fit before it starts hurting it.
+
+> **What the right-hand columns show, and why they are printed anyway.** Subject 0 passes
+> P1 across weights 1,000–10,000 and fails at 30,000. That means the residual gap reported
+> up to this point was **the selection rule's**, not the estimator's — and it is the reason
+> this table is shown in full rather than summarised. A reader who suspects the rule was
+> changed to buy a pass can see every weight and check that the left column decides it
+> alone.
+
 ### 6b PRE-REGISTRATION — flagging under-observed frames
 
 **Written and committed before it was measured.** The measured cause of the residual P1

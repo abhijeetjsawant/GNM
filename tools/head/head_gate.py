@@ -267,6 +267,18 @@ def main() -> None:
                   f"{row['P2_spread_about_take_mean_deg_median']:10.2f} "
                   f"{row['P4_travel_p95_deg']:10.2f}  {row['verdict']}"
                   + (f"  (failed {','.join(row['failed'])})" if row["failed"] else ""))
+        flag = block["review_flag"]
+        total = flag["frames_flagged"] + flag["frames_reported"]
+        print(f"  §6b review flag: {flag['frames_flagged']}/{total} frames "
+              f"({100 * flag['flagged_fraction']:.1f}%)"
+              + ("  ** OVER THE 25% CEILING **" if flag["over_25pct_ceiling"]
+                 else "  (under the 25% ceiling)")
+              + "  -- verdict below is NOT binding, see §6c")
+        for label, row in block["gated_arms_verdict_not_binding"].items():
+            print(f"  gated {label:28s} {row['P1_agreement_with_mamma_deg']['median']:7.2f} "
+                  f"{row['P1_agreement_with_mamma_deg']['p95']:7.2f} "
+                  f"{row['P2_spread_about_take_mean_deg_median']:10.2f} "
+                  f"{row['P4_travel_p95_deg']:10.2f}  {row['verdict']}")
 
 
 if __name__ == "__main__":
