@@ -1261,6 +1261,70 @@ head estimator.
 
 ---
 
+## 6i THE FLOOR'S ASYMMETRY TRACKS THE REFERENCE'S OWN UNCERTAINTY
+
+§6h left one question: *why is the frame mismatch 2.2° larger on performer 1?* Our head is
+identical on both, our torso construction is the same on both, and the footage is one clip.
+
+**The reference's own retained diagnostics answer it, and they were sitting on disk all
+along.** `ma_3d/…/detection_analysis/subject_summary.csv`, MAMMA's self-reported fit
+quality per subject — keyed through `subject_map.py`, since its indices are crossed:
+
+| | our performer 0 | **our performer 1** |
+|---|---:|---:|
+| *(reference's own label)* | *body_id-01* | *body_id-00* |
+| mean effective sigma | 23.76 px | **28.58 px** |
+| mean visibility | 0.348 | **0.318** |
+| mean uncertainty used | 0.096 | **0.123** |
+| — and per camera, on all four | lower | **higher, every one** |
+
+**The performer whose gate we fail is the performer the reference is least sure about** —
+20 % higher effective sigma, lower visibility, on every camera. That is the same ordering
+as the floor: 14.14° against 16.30°.
+
+> **This does not excuse the failure and is not offered as one.** The verdict is unchanged:
+> performer 1 misses P1's p95 at 21.18° against a ≤ 20° band, and every board says so.
+> Reading a reference's self-reported confidence *after* missing a band is exactly the
+> trap this document warned about in §6c's aftermath, which is why this section states the
+> verdict first and the correlation second.
+>
+> **What it legitimately establishes is that the floor is not knowably OURS.** The gate
+> measures *disagreement*, and disagreement has no direction: on the frames where our
+> torso frame and the reference's differ most, the reference is also least confident, and
+> **nothing available on this fixture can say which of the two is wrong.** That is not a
+> rhetorical escape — it is `BODY_LANE_PLAN.md` §1 restated at the head: no number in this
+> lane has been checked against ground truth, and *this is precisely the situation the
+> marker session exists to adjudicate.*
+
+**Ninth exclusion, from the same pass.** A **multi-point rigid fit of the torso** — the
+architecture that fixed the head — makes the frame dramatically *worse*: oracle p95
+**53.75° / 27.96°** against the current **14.14° / 16.30°**, across three landmark sets.
+The reason is anatomical and it is the ears' lesson again: **the torso is not rigid.** The
+glenohumeral joints swing with the arms, so a Procrustes fit absorbs arm motion into torso
+rotation. The three-point Gram-Schmidt wins precisely because orthogonalising the shoulder
+axis against the spine direction confines shoulder motion to roll and keeps it out of the
+up direction. *A better estimator of the wrong quantity is worse than a crude estimator of
+the right one.*
+
+### Where the head lane actually stands, stated once
+
+- **Our head estimator is uniform across performers** — 9.91° / 9.80° p95 against a perfect
+  head in the same frame (§6h). There is no performer-specific head defect to fix.
+- **Nine mechanisms have been excluded** with measurements: convergence, weight-grid
+  resolution, thorax landmark choice, robust-loss specification, optimiser seed, the
+  instrument floor as a *whole* explanation, jaw rigidity, the smoothing chart, and a
+  multi-point rigid torso fit.
+- **The gate's pass/fail split tracks the reference's own uncertainty**, and which side of
+  that disagreement is wrong is not decidable here.
+- **The band has not moved**, at any point, in either direction.
+
+**So the head is done as far as this fixture can take it, and the two things that would
+move it are already the lane's top two items** — a model-constrained torso, which is
+`FITTER_PLAN.md`'s parametric body fit, and ground truth, which is the marker session on an
+owned fixture. Neither is head work.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
