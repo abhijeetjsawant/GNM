@@ -607,7 +607,7 @@ just as silently as a crossed parity table did in §0. Resolve through `subject_
 
 | must fail, and be shown to fail in the same report | |
 |---|---|
-| **C1 — the locked head** | today's delivered track. Spread 0.000000°, so **P2 fails by construction**, while its frame-to-frame world rotation *passes* a naive jitter gate at 6.87° against MAMMA's 6.62°. |
+| **C1 — the locked head** | A head welded to the torso: head-relative-to-thorax is the identity on every frame. Spread 0.000000°, so **P2 fails by construction**, while its frame-to-frame world rotation *passes* a naive jitter gate at 6.87° against MAMMA's 6.62°. **This arm is CONSTRUCTED, not read from an artifact.** It was the delivered track until 2026-09-01; reading it off disk after the solve reached delivery would have turned the control into a second copy of the candidate and cost the gate its demonstration that a constant fails — see §6j. The run tables below say "as delivered" because, when they were run, it was. |
 | **C2 — the noisy head** | independently triangulated SOMA-77 eye/skull axes. **P1 and P4 fail**: the eye axis alone turns 90–117° at p95 and the skull invariant fails at 66–134 %. |
 
 | must PASS, or the gate is miscalibrated | |
