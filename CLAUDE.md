@@ -12,6 +12,10 @@
 - Maya's FBX plug-in ignores `file(namespace=...)`; call `cmds.namespace(set=...)` before importing.
 - HumanIK headless: `hikCharacterLock(char, 1, 1)` before `hikSetCharacterInput`, and set retarget properties *after* it — `hikSetCharacterInput` resets them. A generated skeleton arrives unlocked.
 - SMPL-X's `v_template` is mirror-symmetric but `J_regressor` is not; joints regressed from it are asymmetric by up to 3 cm.
+- `nose` in the SOMA-77 adapter is **index 6, the `Head` skeletal joint** — a point inside
+  the skull, not a surface nose. It sits *behind* the eyes. Anything inferring facing
+  direction from it is wrong. SOMA-77 has no ears; `left_ear`/`right_ear` are schema-only
+  and populated on zero frames.
 - `artifacts/` is gitignored. Scripts must regenerate everything under it.
 - momentum writes glTF keyframe times in **seconds**; Blender's importer converts them
   with the *scene* fps. A 30 fps motion imported into the default 24 fps scene runs 25%
@@ -20,6 +24,9 @@
   placement error and is a timebase error.
 
 ## Body capture lane
+- **Head, feet and hands: `docs/HEAD_FEET_HANDS_PLAN.md`.** All three are *input*
+  problems, not solver problems — the adapter maps 17 of SOMA-77's 77 joints and drops
+  every finger, toe and `HeadEnd`. Read it before touching any of those three regions.
 - **Start at `docs/BODY_LANE_PLAN.md`.** It is the plan of record: what is measured,
   what has been withdrawn, what is open, and the build sequence with its bands. Read
   sections 0–2 before doing anything in this lane.
