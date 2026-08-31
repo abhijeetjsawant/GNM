@@ -122,8 +122,20 @@ Full context: `docs/OWNED_BODY_CAPTURE_PLAN.md` and
 
 ## 3. MEASURED — with instrument and blindness inline
 
-**THE DELIVERED HEAD IS A CONSTANT, AND IT PASSES THE OBVIOUS HEAD GATE.** Measured
-2026-08-31. `positions_to_body_track` assigns `Spine`, `Chest`, `UpperChest`, `Neck`,
+**THE DELIVERED HEAD *WAS* A CONSTANT, AND IT PASSED THE OBVIOUS HEAD GATE.**
+> **CLOSED 2026-09-01 — the delivered artifacts now carry a solved head.**
+> `subject-*.body-track.npz` carries a `Head` local rotation of median **25.81° /
+> 21.72°**, solved on 100 % of frames, and the gate scores *those* rotations. Only
+> the `Head` channel changed: all 54 other joints agree with the previous build to
+> ≤ 1.6 × 10⁻¹⁶ and root translation to exactly zero. It had not shipped for a
+> reason worth reading — a detection cache keyed on line count served a file whose
+> schema predated the head landmarks, so the build delivered the constant and
+> exited 0. **`docs/HEAD_ORIENTATION_MEASURED.md` §6j.** The verdicts are
+> unchanged: subject 0 passes, subject 1 misses P1's p95 by 1.18°.
+> *The finding below is kept as written, because it is the record of what was true
+> and of how a constant passed a gate a reasonable person would have written.*
+
+Measured 2026-08-31. `positions_to_body_track` assigns `Spine`, `Chest`, `UpperChest`, `Neck`,
 `Head` and both eyes the `torso_world` frame verbatim — `commercial_multiview.py:1350` —
 so in every shipped `subject-*.body-track.npz` those joints carry the **identity
 quaternion on every frame of both subjects**, and head-relative-to-thorax spread is

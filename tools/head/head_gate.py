@@ -141,8 +141,20 @@ def main() -> None:
     # this fixture they chose different temporal weights -- so "passes the gate" and "is
     # delivered" must be shown of the SAME rotations or they are two claims about two
     # heads. See tools/head/gate_the_shipped_head.py.
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else OUT / "head-solve.npz"
-    print(f"scoring {source}")
+    # Default to the SHIPPED solve, not the prototype's. The default used to be
+    # `head-solve.npz`, the prototype's file, and scoring it by accident reports a
+    # verdict for a head nobody receives -- on this fixture the two disagree enough to
+    # swap which performer fails. That is the "two claims about two heads" defect this
+    # tool's companion was written to prevent, so the default now points at delivery
+    # and the banner says which estimator was scored.
+    shipped = OUT / "head-solve-shipped.npz"
+    if len(sys.argv) > 1:
+        source = Path(sys.argv[1])
+    else:
+        source = shipped if shipped.is_file() else OUT / "head-solve.npz"
+    print(f"scoring {source}"
+          + ("  [the head the PIPELINE delivers]" if source == shipped
+             else "  [WARNING: NOT the delivered head -- prototype estimator]"))
     solved = np.load(source)
     # The pipeline applies an anatomical gauge, so its head's local frame is canonical
     # rather than the raw template frame. P3 must ask for the skull's up axis accordingly.
@@ -218,18 +230,24 @@ def main() -> None:
             arms[label] = score(
                 mean_removed(relative, ok), mean_removed(m_relative, ok), ok, m_travel_p95)
 
-        # --- C1: the delivered locked head, straight off disk --------------------
-        delivered = np.load(
-            f"artifacts/commercial-multiview-soma77/subject-{subject:02d}.body-track.npz"
-        )["local_rotations_xyzw"]
-        # Head world == thorax world by construction, so the relative pose is the
-        # identity on every frame. Verified rather than asserted:
-        locked = np.broadcast_to(np.eye(3), (len(delivered), 3, 3))
-        arms["C1_locked_head_delivered"] = score(
+        # --- C1: the locked head -- the constant this lane used to deliver -------
+        # A head welded to the torso: head world == thorax world, so the relative pose
+        # is exactly the identity on every frame. This is the "no gate a constant can
+        # pass" arm, and it must keep failing.
+        #
+        # It used to be read off the delivered artifact and called "delivered". That
+        # was true only while the pipeline shipped the constant; now that the head
+        # solve is on the delivery path, reading the artifact would silently turn this
+        # control into a second copy of the candidate and the gate would lose its
+        # demonstration. The control is therefore CONSTRUCTED, and its name says what
+        # it is rather than where it came from.
+        locked = np.broadcast_to(np.eye(3), (len(m_relative), 3, 3))
+        arms["C1_locked_head_constant"] = score(
             locked, mean_removed(m_relative, torso_ok), torso_ok, m_travel_p95)
-        arms["C1_locked_head_delivered"]["note"] = (
-            "delivered Head/Neck/eye local rotations are the identity quaternion on "
-            "every frame, so head-relative-to-thorax is exactly constant"
+        arms["C1_locked_head_constant"]["note"] = (
+            "head welded to the torso: head-relative-to-thorax is the identity on "
+            "every frame. Constructed, not read from an artifact -- this is the "
+            "degenerate solution the gate exists to reject."
         )
 
         # --- P3, on the candidate: the skull long axis against neck-up -----------
@@ -267,7 +285,7 @@ def main() -> None:
             gated[label] = score(
                 mean_removed(relative, ok), mean_removed(m_relative, ok), ok, m_travel_p95)
         locked_ok = torso_ok & reported
-        gated["C1_locked_head_delivered"] = score(
+        gated["C1_locked_head_constant"] = score(
             np.broadcast_to(np.eye(3), (len(m_dev), 3, 3)),
             mean_removed(m_relative, locked_ok), locked_ok, m_travel_p95)
 

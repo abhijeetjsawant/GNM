@@ -1325,6 +1325,104 @@ owned fixture. Neither is head work.
 
 ---
 
+## 6j THE HEAD REACHES THE DELIVERED ARTIFACT — and why it had not
+
+Every section above this one measured a head that **no user could open.** §6f corrected a
+published claim that the delivered track carried 26.5° / 20.7° when the artifacts on disk
+carried **0.000000°**. That correction was right about the artifacts and the artifacts did
+not change. This section closes it.
+
+### What the delivered files carry now
+
+Read from `artifacts/commercial-multiview-soma77/subject-*.body-track.npz` — **the file, not
+the run**, which is the distinction §6f was written about:
+
+| | subject 0 | subject 1 |
+|---|---:|---:|
+| `Head` local rotation, median | **25.81°** | **21.72°** |
+| …max | 44.63° | 39.06° |
+| head solve status | solved | solved |
+| frames observed | 100 % | 100 % |
+| selected temporal weight | 100.0 | 100.0 |
+| head reprojection | 2.704 px | 2.615 px |
+
+**The gate scored these rotations and no others.** `gate_the_shipped_head.py` and the
+delivered `run-report.json` agree on weight and reprojection *to full printed precision*
+on both subjects — 100.0 / 2.7039037117037297 and 100.0 / 2.615471068127104. The verdicts
+stand where §6h left them: **subject 0 passes, subject 1 misses P1's p95 at 21.18°.**
+
+**The body is untouched, and this is checked on the files.** Against the previous delivered
+build, exactly **one** of 55 joints changed — `Head`. Every other joint agrees to
+**≤ 1.6 × 10⁻¹⁶** and root translation to **exactly zero**. The eyes are the identity in
+local space *by construction*, being rigid to the skull, so the skull carries them.
+
+### Why it had not shipped, which is worth more than the fact that it now has
+
+The head solve was on the delivery path and had been for some time. It never fired. The
+cause was **a cache keyed on the wrong thing**:
+
+- `_detect_soma77` reused a cached observation file when its **line count** matched the
+  frame count.
+- The delivered detections were written **before** the worker emitted `landmarks_soma77`.
+  Same 150 lines. Different schema.
+- So the cache hit, `_head_landmarks` found nothing, the `solvable` gate went false, and
+  the head was welded to the torso.
+- The build **exited 0**. The report recorded `"status": "not_attempted"`, `"reason": "no
+  head landmarks supplied; head is welded to the torso"` — accurately, in a field nobody
+  was reading — and wrote artifacts byte-identical to the previous ones.
+
+**That is a delivered constant surviving a green build, which is this lane's oldest defect
+wearing new clothes.** Two guards close it, and the second is the one that matters:
+
+1. The soma77 cache is now keyed on **schema as well as line count** — a cached file with
+   no `landmarks_soma77` is stale and gets re-detected.
+2. **A `--detector soma77` run that reaches the solve with no head landmarks now raises.**
+   The worker emits them unconditionally, so their absence has no legitimate cause; the
+   build must stop rather than quietly deliver a constant.
+
+Three tests hold it, and the third is the control: a take that **opens on an empty plate**
+must not be called stale, which is what separates a schema check from a peek at line one.
+
+### Three further defects found in the same pass
+
+- **The run report named the wrong detector.** `runtime_dependencies.detector` was
+  hardcoded to `"Apple Vision VNDetectHumanBodyPoseRequest"` and said so on *every*
+  SOMA-77 run. It now names the real chain — Apple Vision for person boxes, SOMA-77 for
+  keypoints — and the finger limitation likewise says which detector's limitation it is.
+- **C1, the locked-head control, was read off the delivered artifact.** That was sound
+  only while the pipeline shipped the constant. The moment the head solve reached
+  delivery, C1 would have quietly become *a second copy of the candidate* and the gate
+  would have lost its demonstration that a constant fails. **The control is now
+  constructed**, and named for what it is rather than where it came from.
+- **The gate defaulted to the prototype's solve, not the shipped one.** I ran it that way
+  by accident, read a verdict in which the failing performer had *swapped*, and briefly
+  believed §6h was falsified. It was not — the shipped head reproduces §6h exactly. But
+  the near-miss is the point: `gate_the_shipped_head.py` exists precisely to stop
+  *"passes the gate"* and *"is delivered"* being two claims about two heads, and the
+  default path walked straight back into it. **Both tools now default to the shipped
+  solve and print which estimator they scored.**
+
+### §6h is now reproducible rather than asserted
+
+`tools/head/decompose_head.py` recomputes the decomposition from the shipped solve and
+reproduces it: our head against a perfect one in the same frame, **9.91° / 9.80°** p95 —
+floors differing by 2.16°, our own error by 0.10°. It reuses the gate's own arms rather
+than rebuilding them, because two copies of one definition is how they drift.
+
+### Provenance of the inputs, stated because the SHA chain cannot see it
+
+The four videos were verified by SHA against the recorded chain before the rebuild — all
+four match. The **detections** were substituted from `artifacts/soma77-full/work`, which
+carries the 77-point array the delivered copies lacked. That substitution was gated on a
+byte-identity check of the shared payload: **600 frames, 1 179 person-frames, 0
+mismatches** on the 17-joint dict, the only difference being the added array. Re-detecting
+was the alternative and was rejected deliberately — a fresh ONNX pass risks perturbing all
+55 joints and would have destroyed the body-bit-identical property above for no gain.
+**The run report's SHA chain covers the videos only and cannot see this, which is why it
+is written here.**
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only

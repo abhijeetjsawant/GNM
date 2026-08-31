@@ -588,3 +588,67 @@ def test_sequence_solve_declines_a_genuine_depth_branch_flip() -> None:
     solved, recovered = solve_sequence_positions(cameras, world, observations)
     assert not recovered[hidden, wrist].any(), "a branch flip must not be reported as recovered"
     assert not np.isfinite(solved[hidden, wrist]).any(), "the slot must be left for interpolation"
+
+
+# --- the stale detection cache ------------------------------------------------------
+#
+# A cached SOMA-77 observation file written before the worker emitted `landmarks_soma77`
+# has the right line count and the wrong contents. The build script cached on line count
+# alone, reused it, found no head landmarks, and delivered a head welded to the torso --
+# exit 0, report green. These tests hold the schema check that closed that path.
+
+
+def _load_build_script_helper():
+    """Import the build script's cache predicate without running the build."""
+
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "build_commercial_multiview_comparison.py"
+    spec = importlib.util.spec_from_file_location("_build_cmv", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module._carries_head_landmarks
+
+
+def _observation_line(people: list[dict]) -> str:
+    import json
+
+    return json.dumps({"frame_index": 0, "width": 1280, "height": 720, "people": people})
+
+
+def test_stale_detection_cache_without_head_landmarks_is_rejected() -> None:
+    carries = _load_build_script_helper()
+    stale = [_observation_line([{"index": 0, "joints": {"nose": [1.0, 2.0, 0.9]}}])] * 4
+    assert carries(stale) is False
+
+
+def test_current_detection_cache_with_head_landmarks_is_accepted() -> None:
+    carries = _load_build_script_helper()
+    current = [
+        _observation_line(
+            [{"index": 0, "joints": {}, "landmarks_soma77": [[1.0, 2.0, 0.9]] * 77}]
+        )
+    ]
+    assert carries(current) is True
+
+
+def test_a_take_that_opens_on_an_empty_plate_is_not_called_stale() -> None:
+    """The control. Checking only the first line would reject this whole run.
+
+    Frames legitimately hold no people -- the take can open before anyone walks on.
+    A predicate that sampled line one would return False here and force a needless
+    re-detection, so this case is what separates a schema check from a first-line peek.
+    """
+
+    carries = _load_build_script_helper()
+    lines = [_observation_line([]), _observation_line([])]
+    lines.append(
+        _observation_line(
+            [{"index": 0, "joints": {}, "landmarks_soma77": [[3.0, 4.0, 0.8]] * 77}]
+        )
+    )
+    assert carries(lines) is True
+    # and the same run with the landmarks stripped is still correctly called stale,
+    # so the test above is not passing merely because the file is long.
+    assert carries(lines[:2] + [_observation_line([{"index": 0, "joints": {}}])]) is False

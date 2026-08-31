@@ -144,6 +144,25 @@ def _detect(frames: list[Path], output: Path) -> None:
     output.write_text(completed.stdout, encoding="utf-8")
 
 
+def _carries_head_landmarks(lines: list[str]) -> bool:
+    """True when some person in a cached detection file carries the 77-point array.
+
+    Scans the whole file rather than the first line: a frame can legitimately hold no
+    people, and testing only line one would call an entire run stale because the take
+    opens on an empty plate.
+    """
+
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            return False
+        for person in record.get("people", ()):
+            if person.get("landmarks_soma77"):
+                return True
+    return False
+
+
 def _detect_soma77(frames: list[Path], boxes: Path, output: Path) -> None:
     """Second detection pass: SOMA-77 whole-body keypoints.
 
@@ -153,8 +172,15 @@ def _detect_soma77(frames: list[Path], boxes: Path, output: Path) -> None:
     we already have keeps that asset out of the pipeline entirely.
     """
 
-    if output.is_file() and len(output.read_text(encoding="utf-8").splitlines()) == len(frames):
-        return
+    # Cache on line count AND on the schema. A cached file written before the worker
+    # emitted `landmarks_soma77` has the right number of lines and the wrong contents,
+    # so the line count alone reuses it, the head solve finds no head, and the build
+    # delivers a head welded to the torso -- exit 0, report green. That happened. A
+    # stale cache must be re-detected, never silently accepted.
+    if output.is_file():
+        cached = output.read_text(encoding="utf-8").splitlines()
+        if len(cached) == len(frames) and _carries_head_landmarks(cached):
+            return
     completed = _run(
         [
             sys.executable,
@@ -302,6 +328,17 @@ def main() -> int:
         any(person is not None for frame in camera for person in frame)
         for camera in head_landmarks
     )
+    # A SOMA-77 run reaching here without head landmarks would build a head welded to
+    # the torso and exit 0 -- a delivered constant surviving a green build, which is
+    # how the welded head went unnoticed in the first place. The worker emits
+    # `landmarks_soma77` unconditionally, so there is no legitimate soma77 run without
+    # them: absence means stale inputs, and the build must stop rather than deliver.
+    if arguments.detector == "soma77" and not solvable:
+        raise RuntimeError(
+            "SOMA-77 was requested but at least one camera carries no head landmarks, "
+            "so the head would ship welded to the torso. Delete "
+            f"{output / 'work'}/*-soma77-observations.jsonl and re-detect."
+        )
     tracks, diagnostics, world_positions, raw_world_positions = reconstruct_multiview(
         cameras,
         observations,
@@ -370,7 +407,17 @@ def main() -> int:
                 "mamma_outputs": False,
                 "mamma_weights": False,
                 "smplx_model": False,
-                "detector": "Apple Vision VNDetectHumanBodyPoseRequest",
+                # Named from the observations, not hardcoded. This field read
+                # "Apple Vision" on every SOMA-77 run -- a report naming the
+                # wrong detector is exactly the provenance defect the SHA chain
+                # exists to prevent. SOMA-77 still uses Apple Vision upstream
+                # for the person boxes, so the chain is named in full.
+                "detector": (
+                    "Apple Vision VNDetectHumanBodyPoseRequest (person boxes) "
+                    "-> NVIDIA GEM-X SOMA-77 (keypoints)"
+                    if arguments.detector == "soma77"
+                    else "Apple Vision VNDetectHumanBodyPoseRequest"
+                ),
                 "body_asset": "existing AutoAnim detailed-hands asset",
             },
             "frame_window": [arguments.start_frame, arguments.end_frame],
@@ -385,7 +432,16 @@ def main() -> int:
             "joint_names": list(JOINT_NAMES),
             "production_claim": False,
             "limitations": [
-                "Apple Vision body observations contain no articulated finger landmarks.",
+                (
+                    # SOMA-77 emits 77 joints including fingers and toes, but the
+                    # adapter maps 17 of them -- see docs/HEAD_FEET_HANDS_PLAN.md.
+                    # The delivered track has no articulated fingers either way;
+                    # the reason differs and the report must say which.
+                    "SOMA-77 emits finger and toe landmarks, but the adapter maps "
+                    "neither, so the delivered track has no articulated fingers."
+                    if arguments.detector == "soma77"
+                    else "Apple Vision body observations contain no articulated finger landmarks."
+                ),
                 "This fixture is research-only and cannot qualify commercial capture data.",
                 "Sparse IK preserves canonical body proportions instead of estimating a dense shape model.",
             ],

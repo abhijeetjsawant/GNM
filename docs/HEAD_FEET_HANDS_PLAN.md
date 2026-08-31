@@ -8,7 +8,7 @@ the repair does not start from the wrong premise. Read `docs/BODY_LANE_PLAN.md` 
 > Read `docs/HEAD_ORIENTATION_MEASURED.md` before acting on §1, §2 or §7.** Four
 > things changed, and two of them contradict text still standing below:
 >
-> 1. **The delivered head is a *constant*, not noise** — welded to the torso frame at
+> 1. **The delivered head *was* a *constant*, not noise** — welded to the torso frame at
 >    `src/autoanim_gnm/commercial_multiview.py:1350`, identity quaternion on every
 >    frame. §1c's 43.79° is the *momentum fit's* head, a different arm. See the
 >    correction inline at §1c.
@@ -109,6 +109,13 @@ tighter** than the head. The difference is landmark support, not solver quality.
 > both subjects**, because `positions_to_body_track` assigns them `torso_world`
 > verbatim at `commercial_multiview.py:1350`. Head-relative-to-thorax spread on the
 > delivered track is **0.000000°**.
+>
+> **CLOSED 2026-09-01.** The delivered `subject-*.body-track.npz` now carries a
+> solved `Head` — median **25.81° / 21.72°** local rotation, 100 % of frames — and
+> the gate scores the delivered rotations, verified against the run report to full
+> precision. Everything below this line describes the state that was, and is kept
+> because the *reason* it shipped for so long is the lesson: see
+> `HEAD_ORIENTATION_MEASURED.md` §6j.
 >
 > And it is worse than "a head locked to the chest would score 0° here". Scored on
 > **world** head rotation — the composed statistic, which is what a viewer sees — the
