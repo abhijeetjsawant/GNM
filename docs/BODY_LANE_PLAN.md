@@ -176,6 +176,40 @@ across frames.
 *Instrument:* `tools/swap-harness/crlb.py`. *Blindness:* single-frame; says nothing
 about the sequence solve.
 
+**The canonical rig's shoulders are 540 mm apart against a measured 346–363 — and
+that single number is the best available explanation for the ~180 mm arm error.**
+Found 2026-08-31 after the user observed, from a render, that the two performers are
+visibly different sizes while the delivered characters are not. Every segment below is
+measured on the **same joint definition the landmarks use** — chained rest
+translations to the rig joint each landmark maps to, not the similarly-named
+neighbour. *(An earlier draft of this entry compared the rig's clavicle joints and
+reported the shoulder error backwards, as "too narrow". It is too wide.)*
+
+| segment | performer A | performer B | canonical rig | rig error |
+|---|---:|---:|---:|---|
+| **shoulder width** | 346.4 | 363.1 | **540.0** | **+177 to +194 too wide** |
+| pelvis → neck | 576.6 | 513.3 | 580.0 | +3 / +67 |
+| hip width | 207.1 | 214.5 | 180.0 | −27 / −35 too narrow |
+| upper arm | 287.2 | 277.2 | 260.0 | −17 / −27 too short |
+| forearm | 268.9 | 258.0 | 240.0 | −18 / −29 too short |
+| thigh | 399.8 | 402.0 | 430.0 | +28 / +30 too long |
+| shin | 396.5 | 405.3 | 420.5 | +15 / +24 too long |
+
+**The shoulder width dwarfs everything else.** It puts each arm root ~90 mm too far
+out before a single joint angle is applied, which is the first credible mechanism for
+the **~180 mm wrist displacement** the retarget entry records and which bone-length
+substitution could not touch. It is also consistent with the clavicle-anchor defect
+being a symptom rather than a cause: a chain hung from the wrong place cannot be
+rescued by re-aiming it.
+*Instrument:* `estimate_limb_lengths_m` on the retained tracks against
+`DETAILED_HUMANOID` rest chains; overlay at `docs/skeleton-overlay.html`.
+*Blindness:* the overlay projects into one camera, so error **along that camera's
+viewing ray is invisible** — it is a picture, not a score, and reprojection onto our
+own detections remains banned as a gate.
+*And the performers differ from each other:* torsos by **63 mm**, shoulders by 17.
+Both currently receive the same skeleton, so both delivered characters are the same
+person wearing two performances.
+
 **EVERY DELIVERED CHARACTER FACES 180° THE WRONG WAY.** Found 2026-08-31, by the
 user, on sight — and confirmed by the first thing this pipeline has ever done that
 holds a render against the footage it came from. Evidence:
