@@ -609,31 +609,54 @@ verdict turned into an estimator and the same architecture MAMMA uses.
 
 | subject 0 · MAMMA spread 14.96°, travel p95 2.38° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
 |---|---:|---:|---:|---:|---|
-| **candidate — multi-view fit** | 9.11° | 22.38° | **18.76°** | 13.13° | **FAIL** (P1, P4) |
-| **C2 — noisy, per-frame triangulated** | 6.73° | 69.01° | 18.18° | 88.95° | **FAIL** (P1, P4) |
+| **candidate — multi-view fit** | 9.39° | 21.36° | **18.94°** | **7.06°** | **FAIL** (P1 only) |
+| **C2 — noisy, per-frame triangulated** | 6.52° | 65.62° | 18.66° | 86.93° | **FAIL** (P1, P4) |
 | **C1 — locked head, as delivered** | 14.96° | 30.76° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
 | *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 7.14* | |
 
 | subject 1 · MAMMA spread 15.99°, travel p95 4.17° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
 |---|---:|---:|---:|---:|---|
-| **candidate — multi-view fit** | **7.05°** | 28.93° | **16.54°** | 37.48° | **FAIL** (P1, P4) |
-| **C2 — noisy, per-frame triangulated** | 8.35° | 94.00° | 19.55° | 109.62° | **FAIL** (P1, P4) |
+| **candidate — multi-view fit** | **7.13°** | 22.47° | **16.36°** | **5.94°** | **FAIL** (P1 only) |
+| **C2 — noisy, per-frame triangulated** | 7.60° | 88.68° | 18.84° | 98.65° | **FAIL** (P1, P4) |
 | **C1 — locked head, as delivered** | 15.99° | 27.18° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
 | *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 12.51* | |
 
 **The gate works, and that is the result worth keeping.** Three arms, three *different*
-failure signatures: the locked head dies on spread (P2), the noisy head dies on jitter
-(P4, at 89–110°), and the candidate dies on jitter too but **3.2–3.3× tighter on P1 p95
-and 2.9–6.8× tighter on P4** than the noisy control, while holding a healthy spread. No
-arm passes by accident, and no constant can reach P2.
+failure signatures: the locked head dies on spread (P2, exactly 0.00°), the noisy head
+dies on jitter (P4, at 87–99°), and the candidate clears **P2, P3 and P4 on both
+subjects** and misses only P1. No arm passes by accident, and no constant can reach P2.
 
-**The candidate does not pass, and it is reported as failing.** It gets most of the way:
-subject 1's P1 median clears the band at 7.05°, spread is right for both, and the
-estimator is unambiguously the right direction. What defeats it is P4 — residual jitter
-that **more smoothing does not remove**. Subject 0 was fitted at ten times subject 1's
-temporal weight and its travel barely moved (13.17° → 13.13°) while P1 got *worse*. So
-the remaining travel is not high-frequency noise the prior can absorb; it is a smaller
-number of poorly-conditioned frames where the rotation jumps.
+### An instrument defect in the gate itself, found and fixed — the third this session
+
+The first run of this table reported the candidate failing **P4 as well**, at 13.13° and
+37.48°. It was the gate's own reference frame, not the head.
+
+Our thorax frame was built from **raw triangulated** `Neck2`, `Hips` and shoulders while
+MAMMA's came from its **fitted** chain. The relative rotation then carries the noise of
+whichever frame is noisier — and the tell was available: the candidate head's *own world*
+frame-to-frame travel is p95 **1.16° / 4.68°**, so almost all of the 13°/37° being
+attributed to the head was the reference wobbling underneath it. **A smooth quantity
+scored against a noisy reference reads as a noisy quantity**, and that is a
+same-denominator violation with the two arms' *references* rather than their populations.
+
+Rebuilt from the pipeline's own **smoothed** torso positions — the estimate the shipping
+retarget actually uses — P4 falls to 7.06° and 5.94° and passes on both subjects. The
+head fit had been clearing that band all along.
+
+**The candidate still does not pass, and it is reported as failing.**
+
+ **P1 is the only band it misses, and
+narrowly**: subject 1's median clears at 7.13° and both p95s land 1.4–2.5° over a 20°
+band. Agreement with MAMMA's head, frame by frame, is the one thing left.
+
+**What that remaining gap is, and what it is not.** It is not jitter — P4 passes with
+room. It is not a frozen or over-smoothed head — P2 sits at 16–19° against MAMMA's 15–16°.
+It is a **tail in per-frame agreement**: the medians are near the band and the p95s are
+not, so a minority of frames disagree with MAMMA substantially. Whether those are our
+error or MAMMA's is **not decidable here** — MAMMA is an instrument, not truth, and on
+those frames one of the two is wrong with no third opinion available. That is the
+marker session's job, and it is a cleaner statement of what the session buys than any
+previous one in this lane.
 
 ### Adding the ears made it worse — and the reason is the lane's own founding finding
 

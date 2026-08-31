@@ -38,6 +38,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from autoanim_gnm.commercial_multiview import JOINT_INDEX  # noqa: E402
 from mamma_head_bar import chain_world, geodesic_deg, rodrigues  # noqa: E402
 from solve_head import HEAD, NAMES, initialise, log_so3  # noqa: E402
 from subject_map import mamma_index_for  # noqa: E402
@@ -129,12 +130,23 @@ def main() -> None:
         m_dev = mean_removed(np.einsum("nji,njk->nik", m_thorax, m_head))
         m_travel_p95 = float(np.nanpercentile(travel(m_dev, np.ones(len(m_dev), bool)), 95))
 
-        # --- our thorax frame, same construction from our own landmarks ----------
+        # --- our thorax frame ----------------------------------------------------
+        # From the pipeline's own SMOOTHED torso positions, not raw triangulation.
+        # The first version of this gate built it from raw triangulated Neck2/Hips/
+        # shoulders and scored the result against MAMMA's *fitted* thorax. That is a
+        # same-denominator violation and it dominated the verdict: the candidate head's
+        # own world travel is p95 1.2 / 4.7 deg, while the relative-pose travel the gate
+        # reported was 13 / 37 -- almost all of it the reference frame's noise, not the
+        # head's. Scored against a comparably-conditioned thorax, P4 measures the head.
         pos = soma[subject]
-        up = pos[:, fslot["Neck2"]] - pos[:, fslot["Hips"]]
-        across = pos[:, fslot["LeftArm"]] - pos[:, fslot["RightArm"]]
+        smoothed = np.load(
+            f"artifacts/commercial-multiview-soma77/subject-{subject:02d}.body-track.npz"
+        )["triangulated_world_positions_z_up_m"]
+        up = smoothed[:, JOINT_INDEX["neck"]] - smoothed[:, JOINT_INDEX["root"]]
+        across = (smoothed[:, JOINT_INDEX["left_shoulder"]]
+                  - smoothed[:, JOINT_INDEX["right_shoulder"]])
         torso_ok = np.isfinite(up).all(axis=1) & np.isfinite(across).all(axis=1)
-        thorax = np.full((len(pos), 3, 3), np.nan)
+        thorax = np.full((len(smoothed), 3, 3), np.nan)
         thorax[torso_ok] = frame_from(up[torso_ok], across[torso_ok])
 
         # --- candidate: the multi-view, multi-frame rigid head fit ---------------
@@ -171,7 +183,7 @@ def main() -> None:
         # --- P3, on the candidate: the skull long axis against neck-up -----------
         head_up_local = unit((template[NAMES.index("HeadEnd")] - template[NAMES.index("Head")])[None])[0]
         skull = np.einsum("nij,j->ni", candidate_world, head_up_local)
-        neck_up = pos[:, fslot["Neck2"]] - pos[:, fslot["Hips"]]
+        neck_up = up
         p3_ok = torso_ok & np.isfinite(skull).all(axis=1)
         dots = np.einsum("ni,ni->n", unit(skull[p3_ok]), unit(neck_up[p3_ok]))
         opposing = int((dots < 0).sum())
