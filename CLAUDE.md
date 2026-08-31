@@ -87,9 +87,15 @@
 - **A gate needs an ORACLE arm, not just failing controls.** "No gate a constant can
   pass" has a dual: *a gate no oracle can pass is miscalibrated*. Score the reference's
   own answer through your pipeline's frames — it measures the floor your frame
-  definitions impose, tells you whether a candidate's gap is yours or the instrument's,
-  and it is the only arm that can expose a proposed remedy aimed at the wrong term. On
-  the head it did all three.
+  definitions impose, and it tells you whether a candidate's gap is yours or the
+  instrument's. On the head it did both, and it also **condemned an earlier version of
+  the gate's own reference frame**, which no control could have.
+- **An oracle behaving strangely means audit the instrument, not theorise.** The head
+  gate once showed the oracle degrading under a frame filter, and that got written up as
+  a finding about facing direction. It was a defect in the gate's own gauge estimation —
+  the mean was estimated over frames that were not scored. The oracle is the one arm
+  whose true value you can predict, so **when it surprises you, the surprise is almost
+  always yours.**
 - **A length invariant cannot score direction.** For an axis roughly perpendicular to the
   camera's depth direction, a differential depth error between its endpoints is *first
   order* in the axis's direction and *second order* in its length — at 160 mm, a 50 mm

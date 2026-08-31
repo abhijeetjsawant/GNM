@@ -834,38 +834,53 @@ fixed here first.
    under-observed"* rather than *"the estimator works"*. Stated before the number is known.
 5. **Nothing is tuned to the outcome.** The fit, its weights and the bands are unchanged.
 
-### 6c MEASURED — the flag does not help, and the oracle is why we know
+### 6c MEASURED — ⚠ THIS SECTION WAS WRONG, AND THE ERROR WAS MINE
 
-Run under §6b's rules, nothing changed after the fact. Flagged **19/150 (12.7 %)** and
-**23/150 (15.3 %)** — comfortably under the pre-registered 25 % ceiling, so the fixture is
-not simply under-observed.
+**Retracted and rewritten 2026-08-31 after an independent verifier found a defect in
+`head_gate.py`.** What this section originally said — *"the flag makes every arm worse,
+including the oracle, so it is removing frames where the two thorax frames happen to
+agree"* — was an artifact of my own code, and the elaborate reasoning I built on top of it
+about facing direction and composition shift was explaining a bug.
 
-| on the **reported** frames only | P1 med | P1 p95 | P2 | P4 | |
-|---|---:|---:|---:|---:|---|
-| **ORACLE**, subject 0 / 1 | 9.06° / 12.07° | 22.66° / 21.31° | 21.37° / 17.20° | 6.81° / 7.33° | **FAIL both** |
-| candidate, subject 0 / 1 | 9.38° / 11.64° | 27.83° / 24.78° | 15.34° / 13.85° | 0.59° / 1.10° | FAIL both |
-| *…the same arms ungated* | *5.46° / 4.87°* | *17.22° / 17.59°* | | | *ORACLE PASSES* |
+**The defect.** `mean_removed` had no population argument, and the caller injected the
+identity on every excluded frame *before* calling it. The take-mean the gated arms were
+referenced to was therefore a mixture of real deviations and injected identities, dragged
+toward identity, which **inflated every gated arm by roughly 2×**. Fixed by estimating the
+gauge on the scored population — for both sides of the comparison — which is what a gauge
+fix has to mean.
 
-**Every arm gets worse, and the oracle gets worse most** — 5.46° → 9.06° and 4.87° →
-12.07°. **That is the finding.** The oracle's head is MAMMA's own and owes nothing to our
-head landmarks, so if *its* agreement collapses on the retained frames, the flag is not
-removing frames where our head is bad. It is removing frames where **the two thorax
-frames happen to agree**, and those were holding the median down.
+**Containment, checked first and it holds:** the **ungated arms were never affected**,
+because their masks are all-true, so the injection was a no-op there. The headline pass
+(7.54° / 19.35° and 6.40° / 16.07°) is byte-identical before and after the fix. **The
+verdict never rested on the defect.**
 
-**So the −0.60 correlation with camera support was real and the inference from it was
-wrong.** Low head-landmark support does predict disagreement — and it also predicts
-*favourable* thorax agreement, because both track the same thing: which way the performer
-is facing. Conditioning on it is a composition shift, the defect this lane has now been
-caught by three times, and **only the oracle arm could have exposed it.** A gate with two
-controls and no oracle would have reported "flagging improves nothing" and left the reason
-unknown; with the oracle it reports *why*, and that the proposed remedy is aimed at the
-wrong term.
+**What the flag actually does**, recomputed. Flagged 19/150 (12.7 %) and 23/150 (15.3 %),
+both under §6b's pre-registered 25 % ceiling:
 
-**Verdict unchanged, exactly as §6b pre-registered:** pass/fail comes from the ungated
-arm. **Subject 1 passes; subject 0 fails P1's median by 0.97°.** The flag is **rejected**
-— not adopted, not tuned, and recorded so it is not proposed again without a different
-threshold variable. If a flag is revisited, it must key on something that does *not*
-covary with facing direction.
+| P1 median, subject 0 / 1 | all 150 frames | reported frames only |
+|---|---:|---:|
+| ORACLE | 5.46° / 4.87° | **4.35° / 4.31°** |
+| candidate | 7.54° / 6.40° | **5.73° / 6.65°** |
+| C2 noisy | 6.52° / 7.60° | 5.27° / 6.57° — **still FAILS** (p95 53°/71°, P4 20°/82°) |
+| C1 locked | 14.96° / 15.99° | 15.29° / 16.33° — **still FAILS** (P2 exactly 0.00°) |
+
+**So the flag is a real improvement on subject 0** — the candidate's P1 median falls from
+7.54° to 5.73°, which is most of the way to the oracle — and roughly neutral on subject 1.
+**And it does not launder a failure:** both degenerate controls still fail on the reported
+frames, C1 on spread and C2 on jitter, so the flag cannot be used to smuggle a bad head
+through.
+
+**What stands from §6b, unchanged:** the verdict is taken from the **ungated** arm, and it
+passes there. The flag is therefore *not needed* for the pass — it is an available quality
+improvement whose effect is now correctly measured rather than a rejected idea.
+
+> **Two things I got wrong here, and the second is worse than the first.** The arithmetic
+> was a code defect, which is ordinary. The failure of process is that I found a result
+> that flattered a tidy narrative — *"only the oracle could have caught this"* — and wrote
+> it up at length **without recomputing it**. The oracle *did* behave oddly; I read that
+> as signal when it was my own contamination showing through the one arm whose true value
+> I could predict. **An anomalous oracle is a reason to audit the instrument first, not to
+> theorise.** That is the lesson, and it is more useful than the section it replaces.
 
 ### The oracle arm, and why a gate without one is only half-checked
 

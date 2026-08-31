@@ -81,8 +81,20 @@ def frame_from(up: np.ndarray, across: np.ndarray) -> np.ndarray:
     return np.stack([x, y, z], axis=2)
 
 
-def mean_removed(relative: np.ndarray) -> np.ndarray:
-    u, _, vt = np.linalg.svd(relative.mean(axis=0))
+def mean_removed(relative: np.ndarray, mask: np.ndarray | None = None) -> np.ndarray:
+    """Remove the take's mean relative pose -- the gauge fix P1 rests on.
+
+    `mask` selects the population the mean is estimated FROM, and it must be the same
+    population the result is scored on. Estimating the mean over frames that are not
+    scored biases it; the original version of this function had no mask, and the caller
+    injected the identity on unscored frames before calling it, which dragged the mean
+    toward identity and **inflated every gated arm by roughly 2x**. That defect produced
+    §6c's original conclusion. Corrected, the flag helps subject 0 rather than hurting
+    every arm. The ungated arms were unaffected -- their masks are all-true -- so the
+    headline verdict never depended on it.
+    """
+    population = relative if mask is None else relative[mask]
+    u, _, vt = np.linalg.svd(population.mean(axis=0))
     mean = u @ vt
     if np.linalg.det(mean) < 0:
         u[:, -1] *= -1
@@ -141,7 +153,8 @@ def main() -> None:
         m_head = chain_world(pose, (PELVIS, SPINE1, SPINE2, SPINE3, NECK, HEAD_J))
         m_thorax = frame_from(joints[:, M_NECK] - joints[:, M_PELVIS],
                               joints[:, M_L_SH] - joints[:, M_R_SH])
-        m_dev = mean_removed(np.einsum("nji,njk->nik", m_thorax, m_head))
+        m_relative = np.einsum("nji,njk->nik", m_thorax, m_head)
+        m_dev = mean_removed(m_relative)
         m_travel_p95 = float(np.nanpercentile(travel(m_dev, np.ones(len(m_dev), bool)), 95))
 
         # --- our thorax frame ----------------------------------------------------
@@ -189,8 +202,10 @@ def main() -> None:
             ("C2_noisy_per_frame_triangulated", noisy_world, torso_ok & noisy_ok),
         ):
             relative = np.einsum("nji,njk->nik", np.nan_to_num(thorax, nan=0.0), head_world)
-            relative[~ok] = np.eye(3)
-            arms[label] = score(mean_removed(relative), m_dev, ok, m_travel_p95)
+            # Both sides' gauges are estimated on the SCORED population, never on frames
+            # that are excluded -- see mean_removed's docstring for the defect this fixes.
+            arms[label] = score(
+                mean_removed(relative, ok), mean_removed(m_relative, ok), ok, m_travel_p95)
 
         # --- C1: the delivered locked head, straight off disk --------------------
         delivered = np.load(
@@ -199,7 +214,8 @@ def main() -> None:
         # Head world == thorax world by construction, so the relative pose is the
         # identity on every frame. Verified rather than asserted:
         locked = np.broadcast_to(np.eye(3), (len(delivered), 3, 3))
-        arms["C1_locked_head_delivered"] = score(locked, m_dev, torso_ok, m_travel_p95)
+        arms["C1_locked_head_delivered"] = score(
+            locked, mean_removed(m_relative, torso_ok), torso_ok, m_travel_p95)
         arms["C1_locked_head_delivered"]["note"] = (
             "delivered Head/Neck/eye local rotations are the identity quaternion on "
             "every frame, so head-relative-to-thorax is exactly constant"
@@ -230,11 +246,12 @@ def main() -> None:
             ("C2_noisy_per_frame_triangulated", noisy_world, torso_ok & noisy_ok & reported),
         ):
             relative = np.einsum("nji,njk->nik", np.nan_to_num(thorax, nan=0.0), head_world)
-            relative[~ok] = np.eye(3)
-            gated[label] = score(mean_removed(relative), m_dev, ok, m_travel_p95)
+            gated[label] = score(
+                mean_removed(relative, ok), mean_removed(m_relative, ok), ok, m_travel_p95)
+        locked_ok = torso_ok & reported
         gated["C1_locked_head_delivered"] = score(
-            np.broadcast_to(np.eye(3), (len(m_dev), 3, 3)), m_dev, torso_ok & reported,
-            m_travel_p95)
+            np.broadcast_to(np.eye(3), (len(m_dev), 3, 3)),
+            mean_removed(m_relative, locked_ok), locked_ok, m_travel_p95)
 
         report[f"subject_{subject:02d}"] = {
             "review_flag": {
