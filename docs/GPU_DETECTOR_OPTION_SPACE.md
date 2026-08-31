@@ -77,6 +77,47 @@ already have, keeping that checkpoint out of the path. And the `--no-imgfeat`
 ONNX path we run skips SAM-3D-Body entirely, so the 2D lane never touches Meta's
 SAM materials.
 
+**Evaluated and rejected — LeVJEPA (2026-09-01).** A self-supervised *video*
+representation learner: single shared encoder, no target network, no predictor, collapse
+prevented by a SIGReg regulariser rather than an EMA teacher. Presented to us as "open
+code, weights and checkpoints", 5.6–20.8× cheaper to pretrain than V-JEPA 2, and beating
+V-JEPA 2 by 1.9 points on ViT-L. **It fails this document's own §1 bar before any technical
+question is reached: the code is MIT but the released weights are CC BY-NC 4.0**, over a
+research-encumbered corpus (Kinetics-710, Something-Something v2, Walking Tours, PE-Video).
+That is the same taint class as Sapiens v1, and "open code" is not open weights.
+
+*And the technique would not fit even if the licence did.* Its objective is **crop
+invariance** — pushing global and local crop embeddings together — which optimises for
+*discarding* the positional information a heatmap head must preserve. Keypoint localisation
+needs equivariance, not invariance. The paper reports **no dense evaluation at all**: no
+detection, no segmentation, no correspondence, no keypoints; only frozen linear probes on
+classification. Its one conceded loss is to DINOv2 on static appearance, which is precisely
+the axis a per-frame joint-centre detector consumes, and its win is on motion
+classification — an axis our geometry already owns downstream, where temporal aggregation
+puts us at 16.4 mm against a 33.2 mm single-frame Cramér-Rao bound.
+
+> **The transferable rule, and it is why this is filed rather than tried: frozen-probe
+> classification accuracy does not predict keypoint precision.** They are close to
+> anti-correlated by construction — a linear probe on a pooled embedding rewards exactly
+> what invariance training discards. MAE is the standing counterexample (weak linear probe,
+> excellent dense transfer), ViTPose found masked-image-modelling init beats supervised
+> classification init for pose, and NVIDIA chose a **DINOv3** backbone for SOMA-77. The
+> pose field runs on dense objectives, not crop-invariance ones. Any future backbone
+> candidate should be judged on a dense benchmark or not at all.
+
+*Two things it does not change.* The pseudo-label campaign's blockers are **N0-LIC-003**
+(the NVIDIA OML bytes unarchived against any revision), **performer releases covering ML
+training use**, and **owned footage** — a backbone swap touches none of them, and adopting
+any external SSL backbone recreates the identical provenance question one level down.
+And SIGReg has no attachment point here: nothing in this repo trains an embedding, and a
+collapsed supervised heatmap fails its own loss directly.
+
+*One wrinkle worth keeping.* The OML's *"NVIDIA claims no ownership rights in outputs"*
+suggests pseudo-**labels** may be cleaner than fine-tuned **weights**, which favours a
+fresh-detector-on-clean-init architecture eventually. The candidates for that slot remain
+**DINOv2 (Apache-2.0)** and **DINOv3** — both dense-objective image backbones, both
+stronger here than any crop-invariance video model.
+
 Still worth chasing, currently **unverified**:
 - **SDPose-Body** (Sept 2025): MIT, *"trained exclusively on COCO-2017 train2017,
   no extra data"* — the narrowest data story found. Body-only, but COCO's own
