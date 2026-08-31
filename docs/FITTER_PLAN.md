@@ -25,18 +25,34 @@ Stage 1 is the fitter's **delivery mechanism**; stage 3 is its **export target**
 Nothing in the HIK route is throwaway — without a fitter it is a skeleton with no
 optimised pose; without stage 1 the fitter has nowhere to put its result.
 
-**And the mirror dissolves.** The fitter's skeleton is built from **measured
-positions**, which are correct-handed by construction. `DETAILED_HUMANOID`'s signs are
-never touched. After three code-only attempts each failed a different gate today, the
-fourth succeeds by not being an attempt.
+**⚠ "And the mirror dissolves" — REFUTED before build.** The first draft claimed a
+fitted skeleton built from measured positions is correct-handed by construction, so the
+mirror never needs fixing. It is false **in the delivery path**, by two mechanisms:
+(i) Step 0d's legality constraint stamps offsets as non-negative multiples of the
+**mirrored** canonical directions, so a correct-handed fitted skeleton is
+*inexpressible* in the very schema stage 1 builds; and (ii) the delivered mesh is
+skinned **name-keyed to the mirrored rig**, so driving it with correct-handed data
+reproduces the documented pure-180° yaw. The fitter makes the *skeleton*
+correct-handed; the *mesh asset* stays mirrored. **The mirror fix is a prerequisite or
+an explicit interaction — not dissolved**, and the parent plan's ordering (gate → mirror
+→ proportions) stands.
+*Unreconciled, and it must be before the schema hardens:* for multi-segment chains the
+direction-preserving constraint admits legal-but-grotesque solutions — shrink
+`LeftUpperArm`'s pure-X offset to ~7 mm and the 540→355 shoulder width "fixes" while
+corrupting clavicle geometry for skinning and for HIK. Single-offset joints like the hip
+(90 lateral / 80 down) are genuinely direction-locked. **The constraint and the fitter's
+job are not yet reconciled.**
 
 ---
 
 ## 1. What 19 landmarks can and cannot fit — the question that decides feasibility
 
-`[T]` **They admit a skeleton, not a shape.** MHR's shape space carries dozens of
-identity parameters; 19 joint centres give at most the ~13 inter-landmark distances
-`estimate_limb_lengths_m` already computes, aggregated over a take. That is not a
+`[T]` **They admit a skeleton, not a shape.** MHR carries 45 identity parameters and
+68 scale channels; 19 joint centres give roughly the 13 `RIGID_LIMBS` distances
+`estimate_limb_lengths_m` already computes, aggregated over a take — plus, from pose
+variation across the take, how the non-rigid pseudo-bones vary and some components of
+constant landmark-to-joint offsets. Order tens of numbers, all skeleton-adjacent,
+never surface. That is not a
 shape estimate — it is a **skeleton** estimate, which is exactly where every defect
 chased on 2026-08-30/31 lives (shoulder width 540 vs 355, per-performer sizing, joint
 placement).
@@ -53,11 +69,13 @@ facing — all by optimisation rather than hand-correction.
 *What it will not fix:* girth, mass distribution, silhouette. **Sizing fixes
 proportions; the scan fixes the body.**
 
-`[R]` **Load-bearing and unverified:** whether MHR's parameterisation cleanly
-separates skeleton-proportion parameters from surface-shape parameters. Its
-documentation claims a decoupled skeleton/shape rig; if true this MVP is natural, if
-false the MVP becomes fitting joint offsets on our own canonical topology directly and
-MHR waits.
+`[W]` **VERIFIED by running the shipped asset, and the result is stronger than the
+claim.** Perturbing each of MHR's 45 `identity_coeffs` to 3σ moves vertices by up to
+**9.65 cm** and moves joints by **exactly 0.000000 cm** — at zero pose and on a posed,
+scale-perturbed body. **Surface shape lies in the null space of the joint-centre
+likelihood by construction**, so 19 joint centres carry *zero* information about
+identity rather than merely too little. The 68 scale channels move joints directly.
+The MVP is not a workaround; it is MHR's **native factorisation.**
 
 ---
 
@@ -68,15 +86,32 @@ MHR waits.
 fixture prices it against exact 3D truth. Same argument as the constrained
 re-estimator entry.
 
-**Pre-registered:** fitted-skeleton FK joint positions against truth must beat the
-current pipeline's delivered-vs-captured figure of **105.4 / 120.8 mm** by at least
-**~44 mm** — the amount oracle bone-length substitution already recovered. A fitter
-that cannot match what handing it the right lengths achieves is not worth keeping.
+**⚠ THE FIRST DRAFT'S BAND WAS REFUTED BEFORE BUILD — twice over, and the failure is
+instructive.** It read: *"must beat 105.4 / 120.8 mm by ~44 mm, the amount oracle
+substitution recovered."* Re-running `retarget_cost.py`: oracle substitution recovers
+**16.4 mm** and **34.6 mm** on the mandated pooled mean. **Nothing measured recovers
+44.** That number traces either to the **withdrawn pooled-median statistic** this
+plan's own ninth-instance warning exists to prevent, or to arm C's median *residual*
+coincidentally reading 44.0/44.8. And the **denominator was wrong**: 105.4/120.8 is
+delivered-vs-*captured* on real footage, while the band applies it to
+FK-vs-*truth* on the synthetic fixture — the same-denominator rule broken inside the
+plan's own pre-registration. The resulting ~61 mm threshold is also far **too easy**:
+the fixture's own observations sit ~12 mm from truth, so a fitter scoring 61 would be
+5× worse than the points it consumed and still pass.
+
+**Replacement, to be measured before it is fixed:**
+1. Measure **arm-B-on-fixture** — canonical rig plus analytic converter against fixture
+   truth. Never measured. The fixture's two subjects already carry non-canonical,
+   mutually different rest skeletons, so this is a real baseline.
+2. The fitter's FK-vs-truth must land near **the fixture's observation noise plus a
+   measured representation floor** — not merely beat the old pipeline.
+3. Pin one pixel scale before pre-registering the secondary band: 11.7 px was measured
+   at 800×450, the ~4–5 px spread at 1280.
 
 **Secondary, on real footage:** delivered-vs-point-skeleton median must fall from
 **11.7 px** toward the point skeleton's own reprojection spread (~4–5 px per §8).
 
-**Two degenerate solutions the band must reject:**
+**Five degenerate solutions the band must reject** — the first draft named two:
 1. **The mean-body regressor.** A fitter that ignores the observations and returns
    canonical would look entirely plausible. *Test:* feed two synthetic subjects with
    deliberately different proportions; the fitted skeletons must differ **in the right
@@ -85,6 +120,22 @@ that cannot match what handing it the right lengths achieves is not worth keepin
    along the camera ray. The instrument table bans reprojection as a gate for exactly
    this reason, so **the primary metric stays 3D-against-truth on the fixture — never
    the overlay**, however persuasive the overlay looks.
+3. **The mirrored minimum — and it is the sharpest of the five.** A 180°-yawed pose on
+   a near-symmetric skeleton fits 19 labelled landmarks at a residual close to the true
+   minimum; there are no toe landmarks and the fore-aft asymmetries are small. **An
+   FK-positions-vs-truth band plausibly cannot reject the exact defect the user found by
+   eye.** Pre-register a facing check beside it — `camera_overlay.py` exists and
+   currently reads dot −0.90.
+4. **Pose-aliasing into per-take constants.** The non-rigid pseudo-bones (root→neck
+   through the articulated spine, neck→shoulder through the clavicle) vary with pose, so
+   a per-take "length" for them is a pose-distribution statistic. *Test:* fit the two
+   halves of one take independently; the skeletons must agree within band.
+5. **The outlier trap.** Trap 1 below says fit against **raw** triangulation — whose
+   tail reaches 0.9–1.35 m and is currently absorbed by Savitzky-Golay as the pipeline's
+   de facto outlier filter. An L2 fitter inherits that tail and can be **worse than
+   today on real footage while acing the fixture**, whose noise is a tame mixture.
+   Pre-register a robust loss, and settle smoother-vs-fitter ownership the way trap 3
+   settles ground projection.
 
 ---
 
@@ -105,17 +156,79 @@ that cannot match what handing it the right lengths achieves is not worth keepin
 
 ---
 
+## 3a. The solver already exists — the build was mispriced
+
+`[W]` **`BODY_LANE_PLAN.md`'s "no published MHR fitting solver exists" is refuted in
+the operative sense.** Meta's **momentum** (MIT licence) ships
+`momentum/marker_tracking/marker_tracker.h` carrying `CalibrationConfig` — **per-bone
+scale calibration** (a `globalScaleOnly` flag proves per-bone is the default),
+**locator calibration** (directly the tool for the convention-offset problem), and
+floor-contact constraints — plus `TrackingConfig` and, decisively, `CameraKeypointData`:
+**multi-camera 2D keypoints with confidences and calibrated cameras, which is exactly
+our data shape.** MHR's README declares PyMomentum integration, `compact_v6_1.model` is
+a momentum parameterisation, and PyPI's `pymomentum-core` exposes `marker_tracking` and
+`solver2` from Python.
+
+**So stage 2 is repriced: from "write an optimiser" to "integrate one and own the
+locator/convention layer."** What remains genuinely absent is a published
+*image-to-MHR multi-view* system — but stage 2 as scoped here is a calibration and
+tracking problem momentum was built for.
+**`[W]` DE-RISK RUN 2026-08-31, and it passes.** `pymomentum-cpu` installs from PyPI
+into a clean Python 3.12 venv on this machine and imports; `marker_tracking`,
+`solver2`, `geometry`, `camera`, `skel_state` all load. The Python surface carries the
+whole contract:
+
+| exposed | what it answers |
+|---|---|
+| `CalibrationConfig.calib_shape`, `.global_scale_only` | per-bone scale calibration, not just a global one |
+| `.locators_only` + `convert_locators_to_skinned_locators`, `get_locator_error` | **the convention-offset layer** — the landmark-vs-bone problem, as a first-class object |
+| `.loss_alpha` on **both** configs | **a robust loss**, which is degenerate solution 5's required mitigation |
+| `.adaptive_floor_contact`, `.enforce_floor_in_first_frame`, `.floor_contact_percentile` | trap 3's ground-projection ownership, settable rather than argued |
+| `TrackingConfig.smoothing`, `.smoothing_weights` | trap 2's smoother boundary — can be switched off so the fitter never learns the lag |
+| `CameraKeypointData`, `KeypointObservation`, `.projection_weight` | multi-camera 2D keypoints with confidences against calibrated cameras — our exact data shape |
+| `calibrate_markers`, `process_markers`, `refine_motion` | the calibrate-then-track pipeline, already factored |
+
+**Every trap and degenerate solution named by either advisor has a corresponding knob
+in this API.** That is the strongest evidence yet that stage 2 is an integration rather
+than a research build. *Still unverified:* that it accepts **MHR's** `compact_v6_1.model`
+specifically, and that results on our data clear the bands in §2 — the API existing is
+not the fitter working.
+
 ## 4. To verify before building
 
 - `[R]` MHR's skeleton/shape decoupling and its actual parameter surface.
 - `[R]` Whether `HIKSkeletonGeneratorNode` accepts arbitrary proportions without
   HumanIK's own retargeting fighting them.
-- `[D]` The MHR repo's licence position on **asset** files — mean mesh, skinning
-  weights — as distinct from code and weights. One read of the LICENSE and asset
-  manifests; cheap now, expensive after a build.
-- `[T]` The ~44 mm band figure, derived from the oracle-substitution numbers. Check
-  the derivation rather than the arithmetic.
+**All four were checked. Results:**
 
-**If the decoupling or the HIK proportion claim fails**, the MVP becomes fitting our
-own canonical-topology skeleton directly — Fable's schema already carries it — and MHR
-waits.
+- **`[W]` MHR's decoupling — CONFIRMED, and stronger than claimed.** Loading the
+  shipped `mhr_model_lod6.pt` and perturbing each of the 45 `identity_coeffs` to 3σ
+  moves vertices up to **9.65 cm** and moves joints by **exactly 0.000000 cm** — at
+  zero pose *and* on a posed, scale-perturbed body. Surface shape sits in the **null
+  space of the joint-centre likelihood by construction.** So 19 joint centres carry
+  *zero* information about identity, not merely too little. The MVP is MHR's **native**
+  factorisation. *(SMPLify's "2D joints carry surprising shape information" is about
+  SMPL, whose joint regressor depends on betas — there, skeleton is part of shape and
+  the rest is population prior. MHR factorises explicitly, so a joints-derived "shape"
+  would be pure prior.)*
+- **`[W]` HIK holds supplied proportions — CONFIRMED, scoped.** Worst placement error
+  **8×10⁻⁶ cm** across 62 slots after `hikCharacterLock`. Scope: the tested case is an
+  identity-proportioned source→target, which *is* stage 3's use. **It does not verify
+  HIK retargeting across mismatched proportions** — do not quote it as that.
+- **`[W]` MHR asset licence — CONFIRMED clean.** Release v1.0.1's `assets.zip` contains
+  `assets/LICENSE.txt`, **stock Apache-2.0** (sha256 matches the canonical text),
+  covering the mean mesh, corrective blendshapes, `mhr_model.pt` and
+  `compact_v6_1.model`. No NOTICE, no rider. **Two hygiene items:** consume from the
+  MHR release directly rather than via the SOMA third-party redistribution; and —
+  **`⚠ licence trap`** — the convenient 28-d scale PCA (`scale_mean`, `scale_comps` in
+  the vendored SAM 3D checkout) comes from **SAM 3D's checkpoint under the SAM licence,
+  not the Apache MHR asset. Do not lift it.** Fit the 68 raw scale channels with our own
+  regulariser, or re-derive a proportion prior.
+- **`[T]` The ~44 mm band — REFUTED.** See §2.
+
+**One caveat that survives everything:** the fitted skeleton is a *landmark* skeleton,
+well-posed, but **biased as an anatomical one** — it inherits the detector's convention
+offsets, measured at up to 33.9 mm per joint. **The synthetic fixture is structurally
+blind to this**, listing joint-definition error as absent by construction, and it is the
+term that dominated Battles 0 and 1 on real footage. Stamp detector identity with the
+skeleton, and never read fixture success as evidence about convention.
