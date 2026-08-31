@@ -128,6 +128,15 @@ def initialise(subject: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 FULL_SUPPORT = 4.0
 
 
+def neck_origins(subject: int) -> np.ndarray:
+    """The pipeline's own smoothed neck joint, [frame, 3] -- where the skull sits."""
+    from autoanim_gnm.commercial_multiview import JOINT_INDEX
+
+    return np.load(
+        f"artifacts/commercial-multiview-soma77/subject-{subject:02d}.body-track.npz"
+    )["triangulated_world_positions_z_up_m"][:, JOINT_INDEX["neck"]]
+
+
 def thorax_frames(subject: int) -> np.ndarray:
     """The pipeline's own smoothed torso frame per frame, [frame, 3, 3].
 
@@ -149,7 +158,8 @@ def thorax_frames(subject: int) -> np.ndarray:
 
 def solve(observations: np.ndarray, cameras, template0: np.ndarray, rotations0: np.ndarray,
           translations0: np.ndarray, weight: float, camera_mask: np.ndarray,
-          support_conditioned: bool = True, thorax: np.ndarray | None = None) -> dict:
+          support_conditioned: bool = True, thorax: np.ndarray | None = None,
+          neck_origin: np.ndarray | None = None, neck_sigma_m: float = 0.010) -> dict:
     """Fit the rigid head. `support_conditioned` scales the temporal prior per frame by
     how little evidence that frame carries.
 
@@ -210,6 +220,9 @@ def solve(observations: np.ndarray, cameras, template0: np.ndarray, rotations0: 
             parts.append((weight * scale[:, None] * (spin[1:] - spin[:-1])).ravel())
             parts.append((weight * 0.02 * scale[:, None] *
                           (translations[:-2] - 2 * translations[1:-1] + translations[2:])).ravel())
+        if neck_origin is not None and thorax is not None:
+            offset = np.einsum("fji,fj->fi", thorax, translations - neck_origin)
+            parts.append(((offset - offset.mean(axis=0)) / neck_sigma_m).ravel())
         parts.append(TEMPLATE_PRIOR * (template - template0).ravel())
         return np.concatenate(parts)
 

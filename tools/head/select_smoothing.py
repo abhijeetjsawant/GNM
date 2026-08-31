@@ -36,7 +36,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from associate import CAMERAS, OUT  # noqa: E402
 from solve_head import (  # noqa: E402
-    NAMES, gather, held_out_px, initialise, rodrigues, solve, thorax_frames,
+    NAMES, gather, held_out_px, initialise, neck_origins, rodrigues, solve, thorax_frames,
 )
 
 # Pre-registered before running: the sweep, and the tolerance.
@@ -56,11 +56,12 @@ def main() -> None:
         template0, rotations0, translations0 = initialise(subject)
         every = np.ones(len(CAMERAS), dtype=bool)
         thorax = thorax_frames(subject)
+        neck = neck_origins(subject)
         curve: dict[float, float] = {}
         fits: dict[float, dict] = {}
         for weight in WEIGHTS:
             fit = solve(observations, cameras, template0, rotations0, translations0, weight,
-                        every, thorax=thorax)
+                        every, thorax=thorax, neck_origin=neck)
             fits[weight] = fit
             curve[weight] = float(np.nanmean(
                 [held_out_px(fit, observations, cameras, c) for c in range(len(CAMERAS))]))

@@ -702,6 +702,26 @@ why the support-conditioned prior was the right idea and why it was not enough o
 > through them — but that changes what the gate scores, so **pre-register it before
 > measuring it**, or it is the tuning trap wearing a product hat.
 
+### Anchoring the head to the neck — closing the last free trade
+
+Named here because its justification is independent of what it scores. Until now the
+head's **position** was free on every frame, with only a weak temporal prior. That leaves
+the optimiser a cheap escape: explain the same 2D by *moving* the skull rather than
+*turning* it. A five-landmark rigid body about 120 mm across, viewed from 5 m, is exactly
+the geometry where that trade costs least — the same near-parallel-ray argument that makes
+depth ambiguous in the first place (§2b).
+
+Anatomy forbids it. **The skull sits on the neck**, so the head centroid's offset from the
+neck joint, expressed in the thorax frame, is a per-take constant. It is imposed softly at
+**10 mm** — a stated physical allowance for soft tissue and landmark convention. That is a
+**fixed physical scale, not a fitted weight**: it adds no knob and nothing to select, so
+the L-curve rule and the bands are untouched.
+
+**Accepted on the MAMMA-free criterion before the gate saw it.** In-frame reprojection
+*improves* — 2.940 → 2.935 px and 2.999 → 2.969 px — which is the signature of a correct
+constraint: it removes freedom the model should not have had without costing fit quality.
+A wrong constraint pays for itself in reprojection; this one does not.
+
 ### 6b PRE-REGISTRATION — flagging under-observed frames
 
 **Written and committed before it was measured.** The measured cause of the residual P1
