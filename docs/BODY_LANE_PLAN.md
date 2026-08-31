@@ -974,6 +974,73 @@ cannot make**. **Do not flip the default.** And add the test the correction
 implies — a constructed **single-ray** slot where the two orderings measurably
 differ — so the flag stops being dead code guarded by an unfalsifiable comment.
 
+### Step 0d — per-performer skeletons *(designed 2026-08-31; the advisors split, and the split is recorded)*
+
+**The disagreement, because it is an architecture decision the user lives with.**
+*Sol:* a **per-take skeleton asset** beside the track — a schema change would
+institutionalise the silent-mixing trap. *Fable:* a **mandatory
+`rest_translations_m` field in the track** — a side asset can be lost, unpaired or
+ignored while the track still validates, which is the same silent failure re-created
+as a filesystem race.
+
+**Fable's case rests on a fact Sol did not have, and it is verified:** `from_dict`
+(`body.py:542`) enforces `set(value) != expected` and raises. **The serialisation
+boundary is already strict** — a mandatory new field makes every old reader reject a
+new track *loudly*, and every new reader reject an old one. The silent path is only
+the **in-process** one, where a consumer holds a `BodyTrack` and calls
+`skeleton_for_joint_names(track.joint_names)`.
+
+**Resolution: Fable's, on the verified boundary.** Mandatory, not optional — an
+optional field leaves "canonical" an implicit default and keeps the dangerous state
+representable. Legality constraint: **each non-root offset must be a non-negative
+scalar multiple of the canonical rest *direction*.** Proportions change lengths,
+never directions or topology — which keeps `_from_to` authoring valid, keeps
+canonical-authored rotations composable, and **cleanly separates this from the mirror
+fix, which is a direction change.**
+
+**The gate, in three layers, and it is not a detector.** Layers 1–2 make the wrong
+resolution *unwritable and uncompilable*; only layer 3 is a tripwire. **(1)** the
+mandatory field plus the existing exact-field strictness; **(2)** remove
+`skeleton_for_joint_names` from the track path entirely, so every call site fails at
+import time and is forced through a new `skeleton_for_track` at review; **(3)**
+`validate_body_track` additionally requires the passed skeleton's offsets to equal
+the track's. *Degenerate checks that ship with it:* a track stamped canonical must
+**PASS** all three — the gate is *offsets-used == offsets-carried*, never "offsets
+differ from canonical", or canonical tracks become illegal and it is a
+constant-rejector. And a sabotage arm — performer-stamped track FK'd with canonical
+offsets — must reproduce arm B **and** be caught by layer 3.
+
+**Sequencing: gate and schema first, then the mirror, then proportions.** The defects
+are mechanically independent and no engineering is wasted either way — but
+**validation** is: every camera-overlay judgement made before the mirror lands is
+made on a rig facing 180° wrong, and the user's eye is the instrument that found both.
+
+**Six things neither the advisors' first passes nor I had named:**
+1. **The `0.98` hardcode.** `positions_to_body_track:1344` sets
+   `root_translation = pelvis − (0, 0.98, 0)`, duplicating canonical Hips height from
+   `body.py:119`. **Stamp performer offsets without replacing it and every character
+   floats or sinks** by (performer hips rest − 0.98) — at the feet, the most visible
+   place on screen.
+2. **Per-take, not per-performer.** `estimate_limb_lengths_m` is per-subject *per
+   take*; cross-take variance is unmeasured. If it is more than a few mm the same
+   performer changes size between shots. Measure before the schema hardens the choice.
+3. **These are landmark lengths, not bones.** Baking them bakes the *detector's*
+   convention into the asset — and this lane's programme is replacing the detector.
+   Record detector identity in the stamped skeleton and re-derive on any swap.
+4. **Proportions do not unlock the converter fix.** Direction-preserving scaling of
+   the (90 lateral, 80 down) hip offset to match wider hips *grows* the vertical
+   error. Root/hip placement stays a third, separate piece.
+5. **Ground projection interacts.** Legs are ~30 mm too long today and
+   `project_generated_foot_contacts` absorbs ~90 mm; shortening them changes what it
+   absorbs. Re-verify contacts on the overlay afterwards.
+6. **Fingers stay canonical, explicitly stamped at scale 1.0** — no finger landmarks
+   exist, and leaving it inferable invites a later reader to assume otherwise.
+
+*And a correction to how this plan has been quoting its own control:* arm A reads
+**0.00 mm on legs, hips and neck only**; pooled it is **19.1 / 21.4 mm**, because the
+arms carry the 36–47 mm clavicle defect even on a perfectly proportioned body. Quote
+the qualifier or the number invites confusion.
+
 ### Step 0c — **ATTEMPTED 2026-08-30, band failed, reverted. The defect is one level up.**
 
 > **What was tried.** Measure every chain's direction from the joint's own
