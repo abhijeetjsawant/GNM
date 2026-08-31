@@ -410,6 +410,11 @@
         <p class="d">MAMMA's head moves this much relative to the thorax on this footage, median, with about <span class="num">29°</span> of range. That is the signal a head solve has to explain, and our delivered head explains <span class="num">0.0°</span> of it. Measuring the bar first was the point: had it read 2°, no head gate worth writing would have been possible here. <b>Corroborated weakly</b> by an independent detector and estimator — Apple Vision ear yaw, <span class="num">|r| = 0.34–0.40</span> against shuffled controls of 0.20–0.22. Enough to say a signal exists; not enough to call the magnitude measured.</p>
       </div>
       <div class="reading">
+        <span class="v" style="color:var(--partial)">3 arms, 3 failures</span>
+        <span class="k">The head gate exists and has been run</span>
+        <p class="d">A rigid-head fit across all four views and all 150 frames — never triangulating a head landmark alone — scored against MAMMA beside <b>both</b> controls it must reject. The locked head dies on spread, the per-frame triangulated head dies on jitter at <span class="num">89–110°</span>, and the candidate dies on jitter too, at <span class="num">3.2×</span> tighter agreement and up to <span class="num">6.8×</span> less jitter than that control. <b>No arm passes, and no constant can.</b> The estimator is the right direction and is not yet sufficient.</p>
+      </div>
+      <div class="reading">
         <span class="v" style="color:var(--dark)">0.0°</span>
         <span class="k">Head motion we deliver</span>
         <p class="d">Identity quaternion on <code>Head</code>, <code>Neck</code>, both eyes and the chest chain, on every frame of both subjects — and on one performer it scores within <span class="num">0.3%</span> of MAMMA on frame-to-frame jitter. <b>The degenerate solution this lane keeps guarding against is the shipping behaviour</b>, which makes it the one negative control a head gate can never be accused of inventing.</p>

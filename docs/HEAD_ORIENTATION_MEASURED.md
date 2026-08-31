@@ -1,6 +1,8 @@
 # Head and neck — measured, 2026-08-31
 
-**Status: measured, not fixed.** No head code was changed this session. This is the
+**Status: measured, and a first estimator built and scored — it does not pass.** No
+*shipping* head code was changed; the fit in §6a is a new instrument in `tools/head/`,
+not on the delivery path. This is the
 instrument pass the goal asked for — score MAMMA's head on this footage first, measure
 `HeadEnd`, enumerate the integrated adapters on the same denominator — plus one finding
 that was not in the plan and reframes the region.
@@ -593,6 +595,78 @@ direction (`BODY_LANE_PLAN.md` §1), and this gate must never be quoted as one. 
 
 ---
 
+## 6a. The gate, run — it rejects both controls **and** the candidate
+
+A first estimator was built and scored, because a gate nobody has run against a real
+candidate is a specification, not an instrument.
+
+**The candidate: a rigid-head multi-view, multi-frame fit.** Per subject, over the whole
+take at once, solve for one rigid head **template** (head-local positions of SOMA-77's
+`Head`, `HeadEnd`, `Jaw` and both eyes — the skull is rigid) plus a per-frame **rotation**
+and **position**, minimising robust reprojection into all four calibrated cameras with a
+temporal prior. **No head landmark is ever triangulated on its own**, which is §2b's
+verdict turned into an estimator and the same architecture MAMMA uses.
+
+| subject 0 · MAMMA spread 14.96°, travel p95 2.38° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
+|---|---:|---:|---:|---:|---|
+| **candidate — multi-view fit** | 9.11° | 22.38° | **18.76°** | 13.13° | **FAIL** (P1, P4) |
+| **C2 — noisy, per-frame triangulated** | 6.73° | 69.01° | 18.18° | 88.95° | **FAIL** (P1, P4) |
+| **C1 — locked head, as delivered** | 14.96° | 30.76° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
+| *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 7.14* | |
+
+| subject 1 · MAMMA spread 15.99°, travel p95 4.17° | P1 med | P1 p95 | P2 spread | P4 travel | verdict |
+|---|---:|---:|---:|---:|---|
+| **candidate — multi-view fit** | **7.05°** | 28.93° | **16.54°** | 37.48° | **FAIL** (P1, P4) |
+| **C2 — noisy, per-frame triangulated** | 8.35° | 94.00° | 19.55° | 109.62° | **FAIL** (P1, P4) |
+| **C1 — locked head, as delivered** | 15.99° | 27.18° | **0.00°** | 0.00° | **FAIL** (P1, P2) |
+| *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *≤ 12.51* | |
+
+**The gate works, and that is the result worth keeping.** Three arms, three *different*
+failure signatures: the locked head dies on spread (P2), the noisy head dies on jitter
+(P4, at 89–110°), and the candidate dies on jitter too but **3.2–3.3× tighter on P1 p95
+and 2.9–6.8× tighter on P4** than the noisy control, while holding a healthy spread. No
+arm passes by accident, and no constant can reach P2.
+
+**The candidate does not pass, and it is reported as failing.** It gets most of the way:
+subject 1's P1 median clears the band at 7.05°, spread is right for both, and the
+estimator is unambiguously the right direction. What defeats it is P4 — residual jitter
+that **more smoothing does not remove**. Subject 0 was fitted at ten times subject 1's
+temporal weight and its travel barely moved (13.17° → 13.13°) while P1 got *worse*. So
+the remaining travel is not high-frequency noise the prior can absorb; it is a smaller
+number of poorly-conditioned frames where the rotation jumps.
+
+### The selection rule was replaced, after it failed, and the reason is structural
+
+The first fit chose its temporal weight by **held-out-camera cross-validation** and chose
+**zero** on both subjects; the gate then rejected it with a travel p95 of 58–77°. The
+rule was mis-specified: **detector noise is correlated across cameras within a frame** —
+all four views are one detector at one instant — so dropping a view does not create an
+independent test of *temporal* behaviour. An unsmoothed fit chasing per-frame noise still
+predicts the held-out camera well. **Held-out-camera CV can select a spatial model and is
+blind to a temporal one by construction.**
+
+The replacement is an **L-curve on our own reprojection**, which never touches MAMMA:
+sweep the weight, take the largest whose in-frame reprojection stays within 10% of the
+unsmoothed fit. Recorded because it matters: the L-curve is nearly **flat** — reprojection
+moves only 2.72 → 3.24 px across five orders of magnitude of weight — so *the 2D barely
+constrain the head's temporal behaviour at all*. That is itself a finding about this
+framing, and the first result to fold into the next attempt.
+
+> **A weight that scores better on the gate exists, and was not chosen.** Subject 0 at
+> weight 3,000 gives P1 8.36 / 20.89 and travel 13.17 — closer to passing than the
+> 10,000 the rule selects. **Selecting it would be gate-tuning**, which is the
+> overlay-flatterer degenerate solution one level up, so the rule's answer stands and the
+> better number is recorded here rather than reported as the result.
+
+*Instruments:* `tools/head/solve_head.py` (the fit and the superseded held-out-camera
+rule), `tools/head/select_smoothing.py` (the L-curve), `tools/head/head_gate.py`.
+Superseded outputs retained as `head-*-heldout-camera.json`.
+*Blind to:* everything §6 already lists — this is a **parity** gate against an
+instrument, never an accuracy claim. Also blind to a constant heading error, removed by
+the mean-removal that makes the comparison a tracking comparison at all.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 1. ~~**Settle §5's ownership question.**~~ **SETTLED** — body lane owns head and neck
@@ -620,6 +694,22 @@ direction (`BODY_LANE_PLAN.md` §1), and this gate must never be quoted as one. 
    landmarks are **more** consistent than body landmarks on both detectors, 0.29–0.78×.
    **The head's failure is pure depth, which is the estimator's job.** This is now the
    route, not a hypothesis.
+3a. **What the built fit says to do next — three items, in order, all named by its own
+   failure mode.** §6a's candidate fails on P4, and more smoothing does not help, so the
+   remaining travel is a minority of badly-conditioned frames rather than broadband noise.
+   - **Add Apple Vision's ears to the objective.** This is §7.4's recommendation and it
+     is still untried: the ears are the widest and best-conditioned head baseline on this
+     footage (§4), and a fit is exactly where their per-frame yaw scatter can be averaged
+     down (§1). It needs a cross-detector subject match, which `subject_map.py` shows how
+     to do from 3D positions.
+   - **Find and gate the jumping frames.** Report travel against per-frame camera support
+     and confidence; if the tail is concentrated where the head is seen by two cameras, a
+     support-conditioned prior is the fix, not a stronger global one.
+   - **Then, and only then, momentum + MHR.** `FITTER_PLAN.md` §5's fitter already carries
+     `c_neck`, `c_head`, `c_jaw`, `l_eye`, `r_eye` and takes multi-view 2D directly. The
+     bespoke fit here exists to establish whether the *architecture* recovers the head at
+     this framing before that integration is paid for. It says: mostly, not yet.
+
 4. **Ears are an input to the fit, not a driver of the head — revised after §1's
    corroboration ran.** The draft of this item read *"wire the ear axis to head yaw"*.
    **That is now refused by measurement:** the ear axis's yaw scatters at 21–41°,
@@ -649,6 +739,9 @@ python3 tools/head/same_denominator_head.py       # §4 -- AV vs SOMA, 95 frames
 python3 tools/head/ear_null_template.py           # §4 -- the ears against a no-ear null
 python3 tools/head/subject_map.py                 # §0 -- MAMMA body_id <-> our subject
 python3 tools/head/corroborate_bar.py             # §1 -- MAMMA head yaw vs AV ear yaw
+python3 tools/head/head_epipolar_gate.py          # §2b -- the head's 2D vs the body's
+python3 tools/head/select_smoothing.py            # §6a -- the fit, L-curve weight (~10 min)
+python3 tools/head/head_gate.py                   # §6a -- the gate, candidate + both controls
 .venv/bin/python tools/head/three_detector_head.py  # §4 -- all three, 42/14 frames
 ```
 
