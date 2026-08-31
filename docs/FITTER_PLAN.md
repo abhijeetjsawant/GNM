@@ -275,3 +275,51 @@ exposes `locators_only` calibration and `get_locator_error` for exactly this.
 **Do not skip to a fit before that layer is designed** — a marker set matched to the
 wrong joints will still converge, and the result will look plausible. That is
 degenerate solution 1 wearing a different coat.
+
+
+---
+
+## 6. First calibration run — 2026-08-31. **It is worse than the mean body, and the reason was predicted.**
+
+17 locators attached to MHR (our landmarks minus the ears SOMA-77 never emits),
+**zero offsets**, raw triangulation as markers per the pre-registered trap, robust
+loss on, per-bone scale enabled. `calibrate_markers` converged: 150 frames, identity
+and motion returned.
+
+| segment | MHR mean | **fitted** | measured (perf A) | mean err | **fit err** |
+|---|---:|---:|---:|---:|---:|
+| shoulder width | 351.7 | 322.4 | 346.4 | 5.3 | **24.0** |
+| pelvis → neck | 518.0 | 501.3 | 576.6 | 58.6 | **75.3** |
+| hip width | 164.1 | **193.2** | 207.1 | 43.0 | **13.9** ✓ |
+| upper arm | 256.8 | **356.8** | 287.2 | 30.4 | **69.6** ✗ |
+| forearm | 270.0 | 296.2 | 268.9 | 1.1 | **27.3** |
+| thigh | 419.8 | 427.4 | 399.8 | 20.0 | 27.6 |
+| shin | 420.6 | **398.6** | 396.5 | 24.1 | **2.1** ✓ |
+| **mean abs error** | | | | **26.1** | **34.2** |
+
+**The fit is 8 mm worse than doing nothing.** Two segments improved sharply — hip
+width 43→14, shin 24→2 — and the arms and torso blew up. `scale_uparms` came back at
+**+1.0005**, a suspiciously round number that reads as a parameter **saturating at its
+bound** while trying to absorb something it cannot represent.
+
+**The cause is the locator layer, and this plan warned about it in §5 before the run:**
+every locator offset was left at **zero**, which asserts that our detected landmark
+*is* the joint centre. It is not — these are surface landmarks carrying the detector's
+convention offsets, measured elsewhere in this lane at up to **33.9 mm per joint**. The
+fitter, given no way to express "the marker sits 30 mm lateral to the joint", did the
+only thing it could and **stretched the bone instead.** That is precisely the failure
+the warning named: *a marker set matched to the wrong joints will still converge, and
+the result will look plausible.*
+
+**What this establishes, and it is worth more than a passing number:**
+1. The integration works end to end — character, locators, markers, calibration, motion.
+2. **The band works.** A fit that looks entirely reasonable, converges cleanly, and
+   moves two segments in exactly the right direction is still **worse than the mean**,
+   and only measuring against the performer's own dimensions reveals it.
+3. **The locator layer is not optional plumbing — it is the substance.** Solving
+   landmark-to-joint offsets is the difference between a fitter and a bone-stretcher.
+
+**Next, and pre-registered before running it:** a two-stage calibration — solve locator
+offsets first (`locators_only`), then scales — and the acceptance band stays *beat the
+26.1 mm mean-body error on this performer*, with the mean-body regressor and mirrored
+minimum checks alongside. **Do not report a fit that fails to beat doing nothing.**
