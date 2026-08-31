@@ -232,3 +232,46 @@ offsets, measured at up to 33.9 mm per joint. **The synthetic fixture is structu
 blind to this**, listing joint-definition error as absent by construction, and it is the
 term that dominated Battles 0 and 1 on real footage. Stamp detector identity with the
 skeleton, and never read fixture success as evidence about convention.
+
+
+---
+
+## 5. Integration status — 2026-08-31, all gates cleared so far
+
+Run end to end on this machine, in a throwaway venv so nothing was installed into the
+project environment.
+
+| gate | result |
+|---|---|
+| `pymomentum-cpu` installs and imports on macOS | **PASS** — `marker_tracking`, `solver2`, `geometry`, `camera`, `skel_state` all load |
+| momentum loads **our** delivered GLB | **PASS** — 55 joints, correct names, mesh intact — but **0 model parameters**, since glTF carries no momentum parameter transform |
+| MHR assets are Apache-2.0 | **PASS** — official release `assets.zip`, `LICENSE.txt` is stock Apache-2.0 |
+| momentum loads MHR + its model definition | **PASS** — `lod6.fbx` gives 127 joints with mesh; `compact_v6_1.model` adds **204 model parameters: 68 scaling, 136 pose** |
+
+**And the scale parameters are, name for name, the defects measured this week:**
+
+| measured defect | MHR parameter |
+|---|---|
+| shoulders 540 mm vs 346–363 | `scale_shoulder_width` |
+| torso 577 vs 513 between performers | `scale_spine_length`, `scale_neck_length` |
+| upper arm −17/−27, forearm −18/−29 | `scale_uparms`, `scale_lowarms` |
+| hips 180 vs 207–215 | `scale_hip_width`, `scale_hip_height`, `scale_hip_depth` |
+| thigh +28/+30, shin +15/+24 | `scale_uplegs`, `scale_lowlegs` |
+| fingers (no landmarks yet) | full per-digit length and offset scales |
+
+**Nothing here required inventing a parameterisation.** The skeleton-affecting knobs
+are named, separate from the 45 identity coefficients, and cover every measured error.
+
+### What remains, and it is precisely the layer Fable said we would own
+
+`calibrate_markers(character, identity, marker_data, calibration_config, …,
+camera_keypoint_data=[])` returns `(identity, parameter_indices, motion)`. The
+character arrives with **zero locators**, and MHR's joints are named `root`,
+`l_upleg`, `l_lowleg`, `l_foot`, … — so the remaining work is the **locator layer**:
+define named attachment points on MHR corresponding to our 19 landmarks, which is
+also where the detector's convention offsets get modelled rather than baked. momentum
+exposes `locators_only` calibration and `get_locator_error` for exactly this.
+
+**Do not skip to a fit before that layer is designed** — a marker set matched to the
+wrong joints will still converge, and the result will look plausible. That is
+degenerate solution 1 wearing a different coat.
