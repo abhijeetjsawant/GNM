@@ -651,8 +651,19 @@ Both subjects, all four bands, **at the same temporal weight (100) chosen by the
 
 **And the fit's spread now matches the reference rather than approximating it:** 17.45°
 against MAMMA's 14.96°, and 16.51° against 15.99°. It is explaining the head motion, not
-damping it — which is the failure P2 exists to catch and which earlier, over-smoothed
-versions of this fit were sliding toward.
+damping it — which is the failure P2 exists to catch, and which earlier over-smoothed
+versions of this fit were sliding toward. *The other reading of subject 0's 2.5°
+overshoot is that some of it is residual noise dressed as motion; P1 passing bounds how
+much, but the overshoot is not proof of extra signal.*
+
+**Read the headline with the non-uniformity below.** A split-half check shows the fit
+sits within 1.7° of the oracle on three of four half-takes and **8° away on subject 0's
+first half**. The pass is a whole-take result and it is not uniform across the take.
+
+**One number that looks anomalous and is not:** the candidate's P4 (3.72° / 4.66°) is
+*lower* than the oracle's (7.08° / 7.32°). Expected — both inherit the same thorax frame,
+but ours is smoothed against it while MAMMA's head meets it raw. P4 is largely a statistic
+about the reference frame, per §6a.
 
 > **What this is, stated exactly.** *Head-orientation parity with MAMMA on this footage,
 > on a tracking metric, with both degenerate solutions demonstrably rejected and the
@@ -673,6 +684,49 @@ versions of this fit were sliding toward.
 
 **Three of the four are anatomy, and none is a tuned parameter.** The one knob in the
 model — the temporal weight — is chosen by a rule that consults only our own reprojection.
+
+### A self-attack on the metric, and what it exposed
+
+P1 removes each take's own mean relative pose, which is a **gauge fix** — our head-template
+frame and our thorax definition each differ from MAMMA's by a constant that nothing
+observes. If that offset is genuinely constant, estimating it from half the take and
+applying it to the other half must work. So: fit the mean on one half, score the other.
+
+| | in-sample | fit 1st → score 2nd | fit 2nd → score 1st |
+|---|---:|---:|---:|
+| **ORACLE**, subject 0 | 5.46 / 17.22 | 8.12 / 9.00 | 6.30 / **24.71** |
+| candidate, subject 0 | 7.54 / 19.35 | 9.00 / 16.34 | **14.29** / 23.80 |
+| **ORACLE**, subject 1 | 4.87 / 17.59 | **8.74** / 11.43 | 5.81 / **23.00** |
+| candidate, subject 1 | 6.40 / 16.07 | 8.12 / 11.98 | 7.48 / 19.49 |
+| *bands* | *≤ 8 / ≤ 20* | | |
+
+**The oracle fails it too, on both subjects and both splits.** A test that a *perfect head*
+cannot pass is not measuring the head — it is measuring the assumption that the gauge is
+constant, and refuting it. The offset between the two frame conventions **drifts within a
+take**, so the whole-take mean is the correct construction and the split is not a valid
+alternative. **That is the oracle arm earning its place a fourth time**: without it this
+table reads as "the pass is an overfitting artifact", which is the wrong conclusion.
+
+**But it does expose something real, and it qualifies the pass.** Compare candidate to
+oracle *within* each split — the gauge drift cancels, since both suffer it equally:
+
+| | candidate − oracle, median |
+|---|---:|
+| subject 0, second half | +0.88° |
+| **subject 0, first half** | **+7.99°** |
+| subject 1, second half | −0.62° (candidate better) |
+| subject 1, first half | +1.67° |
+
+**On three of the four half-takes our head sits within 1.7° of a perfect one. On subject
+0's first half it sits 8° away.** The pass is real and it is **not uniform**: most of this
+footage is solved close to the instrument floor, and roughly a quarter of it is not. That
+belongs beside the headline, because a whole-take median can hide exactly this.
+
+*Instrument:* the split above, run on all four arms.
+*Blind to:* which half is at fault in absolute terms — the oracle bounds the *frame*
+mismatch, not our error's sign. And "first half" is a crude window; the right follow-up is
+to localise the excess frame-by-frame against camera support, which §6a's next-steps
+already name.
 
 ### The oracle arm, and why a gate without one is only half-checked
 
