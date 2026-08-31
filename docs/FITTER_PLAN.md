@@ -323,3 +323,54 @@ the result will look plausible.*
 offsets first (`locators_only`), then scales — and the acceptance band stays *beat the
 26.1 mm mean-body error on this performer*, with the mean-body regressor and mirrored
 minimum checks alongside. **Do not report a fit that fails to beat doing nothing.**
+
+
+---
+
+## 7. Two-stage calibration — a real gain, and an identifiability result that matters more
+
+Stage A solves locator offsets, stage B solves the 68 scales. Scored **locator-to-locator
+against the measured landmark distances**, which is the same denominator once offsets
+are non-zero — joint-to-joint scoring stops being comparable the moment a locator moves.
+
+| locator regularisation | offsets solved | stage A | **stage A + B** | fitted joint shoulder width |
+|---|---|---:|---:|---:|
+| **free** (`limit_weight` 0) | median 84 mm, max 177 | **8.8 mm** | 16.5 mm | 384.0 |
+| **pinned** (1, 10, 100 — identical) | 0.0 mm | 26.1 (unchanged) | **20.4 mm** | 358.7 |
+| — MHR mean body, the number to beat — | | | **26.1 mm** | 351.7 |
+
+**The honest result is 20.4 mm against 26.1** — a 22% improvement carried *entirely by
+the skeleton*, which is what a mesh follows.
+
+**And the 8.8 mm is a trap I nearly reported.** With offsets free the locators absorb
+the performer's proportions and **the skeleton never moves** — stage A is `locators_only`,
+so every scale stays at zero and the body remains the mean. The landmark distances match
+beautifully and the delivered mesh would be completely unchanged. **My scoring metric
+became gameable the moment I let the locators move**, which is the mean-body regressor
+wearing the one disguise the band was not designed to catch.
+
+### The finding underneath, and it is the durable one
+
+**Bone length and locator offset are not separately identifiable from 19 surface
+landmarks.** The fitter can explain a longer forearm either as a longer bone or as a
+landmark sitting further from the joint, and nothing in the data distinguishes them —
+free offsets reach a median of **84 mm**, which is not a plausible landmark-to-joint
+distance and is the optimiser spending freedom it should not have.
+
+Both endpoints are wrong:
+- **offsets free** — skeleton stays at the mean, so the mesh never changes;
+- **offsets pinned at zero** — asserts the landmark *is* the joint centre, which is false
+  by up to 33.9 mm on measured convention offsets.
+
+The truth lies between two settings **we cannot choose between from landmarks alone.**
+
+**This is a new and independent argument for the marker session.** Markers on known
+anatomical positions break the degeneracy directly: they pin the landmark-to-joint
+relationship, which is the free parameter this whole fit is fighting. Every previous
+argument for Battle 2 was about *validating* an accuracy claim; this one says the marker
+session **also unblocks a build**, because without it the fitter's two explanations stay
+tied and the choice between them is a guess.
+
+*Interim recommendation until then:* ship **pinned offsets** — 20.4 mm, honest, all of it
+in the skeleton — and record that it under-fits by exactly the convention offset it
+refuses to model.
