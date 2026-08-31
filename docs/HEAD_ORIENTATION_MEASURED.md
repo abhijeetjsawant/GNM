@@ -702,6 +702,32 @@ why the support-conditioned prior was the right idea and why it was not enough o
 > through them — but that changes what the gate scores, so **pre-register it before
 > measuring it**, or it is the tuning trap wearing a product hat.
 
+### 6b PRE-REGISTRATION — flagging under-observed frames
+
+**Written and committed before it was measured.** The measured cause of the residual P1
+gap is under-observation, not under-modelling (−0.60 correlation with camera support), and
+no prior recovers information that was never captured. The pipeline's existing rule for
+that situation is a flag, not a guess: *"missing or untrusted hand observations remain
+explicitly `review_required`; they do not fall back to an unreported canned gesture"*
+(`FINGER_TRIANGULATION_GATE.md`). This applies it to the head. **Reading the gate after
+choosing a threshold would be the tuning trap wearing a product hat**, so the rules are
+fixed here first.
+
+1. **Threshold.** A frame is `head_review_required` when **fewer than 3 cameras** see at
+   least 3 of the 5 head landmarks at confidence ≥ 0.25. *Chosen from geometry, not from
+   any score:* two rays fix a 3D point but leave the rotation of a ~120 mm object at 5 m
+   badly conditioned, and three is the smallest count that carries any redundancy.
+2. **The verdict does not move.** Pass/fail is taken from the **ungated** arm, over all
+   frames, exactly as already reported. The gated arm describes what a flagged output
+   would deliver; it cannot rescue a failing candidate.
+3. **Same denominator.** Both controls and the oracle are re-scored on the identical
+   gated population. A candidate compared against controls scored on all frames would be
+   the composition shift this lane has been caught by twice.
+4. **The flagged fraction is reported, and it is itself a result.** If it exceeds **25 %**
+   the flag is doing too much work, and the honest reading is *"this fixture is
+   under-observed"* rather than *"the estimator works"*. Stated before the number is known.
+5. **Nothing is tuned to the outcome.** The fit, its weights and the bands are unchanged.
+
 ### The oracle arm, and why a gate without one is only half-checked
 
 *"No gate a constant can pass"* has a dual that this lane had not written down: **a gate
