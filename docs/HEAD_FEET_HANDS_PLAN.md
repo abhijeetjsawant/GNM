@@ -4,6 +4,23 @@
 the repair does not start from the wrong premise. Read `docs/BODY_LANE_PLAN.md` §0–2 and
 `docs/FITTER_PLAN.md` first. Measured 2026-08-31 on the SOMA-77 four-camera clip.
 
+> **⚠ The head half of this document has been superseded by measurement.
+> Read `docs/HEAD_ORIENTATION_MEASURED.md` before acting on §1, §2 or §7.** Four
+> things changed, and two of them contradict text still standing below:
+>
+> 1. **The delivered head is a *constant*, not noise** — welded to the torso frame at
+>    `src/autoanim_gnm/commercial_multiview.py:1350`, identity quaternion on every
+>    frame. §1c's 43.79° is the *momentum fit's* head, a different arm. See the
+>    correction inline at §1c.
+> 2. **§2 caution 2 is REFUTED.** The retained observations *do* carry all 77
+>    landmarks. No worker re-run is needed. See the correction inline at §2.
+> 3. **`HeadEnd` is measured and it does not rescue the head** — 66/115 % length
+>    variation, 6–25× its detector's own body controls, the same class as the
+>    fingers. §2's "single most promising head lead" no longer holds.
+> 4. **The bar §7 demands is measured**, and Apple Vision's ears — already
+>    integrated, already run on this footage — are the best-conditioned head input
+>    found.
+
 ---
 
 ## 0. The one-sentence finding
@@ -76,6 +93,22 @@ tighter** than the head. The difference is landmark support, not solver quality.
 > **Blind to** — this is jitter, not accuracy. A head locked rigid to the chest would score
 > 0° here and be perfectly wrong. Jitter is a necessary condition, never a sufficient one.
 
+> **⚠ Corrected 2026-08-31 — this table is about the momentum fit, and the *delivered*
+> head is the degenerate solution the note above imagines.** These are **local,
+> parent-relative** rotations from `fitted_0.gltf`. The shipped
+> `subject-*.body-track.npz` is a different arm entirely: `Chest`, `UpperChest`,
+> `Neck`, `Head`, `LeftEye`, `RightEye` are the **identity quaternion on every frame of
+> both subjects**, because `positions_to_body_track` assigns them `torso_world`
+> verbatim at `commercial_multiview.py:1350`. Head-relative-to-thorax spread on the
+> delivered track is **0.000000°**.
+>
+> And it is worse than "a head locked to the chest would score 0° here". Scored on
+> **world** head rotation — the composed statistic, which is what a viewer sees — the
+> delivered constant reads **2.22° median / 6.87° p95** against **MAMMA's 1.93° /
+> 6.62°**. It does not score zero. **It scores at parity with the reference while
+> carrying no head information at all.** Full working:
+> `docs/HEAD_ORIENTATION_MEASURED.md` §0.
+
 ---
 
 ## 2. 60 of 77 joints are discarded — and only part of that is news
@@ -124,14 +157,43 @@ finger gate. Two consequences:
 >    Toes are larger and closer to well-tracked joints than phalanges are, so they are a
 >    better bet — but *a better bet is not a result*. A constant rest pose looks plausible
 >    in any overlay, which is the degenerate solution this project keeps catching.
-> 2. **The existing observations cannot answer this.** `artifacts/soma77-full/work/*-observations.jsonl`
+> 2. ~~**The existing observations cannot answer this.** `artifacts/soma77-full/work/*-observations.jsonl`
 >    was written *after* the adapter dropped those joints — it contains 17. Answering the
->    quality question needs a **worker re-run**, not a re-read.
+>    quality question needs a **worker re-run**, not a re-read.~~
+>    **REFUTED 2026-08-31 — and this was the session's unblock.** Those files carry
+>    `landmarks_soma77`, **all 77 points, every person, every frame, all four cameras**,
+>    exactly as `soma77_pose.py`'s docstring says. Proven by **20,043 identity checks
+>    with 0 mismatches** — every mapped joint is byte-identical to its
+>    `landmarks_soma77[index]`, which is what establishes SOMA-77 *order* rather than
+>    merely 77 *entries*. The 2D values are bit-identical (60,129 values, max difference
+>    0.0) to the file that produced the shipped tracks, and replaying
+>    `reconstruct_multiview` on them reproduces the retained raw triangulation at
+>    **0.000000 mm**. **Toes, `Neck1`, `Jaw`, `HeadEnd` and all 30 finger joints are
+>    measurable right now, with no detector re-run.** `docs/HEAD_ORIENTATION_MEASURED.md`
+>    §3; instrument `tools/head/verify_soma77_retention.py`.
+>
+> 3. **`HeadEnd` has now been measured and caution 1 was right to warn.** It did not
+>    survive: 66.5 % / 115.0 % length variation against body controls at 2.5–4.2 %, and
+>    6–25× its detector's own controls on a shared frame set — the same class as the
+>    fingers' 4.4×. "A better bet is not a result" was the correct instinct.
+>    `docs/HEAD_ORIENTATION_MEASURED.md` §2.
 
 **Before proposing any new detector, enumerate what the two already-integrated adapters
 emit** — `workers/commercial_multiview/mediapipe_pose.py` and `apple_vision_pose.swift`.
 MediaPipe Pose carries ears, heel and foot-index; its hand model carries 21 points per hand.
 Score them on **this footage, same denominator**, against SOMA-77.
+
+> **Done for the head, 2026-08-31 — all three adapters, one frame set.** Apple Vision's
+> detections for this window already existed (they are the boxes SOMA-77 was driven
+> from); MediaPipe was run for the first time from the cached
+> `pose_landmarker_heavy.task`. **Apple Vision's ear axis is the only head axis on this
+> footage that stays inside its own detector's body-control range** — 7.6–11.0 % length
+> variation, 0.57–0.76× its shoulder control. MediaPipe's ears sit 2.1–3.4× outside its
+> controls with a 99° rotation p95; SOMA-77 has no ears and its best head axis sits
+> 6–24× outside its controls. **This is not a detector swap** — SOMA-77's body is better
+> (shin 2.3–2.7 % against Apple Vision's 5.3–12.1 %) and Apple Vision's ears resolve on
+> only 107–127 of 150 frames at 2.35–2.73 cameras. Full table and cautions:
+> `docs/HEAD_ORIENTATION_MEASURED.md` §4.
 
 ---
 

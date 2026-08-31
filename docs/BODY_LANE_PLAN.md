@@ -28,6 +28,20 @@ remains the standing blocker and both advisors' rank 0.
 > the booking from *"rent a stranger's stage"* into *"bring markers to our
 > stage"* — and delivers scale, sync and distortion as measured, owned,
 > commercially clean numbers in days rather than weeks.
+>
+> **DECIDED 2026-08-31: that is the route. The owned multicam fixture and
+> physical-constraint kit come first; the marker session follows onto our own
+> stage.** So rank 0 is no longer "book a stage" — it is **build the fixture**, which
+> is engineering this lane can start without waiting on anyone. Asked a third time
+> and answered, which is the difference from 2026-08-30.
+>
+> **And a third independent reason it is rank 0 arrived on 2026-08-31**, from a
+> different direction than the previous two. The first argument was *validating* an
+> accuracy claim; the second was §7 of `FITTER_PLAN.md` — bone length and locator
+> offset are not separately identifiable from sparse landmarks, so markers
+> **unblock a build**. The third is the head: `HEAD_ORIENTATION_MEASURED.md` §6's
+> gate can only score *parity with MAMMA*, never accuracy, because MAMMA is an
+> instrument. **Three separate workstreams are now dammed behind the same fixture.**
 
 Nothing in this lane is ground-truth-verified. Every number below is relative to
 MAMMA's retained output, or to synthetic truth that contains none of calibration
@@ -107,6 +121,39 @@ Full context: `docs/OWNED_BODY_CAPTURE_PLAN.md` and
 ---
 
 ## 3. MEASURED — with instrument and blindness inline
+
+**THE DELIVERED HEAD IS A CONSTANT, AND IT PASSES THE OBVIOUS HEAD GATE.** Measured
+2026-08-31. `positions_to_body_track` assigns `Spine`, `Chest`, `UpperChest`, `Neck`,
+`Head` and both eyes the `torso_world` frame verbatim — `commercial_multiview.py:1350` —
+so in every shipped `subject-*.body-track.npz` those joints carry the **identity
+quaternion on every frame of both subjects**, and head-relative-to-thorax spread is
+**0.000000°**. The three head landmarks the pipeline does triangulate are never read.
+**The reason this belongs at the top of §3 rather than in a head document:** scored on
+composed **world** head rotation, the constant reads **2.22° median / 6.87° p95** against
+**MAMMA's 1.93° / 6.62°** — *parity, on the metric a reasonable person reaches for
+first, while carrying no head information at all.* §1's "no gate a constant can pass" is
+usually a warning about a gate someone might write; here it is a description of what
+ships. **The same two lines freeze both feet.**
+*Instrument:* `tools/head/our_head_bar.py`, composing our chain with the same functions
+used on MAMMA's; confirmed by reading the raw quaternions.
+*Blind to:* accuracy — both sides are tracking statistics of an estimate.
+Full working, the measured MAMMA bar, the `HeadEnd` verdict, the three-adapter
+comparison and a pre-registered gate with two failing controls:
+**`docs/HEAD_ORIENTATION_MEASURED.md`**.
+
+**60 of 77 SOMA landmarks are already retained on disk — the re-run believed necessary
+is not.** `artifacts/soma77-full/work/*-observations.jsonl` carry `landmarks_soma77`,
+all 77 points, every person, every frame, all four cameras. **20,043 identity checks, 0
+mismatches** establish SOMA-77 *order*, not merely 77 entries; the 2D values are
+bit-identical (60,129 values, max difference 0.0) to the file that produced the shipped
+tracks; and replaying `reconstruct_multiview` on them reproduces the retained raw
+triangulation at **0.000000 mm**. So toes, `Neck1`, `Jaw`, `HeadEnd` and 30 finger joints
+are measurable now. This refutes `HEAD_FEET_HANDS_PLAN.md` §2 caution 2.
+*Instrument:* `tools/head/verify_soma77_retention.py`, `tools/head/associate.py`.
+*Blind to:* whether the values are correct — this establishes indexing and provenance.
+*Trap banked:* person `index` is **not** a cross-camera identity (1.84 m error on frame
+0), and a careful hand-replication of the association loop drifted 9–19 mm from the
+retained tracks. **Wrap the real pipeline to instrument it; do not re-implement it.**
 
 **The gap is the detector, not the geometry.**
 Our `triangulate_point`, unchanged, fed MAMMA's 2D lands **8.9 mm** from MAMMA's own

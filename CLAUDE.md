@@ -52,6 +52,21 @@
   sigma to it.
 - `gt_joints` and `gt_vertices` in MAMMA's retained output are **byte-copies of
   `pred_*`**. There is no ground truth on disk; never score against a `gt_` variable.
+- **MAMMA's subject indices are not ours.** On the four-camera fixture `body_id-00` is
+  our subject **1**. Both sides are two-element lists indexed 0 and 1 and nothing
+  declares the order, so pairing by index silently crosses the performers — and it is
+  invisible in every per-subject statistic taken *separately*, corrupting only the
+  comparisons. Resolve it from 3D pelvis agreement (MAMMA's world frame **is** the
+  camera-rig world frame): `tools/head/subject_map.py`.
+- **A length invariant cannot score direction.** For an axis roughly perpendicular to the
+  camera's depth direction, a differential depth error between its endpoints is *first
+  order* in the axis's direction and *second order* in its length — at 160 mm, a 50 mm
+  differential is 17° of yaw and 8 mm of length. A segment can hold its length to 11 % and
+  be useless as an orientation. The companion to "reprojection cannot score depth".
+- **Wrap the pipeline to instrument it; never re-implement it.** A careful
+  hand-replication of `reconstruct_multiview`'s association loop — same associator, same
+  gates, written from the source — drifted 9–19 mm from the retained tracks. Wrapping the
+  real function with a recording associator reproduces them at 0.0 mm.
 - SAM 3D Body is CPU-only here — float64 inside its TorchScript MHR module, out of
   reach of any shim. It also hardcodes `.cuda()`; the shims live in our worker, never
   in the vendored checkout, whose licence forbids reverse engineering.
