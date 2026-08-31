@@ -1113,13 +1113,15 @@ temporal weight — a **same-denominator violation**, this lane's own standing r
 the selection rule. Restored, both performers select the same weight and performer 0 moved
 from **fail to pass** (8.48 → 7.09 median, 22.25 → 17.75 p95).
 
-### The remaining 0.28° is not in the head, and three measurements say so
+### The remaining 0.28° is not in the head, and five measurements say so
 
 | ruled out | measurement |
 |---|---|
 | **the optimiser had not converged** | reprojection at `max_nfev` 120 and 400 is identical to four decimals on both performers |
 | **the weight grid was too coarse** | on a fine grid (50, 70, 100, 150, 200, 300, 500) weight 100 is the true argmin for both — the 3×-spaced grid was not hiding a better fit |
 | **a better thorax frame exists** | five constructions scored **by the oracle alone**, an arm containing none of our head: the current one is the **best of the five** (17.22 / 17.59 p95) and every alternative is worse, up to 32.33 |
+| **the robust loss was mis-specified** | it *is* mis-specified — it applies ρ(\|r\|), not soft-L1's ρ(r²) — and correcting it makes the fit **worse on our own reprojection**: 2.71 / 2.63 px as written, against 2.82 / 3.03 with a MAD-scaled soft-L1 and 2.98 / 3.16 with a wider one. The head detector's residuals have a fat tail, and a transform that compresses hard everywhere suppresses it better than one quadratic on a 2.7 px bulk. Reverted **on the reprojection criterion, not the gate's**, and the reason is now in the code |
+| **the fit is stuck in a poor basin** | the objective is non-convex and had only ever been seeded one way. Three seeds — triangulation, a torso-aligned head, and a constant mean pose — at two weights each: the existing seed wins on both performers (2.7148 / 2.6311 px against 2.79–2.87 and 2.69–2.76) |
 
 **What is left is the instrument floor.** The oracle — *a perfect head* — sits at
 **17.59°** of performer 1's 20° band, consuming **88 %** of it. Our candidate at 20.28°

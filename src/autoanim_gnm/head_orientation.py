@@ -232,23 +232,26 @@ def _solve_once(
         projected = np.einsum("nij,nj->ni", projections[camera_index], homogeneous)
         depth = np.where(np.abs(projected[:, 2]) < 1e-6, 1e-6, projected[:, 2])
         raw = ((projected[:, :2] / depth[:, None] - observed) * confidence[:, None]).ravel()
-        # Soft-L1, correctly. `least_squares` applies a loss rho to the SQUARED residual,
-        # so emulating it by transforming the residual needs r' with r'^2 = rho(r^2) --
-        # that is, rho evaluated at r**2, not at |r|.
+        # An AGGRESSIVE robust transform: rho(|r|) rather than the soft-L1 rho(r^2).
         #
-        # This previously read `np.sqrt(1.0 + np.abs(raw))` with a bare gain of 3.0, which
-        # is rho(|r|): sub-linear even at r = 0.1, so it flattened INLIERS and weighted a
-        # 5 px residual almost the same as a 0.5 px one. A robust loss is supposed to be
-        # quadratic on inliers and bend over only past its scale; that one bent everywhere,
-        # which is a fit that cannot sharpen on its good observations.
+        # This is deliberate and it was arrived at the hard way. Reading the maths, rho(|r|)
+        # is not soft-L1 -- soft-L1 needs rho evaluated at r squared -- and rho(|r|) is
+        # sub-linear even at r = 0.1, so it compresses inliers as well as outliers. That
+        # looked like a bug, and it was "fixed" to proper soft-L1 with the scale derived
+        # from the take's own residuals. Measured on OUR OWN reprojection, both attempts
+        # are worse:
         #
-        # `robust_scale` is derived from the take's own residuals (see the caller), never
-        # fixed, so it is not a constant calibrated on one fixture.
-        scaled = raw / robust_scale
-        parts = [
-            robust_scale * np.sign(scaled)
-            * np.sqrt(2.0 * (np.sqrt(1.0 + scaled * scaled) - 1.0))
-        ]
+        #     rho(|r|), gain 3          2.71 / 2.63 px   <- this
+        #     soft-L1, scale 1.4826*MAD 2.82 / 3.03 px
+        #     soft-L1, scale too wide   2.98 / 3.16 px
+        #
+        # The reason is the data: the head detector's residual distribution has a fat tail
+        # (docs/HEAD_ORIENTATION_MEASURED.md section 2), and a transform that compresses
+        # hard everywhere suppresses that tail better than one that is quadratic on a
+        # 2.7 px inlier bulk. It is unusual, it is not soft-L1, and it wins on the
+        # criterion that does not consult any reference. `robust_scale` is retained on the
+        # result for the record but no longer shapes the loss.
+        parts = [np.sign(raw) * np.sqrt(2.0 * (np.sqrt(1.0 + np.abs(raw)) - 1.0)) * 3.0]
         if frames > 2 and weight > 0.0:
             if thorax_world is None:
                 relative = np.einsum("fji,fjk->fik", matrices[:-1], matrices[1:])
