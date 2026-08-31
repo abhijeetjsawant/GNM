@@ -1673,6 +1673,57 @@ P1's p95 at 21.18° against ≤ 20°, and the head does not uniformly hold on th
 
 ---
 
+## 6n WHY PER-LANDMARK WEIGHTING FAILED — a mechanism for an already-banked negative
+
+CLAUDE.md banks *per-landmark inverse-variance weighting* among the ideas that "gave the
+model more to work with and failed". That was an empirical result without a mechanism.
+Here is the mechanism, and it matters because it also closes the obvious **input-side**
+reading of the goal's own headline.
+
+The solve weights each observation by the **detector's confidence and nothing else**
+(`head_orientation.py:217`), so all five head landmarks enter equally trusted — while §2
+had already shown `HeadEnd` failing at 66.5–115.0 % length variation and the eye baseline
+sitting at 59 mm with a standard deviation of 133–201 mm. That looks like an obvious defect
+to fix.
+
+`tools/head/landmark_sigma.py` derives a per-landmark reliability from **geometric
+self-consistency alone** — for each landmark, the median over partners of the SD of its
+distance to them. Skull-rigid points hold those distances; invented ones do not. It never
+touches the reference or the gate.
+
+| | Head | HeadEnd | Jaw | LeftEye | RightEye |
+|---|---:|---:|---:|---:|---:|
+| σ, subject 0 (mm) | 119.9 | **136.5** | 121.7 | 135.2 | 104.9 |
+| σ, subject 1 (mm) | 243.3 | **323.9** | 246.4 | 192.6 | 276.1 |
+| worst : best | | **1.30× / 1.68×** | | | |
+
+**Two things, and the second is the important one.**
+
+1. **The ranking is right and the spread is nearly flat.** `HeadEnd` is worst on both
+   performers, exactly as §2 found — so the instrument agrees with itself. But best-to-worst
+   is only **1.30× and 1.68×**. Inverse-variance weights derived from this differ by at most
+   1.7×, and **a 1.7× reweighting among five landmarks cannot move a fit by 1.18°.** *That
+   is why the banked attempt failed*, and it is a mechanism rather than an observation.
+
+2. **Every one of them is catastrophically noisy, together.** These are distances *within a
+   rigid skull*, which are constant by construction. Their standard deviations are
+   **105–324 mm on a head roughly 200 mm across.** The landmarks are not merely unequal —
+   **they are all bad, and bad in the same direction**, which is the signature of depth
+   error at 5 m and precisely what "reprojection cannot score depth" predicts.
+
+> **So the input-side reading of the goal's headline is answered, and answered negatively
+> for reweighting specifically.** The head *does* fail for input reasons — §2 and this
+> section both say so — but not for the reason that admits a weighting fix. **You cannot
+> repair a uniformly noisy set by adjusting the ratios inside it.** The instrument here is
+> also explicitly blind to exactly this: five landmarks drifting *together* look perfectly
+> self-consistent, so it ranks reliability within the set and cannot see that the whole set
+> is displaced.
+
+**This is the eleventh exclusion**, and unlike the previous ten it was reached by explaining
+a failure already on the books rather than by discovering a new one.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
