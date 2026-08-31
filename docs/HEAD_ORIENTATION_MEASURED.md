@@ -643,10 +643,22 @@ verdict turned into an estimator and the same architecture MAMMA uses.
 | **C1 — locked head, as delivered** | 15.99° | 27.18° | **0.00°** | — | 0.00° | **FAIL** (P1, P2) |
 | *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *= 0* | *≤ 12.51* | |
 
-## **The head passes the gate on both performers.**
+## **The head passes the gate on both performers — read §6d before quoting it.**
 
 Both subjects, all four bands, **at the same temporal weight (100) chosen by the same rule
-— no per-subject tuning.** Beside them, both degenerate controls fail and fail
+— no per-subject tuning.** An independent adversarial audit (§6d) confirms the pass is
+**not** an artifact of iterating against the gate: the pass region spans two orders of
+magnitude of weight and the verdict is invariant across every sane selection rule. It also
+lands four qualifications that belong in the same breath as the headline:
+
+1. **P2 and P4 are knob settings for the candidate**, because the fit regularises exactly
+   the quantity P4 measures, in the gate's own frame. They discriminate the *controls*;
+   they are not evidence about the candidate. **The substance of the pass is P1.**
+2. **Subject 0's P1 margin is a coin flip** — moving-block bootstrap 90 % CI
+   [5.66°, 13.15°], P(median > 8°) = 0.48. The oracle's is 0.02, so the fragility is ours.
+3. **P1's p95 barely discriminates** — the oracle sits at 17.2°/17.6° against a 20° band.
+   The load-bearing number is the median.
+4. **The neck anchor is decoration** — ablating it still passes. Beside them, both degenerate controls fail and fail
 *differently*, and the oracle passes, so the bands are neither vacuous nor unreachable.
 
 **And the fit's spread now matches the reference rather than approximating it:** 17.45°
@@ -679,11 +691,15 @@ about the reference frame, per §6a.
 |---|---|---|
 | **fit, don't triangulate** | §2b: head 2D are epipolar-clean at 0.29–0.78× the body control, so the failure is depth | P1 p95 65–89° → 21–22° |
 | **smooth the neck, not the world head** | anatomy: the head in world carries the torso's motion too | P1 p95 → 18.8° / 17.3°; P4 falls an order of magnitude |
-| **anchor the head to the neck** | anatomy: the skull cannot float; closes the position-vs-rotation trade | subject 1 p95 → 12.4°, spread → 15.8° vs reference 16.0° |
+| **anchor the head to the neck** | anatomy — but it is a *soft* prior at 10 mm that the data overrides by 12–18 mm median, so it damps rather than constrains | subject 1 p95 → 12.4° — **but ablation still passes (§6d), so this is decoration** |
 | **fix the selection rule** | it was choosing a fit 2.935 px when 2.719 px sat on the same curve | subject 0 P1 8.91° → 7.54° |
 
 **Three of the four are anatomy, and none is a tuned parameter.** The one knob in the
 model — the temporal weight — is chosen by a rule that consults only our own reprojection.
+Of the four, the audit finds **two load-bearing** (fit-not-triangulate, and the neck-space
+prior), **one forced and verified** (the thorax-frame repair, which the oracle independently
+condemns the old version of), **one that matters only for subject 0's margin** (the rule
+fix), and **one decoration** (the anchor).
 
 ### A self-attack on the metric, and what it exposed
 
@@ -728,6 +744,129 @@ mismatch, not our error's sign. And "first half" is a crude window; the right fo
 to localise the excess frame-by-frame against camera support, which §6a's next-steps
 already name.
 
+### 6d THE AUDIT — what survives, and three things that do not
+
+An independent reviewer was given the whole change chain and one instruction: **attack the
+claim that the PASS is an artifact of iterating against the gate.** It re-solved and
+re-scored every row of the sweep in an isolated harness. The verdict is that the pass is
+**not** a gate-directed artifact — and four of its findings materially qualify what the
+pass means. All four are adopted.
+
+**Why the pass is not an artifact, in the reviewer's terms:**
+- **The pass region is a plateau, not a knife-edge.** Subject 0 passes at *every* interior
+  weight from 100 to 10,000 — two orders of magnitude — and fails only at the extremes.
+- **The verdict is rule-invariant.** Argmin picks 100 (pass); the *old* rule on its
+  *original* pre-extension grid picks 3,000 (also a pass). The failure that triggered the
+  rule change existed only because a gate-blind grid extension had put 30,000 in reach.
+- **The rule is anti-tuned in operation.** Argmin selected the **worst-margin** passing
+  weight when 3,000 sat 0.024 px away with far better numbers — and it **degraded subject
+  1** (p95 12.40° → 16.07°), which was kept anyway. A gate-tuner takes neither.
+- MAMMA never enters the solver or the selection; both consult only our own reprojection.
+
+**Finding 1 — and it is the one that changes how to read the table. P2 and P4 are knob
+settings for the candidate, not evidence.** After the neck-space prior, the temporal term
+regularises frame-to-frame change of head-relative-to-thorax **in the gate's exact
+reference frame** — so P4 *is* the regularised quantity and P2's ceiling side is its
+mirror. `solve_head.py:thorax_frames()` says so in its own docstring. **They keep their
+force only as discriminators against the controls** (C2 fails P4 at 87–99°, C1 fails P2 at
+exactly 0.00°). **The substance of the candidate's pass is P1 alone** — the one band the
+solver cannot optimise, because MAMMA never enters it — plus P2's *floor* showing the knob
+was not driven to the C1 corner.
+
+**Finding 2 — subject 0's P1 pass has no statistical margin.** Per-frame agreement has
+lag-1 autocorrelation **0.99**, so a moving-block bootstrap is the right resampler. It puts
+subject 0's median of 7.54° at a 90 % CI of **[5.66°, 13.15°], with P(median > 8°) = 0.48**
+— a coin flip. Paired against the oracle on identical draws, the oracle's is 0.025/0.013,
+so **the fragility is the candidate's, not the frame-mismatch floor's**; the paired excess
+over the oracle is 2.36° [0.53, 6.62] and 1.65° [0.64, 2.65]. This is the same structure
+the split-half self-attack found. **"Passes on both performers" is a whole-take median
+over one 150-frame take, and on subject 0 it is not robust to resampling that take's
+segments.**
+
+**Finding 3 — P1's p95 arm barely discriminates.** The oracle sits at 17.22° / 17.59°
+against a 20° band, so the frame mismatch nearly saturates it. **The load-bearing number
+is the P1 median**, and the p95 should not be quoted as independent evidence.
+
+**Finding 4 — the neck anchor is decoration, and its stated justification was thin.**
+Ablating it and re-scoring at the chosen weight **still passes** subject 0 (P1 7.79° /
+18.40°, P2 16.67°, P4 3.67°). Its acceptance margin was 0.005 px, inside the curve's own
+0.02–0.04 px weight-to-weight jitter, and its causal role in the rule change is refuted
+above. It is retained because it is anatomically right and costs nothing, **not because it
+earned the pass**. Related: the argmin's *location* moves under a ≤0.03 px perturbation,
+so the argmin deserves no significance — **the plateau carries the verdict, not the
+minimum**.
+
+**Also adopted:** the reviewer found that this document's pass-declaring commit had
+**deleted the very sweep table an earlier commit promised as auditable evidence**, along
+with §6b and §6c. That was a transparency regression, and all three are restored above and
+below. A code nit — the gate fills invalid frames with identity before mean-removal,
+slightly diluting C2's mean — is immaterial here (candidate and oracle have 150/150 valid
+frames) and is recorded rather than silently fixed.
+
+> **So the honest headline is narrower than "the head passes".** It is: *the head clears a
+> pre-registered parity gate on both performers; the substance of that is P1, one of whose
+> two subjects has a coin-flip margin under resampling; the controls and the oracle make
+> the result interpretable; and none of it is shipped.*
+
+### 6b PRE-REGISTRATION — flagging under-observed frames
+
+**Written and committed before it was measured.** The measured cause of the residual P1
+gap is under-observation, not under-modelling (−0.60 correlation with camera support), and
+no prior recovers information that was never captured. The pipeline's existing rule for
+that situation is a flag, not a guess: *"missing or untrusted hand observations remain
+explicitly `review_required`; they do not fall back to an unreported canned gesture"*
+(`FINGER_TRIANGULATION_GATE.md`). This applies it to the head. **Reading the gate after
+choosing a threshold would be the tuning trap wearing a product hat**, so the rules are
+fixed here first.
+
+1. **Threshold.** A frame is `head_review_required` when **fewer than 3 cameras** see at
+   least 3 of the 5 head landmarks at confidence ≥ 0.25. *Chosen from geometry, not from
+   any score:* two rays fix a 3D point but leave the rotation of a ~120 mm object at 5 m
+   badly conditioned, and three is the smallest count that carries any redundancy.
+2. **The verdict does not move.** Pass/fail is taken from the **ungated** arm, over all
+   frames, exactly as already reported. The gated arm describes what a flagged output
+   would deliver; it cannot rescue a failing candidate.
+3. **Same denominator.** Both controls and the oracle are re-scored on the identical
+   gated population. A candidate compared against controls scored on all frames would be
+   the composition shift this lane has been caught by twice.
+4. **The flagged fraction is reported, and it is itself a result.** If it exceeds **25 %**
+   the flag is doing too much work, and the honest reading is *"this fixture is
+   under-observed"* rather than *"the estimator works"*. Stated before the number is known.
+5. **Nothing is tuned to the outcome.** The fit, its weights and the bands are unchanged.
+
+### 6c MEASURED — the flag does not help, and the oracle is why we know
+
+Run under §6b's rules, nothing changed after the fact. Flagged **19/150 (12.7 %)** and
+**23/150 (15.3 %)** — comfortably under the pre-registered 25 % ceiling, so the fixture is
+not simply under-observed.
+
+| on the **reported** frames only | P1 med | P1 p95 | P2 | P4 | |
+|---|---:|---:|---:|---:|---|
+| **ORACLE**, subject 0 / 1 | 9.06° / 12.07° | 22.66° / 21.31° | 21.37° / 17.20° | 6.81° / 7.33° | **FAIL both** |
+| candidate, subject 0 / 1 | 9.38° / 11.64° | 27.83° / 24.78° | 15.34° / 13.85° | 0.59° / 1.10° | FAIL both |
+| *…the same arms ungated* | *5.46° / 4.87°* | *17.22° / 17.59°* | | | *ORACLE PASSES* |
+
+**Every arm gets worse, and the oracle gets worse most** — 5.46° → 9.06° and 4.87° →
+12.07°. **That is the finding.** The oracle's head is MAMMA's own and owes nothing to our
+head landmarks, so if *its* agreement collapses on the retained frames, the flag is not
+removing frames where our head is bad. It is removing frames where **the two thorax
+frames happen to agree**, and those were holding the median down.
+
+**So the −0.60 correlation with camera support was real and the inference from it was
+wrong.** Low head-landmark support does predict disagreement — and it also predicts
+*favourable* thorax agreement, because both track the same thing: which way the performer
+is facing. Conditioning on it is a composition shift, the defect this lane has now been
+caught by three times, and **only the oracle arm could have exposed it.** A gate with two
+controls and no oracle would have reported "flagging improves nothing" and left the reason
+unknown; with the oracle it reports *why*, and that the proposed remedy is aimed at the
+wrong term.
+
+**Verdict unchanged, exactly as §6b pre-registered:** pass/fail comes from the ungated
+arm. **Subject 1 passes; subject 0 fails P1's median by 0.97°.** The flag is **rejected**
+— not adopted, not tuned, and recorded so it is not proposed again without a different
+threshold variable. If a flag is revisited, it must key on something that does *not*
+covary with facing direction.
+
 ### The oracle arm, and why a gate without one is only half-checked
 
 *"No gate a constant can pass"* has a dual that this lane had not written down: **a gate
@@ -752,11 +891,11 @@ once:
 > instrument and never enters a delivered artifact (CLAUDE.md). The arm exists to
 > calibrate the gate, and for nothing else.
 
-**And it re-reads P4.** The oracle's P4 is 7.08° / 7.32° against the candidate's 7.06° /
-5.94° — indistinguishable. **P4 is measuring our thorax frame's residual jitter, not the
-head's**, on both arms. Subject 0 therefore passes P4 at 7.06 against a 7.14 ceiling — a
-**1 % margin**, and one that a perfect head would not improve. Report it as *passes,
-marginally, and bounded by the reference frame* — never as headroom.
+**And it re-reads P4.** *(Superseded by the audit below: after step 4 the temporal prior
+regularises exactly the quantity P4 measures, so for the candidate P4 is a knob setting,
+not evidence. It retains force only against the controls.)* The oracle's P4 is
+7.08° / 7.32°; the candidate's, after the neck-space prior, is 3.72° / 4.66°. Both are
+dominated by our thorax frame's residual jitter rather than the head's.
 
 **The gate works, and it discriminates.** The locked head dies on spread (P2, exactly
 0.00°), the noisy head dies on jitter (P4, at 87–99°), and both the oracle and the
@@ -764,35 +903,23 @@ candidate pass. No arm passes by accident, and no constant can reach P2.
 
 ### An instrument defect in the gate itself, found and fixed — the third this session
 
-The first run of this table reported the candidate failing **P4 as well**, at 13.13° and
-37.48°. It was the gate's own reference frame, not the head.
+An early run reported the candidate failing **P4** at 13.13° and 37.48°. It was the gate's
+own reference frame, not the head.
 
-Our thorax frame was built from **raw triangulated** `Neck2`, `Hips` and shoulders while
-MAMMA's came from its **fitted** chain. The relative rotation then carries the noise of
-whichever frame is noisier — and the tell was available: the candidate head's *own world*
-frame-to-frame travel is p95 **1.16° / 4.68°**, so almost all of the 13°/37° being
-attributed to the head was the reference wobbling underneath it. **A smooth quantity
-scored against a noisy reference reads as a noisy quantity**, and that is a
-same-denominator violation with the two arms' *references* rather than their populations.
+Our thorax came from **raw triangulated** `Neck2`, `Hips` and shoulders while MAMMA's came
+from its **fitted** chain. A relative rotation carries the noise of whichever frame is
+noisier, and the tell was available: the candidate head's *own world* travel is p95
+**1.16° / 4.68°**, so nearly all of the 13°/37° was the reference wobbling underneath it.
+**A smooth quantity scored against a noisy reference reads as noisy** — a same-denominator
+violation between the two arms' *references* rather than their populations.
 
-Rebuilt from the pipeline's own **smoothed** torso positions — the estimate the shipping
-retarget actually uses — P4 falls to 7.06° and 5.94° and passes on both subjects. The
-head fit had been clearing that band all along.
-
-**The candidate still does not pass, and it is reported as failing.**
-
- **P1 is the only band it misses, and
-narrowly**: subject 1's median clears at 7.13° and both p95s land 1.4–2.5° over a 20°
-band. Agreement with MAMMA's head, frame by frame, is the one thing left.
-
-**What that remaining gap is, and what it is not.** It is not jitter — P4 passes with
-room. It is not a frozen or over-smoothed head — P2 sits at 16–19° against MAMMA's 15–16°.
-It is a **tail in per-frame agreement**: the medians are near the band and the p95s are
-not, so a minority of frames disagree with MAMMA substantially. Whether those are our
-error or MAMMA's is **not decidable here** — MAMMA is an instrument, not truth, and on
-those frames one of the two is wrong with no third opinion available. That is the
-marker session's job, and it is a cleaner statement of what the session buys than any
-previous one in this lane.
+**Independently confirmed by the audit, and it shows the fix was forced rather than
+convenient:** scored through the *original raw* thorax, the **ORACLE itself fails** —
+subject 0 on P4 (13.38° against a 7.15° ceiling), subject 1 on P1 p95 *and* P4 (28.17°,
+36.91° against 12.52°). A perfect head could not pass the old frame, so the gate's own
+dual condemns it, using an arm that owes nothing to our head landmarks. The oracle's
+raw-frame P4 of 13.38°/36.91° also matches the 13.13°/37.48° that had been charged to the
+candidate.
 
 ### Adding the ears made it worse — and the reason is the lane's own founding finding
 
