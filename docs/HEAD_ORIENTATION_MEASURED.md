@@ -1775,6 +1775,57 @@ already the sharpest of the three. **Subject 0 passes, subject 1 misses at 21.18
 
 ---
 
+## 6p THE MISS IS REAL IN DIRECTION AND UNRESOLVABLE IN MAGNITUDE
+
+CLAUDE.md carries a standing rule this number had never been held to: *"Quote a margin only
+with a block bootstrap behind it, and pair it against the oracle on identical draws so the
+fragility is attributed to the right term."* The 21.18° against the 20° band had no
+bootstrap behind it. `tools/head/bootstrap_margin.py` supplies one — 2000 moving-block
+draws, candidate and oracle resampled on **identical** draws so their difference is not
+itself random across draws.
+
+| | point | 95 % CI | **P(pass)** | oracle P(pass) | paired gap |
+|---|---:|---:|---:|---:|---:|
+| **subject 0**, block 10 | 17.77° | [14.58, 18.42] | **1.00** | 1.00 | 3.37° |
+| block 20 | 17.77° | [13.22, 18.42] | **1.00** | 1.00 | 2.99° |
+| block 30 | 17.77° | [12.97, 18.46] | **1.00** | 1.00 | 2.72° |
+| **subject 1**, block 10 | 21.18° | [11.82, **21.50**] | **0.28** | 1.00 | 4.25° |
+| block 20 | 21.18° | [10.33, **21.50**] | **0.28** | 1.00 | 4.11° |
+| block 30 | 21.18° | [10.31, **21.50**] | **0.24** | 1.00 | 3.95° |
+
+**Three findings, and the third changes what is worth doing.**
+
+1. **Subject 0's pass is robust.** P(pass) = 1.00 at every block length, with the whole
+   interval below the band. This is the first *bootstrapped* pass in this document; every
+   earlier one was a point estimate, which the standing rule says is not a pass at all.
+2. **The gate is not the fragile part — we are.** The **oracle passes with P = 1.00 on both
+   performers, on the same draws.** That is precisely what pairing is for: the fragility
+   attributes to the candidate, not to the instrument or the band. A reader could otherwise
+   have read subject 1's wide interval as the gate being unreliable. It is not.
+3. **Subject 1's miss is real in DIRECTION and unresolvable in MAGNITUDE.** It fails on
+   roughly three draws in four — so the direction is well supported and **the verdict does
+   not change: subject 1 fails.** But the interval *spans the band* ([10.31, 21.50]), so
+   **"misses by 1.18°" is a point estimate the take cannot resolve.** The stable quantity is
+   the *paired gap* — 3.95–4.25° worse than a perfect head, consistent across block lengths.
+
+> **What this means for further head work, which is the decision it informs.** On this
+> fixture, **1.18° is smaller than the instrument can resolve.** Any head improvement of
+> that order could not be demonstrated here even if it were real — it would land inside an
+> interval eleven degrees wide. So the twelve exclusions are not merely a list of things
+> that did not work: **the thirteenth would not be measurable either.** *The binding
+> constraint on the head has stopped being the estimator and become the fixture.*
+>
+> This is emphatically **not** a licence to call the failure a pass. A wide interval is not
+> permission; the point estimate fails, three draws in four fail, and the bands do not move.
+> It is a statement about what the next experiment could learn, not about what this one
+> found.
+
+**And it sharpens what the marker session is for.** The 3.95–4.25° paired gap *is* robust,
+and it is measured against an instrument rather than truth. A fixture that resolves 1° would
+turn that gap into a target. This one cannot.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
