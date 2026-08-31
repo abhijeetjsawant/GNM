@@ -176,6 +176,39 @@ across frames.
 *Instrument:* `tools/swap-harness/crlb.py`. *Blindness:* single-frame; says nothing
 about the sequence solve.
 
+**THE ARCHITECTURAL ANSWER, and it reframes every proportion defect below as one
+missing stage.** Asked by the user on 2026-08-31, looking at a mesh overlay: *"MAMMA's
+mesh looks right, ours looks broken — doesn't our point skeleton already have a mesh?
+How does MAMMA show a mesh right away?"*
+
+**MAMMA fits a body model; we do not fit anything.** MAMMA optimises SMPL-X parameters
+— per-subject **shape** *and* pose — so the model's own surface matches the
+observations. Its mesh overlays the live action **by construction**, because the mesh
+*is* the estimand. Our pipeline triangulates 19 independent points and then rotates a
+**fixed generic rig** to aim at them; the mesh is a passenger bound to that rig, it
+never sees the footage, and **nothing in the pipeline ever asks it to agree with the
+person.** Confirmed by grep: no `betas`, no shape parameter, no identity coefficient
+is estimated anywhere in the capture path. The asset is one `neutral-body.npz` — the
+same body for every performer, every take.
+
+**So the shoulder width, the per-performer sizing, the mirror and the clavicle anchor
+are not four defects. They are four symptoms of not having a fitter.** A fitting stage
+solves shape per subject, which makes limb lengths, joint placement and silhouette
+correct *together* and *by optimisation*, rather than by hand-correcting a rig that
+was never fitted to anyone.
+
+*This is row 6b of §5a — "parametric body fit: DOES NOT EXIST" — arriving from the
+other direction, and it should be read as the lane's largest structural gap rather
+than a deferred nicety.* Note also `docs/RESEARCH_2026-08-30_OPEN_PASS.md` §A7: MHR
+ships Apache-2.0 as a **model**, and **no published MHR fitting solver exists**. We
+have the body model and not the thing that fits it.
+
+*Measured consequence of having no fitter,* delivered rig against the point skeleton
+it is supposed to represent, projected into A001 at 800×450 over 780 joint-frames:
+median **11.7 px**, p95 **24.8 px**, with a systematic **−9.8 px vertical** offset —
+the rig rides consistently above the points it was built from.
+*Blindness:* one camera, so error along its ray is invisible; a picture, not a score.
+
 **The canonical rig's shoulders are 540 mm apart against a measured 346–363 — and
 that single number is the best available explanation for the ~180 mm arm error.**
 Found 2026-08-31 after the user observed, from a render, that the two performers are
