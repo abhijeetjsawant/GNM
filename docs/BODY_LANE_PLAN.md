@@ -129,13 +129,20 @@ so in every shipped `subject-*.body-track.npz` those joints carry the **identity
 quaternion on every frame of both subjects**, and head-relative-to-thorax spread is
 **0.000000°**. The three head landmarks the pipeline does triangulate are never read.
 **The reason this belongs at the top of §3 rather than in a head document:** scored on
-composed **world** head rotation, the constant reads **2.22° median / 6.87° p95** against
-**MAMMA's 1.93° / 6.62°** — *parity, on the metric a reasonable person reaches for
-first, while carrying no head information at all.* §1's "no gate a constant can pass" is
-usually a warning about a gate someone might write; here it is a description of what
-ships. **The same two lines freeze both feet.**
+composed **world** head rotation, the constant reads **2.56° median / 6.64° p95** on
+subject 1 against **MAMMA's 1.93° / 6.62°** — *parity to 0.3%, on the metric a
+reasonable person reaches for first, while carrying no head information at all.* On
+subject 0 the same constant reads **6.87°** against MAMMA's **3.44°**, i.e. 2.0×, **so
+the naive gate's verdict depends on which performer was scored** — worse than failing
+cleanly. §1's "no gate a constant can pass" is usually a warning about a gate someone
+might write; here it is a description of what ships. **The same two lines freeze both
+feet.**
 *Instrument:* `tools/head/our_head_bar.py`, composing our chain with the same functions
 used on MAMMA's; confirmed by reading the raw quaternions.
+*Pairing:* **MAMMA's subject indices are not ours** — `body_id-00` is our subject 1, and
+an earlier draft of this entry had the two crossed. Resolve every MAMMA comparison
+through `tools/head/subject_map.py`, which derives it from 3D pelvis agreement and
+asserts the 25× margin rather than trusting it.
 *Blind to:* accuracy — both sides are tracking statistics of an estimate.
 Full working, the measured MAMMA bar, the `HeadEnd` verdict, the three-adapter
 comparison and a pre-registered gate with two failing controls:

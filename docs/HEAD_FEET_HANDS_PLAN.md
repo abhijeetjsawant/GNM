@@ -104,10 +104,12 @@ tighter** than the head. The difference is landmark support, not solver quality.
 >
 > And it is worse than "a head locked to the chest would score 0° here". Scored on
 > **world** head rotation — the composed statistic, which is what a viewer sees — the
-> delivered constant reads **2.22° median / 6.87° p95** against **MAMMA's 1.93° /
-> 6.62°**. It does not score zero. **It scores at parity with the reference while
-> carrying no head information at all.** Full working:
-> `docs/HEAD_ORIENTATION_MEASURED.md` §0.
+> delivered constant reads **2.56° median / 6.64° p95** on subject 1 against **MAMMA's
+> 1.93° / 6.62°**. It does not score zero. **It scores within 0.3% of the reference
+> while carrying no head information at all** — and on subject 0 it reads 2.0× MAMMA, so
+> the naive gate's verdict depends on which performer was scored. *(MAMMA's
+> `body_id-00` is our subject **1**; pair every MAMMA comparison through
+> `tools/head/subject_map.py`.)* Full working: `docs/HEAD_ORIENTATION_MEASURED.md` §0.
 
 ---
 
@@ -194,6 +196,14 @@ Score them on **this footage, same denominator**, against SOMA-77.
 > (shin 2.3–2.7 % against Apple Vision's 5.3–12.1 %) and Apple Vision's ears resolve on
 > only 107–127 of 150 frames at 2.35–2.73 cameras. Full table and cautions:
 > `docs/HEAD_ORIENTATION_MEASURED.md` §4.
+>
+> **And do not wire the ears to head yaw off this paragraph.** Everything above scores a
+> segment's *length*. Scored on **direction** against MAMMA, the same ear axis has a yaw
+> standard deviation of **21–41°** — larger than the entire 13–16° head-on-torso signal
+> it would explain — because a differential depth error between an axis's endpoints is
+> first order in its direction and only second order in its length. The ears belong in
+> the objective of a multi-frame fit, not on a direct path to a rotation channel. See
+> `HEAD_ORIENTATION_MEASURED.md` §1's corroboration and §7.4.
 
 ---
 

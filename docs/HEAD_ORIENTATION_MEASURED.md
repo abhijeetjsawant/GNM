@@ -514,12 +514,16 @@ instrument.** Per frame, compose our world head and thorax rotations, form the r
 rotation, and score the geodesic angle against MAMMA's relative rotation on the same
 frame, both computed by the same functions.
 
+**Every threshold below is per-subject, and the subject labels are OUR indices.** MAMMA's
+`body_id-00` is our subject 1; a gate spec with crossed labels mis-scores a candidate
+just as silently as a crossed parity table did in §0. Resolve through `subject_map.py`.
+
 | must pass | |
 |---|---|
-| P1 | agreement with MAMMA's head-relative-to-thorax, **median ≤ 8°, p95 ≤ 20°** — set at roughly half MAMMA's own measured 13.3/16.3° median spread, so a candidate must explain more than half the signal |
-| P2 | relative-pose **spread about the take mean ≥ 8°**, against MAMMA's 13.3/16.3° |
+| P1 | agreement with MAMMA's head-relative-to-thorax, **median ≤ 8°, p95 ≤ 20°** — set at roughly half MAMMA's own measured median spread, **16.3° on subject 0 and 13.3° on subject 1**, so a candidate must explain more than half the signal |
+| P2 | relative-pose **spread about the take mean ≥ 8°**, against MAMMA's **16.3° / 13.3°** (subject 0 / subject 1) |
 | P3 | **0 frames** where the head axis opposes its own neck-up direction |
-| P4 | frame-to-frame relative travel p95 **≤ 3× MAMMA's** (4.15° / 2.40°) |
+| P4 | frame-to-frame relative travel p95 **≤ 3× MAMMA's** — **2.40° on subject 0, 4.15° on subject 1** |
 
 | must fail, and be shown to fail in the same report | |
 |---|---|
