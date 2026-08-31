@@ -221,6 +221,12 @@ class ReconstructionDiagnostics:
     interpolated_joint_fraction: float
     temporally_rejected_subject_frames: int
     contact_frames: tuple[tuple[int, int], ...]
+    # One entry per subject describing whether head orientation was SOLVED or fell back
+    # to the torso frame, and why. A fallback is the pre-existing behaviour -- a head
+    # welded to the chest -- and it must never be silent, because that constant scores at
+    # parity with a research reference on frame-to-frame jitter while carrying no head
+    # information at all. See docs/HEAD_ORIENTATION_MEASURED.md.
+    head_orientation: tuple[dict[str, Any], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -245,6 +251,7 @@ class ReconstructionDiagnostics:
             "interpolated_joint_fraction": self.interpolated_joint_fraction,
             "temporally_rejected_subject_frames": self.temporally_rejected_subject_frames,
             "contact_frames": [list(value) for value in self.contact_frames],
+            "head_orientation": [dict(value) for value in self.head_orientation],
         }
 
 
@@ -1222,6 +1229,46 @@ def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
     return output, float(np.mean(missing_before))
 
 
+def _quat_from_matrix(matrix: np.ndarray) -> np.ndarray:
+    """Rotation matrix -> xyzw quaternion. Rows are normalised first.
+
+    CLAUDE.md records why: an unnormalised, scaled matrix drives `acos` past its clamp and
+    every joint then reads 0.00 degrees apart. The same hazard applies to any trace-based
+    quaternion extraction, so normalise rather than assume.
+    """
+    rotation = np.asarray(matrix, dtype=np.float64)
+    norms = np.linalg.norm(rotation, axis=1, keepdims=True)
+    if not np.all(norms > 1e-9):
+        raise CommercialMultiviewError("Rotation matrix has a degenerate row")
+    rotation = rotation / norms
+    trace = float(np.trace(rotation))
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        w = 0.25 * scale
+        x = (rotation[2, 1] - rotation[1, 2]) / scale
+        y = (rotation[0, 2] - rotation[2, 0]) / scale
+        z = (rotation[1, 0] - rotation[0, 1]) / scale
+    elif rotation[0, 0] > rotation[1, 1] and rotation[0, 0] > rotation[2, 2]:
+        scale = math.sqrt(1.0 + rotation[0, 0] - rotation[1, 1] - rotation[2, 2]) * 2.0
+        w = (rotation[2, 1] - rotation[1, 2]) / scale
+        x = 0.25 * scale
+        y = (rotation[0, 1] + rotation[1, 0]) / scale
+        z = (rotation[0, 2] + rotation[2, 0]) / scale
+    elif rotation[1, 1] > rotation[2, 2]:
+        scale = math.sqrt(1.0 + rotation[1, 1] - rotation[0, 0] - rotation[2, 2]) * 2.0
+        w = (rotation[0, 2] - rotation[2, 0]) / scale
+        x = (rotation[0, 1] + rotation[1, 0]) / scale
+        y = 0.25 * scale
+        z = (rotation[1, 2] + rotation[2, 1]) / scale
+    else:
+        scale = math.sqrt(1.0 + rotation[2, 2] - rotation[0, 0] - rotation[1, 1]) * 2.0
+        w = (rotation[1, 0] - rotation[0, 1]) / scale
+        x = (rotation[0, 2] + rotation[2, 0]) / scale
+        y = (rotation[1, 2] + rotation[2, 1]) / scale
+        z = 0.25 * scale
+    return _unit(np.asarray((x, y, z, w), dtype=np.float64))
+
+
 def _quat_inverse(value: np.ndarray) -> np.ndarray:
     quaternion = np.asarray(value, dtype=np.float64)
     output = quaternion.copy()
@@ -1305,7 +1352,28 @@ def positions_to_body_track(
     *,
     sample_rate_hz: int,
     provenance_sha256: str,
+    head_world_rotations: np.ndarray | None = None,
 ) -> BodyTrack:
+    """Convert triangulated positions into a rig track.
+
+    ``head_world_rotations`` is ``[frame, 3, 3]`` in the SAME world as the positions --
+    capture Z-up metres -- from
+    :func:`autoanim_gnm.head_orientation.solve_head_orientation`. It is converted to the
+    rig's Y-up world here, by the same convention the positions are, so a caller never has
+    to hold two frames in its head.
+    When it is ``None`` this function behaves exactly as it always has -- the head, the
+    neck and both eyes take the torso's frame, which makes head orientation a **constant**.
+    That default is retained only so existing callers are unaffected; it is not a good
+    head.
+
+    When rotations are supplied, **the whole head-on-torso rotation is placed on `Head`**
+    and `Neck` keeps the torso frame. Distributing it across the neck chain would look
+    better on a mesh and is **unmeasured**: the gate in `docs/HEAD_ORIENTATION_MEASURED.md`
+    scores the head, and the obvious source for a split -- the reference fitter's own
+    neck/head ratio -- is barred, because no shipped constant may be fitted on a
+    reference-derived artifact (`docs/BODY_LANE_PLAN.md`). Splitting it is a named next
+    step, not something to guess here.
+    """
     source = np.asarray(positions_world_z_up_m, dtype=np.float64)
     if (
         source.ndim != 3
@@ -1331,6 +1399,18 @@ def positions_to_body_track(
     identity = np.asarray((0.0, 0.0, 0.0, 1.0))
 
     rest = {joint.name: np.asarray(joint.rest_translation_m, dtype=np.float64) for joint in DETAILED_HUMANOID.joints}
+    head_rotations = None
+    if head_world_rotations is not None:
+        head_rotations = np.asarray(head_world_rotations, dtype=np.float64)
+        if head_rotations.shape != (frames, 3, 3):
+            raise CommercialMultiviewError("Head rotations must be [frame, 3, 3]")
+        if not np.isfinite(head_rotations).all():
+            raise CommercialMultiviewError("Head rotations must be finite")
+        # Capture is Z-up and the rig is Y-up with camera-world +Y becoming canonical -Z;
+        # `points` above applies that to positions, and this applies the same change of
+        # basis to rotations. A rotation transforms as C R C^T, not as a point.
+        basis = np.asarray(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)))
+        head_rotations = np.einsum("ij,fjk,lk->fil", basis, head_rotations, basis)
     for frame in range(frames):
         p = points[frame]
         at = lambda name: p[JOINT_INDEX[name]]
@@ -1350,10 +1430,17 @@ def positions_to_body_track(
         root_translation[frame] = pelvis - rest["Hips"]
         _set_world(local, world, frame, "Root", identity)
         _set_world(local, world, frame, "Hips", hips_world)
-        for name in ("Spine", "Chest", "UpperChest", "Neck", "Head"):
+        for name in ("Spine", "Chest", "UpperChest", "Neck"):
             _set_world(local, world, frame, name, torso_world)
+        # The head is the one joint here with its own evidence. With no solve it inherits
+        # the torso and becomes a constant; with one it carries the measured orientation,
+        # and the eyes follow the head rather than the chest.
+        head_world = torso_world
+        if head_rotations is not None:
+            head_world = _quat_from_matrix(head_rotations[frame])
+        _set_world(local, world, frame, "Head", head_world)
         for name in ("LeftEye", "RightEye"):
-            _set_world(local, world, frame, name, torso_world)
+            _set_world(local, world, frame, name, head_world)
 
         # NOTE: measuring these directions from the joint's own forward-kinematic
         # origin instead of from the captured landmarks was tried on 2026-08-30 and
@@ -1436,6 +1523,92 @@ def positions_to_body_track(
     return projected
 
 
+
+def _thorax_frames(positions_world_z_up_m: np.ndarray) -> np.ndarray:
+    """Per-frame torso frame, [frame, 3, 3], columns (across, back, up).
+
+    The same construction `positions_to_body_track` uses for `torso_world` and the same
+    one the head gate scores against, built here from the SMOOTHED positions so the
+    reference the head's temporal prior is expressed in is no noisier than the head.
+    An earlier version of the gate built it from raw triangulation and charged the
+    reference's own wobble to the head; see docs/HEAD_ORIENTATION_MEASURED.md.
+    """
+    up = positions_world_z_up_m[:, JOINT_INDEX["neck"]] - positions_world_z_up_m[:, JOINT_INDEX["root"]]
+    across = (
+        positions_world_z_up_m[:, JOINT_INDEX["left_shoulder"]]
+        - positions_world_z_up_m[:, JOINT_INDEX["right_shoulder"]]
+    )
+    z = up / np.linalg.norm(up, axis=1, keepdims=True)
+    x = across - z * np.einsum("ni,ni->n", across, z)[:, None]
+    x = x / np.linalg.norm(x, axis=1, keepdims=True)
+    return np.stack([x, np.cross(z, x), z], axis=2)
+
+
+def _solve_head_for_subject(
+    cameras: Sequence[CalibratedCamera],
+    observations_by_camera: Sequence[Sequence[dict[str, Any]]],
+    head_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None,
+    head_landmark_names: Sequence[str],
+    assignment: np.ndarray,
+    positions_world_z_up_m: np.ndarray,
+    *,
+    minimum_confidence: float,
+) -> tuple[np.ndarray | None, dict[str, Any]]:
+    """Solve this subject's head, or say plainly why it was not solved.
+
+    Returning ``None`` restores the pre-existing behaviour -- head, neck and eyes welded to
+    the torso -- which is a **constant**, not a neutral default. Every path out of here
+    therefore carries a status the diagnostics publish, because that constant scores at
+    parity with a research reference on the obvious jitter metric while carrying no head
+    information at all (docs/HEAD_ORIENTATION_MEASURED.md).
+    """
+    if head_landmarks_by_camera is None:
+        return None, {
+            "status": "not_attempted",
+            "reason": "no head landmarks supplied; head is welded to the torso",
+        }
+    if not head_landmark_names:
+        return None, {
+            "status": "not_attempted",
+            "reason": "head landmarks supplied without names",
+        }
+    from .head_orientation import HeadOrientationError, solve_head_orientation
+
+    frames = len(observations_by_camera[0])
+    marks = len(head_landmark_names)
+    observations = np.full((frames, len(cameras), marks, 3), np.nan, dtype=np.float64)
+    for frame in range(frames):
+        for camera in range(len(cameras)):
+            person = int(assignment[frame, camera])
+            if person < 0:
+                continue
+            try:
+                sample = np.asarray(
+                    head_landmarks_by_camera[camera][frame][person], dtype=np.float64
+                )
+            except (IndexError, TypeError, ValueError):
+                continue
+            if sample.shape == (marks, 3):
+                observations[frame, camera] = sample
+
+    try:
+        thorax = _thorax_frames(positions_world_z_up_m)
+        solved = solve_head_orientation(
+            cameras,
+            observations,
+            head_landmark_names,
+            thorax_world=thorax,
+            neck_origin_world_m=positions_world_z_up_m[:, JOINT_INDEX["neck"]],
+            minimum_confidence=minimum_confidence,
+        )
+    except HeadOrientationError as error:
+        return None, {
+            "status": "fell_back_to_torso_frame",
+            "reason": str(error),
+        }
+    return solved.rotations_world, {"status": "solved", **solved.as_dict()}
+
+
 def reconstruct_multiview(
     cameras: Sequence[CalibratedCamera],
     observations_by_camera: Sequence[Sequence[dict[str, Any]]],
@@ -1457,6 +1630,14 @@ def reconstruct_multiview(
     # search is (subjects!)^cameras, which is 1,296 assignments at three
     # subjects and four cameras and 110 billion at four subjects and eight.
     associator: Callable[..., tuple[np.ndarray, float]] = associate_frame_graph,
+    # Per-camera head landmarks, indexed [camera][frame][person] -> (landmark, 3) of
+    # (x, y, confidence) in the same pixel space as the observations. Supplying them turns
+    # the head from a CONSTANT welded to the torso into a solved orientation; omitting them
+    # keeps the previous behaviour exactly, and the diagnostics say which happened. The
+    # detector must emit head landmarks beyond the 19-joint contract for this to be
+    # available -- SOMA-77's `landmarks_soma77` is the case it was built for.
+    head_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None = None,
+    head_landmark_names: Sequence[str] = (),
 ) -> tuple[tuple[BodyTrack, ...], ReconstructionDiagnostics, np.ndarray, np.ndarray]:
     """Reconstruct every subject from calibrated multiview observations.
 
@@ -1509,6 +1690,11 @@ def reconstruct_multiview(
     last_good_frame = np.full(subject_count, -1, dtype=np.int64)
     temporally_rejected_subject_frames = 0
     frames_without_association = 0
+    # Which detection each subject was matched to, so head landmarks travel with the
+    # association instead of being re-derived. Recovered by identity against the arrays the
+    # associator returned -- it hands back the very rows it was given.
+    head_assignment = np.full((frames, subject_count, len(cameras)), -1, dtype=np.int64)
+    head_rows_unmatched = 0
     for frame in range(frames):
         detections = [
             [_person_array(person) for person in values[frame]["people"]]
@@ -1539,6 +1725,21 @@ def reconstruct_multiview(
             )
             cost = float("nan")
         association_costs.append(cost)
+        if head_landmarks_by_camera is not None:
+            for subject in range(subject_count):
+                for camera in range(len(cameras)):
+                    row = associated[subject, camera]
+                    if not np.isfinite(row).any():
+                        continue
+                    hits = [
+                        index
+                        for index, candidate in enumerate(detections[camera])
+                        if np.array_equal(row, candidate, equal_nan=True)
+                    ]
+                    if len(hits) == 1:
+                        head_assignment[frame, subject, camera] = hits[0]
+                    else:
+                        head_rows_unmatched += 1
         candidate_world = np.full(
             (subject_count, len(JOINT_NAMES), 3), np.nan, dtype=np.float64
         )
@@ -1625,6 +1826,7 @@ def reconstruct_multiview(
     source_hash = provenance.hexdigest()
     contacts: list[tuple[int, int]] = []
     recovered_counts: list[float] = []
+    head_reports: list[dict[str, Any]] = []
     for subject in range(subject_count):
         # Recover single-ray joints from limb-length and temporal constraints
         # before falling back to interpolation, so an evidence-based estimate is
@@ -1641,12 +1843,24 @@ def reconstruct_multiview(
         positions, fraction = _fill_and_smooth_positions(resolved)
         smoothed.append(positions)
         interpolated.append(fraction)
+        head_rotations, head_report = _solve_head_for_subject(
+            scaled_cameras,
+            observations_by_camera,
+            head_landmarks_by_camera,
+            head_landmark_names,
+            head_assignment[:, subject],
+            positions,
+            minimum_confidence=minimum_confidence,
+        )
+        head_report["unmatched_association_rows"] = head_rows_unmatched
+        head_reports.append(head_report)
         track = positions_to_body_track(
             positions,
             sample_rate_hz=sample_rate_hz,
             provenance_sha256=sha256(
                 f"{source_hash}:{subject}".encode("ascii")
             ).hexdigest(),
+            head_world_rotations=head_rotations,
         )
         tracks.append(track)
         contacts.append(
@@ -1670,6 +1884,7 @@ def reconstruct_multiview(
         interpolated_joint_fraction=float(np.mean(interpolated)),
         temporally_rejected_subject_frames=temporally_rejected_subject_frames,
         contact_frames=tuple(contacts),
+        head_orientation=tuple(head_reports),
     )
     # `smoothed` is post-interpolation and Savitzky-Golay filtered, so it cannot
     # measure raw triangulation noise. `world` is what triangulation actually

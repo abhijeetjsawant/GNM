@@ -171,6 +171,40 @@ def _detect_soma77(frames: list[Path], boxes: Path, output: Path) -> None:
     output.write_text(completed.stdout, encoding="utf-8")
 
 
+# SOMA-77 indices for the five landmarks that are rigid to the skull. `Head` is the
+# skeletal joint inside the skull -- NOT a nose, whatever the 19-joint contract calls it
+# (workers/commercial_multiview/soma77_pose.py:80). `HeadEnd` gives the skull its long
+# axis and the eyes give the lateral one, which together fix an absolute orientation;
+# without them the fit is correct only up to a constant and must not be shipped.
+HEAD_LANDMARK_NAMES = ("Head", "HeadEnd", "Jaw", "LeftEye", "RightEye")
+_SOMA77_HEAD_INDICES = (6, 7, 8, 9, 10)
+
+
+def _head_landmarks(records: list[dict[str, Any]]) -> list[list[Any]]:
+    """Per-frame, per-person head landmarks, or empty when the detector has none.
+
+    Returns `[frame][person] -> (5, 3)`. A detector without `landmarks_soma77` yields
+    empty rows, the head solve is not attempted, and the delivered head stays welded to
+    the torso -- which the diagnostics record explicitly, because that fallback is a
+    constant and not a neutral default.
+    """
+    import numpy as np
+
+    out: list[list[Any]] = []
+    for record in records:
+        people: list[Any] = []
+        for person in record.get("people", ()):
+            marks = person.get("landmarks_soma77")
+            if not marks or len(marks) <= max(_SOMA77_HEAD_INDICES):
+                people.append(None)
+                continue
+            people.append(
+                np.asarray([marks[index] for index in _SOMA77_HEAD_INDICES], dtype=float)
+            )
+        out.append(people)
+    return out
+
+
 def _camera_rig_from_mamma_fixture(path: Path) -> dict[str, Any]:
     """Convert only fixture calibration fields; no MAMMA runtime is imported."""
 
@@ -224,6 +258,11 @@ def main() -> int:
     _compile_worker()
     camera_names = ("A001", "B001", "C001", "D001")
     observations: list[list[dict[str, Any]]] = []
+    # Head landmarks beyond the 19-joint contract, when the detector emits them. They turn
+    # the delivered head from a constant welded to the torso into a solved orientation --
+    # see docs/HEAD_ORIENTATION_MEASURED.md. Only SOMA-77 carries them today, so any other
+    # detector keeps the previous behaviour and the run report says so.
+    head_landmarks: list[list[list[Any]]] = []
     input_hashes: dict[str, str] = {}
     for camera_name in camera_names:
         video = (arguments.videos / f"{camera_name}.mp4").resolve(strict=True)
@@ -250,14 +289,24 @@ def main() -> int:
                 soma_path.unlink(missing_ok=True)
             _detect_soma77(frames, observation_path, soma_path)
             observation_path = soma_path
-        observations.append(load_observation_jsonl(observation_path))
+        records = load_observation_jsonl(observation_path)
+        observations.append(records)
+        head_landmarks.append(_head_landmarks(records))
     rig_value = _camera_rig_from_mamma_fixture(arguments.calibration_yaml.resolve(strict=True))
     rig_path = output / "camera-rig.json"
     write_json(rig_path, rig_value)
     cameras = load_camera_rig(rig_path)
+    # Every camera must contribute at least one real head observation. `any(frame ...)`
+    # alone would pass on a detector that emits people with no head landmarks at all.
+    solvable = all(
+        any(person is not None for frame in camera for person in frame)
+        for camera in head_landmarks
+    )
     tracks, diagnostics, world_positions, raw_world_positions = reconstruct_multiview(
         cameras,
         observations,
+        head_landmarks_by_camera=head_landmarks if solvable else None,
+        head_landmark_names=HEAD_LANDMARK_NAMES if solvable else (),
         subject_count=arguments.subject_count,
         sample_rate_hz=30,
     )
