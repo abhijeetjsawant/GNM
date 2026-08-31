@@ -1341,7 +1341,13 @@ def positions_to_body_track(
         torso_up = neck - pelvis
         hips_world = _frame_alignment((0.0, 1.0, 0.0), (-1.0, 0.0, 0.0), torso_up, hip_across)
         torso_world = _frame_alignment((0.0, 1.0, 0.0), (-1.0, 0.0, 0.0), torso_up, shoulder_across)
-        root_translation[frame] = pelvis - np.asarray((0.0, 0.98, 0.0))
+        # Read the hips' rest height from the skeleton rather than repeating it.
+        # It was written as a literal (0, 0.98, 0), duplicating body.py's canonical
+        # Hips offset -- harmless while every character is canonical, and a latent
+        # defect the moment per-performer proportions are stamped: the root would be
+        # placed using one hips height while the exporter adds back another, floating
+        # or sinking the whole character by the difference, at the feet.
+        root_translation[frame] = pelvis - rest["Hips"]
         _set_world(local, world, frame, "Root", identity)
         _set_world(local, world, frame, "Hips", hips_world)
         for name in ("Spine", "Chest", "UpperChest", "Neck", "Head"):
