@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, '/Users/abhi_macbook/Projects/apps/AutoAnim/tools/head')
 sys.path.insert(0, '/Users/abhi_macbook/Projects/apps/AutoAnim/src')
 import os; os.chdir('/Users/abhi_macbook/Projects/apps/AutoAnim')
-from autoanim_gnm.commercial_multiview import JOINT_INDEX, load_camera_rig
+from autoanim_gnm.commercial_multiview import JOINT_INDEX, load_camera_rig, _thorax_frames
 from head_gate import frame_from
 from mamma_head_bar import geodesic_deg
 
@@ -30,7 +30,10 @@ COL_LOCK = (150,150,150)
 
 rig = {c.name: c for c in load_camera_rig('artifacts/soma77-full/camera-rig.json')}
 cams = {n: rig[n].scaled(1280,720) for n in CAMS}
-blob = np.load('artifacts/head-lane/head-solve.npz')
+# The SHIPPED solve, not the prototype's. This read `head-solve.npz` -- a different
+# estimator from the one the pipeline delivers -- so the gizmos drawn here were not
+# the head anyone receives. Same trap as the gate's old default; see §6j.
+blob = np.load('artifacts/head-lane/head-solve-shipped.npz')
 
 def font(sz):
     for p in ('/System/Library/Fonts/Supplemental/Arial Bold.ttf','/System/Library/Fonts/Helvetica.ttc'):
@@ -43,8 +46,11 @@ for s in (0,1):
     R = blob[f'subject_{s:02d}_head_world']; P = blob[f'subject_{s:02d}_head_position_m']
     T = blob[f'subject_{s:02d}_template_m']
     sm = np.load(f'artifacts/commercial-multiview-soma77/subject-{s:02d}.body-track.npz')['triangulated_world_positions_z_up_m']
-    th = frame_from(sm[:,JOINT_INDEX['neck']]-sm[:,JOINT_INDEX['root']],
-                    sm[:,JOINT_INDEX['left_shoulder']]-sm[:,JOINT_INDEX['right_shoulder']])
+    # The PIPELINE's torso frame, imported rather than rebuilt. This used to call
+    # frame_from on the raw smoothed landmarks, which is a second definition of one
+    # quantity -- and two copies is how the figure and the gate come to print different
+    # "take medians" for the same head.
+    th = _thorax_frames(sm)
     up_l = T[NAMES.index('HeadEnd')] - T[NAMES.index('Head')]; up_l /= np.linalg.norm(up_l)
     r_l  = T[NAMES.index('LeftEye')] - T[NAMES.index('RightEye')]
     r_l  = r_l - up_l*(r_l@up_l); r_l /= np.linalg.norm(r_l)
@@ -127,7 +133,8 @@ for frame in FRAMES:
     med = float(np.median(seps)) if seps else float('nan')
     a0,a1 = state[0]['ang'][frame], state[1]['ang'][frame]
     sd.text((14, H-44),
-            f"Head turn away from its own take-average, this frame: {a0:.1f}° (performer 0), {a1:.1f}° (performer 1). Take medians 17.4° and 16.5°.",
+            f"Head turn away from its own take-average, this frame: {a0:.1f}° (performer 0), {a1:.1f}° (performer 1). "
+            f"Take medians {np.median(state[0]['ang']):.1f}° and {np.median(state[1]['ang']):.1f}°.",
             font=font(12), fill=(150,158,170))
     sd.text((14, H-26),
             f"Median projected separation between the two gizmos across these four views: {med:.0f} px at source scale. Where it looks small, projection is hiding "
