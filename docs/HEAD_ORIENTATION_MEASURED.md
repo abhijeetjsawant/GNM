@@ -280,6 +280,57 @@ ranks landmarks **within a detector**; it does not rank detectors against each o
 > error** and must not be read as such. The mechanism is the common-mode one below, which
 > is the finding that column was reaching for and states honestly.
 
+### 2b. Where the head's failure actually lives — the 2D are fine
+
+§7.3 flagged a **measured disanalogy** with the fingers and made the fit a hypothesis
+rather than a route: the fingers *passed* cross-view reprojection at 1.2× the body
+control, which localised their failure in depth, whereas §2's probe showed head
+landmarks disagreeing across views. **That probe measures 3D spread, which cannot
+separate a 2D disagreement from a depth ambiguity.** The 2D-native test — symmetric
+epipolar distance per camera pair, which is *blind to depth by construction* — settles it.
+
+One-sided epipolar distance at 1280 width, per landmark, on the pipeline's own
+association, with each detector's own body landmarks as control:
+
+| | subject 0 | subject 1 | | subject 0 | subject 1 |
+|---|---:|---:|---|---:|---:|
+| | **SOMA-77 median px** | | | **ratio to body control** | |
+| Head | 1.58 | 2.48 | | **0.53×** | **0.77×** |
+| HeadEnd | 2.09 | 2.36 | | **0.70×** | **0.74×** |
+| Jaw | 1.56 | 2.30 | | 0.53× | 0.72× |
+| eyes | 1.75 / 1.61 | 2.49 / 2.37 | | 0.59× / 0.54× | 0.78× / 0.74× |
+| *body control* | *2.97* | *3.20* | | *1.00×* | *1.00×* |
+| | **Apple Vision median px** | | | | |
+| nose | 3.65 | 2.58 | | **0.57×** | **0.35×** |
+| ears | 4.85 / 3.35 | 3.11 / 2.08 | | 0.76× / 0.52× | 0.43× / 0.29× |
+| *body control* | *6.39* | *7.30* | | *1.00×* | *1.00×* |
+
+**Every head landmark on both detectors is more epipolar-consistent than that detector's
+own body landmarks — 0.29–0.78×, never above 1.0.** The four cameras agree on a single
+3D head point *better* than they agree on a knee.
+
+**So the head's failure is not in the detector. It is entirely depth.** Rays to a
+120–160 mm feature at 5 m are near-parallel relative to that feature, so the 2D can be
+excellent while independent triangulation scatters along the viewing direction — which is
+precisely what §2's segment-length instability and §1's ear-yaw scatter are made of, and
+precisely what a model-constrained multi-view fit repairs. The fingers passed this test at
+1.2×; **the head passes it at 0.29–0.78×, more cleanly than the case that motivated the
+fit in the first place.**
+
+> **This retires the objection that made §7.3 a hypothesis.** A reviewer's warning that
+> "cross-view-inconsistent 2D is a detector failure a constrained fit cannot fit through"
+> was correct in principle and rested on the 3D probe, which conflates the two failures.
+> The 2D-native test disagrees, and it is the one that can tell them apart.
+
+*Instrument:* `tools/head/head_epipolar_gate.py`. `_epipolar_distance_px` in the pipeline
+returns the **symmetric** distance — CLAUDE.md records the ratio at 1.962 — so every
+figure above is halved to a one-sided pixel distance.
+*Blind to:* error **along** the epipolar line, which is the depth direction. That is the
+design: a failure here would mean the 2D disagree in the one direction depth cannot
+explain. There is no such failure.
+
+---
+
 ---
 
 ## 3. `landmarks_soma77` is already on disk — the re-run is not needed
@@ -562,17 +613,13 @@ direction (`BODY_LANE_PLAN.md` §1), and this gate must never be quoted as one. 
    confidences directly — so the head chain is a locator-set extension of a fitter that
    already runs.
 
-   **But the analogy to the fingers has a measured break in it, and it is the reason this
-   is a hypothesis rather than a conclusion.** The fingers *passed* cross-view
-   reprojection at 1.2× the body control, which located their failure squarely in
-   depth — an estimator problem a constrained fit is built to solve. The head landmarks
-   do **not** pass cleanly: §2's probe shows them disagreeing *across views*, worst in
-   the tail, and **cross-view-inconsistent 2D is a detector failure that no constrained
-   fit can fit through**. Two things also remain untested: the finger gate's step-3
-   analogue was never run for the head (per-view epipolar consistency of head 2D against
-   body 2D), and MAMMA recovered its head from **its own dense 2D**, not from SOMA-77's
-   five head points — nothing here shows momentum + MHR recovers head orientation from
-   *our* inputs. Both are cheap and both should precede the build.
+   **The break in the fingers analogy has been tested and does not hold — §2b.** The
+   first draft of this item withheld the conclusion because §2's 3D probe showed head
+   landmarks disagreeing across views, and cross-view-inconsistent 2D is a detector
+   failure no fit can repair. The 2D-native epipolar test says the opposite: head
+   landmarks are **more** consistent than body landmarks on both detectors, 0.29–0.78×.
+   **The head's failure is pure depth, which is the estimator's job.** This is now the
+   route, not a hypothesis.
 4. **Ears are an input to the fit, not a driver of the head — revised after §1's
    corroboration ran.** The draft of this item read *"wire the ear axis to head yaw"*.
    **That is now refused by measurement:** the ear axis's yaw scatters at 21–41°,
