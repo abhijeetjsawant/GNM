@@ -1553,6 +1553,59 @@ fixture. The bands did not move.
 
 ---
 
+## 6l PRE-REGISTRATION — a PHYSICAL criterion for the temporal weight
+
+§6k showed argmin reprojection is unsound in principle and named the one untried
+alternative: **choose the weight by human neck kinematics.** This section fixes that rule
+and its threshold **before the selection is computed and before the gate is run.** It is
+written first so it cannot be tuned afterwards.
+
+### The rule
+
+> **Select the SMALLEST temporal weight whose resulting head motion is physiologically
+> possible.**
+
+Smallest, because the temporal prior is a concession: every unit of it trades away
+fidelity to the data. The least regularisation that yields physically possible motion is
+the one that concedes least. This is the standard way to set a prior weight when a hard
+physical constraint is available, and it is decidable from **our own solve alone** — it
+never consults MAMMA, the gate, or reprojection.
+
+### The threshold, fixed now
+
+Head angular speed **relative to the thorax** — the neck's own motion, not the body
+carrying it. `head_orientation.py` already records the physiological figure it was written
+against: *"~1800 deg/s vs human peak 500-800 deg/s"*. Taking the **permissive** end so the
+rule does not over-smooth:
+
+| | |
+|---|---|
+| bound | **800 °/s** |
+| at 30 fps | **26.67 °/frame** |
+| statistic | **p99** of per-frame relative travel |
+| tie-break | if no weight qualifies, the solve fails rather than shipping an implausible head |
+
+**p99, not max**, because a single frame at a detector dropout should not select the
+smoothing for a whole take; **and max is reported beside it** so a rule passing on p99
+while carrying an absurd max is visible rather than hidden.
+
+### What is pre-registered about the outcome
+
+1. **The gate result will be reported whatever it is** — pass or fail, on both performers,
+   and even if this rule selects a *worse* head than argmin reprojection does. A physical
+   criterion that loses to the unsound one is itself a finding and will be published as
+   one.
+2. **The bands do not move.** They have not moved once and they do not move here.
+3. **The rule is not re-specified after seeing the result.** If 800 °/s selects a head that
+   fails, the answer is that the head fails — not a second threshold.
+
+> **Why this is not gate-tuning.** Gate-tuning is choosing a knob by the score it produces.
+> This rule is stated in units of neck physiology, with its threshold taken from a figure
+> already in the source before this question was asked, and it is computable with the gate
+> deleted. **If it were tuning, it could not have been written down first.**
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
