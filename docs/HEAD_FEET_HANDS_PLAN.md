@@ -19,7 +19,11 @@ the repair does not start from the wrong premise. Read `docs/BODY_LANE_PLAN.md` 
 >    fingers. §2's "single most promising head lead" no longer holds.
 > 4. **The bar §7 demands is measured**, and Apple Vision's ears — already
 >    integrated, already run on this footage — are the best-conditioned head input
->    found.
+>    found. **The ear lead was then closed by two further measurements**; see §2.
+> 5. **The head now PASSES a pre-registered gate on both performers**, with both
+>    degenerate controls failing and an oracle arm confirming the bands are reachable.
+>    It is **not shipped** — `commercial_multiview.py:1350` still welds the delivered
+>    head to the torso. `docs/HEAD_ORIENTATION_MEASURED.md` §6a.
 
 ---
 

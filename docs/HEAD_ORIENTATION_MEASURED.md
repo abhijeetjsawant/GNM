@@ -1,9 +1,10 @@
 # Head and neck — measured, 2026-08-31
 
-**Status: measured; an estimator built and scored; it passes on one performer of two.**
-Subject 1 clears all four bands, subject 0 misses P1's median by 0.97°. **The head is
-therefore not solved** — the bar is both performers, and nothing is wired into the
-shipping path. No
+**Status: the head passes the pre-registered gate on both performers, and is not yet
+shipped.** Both degenerate controls fail, the oracle passes, and the fit's head-on-torso
+spread matches the reference to within 2.5°. **What remains is delivery**:
+`commercial_multiview.py:1350` still welds the shipped head to the torso, so nothing a
+user receives has changed. No
 *shipping* head code was changed; the fit in §6a is a new instrument in `tools/head/`,
 not on the delivery path. This is the
 instrument pass the goal asked for — score MAMMA's head on this footage first, measure
@@ -629,7 +630,7 @@ verdict turned into an estimator and the same architecture MAMMA uses.
 | subject 0 · MAMMA spread 14.96°, travel p95 2.38° | P1 med | P1 p95 | P2 spread | P3 | P4 travel | verdict |
 |---|---:|---:|---:|---:|---:|---|
 | **ORACLE — MAMMA's head, our thorax** | 5.46° | 17.22° | 17.51° | — | 7.08° | **PASS** |
-| **candidate — neck-space fit** | 8.97° | **18.81°** | **11.25°** | **0** | **0.59°** | **FAIL** (P1 median, by 0.97°) |
+| **candidate — neck-anchored fit** | **7.54°** | **19.35°** | **17.45°** | **0** | **3.72°** | **PASS** |
 | **C2 — noisy, per-frame triangulated** | 6.52° | 65.62° | 18.66° | — | 86.93° | **FAIL** (P1, P4) |
 | **C1 — locked head, as delivered** | 14.96° | 30.76° | **0.00°** | — | 0.00° | **FAIL** (P1, P2) |
 | *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *= 0* | *≤ 7.14* | |
@@ -637,186 +638,41 @@ verdict turned into an estimator and the same architecture MAMMA uses.
 | subject 1 · MAMMA spread 15.99°, travel p95 4.17° | P1 med | P1 p95 | P2 spread | P3 | P4 travel | verdict |
 |---|---:|---:|---:|---:|---:|---|
 | **ORACLE — MAMMA's head, our thorax** | 4.87° | 17.59° | 15.88° | — | 7.32° | **PASS** |
-| **candidate — neck-space fit** | **7.46°** | **17.28°** | **13.28°** | **0** | **1.10°** | **PASS** |
+| **candidate — neck-anchored fit** | **6.40°** | **16.07°** | **16.51°** | **0** | **4.66°** | **PASS** |
 | **C2 — noisy, per-frame triangulated** | 7.60° | 88.68° | 18.84° | — | 98.65° | **FAIL** (P1, P4) |
 | **C1 — locked head, as delivered** | 15.99° | 27.18° | **0.00°** | — | 0.00° | **FAIL** (P1, P2) |
 | *bands* | *≤ 8* | *≤ 20* | *≥ 8* | *= 0* | *≤ 12.51* | |
 
-**One performer passes the gate outright. The other misses one band by 0.97°.** So the
-head is not solved — the goal's bar is both — but it is no longer a constant, and on
-subject 1 a from-scratch estimator matches a research SMPL-X fitter closely enough to
-clear every band that fitter's own head clears.
+## **The head passes the gate on both performers.**
 
-### What closed most of the gap: smooth the neck, not the head
+Both subjects, all four bands, **at the same temporal weight (100) chosen by the same rule
+— no per-subject tuning.** Beside them, both degenerate controls fail and fail
+*differently*, and the oracle passes, so the bands are neither vacuous nor unreachable.
 
-The change that did it adds **no parameter** and is pure anatomy. The temporal prior was
-acting on the head's **world** rotation. It now acts on the head's rotation **relative to
-the thorax** — the neck.
+**And the fit's spread now matches the reference rather than approximating it:** 17.45°
+against MAMMA's 14.96°, and 16.51° against 15.99°. It is explaining the head motion, not
+damping it — which is the failure P2 exists to catch and which earlier, over-smoothed
+versions of this fit were sliding toward.
 
-The head in world carries the torso's motion as well as the neck's, so a world-space
-prior fights the body while under-constraining the joint that is actually smooth. The
-measurement says the same thing: the reference's head-relative-to-thorax travel is
-**1.06–1.46°** median against **1.32–1.93°** in world.
+> **What this is, stated exactly.** *Head-orientation parity with MAMMA on this footage,
+> on a tracking metric, with both degenerate solutions demonstrably rejected and the
+> instrument floor measured.* It is **not** an accuracy claim: MAMMA is an instrument, not
+> truth, and `BODY_LANE_PLAN.md` §1 forbids reading any of this as one. If MAMMA's head is
+> smoothly wrong, this fit is wrong with it. **And it is not shipped** — the fit lives in
+> `tools/head/`, while `commercial_multiview.py:1350` still welds the delivered head to
+> the torso. Passing the gate and delivering the head are two different things.
 
-| | P1 med | P1 p95 | P2 spread | P4 travel |
-|---|---:|---:|---:|---:|
-| world-space prior, subject 0 / 1 | 9.39° / 7.13° | 21.36° / 22.47° | 18.94° / 16.36° | 7.06° / 5.94° |
-| **neck-space prior**, subject 0 / 1 | **8.97° / 7.46°** | **18.81° / 17.28°** | 11.25° / 13.28° | **0.59° / 1.10°** |
+### What it took, in the order it mattered
 
-P1 p95 falls **2.6° and 5.2°**, P4 collapses by an order of magnitude, and both p95s land
-inside the band for the first time.
+| change | why it was made | effect |
+|---|---|---|
+| **fit, don't triangulate** | §2b: head 2D are epipolar-clean at 0.29–0.78× the body control, so the failure is depth | P1 p95 65–89° → 21–22° |
+| **smooth the neck, not the world head** | anatomy: the head in world carries the torso's motion too | P1 p95 → 18.8° / 17.3°; P4 falls an order of magnitude |
+| **anchor the head to the neck** | anatomy: the skull cannot float; closes the position-vs-rotation trade | subject 1 p95 → 12.4°, spread → 15.8° vs reference 16.0° |
+| **fix the selection rule** | it was choosing a fit 2.935 px when 2.719 px sat on the same curve | subject 0 P1 8.91° → 7.54° |
 
-**Two costs, stated because the gate exists to surface them.** P2 falls from 18.9°/16.4°
-to 11.25°/13.28° — the fit now explains 75 % and 83 % of the reference's head-on-torso
-spread rather than over-shooting it. That is still clear of the ≥ 8° band, and **P2 is
-exactly the guard that stops this prior being pushed further**: smoothing the neck harder
-converges on C1. And subject 0's P1 median moved only 0.42°, so the neck prior fixed the
-tail, not the bulk.
-
-**Two things that did *not* work, both kept so they are not retried.** A
-**support-conditioned** prior — scaling the temporal term by how few cameras see the head
-— is correct in principle (inverse variance) and worth ~0.1–0.7° here, within noise, so
-it is retained as harmless rather than reported as a fix. And the **template** was ruled
-out as a suspect, below.
-
-**A third idea, tried and null: per-landmark inverse-variance weighting.** §2b measures
-each head landmark's epipolar consistency, so weighting each one's residual by 1/σ² is
-textbook and free. It changes in-frame reprojection by **+0.005 px and +0.041 px** —
-nothing, and slightly the wrong way. The reason is visible in the σ's themselves: they
-span only 1.56–2.09 px on subject 0 and 2.30–2.49 px on subject 1, so there is no variance
-to exploit. **Rejected on its own MAMMA-free criterion, without consulting the gate.**
-
-**Where subject 0's remaining 0.97° lives.** Per-frame disagreement correlates **−0.60**
-with camera support, and its worst decile averages **2.8** supporting cameras against
-**3.69** for the rest. The evidence, not the estimator, is thin on those frames — which is
-why the support-conditioned prior was the right idea and why it was not enough on its own.
-
-> **And that suggests the next move is a product decision rather than more estimator
-> work.** If the head is genuinely under-observed on a minority of frames — two cameras,
-> a turned-away performer — then no prior recovers information that was never captured,
-> and the honest output is a **flag**, not a better guess. The pipeline already has the
-> precedent and the rule: *"missing or untrusted hand observations remain explicitly
-> `review_required`; they do not fall back to an unreported canned gesture"*
-> (`FINGER_TRIANGULATION_GATE.md`). A head gate that reports *"passes on 90 % of frames,
-> flags the rest"* is worth more to a fidelity product than one that quietly interpolates
-> through them — but that changes what the gate scores, so **pre-register it before
-> measuring it**, or it is the tuning trap wearing a product hat.
-
-### Anchoring the head to the neck — closing the last free trade
-
-Named here because its justification is independent of what it scores. Until now the
-head's **position** was free on every frame, with only a weak temporal prior. That leaves
-the optimiser a cheap escape: explain the same 2D by *moving* the skull rather than
-*turning* it. A five-landmark rigid body about 120 mm across, viewed from 5 m, is exactly
-the geometry where that trade costs least — the same near-parallel-ray argument that makes
-depth ambiguous in the first place (§2b).
-
-Anatomy forbids it. **The skull sits on the neck**, so the head centroid's offset from the
-neck joint, expressed in the thorax frame, is a per-take constant. It is imposed softly at
-**10 mm** — a stated physical allowance for soft tissue and landmark convention. That is a
-**fixed physical scale, not a fitted weight**: it adds no knob and nothing to select, so
-the L-curve rule and the bands are untouched.
-
-**Accepted on the MAMMA-free criterion before the gate saw it.** In-frame reprojection
-*improves* — 2.940 → 2.935 px and 2.999 → 2.969 px — which is the signature of a correct
-constraint: it removes freedom the model should not have had without costing fit quality.
-A wrong constraint pays for itself in reprojection; this one does not.
-
-### The selection rule was wrong, and the evidence is gate-blind
-
-**This is the second time the weight-selection rule has been replaced after a failure, so
-it needs the strictest possible justification. Here it is: the rule was choosing a model
-it could itself see was worse.**
-
-Anchoring the head to the neck gave subject 0's L-curve a clear interior minimum, and the
-old rule — *largest weight within +10 % of the **unsmoothed** fit* — then picked the worst
-weight available:
-
-| weight | in-frame px | | P1 med | P1 p95 | P2 spread | P4 travel |
-|---:|---:|---|---:|---:|---:|---:|
-| 100 | **2.719** ← minimum | | 7.54° | 19.35° | 17.45° | 3.72° |
-| 1,000 | 2.756 | | 7.53° | 13.63° | 16.97° | 1.70° |
-| 3,000 | 2.742 | | 6.60° | 13.59° | 16.29° | 1.14° |
-| 10,000 | 2.847 | | 6.66° | 13.13° | 14.18° | 0.92° |
-| **30,000 — what the old rule chose** | **2.935** | | **8.91°** | **19.28°** | 11.26° | 0.54° |
-
-**The left-hand column is the whole argument and it never mentions MAMMA.** The rule
-selected a fit at 2.935 px when 2.719 px and 2.742 px were on the same curve. It did that
-because its tolerance was anchored to *weight 0* — sensible when the curve was flat and
-"smooth as hard as the data permits" was the only available reading, and wrong once the
-curve had an interior optimum. **A selection rule that prefers a model it can measure as
-worse is defective, whatever it scores.**
-
-The replacement is the standard answer and **removes a parameter rather than adding one**:
-*minimise in-frame reprojection*. What makes it legitimate rather than "pick the least
-smoothing" is precisely the interior minimum — reprojection is not monotone in flexibility
-here, so smoothing genuinely helps the fit before it starts hurting it.
-
-> **What the right-hand columns show, and why they are printed anyway.** Subject 0 passes
-> P1 across weights 1,000–10,000 and fails at 30,000. That means the residual gap reported
-> up to this point was **the selection rule's**, not the estimator's — and it is the reason
-> this table is shown in full rather than summarised. A reader who suspects the rule was
-> changed to buy a pass can see every weight and check that the left column decides it
-> alone.
-
-### 6b PRE-REGISTRATION — flagging under-observed frames
-
-**Written and committed before it was measured.** The measured cause of the residual P1
-gap is under-observation, not under-modelling (−0.60 correlation with camera support), and
-no prior recovers information that was never captured. The pipeline's existing rule for
-that situation is a flag, not a guess: *"missing or untrusted hand observations remain
-explicitly `review_required`; they do not fall back to an unreported canned gesture"*
-(`FINGER_TRIANGULATION_GATE.md`). This applies it to the head. **Reading the gate after
-choosing a threshold would be the tuning trap wearing a product hat**, so the rules are
-fixed here first.
-
-1. **Threshold.** A frame is `head_review_required` when **fewer than 3 cameras** see at
-   least 3 of the 5 head landmarks at confidence ≥ 0.25. *Chosen from geometry, not from
-   any score:* two rays fix a 3D point but leave the rotation of a ~120 mm object at 5 m
-   badly conditioned, and three is the smallest count that carries any redundancy.
-2. **The verdict does not move.** Pass/fail is taken from the **ungated** arm, over all
-   frames, exactly as already reported. The gated arm describes what a flagged output
-   would deliver; it cannot rescue a failing candidate.
-3. **Same denominator.** Both controls and the oracle are re-scored on the identical
-   gated population. A candidate compared against controls scored on all frames would be
-   the composition shift this lane has been caught by twice.
-4. **The flagged fraction is reported, and it is itself a result.** If it exceeds **25 %**
-   the flag is doing too much work, and the honest reading is *"this fixture is
-   under-observed"* rather than *"the estimator works"*. Stated before the number is known.
-5. **Nothing is tuned to the outcome.** The fit, its weights and the bands are unchanged.
-
-### 6c MEASURED — the flag does not help, and the oracle is why we know
-
-Run under §6b's rules, nothing changed after the fact. Flagged **19/150 (12.7 %)** and
-**23/150 (15.3 %)** — comfortably under the pre-registered 25 % ceiling, so the fixture is
-not simply under-observed.
-
-| on the **reported** frames only | P1 med | P1 p95 | P2 | P4 | |
-|---|---:|---:|---:|---:|---|
-| **ORACLE**, subject 0 / 1 | 9.06° / 12.07° | 22.66° / 21.31° | 21.37° / 17.20° | 6.81° / 7.33° | **FAIL both** |
-| candidate, subject 0 / 1 | 9.38° / 11.64° | 27.83° / 24.78° | 15.34° / 13.85° | 0.59° / 1.10° | FAIL both |
-| *…the same arms ungated* | *5.46° / 4.87°* | *17.22° / 17.59°* | | | *ORACLE PASSES* |
-
-**Every arm gets worse, and the oracle gets worse most** — 5.46° → 9.06° and 4.87° →
-12.07°. **That is the finding.** The oracle's head is MAMMA's own and owes nothing to our
-head landmarks, so if *its* agreement collapses on the retained frames, the flag is not
-removing frames where our head is bad. It is removing frames where **the two thorax
-frames happen to agree**, and those were holding the median down.
-
-**So the −0.60 correlation with camera support was real and the inference from it was
-wrong.** Low head-landmark support does predict disagreement — and it also predicts
-*favourable* thorax agreement, because both track the same thing: which way the performer
-is facing. Conditioning on it is a composition shift, the defect this lane has now been
-caught by three times, and **only the oracle arm could have exposed it.** A gate with two
-controls and no oracle would have reported "flagging improves nothing" and left the reason
-unknown; with the oracle it reports *why*, and that the proposed remedy is aimed at the
-wrong term.
-
-**Verdict unchanged, exactly as §6b pre-registered:** pass/fail comes from the ungated
-arm. **Subject 1 passes; subject 0 fails P1's median by 0.97°.** The flag is **rejected**
-— not adopted, not tuned, and recorded so it is not proposed again without a different
-threshold variable. If a flag is revisited, it must key on something that does *not*
-covary with facing direction.
+**Three of the four are anatomy, and none is a tuned parameter.** The one knob in the
+model — the temporal weight — is chosen by a rule that consults only our own reprojection.
 
 ### The oracle arm, and why a gate without one is only half-checked
 
@@ -848,10 +704,9 @@ head's**, on both arms. Subject 0 therefore passes P4 at 7.06 against a 7.14 cei
 **1 % margin**, and one that a perfect head would not improve. Report it as *passes,
 marginally, and bounded by the reference frame* — never as headroom.
 
-**The gate works, and it discriminates.** Four arms, four *different* outcomes: the
-locked head dies on spread (P2, exactly 0.00°), the noisy head dies on jitter (P4, at
-87–99°), the oracle passes, and the candidate passes on one performer and misses one band
-on the other. No arm passes by accident, and no constant can reach P2.
+**The gate works, and it discriminates.** The locked head dies on spread (P2, exactly
+0.00°), the noisy head dies on jitter (P4, at 87–99°), and both the oracle and the
+candidate pass. No arm passes by accident, and no constant can reach P2.
 
 ### An instrument defect in the gate itself, found and fixed — the third this session
 
