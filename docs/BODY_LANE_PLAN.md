@@ -235,6 +235,27 @@ nothing in `build_macap_hik_skeleton.py`, `bind_macap_mesh_to_hik.py` or
 yaw** — feed it a mirrored rig and nothing would object. The verdict above rests on
 the three SMPL-X measurements, not on a validator. Do not repeat the validator claim.
 
+**THE CHEAP FIX WAS TRIED AND REJECTED BY ITS OWN GATE, 2026-08-31.** Flipping the
+secondary axis in both `_frame_alignment` calls from `(−1,0,0)` to `(1,0,0)`:
+
+| | facing dot vs true | round-trip control (arm A) | retarget cost (arm B) |
+|---|---:|---:|---:|
+| before | −0.42 / −0.90 | **0.00 mm** | 105.4 / 120.8 mm |
+| after the flip | **+0.42 / +0.90** ✓ | **162.7 / 176.8 mm** ✗ | 195.3 / 215.4 mm ✗ |
+
+**It fixes the facing and destroys the pose.** Reverted; source is back at `HEAD` and
+the control reads 0.00 mm again. The limbs stay on the correct sides — `LeftHand`
+remains nearer the left wrist — but every joint moves, because the chains hang off a
+torso frame that has rotated 180° while the chains themselves still aim at world
+directions. **A rig this mirrored cannot be corrected from the alignment alone.**
+
+*What the fix actually requires, now evidenced rather than suspected:* mirror the
+**skeleton and the bound mesh together**. `DETAILED_HUMANOID` is
+`CANONICAL_HUMANOID.joints + _finger_joints()`, so it means changing the canonical
+skeleton's X and moving every vertex weight to its mirrored bone — an asset change,
+not a code change. **Both gates must pass afterwards: arm A back at 0.00 mm, and the
+camera overlay sitting on the performer.**
+
 *Blast radius, still real.* `DETAILED_HUMANOID` is shared by the capture retarget,
 `speech_motion`, `soma_motion`, `body_export`, `unified_gltf`'s skin matrices and
 `body_binding`'s socket geometry. Changing the convention moves all of them at once,

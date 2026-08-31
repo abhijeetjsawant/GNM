@@ -19,8 +19,8 @@ argv = sys.argv[sys.argv.index("--")+1:]
 OUT, CAMNAME, FRAME = argv[0], argv[1], int(argv[2])
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
-for p in ("artifacts/commercial-multiview-soma77/subject-00.glb",
-          "artifacts/commercial-multiview-soma77/subject-01.glb"):
+GLB_DIR = argv[4] if len(argv) > 4 else "artifacts/commercial-multiview-soma77"
+for p in (f"{GLB_DIR}/subject-00.glb", f"{GLB_DIR}/subject-01.glb"):
     bpy.ops.import_scene.gltf(filepath=p)
 for o in [o for o in bpy.data.objects if o.type == "MESH" and "MPFB" not in o.name]:
     bpy.data.objects.remove(o, do_unlink=True)
