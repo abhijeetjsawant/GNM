@@ -1606,6 +1606,73 @@ while carrying an absurd max is visible rather than hidden.
 
 ---
 
+## 6m THE PHYSICAL CRITERION LOSES — published because it was pre-registered
+
+§6l fixed the rule and the threshold before computing anything, and pre-registered that the
+result would be published *even if the physical criterion selected a worse head than the
+unsound one.* **It did. Here it is.**
+
+### What the rule selected
+
+`tools/head/physical_weight.py`. Per-frame head travel **relative to the thorax**, so this
+is the neck's own motion and not the body carrying it:
+
+| weight | s0 p99 °/frame | s0 °/s | s1 p99 °/frame | s1 °/s | physical? |
+|---|---:|---:|---:|---:|---|
+| **0** | 31.50 | **945** | 93.70 | **2811** | **no** |
+| **30** | 9.99 | **300** | 9.98 | **299** | **yes ← selected** |
+| 100 | 4.75 | 143 | 6.84 | 205 | yes |
+| 300 | 2.47 | 74 | 3.80 | 114 | yes |
+| 1 000 … 100 000 | 1.72 → 0.31 | 52 → 9 | 2.09 → 0.21 | 63 → 6 | yes |
+
+**The rule works exactly as intended and selects weight 30 on both performers.** The
+discrimination is clean and not a near-miss: unregularised heads move at 945 and 2811 °/s,
+comfortably impossible, and weight 30 lands at 300 and 299 °/s — squarely inside human neck
+range, and *the same answer on two different people*, which is what a physical criterion
+should do and what argmin reprojection never did.
+
+### And it is worse. On both performers.
+
+| P1 p95 | subject 0 | subject 1 |
+|---|---:|---:|
+| **physical rule, weight 30** | **22.19° FAIL** | **23.37° FAIL** |
+| argmin reprojection, weight 100 | 17.77° PASS | 21.18° FAIL |
+| oracle floor | 14.14° | 16.30° |
+| band | ≤ 20° | ≤ 20° |
+
+**The principled criterion is beaten by the one §6k proved unsound, and beaten by 4.4° and
+2.2°.** No threshold is re-specified and the bands do not move, exactly as pre-registered.
+
+### What this actually tells us, which is worth more than a pass would have been
+
+**The head needs more smoothing than physiology alone can justify.** Physiology rules out
+the *impossible* — it kills weight 0 decisively — but among the possible it cannot choose,
+because at weight 30 the head is still moving 300 °/s and **that motion is detector noise
+wearing a physically plausible speed.** A neck *can* turn that fast; on this footage, ours
+is not. The physical bound is a necessary condition and nowhere near a sufficient one.
+
+> **So the temporal weight is not identifiable from our own solve alone.** Every criterion
+> computable without a reference has now been tried and has failed for a stated reason:
+> held-out cross-validation (detector noise is correlated across cameras within a frame),
+> the L-curve (replaced), argmin reprojection (§6k: unsound in principle — converged it
+> must select the degenerate end), and now neck physiology (necessary, not sufficient).
+> **What remains is a criterion that consults a reference, and using the gate's own
+> reference for it would be gate-tuning.** That is the wall, stated plainly.
+
+### Status of the shipped configuration — unchanged, and now for a stated reason
+
+**Nothing changes.** The pipeline keeps argmin reprojection at weight 100. It is retained
+**not because it is principled — §6k shows it is not — but because it is measurably better
+and the principled alternative was tried, pre-registered, and lost.** That is a weaker
+justification than this lane would like and it is written down as weak, rather than
+dressed up.
+
+**This is the tenth exclusion.** A physical criterion for the temporal weight does not
+rescue the head. **The gate stands where §6h left it: subject 0 passes, subject 1 misses
+P1's p95 at 21.18° against ≤ 20°, and the head does not uniformly hold on this fixture.**
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
