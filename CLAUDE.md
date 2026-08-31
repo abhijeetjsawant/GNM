@@ -73,6 +73,17 @@
   neck), and so did every instrument repair (the crossed subject map, the gate's own
   thorax frame, the weight-selection rule). **When a fit is short, suspect the instrument
   and the free parameters before reaching for more input.**
+- **A band the solver regularises is a knob setting, not evidence.** The head fit's
+  temporal prior acts on exactly the quantity the gate's jitter band measures, in the
+  gate's own reference frame — so that band, and the ceiling side of the spread band,
+  discriminate only the *controls*. When designing a gate, ask of every band: *can the
+  candidate optimise this directly?* If yes it proves nothing about the candidate, and the
+  claim rests on whatever remains.
+- **Whole-take medians on one 150-frame take are not robust passes.** Per-frame agreement
+  here has lag-1 autocorrelation 0.99, so ordinary resampling is invalid; a moving-block
+  bootstrap put a 7.54° median against an 8° band at P(fail) = 0.48. Quote a margin only
+  with a block bootstrap behind it, and pair it against the oracle on identical draws so
+  the fragility is attributed to the right term.
 - **A gate needs an ORACLE arm, not just failing controls.** "No gate a constant can
   pass" has a dual: *a gate no oracle can pass is miscalibrated*. Score the reference's
   own answer through your pipeline's frames — it measures the floor your frame
