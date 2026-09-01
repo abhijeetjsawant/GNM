@@ -2115,6 +2115,63 @@ gate cannot tell a better head from a luckier one.
 
 ---
 
+## 6u THE GATE AT NATIVE WIDTH — the body gains, the head does not
+
+§6s promised the gate result *"whatever it is, on both performers"*. §6t answered the input
+question and skipped this with a justification; the justification was reasonable and the
+promise was unconditional, so here it is.
+
+| | candidate p95 s0 / s1 | oracle p95 s0 / s1 | verdict |
+|---|---:|---:|---|
+| width 1280 | 17.77 / 21.18 | 14.14 / 16.30 | PASS / FAIL |
+| **width 3840** | **15.66 / 30.50** | **10.46 / 13.13** | PASS / FAIL |
+
+**The verdict does not change. Subject 1 still fails, and at native width it fails by more
+— 30.50° against a ≤ 20° band.** The head does not hold.
+
+### But the arms move in opposite directions, and that is the finding
+
+**The ORACLE improved on both performers, substantially: 14.14 → 10.46 and 16.30 → 13.13.**
+The oracle is a *perfect* head carried through **our** torso frame, so every degree it scores
+is frame mismatch. **Native width made our torso frame markedly sharper — the instrument
+floor dropped by 3.2–3.7°.**
+
+That is a real result and it is about the **body**, not the head. The seventeen mapped body
+joints *are* resolution-limited in exactly the way §6q predicted the head would be, and were
+not. Shoulders, neck and root are large, well-textured, unambiguous targets; tripling their
+pixels tightens them, the torso frame built from them tightens, and the gate's floor falls
+with it.
+
+**The head went the other way.** Subject 0's candidate improved (17.77 → 15.66) roughly in
+step with its floor, while subject 1's degraded sharply (21.18 → 30.50) even as its floor
+improved. Decomposed, our own head error on subject 1 grew from ~9.8° to roughly 17° in a
+*better* frame — consistent with §6t, where that performer's within-head scatter was the one
+number that got **worse** at native width (246.4 → 278.3 mm), and with the solve landing on a
+different temporal weight (300 rather than 100).
+
+> **So resolution splits the two problems cleanly, and that is worth more than the pass
+> would have been.** *The body is resolution-limited. The head is not.* Every solver-side
+> and input-side head intervention in this document has now failed, while the single
+> intervention that touched the **body** moved the floor 3.5° on the first attempt. §6h said
+> the frame was the larger half of the score; this is the first thing that has ever moved it.
+
+### What this changes, and what it does not
+
+- **It does not rescue the head.** Thirteen exclusions stand, subject 1 fails worse, and the
+  bands have not moved.
+- **It does not license shipping native width.** The candidate got worse on one performer,
+  and §6p established this fixture cannot resolve differences of ~1°; a 9° swing on subject 1
+  is well outside that, but a *change for the worse* is not something to adopt because its
+  other arm improved.
+- **It does identify the first measured lever on the floor**, and it points the same way as
+  the outside review's top recommendation (§6r #1: fit body and head jointly, thorax as a
+  latent state, 0.5–2°). A sharper torso frame is what that recommendation buys, and native
+  width is a crude preview that it is real.
+
+**Fourteenth exclusion for the head; the first positive result for the body frame.**
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
