@@ -1884,6 +1884,95 @@ original diagnosis, arrived at the long way round, and now with a number attache
 
 ---
 
+## 6r AN INDEPENDENT REVIEW REACHES THE SAME VERDICT — and finds two things this document missed
+
+A research pass was commissioned from an outside model, given the solver, this document, and
+the four failed selection criteria, and asked the deliberately open question: *is weight
+selection even where the remaining error lives?* Its verdict, reached without access to §6q:
+
+> *"No — scalar-weight selection is not where the remaining error principally lives."*
+
+It reasons from the same three measurements §6h–§6n produced: the whole weight path moves
+the pixel residual **0.4 %** against a **1.18°** miss; our head-only error is **9.91° vs
+9.80°** across performers while the *floors* differ by 2.16°; and the head landmarks carry
+**105–324 mm** of within-head scatter. **Two instruments, run independently, landed on the
+same diagnosis** — which is worth more than either alone.
+
+### What it adds that this document did not have
+
+**Two code observations, both verified against the source rather than taken on trust.**
+
+1. **The temporal weight enters as a residual multiplier, so the implied temporal
+   *precision* is proportional to `w²`, not `w`.** Confirmed at
+   `head_orientation.py:262`. It does not change any fit — it is a reparameterisation —
+   but it means every statistical treatment of `w` in §6k–§6m was working in the wrong
+   units, and any future evidence/REML formulation must not inherit that confusion.
+2. **One scalar controls two different physical quantities.** The same `w` weights angular
+   acceleration *and*, at a hardcoded `0.02` ratio, translational acceleration
+   (`head_orientation.py:262-268`). **That ratio has never been examined.** These are two
+   variance components wearing one knob, and no selection rule — principled or not — can
+   choose them separately while they are welded together. *This document tuned, excluded
+   and pre-registered around a parameter it had not fully characterised.*
+
+It also correctly read that `robust_scale` is computed and then **does not shape the loss**
+— true, and already deliberate and documented (§6f), so not a defect. Worth noting that an
+outside reader flagged it, since that is what an unexplained live-but-unused value looks
+like from outside.
+
+### Where it agrees, and where that agreement is load-bearing
+
+Its "do not bother" list independently reproduces this document's exclusions: naïve
+GCV/SURE, a finer weight grid, tighter tolerances as a selector, more leave-one-camera-out
+CV, retuning the 800 °/s threshold, and further per-landmark reweighting. **Those were
+excluded here by measurement and there by theory, which is the strongest form of
+agreement available without ground truth.**
+
+On the four criteria that failed, it is more precise than §6m was about *why*: each of
+Morozov, GCV, SURE and evidence-maximisation is **applicable in principle and blocked in
+practice by the same missing object — a calibrated measurement covariance `C`,
+specifically its cross-camera common-mode component.** §6a's correlated-noise finding
+killed leave-one-camera-out because the correlation was unmodelled, not because
+correlation is fatal. **That reframes the wall: it is not "no criterion exists", it is "no
+criterion is identifiable until the detector's noise covariance is measured."**
+
+It also flags a trap worth recording: **do not use the 0.99 agreement autocorrelation as
+the detector covariance.** That figure is an output/reference statistic, not raw
+observation noise, and treating it as such would be the same class of error as scoring
+against a `gt_` variable that is a byte-copy of `pred_`.
+
+### Its ranked recommendations, against ours
+
+| | recommendation | expected | cost |
+|---|---|---|---|
+| **1** | **Fit body and head jointly, thorax as a latent kinematic state** | 0.5–2° | 3–8 weeks |
+| **2** | **Better observations** — dense skull-anchored landmarks, predicted uncertainty, explicit common-camera bias term | 1–4° | 1–3 months |
+| 3 | Estimate the measurement covariance *first* — it is what makes 4 identifiable | 0° direct | 1–2 weeks |
+| 4 | Replace scalar selection with pooled Lie-group evidence/REML | 0–1° | 2–4 weeks |
+| 5 | Make the optimiser path-correct (GNC, both path directions, hysteresis diagnostics) | 0–0.3° | 2–5 days |
+
+**Its top two are this lane's top two**, reached independently: a model-constrained torso
+(§6h, §6o, `FITTER_PLAN.md`) and better input (§6q's thirty-pixel head). It is explicit
+that the degree ranges are *planning hypotheses, not measurements* — *"without an
+admissible reference, no honest method can measure realized orientation gain in degrees"* —
+which is §6p's conclusion restated from the outside.
+
+And on the shipped configuration it is blunter than §6m: `w = 100` should be retained as
+**frozen legacy behaviour carrying an explicit review flag, never described as a principled
+per-take estimate.** §6m already declined to dress it up; this sharpens the label.
+
+### On its own literature search
+
+It reports finding **no** published multi-view head/hand/body-pose work that selects a
+per-take temporal strength from correlated multi-view detections without ground truth.
+Anipose fixes strengths empirically, Fechteler et al. hardcode `w = 10³`, TEMPO and
+SmoothNet learn temporal behaviour from training data, and MAMMA itself — the reference in
+this document — penalises joint acceleration without any no-ground-truth procedure for
+choosing that term. **The machinery exists in the state-space and variance-component
+literature and has not crossed into markerless pose.** So the wall §6m hit is not local
+incompetence; it is where the field is.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
