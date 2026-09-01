@@ -26,6 +26,7 @@ from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_n
 from autoanim_gnm.commercial_multiview import (  # noqa: E402
     JOINT_INDEX, JOINT_NAMES, load_camera_rig,
 )
+from sized_skeleton import sized_skeleton  # noqa: E402
 
 TRACKS = Path("artifacts/commercial-multiview-soma77")
 OUT = Path("artifacts/head-lane/overlay-scene.json")
@@ -79,14 +80,24 @@ def main() -> None:
         world = forward_kinematics_positions(
             track["root_translation_m"], track["local_rotations_xyzw"], skeleton=skeleton
         )
+        # the SAME delivered rotations on a skeleton scaled to this performer's own bones.
+        # This is the arm that shows the MOCAP; the canonical one shows mocap plus retarget.
+        fitted, limbs = sized_skeleton(skeleton, cap)
+        world_fit = forward_kinematics_positions(
+            track["root_translation_m"], track["local_rotations_xyzw"], skeleton=fitted
+        )
+        fitz = np.stack([world_fit[..., 0], -world_fit[..., 2], world_fit[..., 1]], axis=-1)
         # rig Y-up -> capture Z-up is the inverse of (x, z, -y)
         rigz = np.stack([world[..., 0], -world[..., 2], world[..., 1]], axis=-1)
         frames = len(cap)
         cap_px = np.stack([project(camera, cap[f]) for f in range(frames)])
         rig_px = np.stack([project(camera, rigz[f]) for f in range(frames)])
+        fit_px = np.stack([project(camera, fitz[f]) for f in range(frames)])
         subjects.append({
             "capture": np.round(np.nan_to_num(cap_px, nan=-9999.0), 1).tolist(),
             "rig": np.round(np.nan_to_num(rig_px, nan=-9999.0), 1).tolist(),
+            "fitted": np.round(np.nan_to_num(fit_px, nan=-9999.0), 1).tolist(),
+            "limbs": limbs,
         })
         good = np.isfinite(cap_px).all(axis=2).mean()
         print(f"subject {s}: {frames} frames, capture points on screen {good:.1%}, "
