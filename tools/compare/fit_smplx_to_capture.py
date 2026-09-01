@@ -52,17 +52,38 @@ CANONICAL_MM = {   # our delivered rig, for the comparison column
 }
 
 
+# SMPL-X betas are standardised by construction -- the shape space is built so that a real
+# population sits near N(0,1) -- so an L2 pull toward zero is the model's own prior, not a
+# knob. It is REQUIRED here, not optional: 10 free betas against 11 limb targets hit every
+# target exactly and produced an anatomically impossible body, with the head 624 mm BELOW
+# the pelvis. The unconstrained directions of the shape space are free to do anything, and
+# without a prior they do. A sub-millimetre fit on the terms you constrained is not evidence
+# the body is right; it is evidence you had enough parameters.
+BETA_PRIOR_MM = 12.0
+
+
 def fit_shape(body: SMPLXBody, measured: dict) -> tuple[np.ndarray, dict]:
     pairs = [(LIMB_TO_SMPLX[k], v) for k, v in measured.items() if k in LIMB_TO_SMPLX]
 
     def residual(betas: np.ndarray) -> np.ndarray:
         j = body.rest_joints(betas)
-        return np.asarray([
-            np.linalg.norm(j[a] - j[b]) - target for (a, b), target in pairs
-        ]) * 1000.0
+        return np.concatenate([
+            np.asarray([np.linalg.norm(j[a] - j[b]) - target for (a, b), target in pairs]) * 1000.0,
+            BETA_PRIOR_MM * np.asarray(betas, dtype=np.float64),
+        ])
 
     solution = least_squares(residual, np.zeros(body.shape_terms), method="trf", max_nfev=400)
-    return solution.x, {"final_residual_mm": float(np.sqrt(np.mean(solution.fun ** 2)))}
+    limb_residual = solution.fun[: len(pairs)]
+    joints = body.rest_joints(solution.x)
+    # A body whose head is not above its pelvis is not a body. Cheap, and it would have
+    # caught the overfit immediately.
+    upright = float(joints[15, 1] - joints[0, 1])
+    return solution.x, {
+        "limb_rms_mm": float(np.sqrt(np.mean(limb_residual ** 2))),
+        "beta_norm": float(np.linalg.norm(solution.x)),
+        "head_above_pelvis_mm": round(1000.0 * upright, 1),
+        "anatomically_plausible": bool(upright > 0.3),
+    }
 
 
 def main() -> None:
@@ -74,7 +95,10 @@ def main() -> None:
         measured = estimate_limb_lengths_m(pos)
         betas, info = fit_shape(body, measured)
         j = body.rest_joints(betas)
-        print(f"\n=== our subject {s} ===   betas RMS residual {info['final_residual_mm']:.1f} mm")
+        print(f"\n=== our subject {s} ===   limb RMS {info['limb_rms_mm']:.1f} mm | "
+              f"|betas| {info['beta_norm']:.2f} | head above pelvis "
+              f"{info['head_above_pelvis_mm']:.0f} mm -> "
+              f"{'PLAUSIBLE' if info['anatomically_plausible'] else 'IMPOSSIBLE BODY'}")
         print(f"{'limb':34s} {'measured':>9s} {'SMPL-X fit':>11s} {'our rig':>9s}")
         rows = {}
         errs_smplx, errs_rig = [], []
