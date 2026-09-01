@@ -36,7 +36,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import head_gate as hg  # noqa: E402
 from autoanim_gnm.commercial_multiview import _thorax_frames  # noqa: E402
 
-TRACKS = Path("artifacts/commercial-multiview-soma77")
+import os
+TRACKS = Path(os.environ.get("BOOTSTRAP_TRACKS", "artifacts/commercial-multiview-soma77"))
 DRAWS = 2000
 BLOCKS = (10, 20, 30)
 BAND_P95 = 20.0
@@ -62,13 +63,15 @@ def main() -> None:
                                  joints[:, hg.M_L_SH] - joints[:, hg.M_R_SH])
         m_rel = np.einsum("nji,njk->nik", m_thorax, m_head)
         pos = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")["triangulated_world_positions_z_up_m"]
+        n = min(len(pos), len(solved[f"subject_{subject:02d}_head_world"]), len(m_rel))
+        pos = pos[:n]; m_rel = m_rel[:n]
         ok = np.isfinite(pos).all(axis=(1, 2))
-        th = np.full((len(pos), 3, 3), np.nan)
+        th = np.full((n, 3, 3), np.nan)
         th[ok] = _thorax_frames(pos)[ok]
         ref = hg.mean_removed(m_rel, ok)
         cand = hg.mean_removed(np.einsum("nji,njk->nik", np.nan_to_num(th, nan=0.0),
-                                         solved[f"subject_{subject:02d}_head_world"]), ok)
-        orac = hg.mean_removed(np.einsum("nji,njk->nik", np.nan_to_num(th, nan=0.0), m_head), ok)
+                                         solved[f"subject_{subject:02d}_head_world"][:n]), ok)
+        orac = hg.mean_removed(np.einsum("nji,njk->nik", np.nan_to_num(th, nan=0.0), m_head[:n]), ok)
         # per-frame agreement series, the quantity P1's p95 is taken over
         a_cand = hg.geodesic_deg(cand[ok], ref[ok])
         a_orac = hg.geodesic_deg(orac[ok], ref[ok])

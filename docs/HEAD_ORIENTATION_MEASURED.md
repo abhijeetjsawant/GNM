@@ -2201,6 +2201,81 @@ triangulation of these landmarks does not benefit from more pixels either.
 
 ---
 
+## 6v A PASS THAT WAS AN ARTIFACT — caught before publication, by one consistency check
+
+This section records a result that **looked like the head finally holding, and was not.** It
+is written because the near-miss is more instructive than the finding would have been.
+
+### The chain, which was individually sound at every step
+
+1. §6u showed native width sharpens **our torso frame**: the oracle — a *perfect* head
+   through our frame, so pure frame mismatch — improves **14.14 → 10.46** and
+   **16.30 → 13.13**.
+2. §6o's rule, **pre-registered and previously used to *refuse* a frame that would have
+   passed**, says: *adopt the frame with the lowest oracle error, whatever it does to the
+   candidate.* That rule selects the native frame.
+3. §6t and §6u together justify the pairing on measurement: the body **is**
+   resolution-limited, the head **is not**. So body at 3840, head at 1280.
+4. Scoring the **delivered 1280 head** through that sharper frame:
+
+| | p95 | verdict | bootstrap **P(pass)** |
+|---|---:|---|---:|
+| subject 0 | **15.55°** | PASS | **1.00** |
+| subject 1 | **15.77°** | PASS | **0.98–0.99** |
+
+Both controls still failed. The margins were block-bootstrapped, as §6p requires. Every rule
+this document has ever written was followed. **It was wrong.**
+
+### The check that killed it
+
+**The head was *solved* using the 1280 thorax and *scored* against the 3840 one.** The
+temporal prior in `solve_head_orientation` acts on head-rotation-relative-to-thorax, and the
+neck anchor is taken from the same frame — so the delivered rotations are *shaped by* the
+thorax they were solved with. Scoring them in a different, sharper frame is not the
+configuration any pipeline could ship.
+
+Re-solved with the native thorax used **consistently, for both the solve and the score** —
+the only configuration that could actually ship:
+
+| consistent config | oracle | cand median | **cand p95** | P2 | P4 | verdict |
+|---|---:|---:|---:|---:|---:|---|
+| subject 0 (w=0) | 10.46 | 9.38 | **23.61** | 18.21 | **26.69** | **FAIL** |
+| subject 1 (w=30) | 13.13 | 7.32 | **17.38** | 15.88 | 5.50 | PASS |
+
+**The pass evaporates.** Subject 0 goes from 15.55° to 23.61° — *worse than the incumbent's
+17.77°* — the moment the two frames are made consistent. **The apparent pass came from the
+mismatch, not from the sharper frame.**
+
+> **This is the lane's recurring defect in its purest form yet: a correct measurement
+> carrying a claim it does not support.** Every number above step 4 is real. The oracle
+> genuinely improved. The frame genuinely is sharper. The bootstrap genuinely says
+> P(pass) = 0.98. **And the configuration those numbers describe cannot be built**, because
+> the head that scores 15.55° only exists as the output of a solve that used a *different*
+> torso frame from the one it is being scored in.
+>
+> **What caught it was not a gate.** All four arms passed their controls; the bootstrap was
+> clean; no band was violated. It was asking *"could this actually ship?"* and finding the
+> answer was no. **A gate cannot ask that question, and this document's fifteen exclusions
+> were all found by gates.**
+
+### One thing the consistent run exposes, and it is §6k coming back
+
+Subject 0's consistent solve selected **weight 0** — the degenerate, unregularised end —
+and its P4 travel is **26.69°** against a 7.14° ceiling. §6k proved argmin reprojection is
+unsound precisely because a converged version *must* select zero, and §6m showed weight 0
+produces physically impossible motion. **In the native frame that failure mode actually
+fired.** The selection rule did not merely lack justification here; it picked the degenerate
+branch and shipped a head travelling nearly four times the permitted rate.
+
+**So the frame change did not fail on its own merits — it failed entangled with a selection
+rule already known to be broken**, and separating those two would need the identifiable
+criterion §6r says does not exist yet without a measured detector covariance. *That is not a
+reason to keep fishing.* It is the same wall, reached from a new direction.
+
+**Fifteenth exclusion. The head does not hold. Both bands are where they have always been.**
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
