@@ -2028,6 +2028,68 @@ anyway. **The bands do not move.**
 
 ---
 
+## 6t NATIVE WIDTH CHANGES NOTHING — §6q's causal claim is WITHDRAWN
+
+§6s pre-registered three outcomes and named the third *"σ does not fall — §6q is wrong."*
+**That is the outcome.** Published because it was written down first.
+
+The detector ran at native 3840. The head grew exactly as predicted — **30.6 px → 91.4 px**,
+a clean 3×. The within-head scatter did not follow:
+
+| median within-head σ | subject 0 | subject 1 |
+|---|---:|---:|
+| width 1280 (head 30.6 px) | 121.7 mm | 246.4 mm |
+| **width 3840 (head 91.4 px)** | **115.4 mm** | **278.3 mm** |
+| ratio | **1.05×** | **0.89×** |
+| *pre-registered expectation* | *~3×* | *~3×* |
+
+**Three times the linear resolution bought 5 %, and on the failing performer it was
+slightly worse.** Per-landmark it is the same story — `HeadEnd` goes 136.5 → 116.5 mm on
+subject 0 and 323.9 → 234.2 on subject 1, while `Jaw` and `LeftEye` move the other way.
+Noise, not signal.
+
+### What is withdrawn, and what survives — the distinction matters
+
+**WITHDRAWN: §6q's causal claim.** That the head's error is *caused by* being thirty pixels
+across, and that native width would therefore fix it. It would not and does not.
+
+**SURVIVES: §6q's measurements.** The head *is* 30.6 px at 1280 — that is a fact and it is
+now confirmed to scale exactly as geometry says. §6n's finding that the five landmarks are
+uniformly noisy also stands. **What fails is the inference between them**, and it failed for
+a reason worth naming.
+
+### What this actually establishes, which is more useful than the fix would have been
+
+**The head landmark error is MODEL error, not RESOLUTION error.** If it were
+pixel-localisation-limited, tripling the pixels available to the detector would have
+reduced it roughly three-fold. It did not move. So SOMA-77's uncertainty about where
+`HeadEnd` or `Jaw` sits is not *"I cannot see it clearly enough"* — it is *"I do not know
+where that convention places it,"* and no amount of resolution answers that question.
+
+> This is the ears finding again, generalised. Apple Vision's ears were the *most*
+> epipolar-consistent landmarks in this lane and fit a rigid skull *worst*, because a
+> surface landmark slides over the bone. Here the whole head set is stable under
+> resolution and unstable in 3D, which says the same thing: **the detector is confidently
+> and repeatably placing these points somewhere that is not a fixed location on the
+> skull.** Consistency is not correctness, and pixels buy consistency.
+>
+> It also independently corroborates §6r's reframing from the outside review: the blocking
+> object is **the detector's error covariance — particularly its common-mode, cross-camera
+> component** — and a common-mode convention error is exactly the kind that *survives*
+> more resolution untouched. Two arguments, one conclusion.
+
+**Thirteenth exclusion, and the most expensive one to have run.** It cost a full native
+re-detect to learn, and it was worth it: it removes the cheapest remaining candidate and
+leaves only the two the outside review ranked first — **a model-constrained joint body/head
+fit, and genuinely better observations**, where "better" now provably means *a different
+detector or a different landmark convention with calibrated uncertainty*, not more pixels
+through the same one.
+
+**The gate is not the arbiter here and was not consulted for this verdict.** The input
+measurement is gate-independent and decides the question on its own.
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
