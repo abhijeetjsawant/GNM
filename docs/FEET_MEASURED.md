@@ -31,10 +31,28 @@ So the feet are the head's situation with one difference. **`LeftToes`/`RightToe
 welded constant** — exactly as `Head` was before §6j. But **`LeftFoot` is not a constant,
 and that is the more dangerous case**, because a naive *"does it move?"* gate passes it.
 
-**Nothing observed constrains it.** The pipeline's 19 landmark targets end at the ankle —
-`left_ankle`, `right_ankle`, and no toe or foot-index anywhere in the contract. The foot's
-rotation *about* the ankle is therefore unconstrained by any measurement; whatever those
-18–32° are, they are the IK's own behaviour, not an observation of a foot.
+**Nothing observed constrains it, and the code says exactly what it is instead.**
+`commercial_multiview.py` carried the line
+
+```python
+for foot in ("LeftFoot", "RightFoot"):
+    _set_world(local, world, frame, foot, torso_world)
+```
+
+> **CORRECTION, 2026-09-01.** An earlier draft of this section said the foot's rotation was
+> *"the IK's own behaviour"*. It was not. **The foot was assigned the TORSO's orientation
+> verbatim** — it turned when the chest turned and carried no foot information whatever.
+> That is precisely the head's original defect, one limb down, and the guess was wrong in a
+> way worth recording: I inferred a mechanism instead of reading the assignment.
+
+**And it is the more dangerous form of that defect.** A constant is visibly degenerate — it
+scores 0.000° and any spread gate catches it. A foot that swings with the chest *moves*,
+passes any "does it move?" check, and reads plausibly in an overlay. It is the head's
+`2.56° median / 6.64° p95` parity trick again, wearing a boot.
+
+Nothing could have constrained it: the 19 landmark targets end at the ankle —
+`left_ankle`, `right_ankle` — with no toe or foot-index anywhere in the contract, so
+rotation *about* the ankle had no evidence at all.
 
 ### 0a. So is it informed or is it fiction? — measured, not assumed
 

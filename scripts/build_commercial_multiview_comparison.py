@@ -204,6 +204,36 @@ def _detect_soma77(frames: list[Path], boxes: Path, output: Path) -> None:
 # without them the fit is correct only up to a constant and must not be shipped.
 HEAD_LANDMARK_NAMES = ("Head", "HeadEnd", "Jaw", "LeftEye", "RightEye")
 _SOMA77_HEAD_INDICES = (6, 7, 8, 9, 10)
+# The BALL of each foot -- `LeftToeBase`, `RightToeBase`. `ToeEnd` (71, 76) is deliberately
+# excluded: it fails the same length-stability instrument that killed `HeadEnd`, at
+# 12.8-63.3 % against body controls at 2.5-4.1 %, while the ball survives at 5.0-9.6 %.
+# docs/FEET_MEASURED.md section 1.
+_SOMA77_TOE_INDICES = (70, 75)
+
+
+def _toe_landmarks(records: list[dict[str, Any]]) -> list[list[Any]]:
+    """Per-frame, per-person ball-of-foot landmarks, or empty when absent.
+
+    `[frame][person] -> (2, 3)`, left then right. Same contract as `_head_landmarks`: a
+    detector without `landmarks_soma77` yields empty rows and the feet keep the previous
+    behaviour, which the run report records rather than passing off as a solve.
+    """
+
+    import numpy as np
+
+    out: list[list[Any]] = []
+    for record in records:
+        people: list[Any] = []
+        for person in record.get("people", ()):
+            marks = person.get("landmarks_soma77")
+            if not marks or len(marks) <= max(_SOMA77_TOE_INDICES):
+                people.append(None)
+                continue
+            people.append(
+                np.asarray([marks[index] for index in _SOMA77_TOE_INDICES], dtype=float)
+            )
+        out.append(people)
+    return out
 
 
 def _head_landmarks(records: list[dict[str, Any]]) -> list[list[Any]]:
@@ -289,6 +319,7 @@ def main() -> int:
     # see docs/HEAD_ORIENTATION_MEASURED.md. Only SOMA-77 carries them today, so any other
     # detector keeps the previous behaviour and the run report says so.
     head_landmarks: list[list[list[Any]]] = []
+    toe_landmarks: list[list[list[Any]]] = []
     input_hashes: dict[str, str] = {}
     for camera_name in camera_names:
         video = (arguments.videos / f"{camera_name}.mp4").resolve(strict=True)
@@ -318,6 +349,7 @@ def main() -> int:
         records = load_observation_jsonl(observation_path)
         observations.append(records)
         head_landmarks.append(_head_landmarks(records))
+        toe_landmarks.append(_toe_landmarks(records))
     rig_value = _camera_rig_from_mamma_fixture(arguments.calibration_yaml.resolve(strict=True))
     rig_path = output / "camera-rig.json"
     write_json(rig_path, rig_value)
@@ -344,6 +376,7 @@ def main() -> int:
         observations,
         head_landmarks_by_camera=head_landmarks if solvable else None,
         head_landmark_names=HEAD_LANDMARK_NAMES if solvable else (),
+        toe_landmarks_by_camera=toe_landmarks if solvable else None,
         subject_count=arguments.subject_count,
         sample_rate_hz=30,
     )

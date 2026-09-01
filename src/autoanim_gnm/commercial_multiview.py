@@ -227,6 +227,9 @@ class ReconstructionDiagnostics:
     # parity with a research reference on frame-to-frame jitter while carrying no head
     # information at all. See docs/HEAD_ORIENTATION_MEASURED.md.
     head_orientation: tuple[dict[str, Any], ...] = ()
+    # Per-subject ball-of-foot triangulation, the evidence behind the foot
+    # orientation. Absent means the feet fell back to the torso frame.
+    toe_triangulation: tuple[dict[str, Any], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -252,6 +255,7 @@ class ReconstructionDiagnostics:
             "temporally_rejected_subject_frames": self.temporally_rejected_subject_frames,
             "contact_frames": [list(value) for value in self.contact_frames],
             "head_orientation": [dict(value) for value in self.head_orientation],
+            "toe_triangulation": [dict(value) for value in self.toe_triangulation],
         }
 
 
@@ -1229,6 +1233,46 @@ def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
     return output, float(np.mean(missing_before))
 
 
+# How much of the head's rotation relative to the chest the NECK carries, with the head
+# joint taking the remainder. The delivered rig gave `Neck` the torso frame verbatim, so
+# every degree of head turn was applied at the skull and the neck was a constant -- the
+# same defect the head itself had, one joint down.
+#
+# This is an ANATOMICAL distribution, not a measurement, and it is labelled as such:
+# SOMA-77's own neck landmarks cannot support one. `Neck1->Neck2` varies 64-115 % in length
+# and `Neck2->Head` 36-167 %, against body controls at 2.5-4.1 %
+# (tools/head/region_landmark_quality.py) -- the cervical landmarks are noise at this
+# framing, exactly as the eye baseline is.
+#
+# What this changes and what it does not: the composed HEAD world orientation is preserved
+# exactly, because the head keeps the remainder of whatever the neck takes. So no measured
+# quantity moves and no gate result changes -- the head gate scores head-relative-to-thorax,
+# which is untouched. What changes is that the bend is distributed down the chain instead
+# of hinging entirely at the skull, which is how a neck works and how the character reads.
+#
+# 0.5 is the standard rigging split and is deliberately not tuned: there is nothing on this
+# fixture to tune it against, and a value fitted to a reference would be a shipped constant
+# calibrated on MAMMA.
+NECK_ROTATION_SHARE = 0.5
+
+
+def _slerp(a: np.ndarray, b: np.ndarray, t: float) -> np.ndarray:
+    """Shortest-arc quaternion interpolation, xyzw."""
+
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    dot = float(np.dot(a, b))
+    if dot < 0.0:
+        b = -b
+        dot = -dot
+    if dot > 0.9995:
+        out = a + t * (b - a)
+        return out / np.linalg.norm(out)
+    theta = math.acos(max(-1.0, min(1.0, dot)))
+    sin_theta = math.sin(theta)
+    return (math.sin((1.0 - t) * theta) * a + math.sin(t * theta) * b) / sin_theta
+
+
 def _quat_from_matrix(matrix: np.ndarray) -> np.ndarray:
     """Rotation matrix -> xyzw quaternion. Rows are normalised first.
 
@@ -1309,6 +1353,53 @@ def _frame(primary: np.ndarray, secondary: np.ndarray) -> np.ndarray:
     return np.column_stack((first, second, third))
 
 
+# A relaxed hand. NOT CAPTURE -- read this before using it as one.
+#
+# SOMA-77 emits 15 finger joints per hand and they cannot drive this rig. Measured on this
+# footage against body controls at 2.5-4.1 % length variation, the finger segments run
+# 15.8-111.4 %, and -- the decisive part -- every one of them is roughly HALF its anatomical
+# length: the palm reads 39-58 mm where a hand is 85-100 mm, the index-to-pinky span 35-44 mm
+# where it should be 65-85 mm. The detector is collapsing the hand toward the wrist. A
+# segment that is stable in the wrong place is a prediction, not a measurement, which is
+# exactly the "wrist-conditioned prior" docs/FINGER_TRIANGULATION_GATE.md identified.
+# tools/head/region_landmark_quality.py.
+#
+# So the fingers get a POSE, not a solve. The point is that the alternative was never
+# neutral: leaving every finger joint at the identity is also an invented pose, and a worse
+# one -- it splays the hand into a rigid claw no resting human makes. Both are uncaptured;
+# this one is anatomically right and reads as a hand.
+#
+# Per-joint flexion in degrees about the rig's curl axis, from a relaxed open hand. The
+# thumb is shallower and the distal joints curl more than the proximal, which is what a
+# hand at rest does.
+FINGER_REST_CURL_DEG = {"Proximal": 12.0, "Intermediate": 22.0, "Distal": 16.0,
+                        "Metacarpal": 4.0}
+FINGER_REST_CURL_THUMB_SCALE = 0.45
+
+
+def _finger_rest_local(joint_name: str) -> np.ndarray:
+    """Relaxed local rotation for one finger joint, xyzw. Identity for non-fingers.
+
+    A pose, never a measurement -- see FINGER_REST_CURL_DEG. Curl is about the rig's local
+    X axis, the flexion axis for every finger joint in this skeleton.
+    """
+
+    segment = next(
+        (name for name in ("Metacarpal", "Proximal", "Intermediate", "Distal")
+         if joint_name.endswith(name)),
+        None,
+    )
+    if segment is None:
+        return np.asarray((0.0, 0.0, 0.0, 1.0))
+    degrees = FINGER_REST_CURL_DEG[segment]
+    if "Thumb" in joint_name:
+        degrees *= FINGER_REST_CURL_THUMB_SCALE
+    # Left and right hands curl toward opposite sides of the rig's X axis.
+    sign = -1.0 if joint_name.startswith("Left") else 1.0
+    half = math.radians(sign * degrees) * 0.5
+    return np.asarray((math.sin(half), 0.0, 0.0, math.cos(half)))
+
+
 def _frame_alignment(
     source_primary: np.ndarray,
     source_secondary: np.ndarray,
@@ -1353,6 +1444,7 @@ def positions_to_body_track(
     sample_rate_hz: int,
     provenance_sha256: str,
     head_world_rotations: np.ndarray | None = None,
+    toe_world_z_up_m: np.ndarray | None = None,
 ) -> BodyTrack:
     """Convert triangulated positions into a rig track.
 
@@ -1400,6 +1492,15 @@ def positions_to_body_track(
 
     rest = {joint.name: np.asarray(joint.rest_translation_m, dtype=np.float64) for joint in DETAILED_HUMANOID.joints}
     head_rotations = None
+    # The ball-of-foot positions, converted through the identical change of basis as
+    # `points` above. `[frame, 2, 3]` -- left then right -- in the capture's Z-up world.
+    toes = None
+    if toe_world_z_up_m is not None:
+        toes = np.asarray(toe_world_z_up_m, dtype=np.float64)
+        if toes.shape != (frames, 2, 3):
+            raise CommercialMultiviewError("Toe positions must be [frame, 2, 3]")
+        toes = toes[..., (0, 2, 1)].copy()
+        toes[..., 2] *= -1.0
     if head_world_rotations is not None:
         head_rotations = np.asarray(head_world_rotations, dtype=np.float64)
         if head_rotations.shape != (frames, 3, 3):
@@ -1430,7 +1531,7 @@ def positions_to_body_track(
         root_translation[frame] = pelvis - rest["Hips"]
         _set_world(local, world, frame, "Root", identity)
         _set_world(local, world, frame, "Hips", hips_world)
-        for name in ("Spine", "Chest", "UpperChest", "Neck"):
+        for name in ("Spine", "Chest", "UpperChest"):
             _set_world(local, world, frame, name, torso_world)
         # The head is the one joint here with its own evidence. With no solve it inherits
         # the torso and becomes a constant; with one it carries the measured orientation,
@@ -1438,6 +1539,15 @@ def positions_to_body_track(
         head_world = torso_world
         if head_rotations is not None:
             head_world = _quat_from_matrix(head_rotations[frame])
+        # The neck takes a share of the chest-to-head rotation and the head keeps the rest,
+        # so the composed head orientation is unchanged and the bend is distributed down the
+        # chain rather than hinging at the skull. Without a head solve this is the torso
+        # frame either way and the behaviour is exactly as before.
+        neck_world = (
+            torso_world if head_rotations is None
+            else _slerp(torso_world, head_world, NECK_ROTATION_SHARE)
+        )
+        _set_world(local, world, frame, "Neck", neck_world)
         _set_world(local, world, frame, "Head", head_world)
         for name in ("LeftEye", "RightEye"):
             _set_world(local, world, frame, name, head_world)
@@ -1475,8 +1585,40 @@ def positions_to_body_track(
             hand_index = DETAILED_HUMANOID.index(hand)
             parent = DETAILED_HUMANOID.joints[hand_index].parent
             _set_world(local, world, frame, hand, world[frame, parent])
-        for foot in ("LeftFoot", "RightFoot"):
-            _set_world(local, world, frame, foot, torso_world)
+        # FEET. This line used to read `_set_world(..., foot, torso_world)`: the foot was
+        # given the TORSO's orientation, so it turned whenever the chest turned and carried
+        # no foot information at all. That is exactly the defect the head had -- and worse
+        # to catch, because a constant is visibly degenerate while a foot that swings with
+        # the chest passes any "does it move?" check.
+        #
+        # Nothing observed could have constrained it: the 19 landmark targets stop at the
+        # ankle, so rotation ABOUT the ankle had no evidence. SOMA-77's `ToeBase` supplies
+        # it, and it is the one landmark in this pass that survived measurement -- 5.0-9.6 %
+        # length variation against body controls at 2.5-4.1 %, better than the arm controls
+        # on both performers. `ToeEnd` fails at 12.8-63.3 % and is deliberately NOT used, so
+        # the toes keep riding the foot rather than getting a joint they cannot support.
+        # tools/feet/toe_gate.py, docs/FEET_MEASURED.md.
+        #
+        # Two axes fix the frame: the foot's long axis from ankle to ball, and the shin from
+        # knee to ankle. Without toe landmarks the previous behaviour is kept exactly.
+        for side, ankle_name, knee_name, foot in (
+            (0, "left_ankle", "left_knee", "LeftFoot"),
+            (1, "right_ankle", "right_knee", "RightFoot"),
+        ):
+            foot_world = torso_world
+            if toes is not None:
+                ball = toes[frame, side]
+                forward = ball - at(ankle_name)
+                down = at(ankle_name) - at(knee_name)
+                if (
+                    np.isfinite(ball).all()
+                    and np.linalg.norm(forward) > 1e-6
+                    and np.linalg.norm(down) > 1e-6
+                ):
+                    foot_world = _frame_alignment(
+                        rest["LeftToes"], (0.0, -1.0, 0.0), forward, down
+                    )
+            _set_world(local, world, frame, foot, foot_world)
         for toe in ("LeftToes", "RightToes"):
             toe_index = DETAILED_HUMANOID.index(toe)
             parent = DETAILED_HUMANOID.joints[toe_index].parent
@@ -1484,7 +1626,13 @@ def positions_to_body_track(
         for index, joint in enumerate(DETAILED_HUMANOID.joints):
             if joint.name.startswith(("LeftThumb", "LeftIndex", "LeftMiddle", "LeftRing", "LeftLittle", "RightThumb", "RightIndex", "RightMiddle", "RightRing", "RightLittle")):
                 parent = joint.parent
-                _set_world(local, world, frame, joint.name, world[frame, parent])
+                # A relaxed rest curl instead of the identity. Both are uncaptured poses;
+                # this one is anatomically right. See FINGER_REST_CURL_DEG for why the
+                # fingers cannot be solved from this detector.
+                local[frame, index] = _finger_rest_local(joint.name)
+                world[frame, index] = _quaternion_multiply(
+                    world[frame, parent], local[frame, index]
+                )
 
     # Ensure quaternion paths do not flip signs across frames.
     for frame in range(1, frames):
@@ -1600,6 +1748,61 @@ def _thorax_frames(
     return orthonormalise(np.einsum("nij,jk->nik", rodrigues(tangent), mean))
 
 
+def _toe_world_for_subject(
+    cameras: Sequence[CalibratedCamera],
+    toe_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None,
+    assignment: np.ndarray,
+    frames: int,
+    *,
+    minimum_confidence: float,
+    pixel_scale: float,
+) -> tuple[np.ndarray | None, dict]:
+    """Triangulate the two ball-of-foot points under the pipeline's own association.
+
+    `[frame, 2, 3]`, left then right, NaN where a frame does not resolve -- the caller
+    falls back to the previous behaviour on those frames rather than inventing a foot.
+
+    Uses `triangulate_point` at production settings, so the balls of the feet enjoy no
+    gate the mapped body joints do not.
+    """
+
+    if toe_landmarks_by_camera is None:
+        return None, {"status": "not_attempted", "reason": "no toe landmarks supplied"}
+    out = np.full((frames, 2, 3), np.nan, dtype=np.float64)
+    support_total = 0
+    for frame in range(frames):
+        for side in range(2):
+            points = np.full((len(cameras), 2), np.nan)
+            weights = np.zeros(len(cameras))
+            for camera in range(len(cameras)):
+                person = int(assignment[frame, camera])
+                if person < 0:
+                    continue
+                try:
+                    sample = np.asarray(
+                        toe_landmarks_by_camera[camera][frame][person], dtype=np.float64
+                    )
+                except (IndexError, TypeError, ValueError):
+                    continue
+                if sample.shape != (2, 3):
+                    continue
+                x, y, confidence = sample[side]
+                points[camera], weights[camera] = (x, y), confidence
+            result = triangulate_point(
+                cameras, points, weights,
+                minimum_confidence=minimum_confidence, pixel_scale=pixel_scale,
+            )
+            if result is not None:
+                out[frame, side] = result.position_world_m
+                support_total += len(result.used_camera_indices)
+    resolved = float(np.isfinite(out).all(axis=2).mean())
+    return out, {
+        "status": "solved" if resolved > 0.0 else "unresolved",
+        "resolved_fraction": resolved,
+        "mean_camera_support": support_total / max(1.0, 2.0 * frames),
+    }
+
+
 def _solve_head_for_subject(
     cameras: Sequence[CalibratedCamera],
     observations_by_camera: Sequence[Sequence[dict[str, Any]]],
@@ -1704,6 +1907,7 @@ def reconstruct_multiview(
     # available -- SOMA-77's `landmarks_soma77` is the case it was built for.
     head_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None = None,
     head_landmark_names: Sequence[str] = (),
+    toe_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None = None,
 ) -> tuple[tuple[BodyTrack, ...], ReconstructionDiagnostics, np.ndarray, np.ndarray]:
     """Reconstruct every subject from calibrated multiview observations.
 
@@ -1896,6 +2100,7 @@ def reconstruct_multiview(
     contacts: list[tuple[int, int]] = []
     recovered_counts: list[float] = []
     head_reports: list[dict[str, Any]] = []
+    toe_reports: list[dict[str, Any]] = []
     for subject in range(subject_count):
         # Recover single-ray joints from limb-length and temporal constraints
         # before falling back to interpolation, so an evidence-based estimate is
@@ -1923,6 +2128,15 @@ def reconstruct_multiview(
         )
         head_report["unmatched_association_rows"] = int(head_rows_unmatched[subject])
         head_reports.append(head_report)
+        toe_world, toe_report = _toe_world_for_subject(
+            scaled_cameras,
+            toe_landmarks_by_camera,
+            head_assignment[:, subject],
+            frames,
+            minimum_confidence=minimum_confidence,
+            pixel_scale=pixel_scale,
+        )
+        toe_reports.append(toe_report)
         track = positions_to_body_track(
             positions,
             sample_rate_hz=sample_rate_hz,
@@ -1930,6 +2144,7 @@ def reconstruct_multiview(
                 f"{source_hash}:{subject}".encode("ascii")
             ).hexdigest(),
             head_world_rotations=head_rotations,
+            toe_world_z_up_m=toe_world,
         )
         tracks.append(track)
         contacts.append(
@@ -1954,6 +2169,7 @@ def reconstruct_multiview(
         temporally_rejected_subject_frames=temporally_rejected_subject_frames,
         contact_frames=tuple(contacts),
         head_orientation=tuple(head_reports),
+        toe_triangulation=tuple(toe_reports),
     )
     # `smoothed` is post-interpolation and Savitzky-Golay filtered, so it cannot
     # measure raw triangulation noise. `world` is what triangulation actually
