@@ -46,6 +46,10 @@ from triangulate_soma import triangulate  # noqa: E402
 
 MA3D = Path("artifacts/mamma/mamma-4cam-five-second-v2/output/ma_3d/pushing_and_lifting_from_ground")
 OUT = Path("artifacts/head-lane")
+# The delivered tracks the gate reads its torso frame from. A module constant rather
+# than a literal so an alternative build (e.g. a different detector width) can be
+# scored through THIS gate instead of a copy of it.
+TRACKS = Path("artifacts/commercial-multiview-soma77")
 SOMA_FRAME = {"Hips": 0, "Neck2": 5, "LeftArm": 12, "RightArm": 40}
 M_PELVIS, M_NECK, M_L_SH, M_R_SH, M_HEAD = 0, 12, 16, 17, 15
 PELVIS, SPINE1, SPINE2, SPINE3, NECK, HEAD_J = 0, 3, 6, 9, 12, 15
@@ -189,7 +193,7 @@ def main() -> None:
         # head's. Scored against a comparably-conditioned thorax, P4 measures the head.
         pos = soma[subject]
         smoothed = np.load(
-            f"artifacts/commercial-multiview-soma77/subject-{subject:02d}.body-track.npz"
+            TRACKS / f"subject-{subject:02d}.body-track.npz"
         )["triangulated_world_positions_z_up_m"]
         up = smoothed[:, JOINT_INDEX["neck"]] - smoothed[:, JOINT_INDEX["root"]]
         # ONE definition of the torso frame, imported from the pipeline rather than

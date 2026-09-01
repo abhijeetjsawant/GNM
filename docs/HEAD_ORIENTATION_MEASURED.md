@@ -2168,6 +2168,35 @@ different temporal weight (300 rather than 100).
   latent state, 0.5–2°). A sharper torso frame is what that recommendation buys, and native
   width is a crude preview that it is real.
 
+### All four arms, because a gate result without its controls is not a gate result
+
+§6u first reported only the candidate and oracle. *"No gate a constant can pass"* means a
+published verdict carries its controls, so `head_gate.main()` was run against the native
+artifacts — the same gate, repointed via a new `TRACKS` constant, never a copy. The 1280
+numbers are unchanged by that refactor, verified.
+
+| arm, width 3840 | P1 med | **P1 p95** | P2 spread | P4 travel | |
+|---|---:|---:|---:|---:|---|
+| **subject 0** | | | | | |
+| ORACLE — MAMMA's head, our thorax | 4.53 | **10.46** | 16.36 | 2.77 | PASS |
+| candidate | 7.68 | **15.66** | 16.88 | 3.30 | **PASS** |
+| C2 — per-frame triangulated | 8.22 | 73.09 | 18.39 | 82.55 | FAIL (P1, P4) |
+| C1 — locked head, the constant | 14.96 | 30.76 | **0.00** | 0.00 | FAIL (P1, P2) |
+| **subject 1** | | | | | |
+| ORACLE | 3.96 | **13.13** | 15.75 | 5.21 | PASS |
+| candidate | 8.59 | **30.50** | 19.06 | 3.44 | **FAIL (P1)** |
+| C2 | 9.60 | 119.10 | 21.42 | 134.71 | FAIL (P1, P4) |
+| C1 | 15.99 | 27.18 | **0.00** | 0.00 | FAIL (P1, P2) |
+
+**Both controls still fail at native width**, C1 on spread (0.00° by construction) and C2 on
+jitter (73–119°), so the gate has not been quietly invalidated by the resolution change —
+the demonstration that a constant cannot pass it survives. **C2 got worse at native
+(67.9 → 73.1 and 91.3 → 119.1)**, which is the same signature as §6t: per-frame
+triangulation of these landmarks does not benefit from more pixels either.
+
+**And the verdict is confirmed on the full instrument: subject 0 passes, subject 1 fails at
+30.50°.** The head does not hold at either width.
+
 **Fourteenth exclusion for the head; the first positive result for the body frame.**
 
 ---
