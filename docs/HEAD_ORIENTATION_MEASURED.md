@@ -1973,6 +1973,61 @@ incompetence; it is where the field is.
 
 ---
 
+## 6s NATIVE WIDTH — pre-registered before the run finishes
+
+§6q measured the input limit: the head is **30.6 px** at the detector width the pipeline
+runs. Native footage is 3840, so the detector can see a **~92 px** head. The independent
+review (§6r) ranks *better observations* second of five with an expected 1–4°, and native
+width is the cheapest possible form of it — no retraining, no new detector, no new data.
+This runs it. **Written before the result exists.**
+
+### The prerequisite was already satisfied, which is worth recording
+
+`BATTLE0_DETECTOR_WIDTH_FINDINGS.md` found the pipeline's pixel gates were hardcoded and
+did not scale with detector width, so a wider run silently tightened every physical
+threshold and kept only the easy observations — 41.8 % of them discarded at 3840. **That
+has since been fixed and I verified it rather than assuming.**
+`reconstruct_multiview` derives `pixel_scale = width / REFERENCE_DETECTOR_WIDTH_PX` from
+the observations themselves, refuses a rig whose cameras ran at different widths, and
+threads it through every pixel-denominated constant — the 14 px triangulation inlier, the
+40 px association inlier, the 250 px cost cap, the epipolar threshold, the ambiguity
+margin. At 3840 the 14 px gate becomes 42 px: **the same physical millimetres**. The
+survivorship artifact BATTLE0 warned about cannot recur in the reconstruction stage.
+
+### What is measured, and in what order
+
+**The input first, and the gate only after** — because the input measurement is
+gate-independent and the gate cannot distinguish a better head from a luckier one.
+
+1. **`tools/head/landmark_sigma.py` on the native observations.** Within-head distances are
+   constant by construction, so their standard deviation is pure measurement error. At 1280
+   it is **105–324 mm on a ~200 mm head**.
+2. Then, and only then, the head solve and the gate.
+
+### Pre-registered expectation, with its own falsification
+
+Triangulated depth error is **linear in pixel error** at fixed geometry, so if the scatter
+is depth-dominated as §6q argues, 3× the linear resolution should give **roughly 3× lower
+σ** — 105–324 mm falling to something near **35–110 mm**.
+
+| outcome | what it means |
+|---|---|
+| σ falls ≈ 3× | §6q's diagnosis is right; the head was resolution-starved |
+| σ falls, but ≪ 3× | resolution helps and something else dominates — a *convention* error in the detector, which more pixels cannot fix |
+| **σ does not fall** | **§6q is wrong.** The landmarks are not resolution-limited, and the whole thirty-pixel argument is withdrawn |
+
+**The third row is a real possibility and is stated first-class**, because SOMA-77 is
+top-down: it resizes each person crop to a fixed model input, so a wider frame gives it a
+genuinely sharper crop *only if* the crop was upsampled before. If the model was already
+downsampling a 280 px person at 1280, native width buys less than the arithmetic suggests.
+
+**And the gate result will be reported whatever it is**, on both performers, including the
+case where the head landmarks improve and the gate does not move — which would be its own
+finding, and consistent with §6p's demonstration that this fixture cannot resolve 1.18°
+anyway. **The bands do not move.**
+
+---
+
 ## 7. What the measurements say to build — in order, none of it started
 
 0. ~~**Put the solve on the delivery path.**~~ **DONE** — §6e. Two defects appeared only
