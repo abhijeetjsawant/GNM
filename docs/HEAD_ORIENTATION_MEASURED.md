@@ -2085,8 +2085,33 @@ fit, and genuinely better observations**, where "better" now provably means *a d
 detector or a different landmark convention with calibrated uncertainty*, not more pixels
 through the same one.
 
+### The sharpest evidence is the pair of numbers that disagree
+
+The native run's own diagnostics corroborate this from inside the solver, and the pattern is
+the signature of a common-mode error rather than a noise reduction:
+
+| | 1280 | 3840 | 3840 at 1280-equivalent |
+|---|---:|---:|---:|
+| head fit **reprojection** | 2.70 / 2.62 px | 7.21 / 7.32 px | **2.40 / 2.44 px** |
+| within-head **3D scatter** | 121.7 / 246.4 mm | — | **115.4 / 278.3 mm** |
+
+**Reprojection improved about 10 %. The 3D scatter did not improve at all.** A genuine
+reduction in landmark noise would move both. Improving the *2D agreement between cameras*
+while leaving the *3D position* exactly as uncertain is what happens when every camera is
+confidently wrong in the same way: the views agree with each other, the rays still fail to
+meet where the skull is, and sharper pixels only make the agreement crisper.
+
+That is CLAUDE.md's standing rule arriving from a new direction — *reprojection cannot
+score depth* — and it is the same common-mode cross-camera term §6r named as the object
+blocking every principled selection criterion. **Three independent routes to one
+conclusion.**
+
 **The gate is not the arbiter here and was not consulted for this verdict.** The input
-measurement is gate-independent and decides the question on its own.
+measurement is gate-independent and decides the question on its own. For the record, and
+because §6s pre-registered reporting it: the native head solved on both performers at
+weights 30 and 100, and **the full four-arm gate was not re-run**, because §6p already
+established this fixture cannot resolve the 1.18° that would be at stake — and because a
+gate cannot tell a better head from a luckier one.
 
 ---
 
