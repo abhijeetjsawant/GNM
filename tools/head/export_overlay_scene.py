@@ -27,6 +27,8 @@ from autoanim_gnm.commercial_multiview import (  # noqa: E402
     JOINT_INDEX, JOINT_NAMES, load_camera_rig,
 )
 from sized_skeleton import sized_skeleton  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "compare"))
+from smplx_body import SMPLXBody, BODY_JOINTS  # noqa: E402
 
 TRACKS = Path("artifacts/commercial-multiview-soma77")
 OUT = Path("artifacts/head-lane/overlay-scene.json")
@@ -93,10 +95,18 @@ def main() -> None:
         cap_px = np.stack([project(camera, cap[f]) for f in range(frames)])
         rig_px = np.stack([project(camera, rigz[f]) for f in range(frames)])
         fit_px = np.stack([project(camera, fitz[f]) for f in range(frames)])
+        # RUNG 2: our capture driving SMPL-X. Already in the capture's Z-up world, so it
+        # projects through the same lens with no change of basis.
+        smx = np.load(Path("artifacts/compare") / f"smplx-posed-subject-{s:02d}.npz")["joints"]
+        smx_px = np.stack([project(camera, np.nan_to_num(smx[f], nan=1e6)) for f in range(min(frames, len(smx)))])
+        if len(smx_px) < frames:
+            smx_px = np.concatenate([smx_px, np.full((frames - len(smx_px), BODY_JOINTS, 2), np.nan)])
+        smx_px[~np.isfinite(smx[:frames]).all(axis=2)] = np.nan
         subjects.append({
             "capture": np.round(np.nan_to_num(cap_px, nan=-9999.0), 1).tolist(),
             "rig": np.round(np.nan_to_num(rig_px, nan=-9999.0), 1).tolist(),
             "fitted": np.round(np.nan_to_num(fit_px, nan=-9999.0), 1).tolist(),
+            "smplx": np.round(np.nan_to_num(smx_px, nan=-9999.0), 1).tolist(),
             "limbs": limbs,
         })
         good = np.isfinite(cap_px).all(axis=2).mean()
@@ -110,6 +120,7 @@ def main() -> None:
         "rig_names": names,
         "rig_bones": rig_bones,
         "rig_region": [region_for(n) for n in names],
+        "smplx_bones": [[int(p), j] for j, p in enumerate(SMPLXBody().parents[:BODY_JOINTS]) if p >= 0],
         "subjects": subjects,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
