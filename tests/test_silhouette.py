@@ -184,12 +184,17 @@ def test_summary_reports_all_three_metrics():
 
 # --------------------------------------------------------------- alignment, synthetic
 
+def _offset(f: int) -> float:
+    """A synthetic subject that stays in frame: +-0.5 m is +-25 px at this camera."""
+    return 0.5 * float(np.sin(2.0 * np.pi * f / 25.0))
+
+
 class _FakeMasks:
-    """A mask store whose foreground moves one square per frame, so lag is detectable."""
+    """A mask store whose foreground oscillates, so a one-frame lag is detectable."""
 
     def __init__(self, camera_, shape, verts, faces):
         self.stack = np.stack([
-            rasterise(verts + np.array([0.02 * f, 0.0, 0.0]), faces, camera_, shape)
+            rasterise(verts + np.array([_offset(f), 0.0, 0.0]), faces, camera_, shape)
             for f in range(150)])
 
     def get(self, camera_name, tracklet):
@@ -200,23 +205,26 @@ class _FakeMasks:
 def test_frame_alignment_finds_lag_zero_when_aligned():
     cam, shape = camera(), (WIDTH, HEIGHT)
     verts, faces = square(0.3, 2.0)
-    moving = np.stack([verts + np.array([0.02 * f, 0.0, 0.0]) for f in range(150)])
+    moving = np.stack([verts + np.array([_offset(f), 0.0, 0.0]) for f in range(150)])
     masks = _FakeMasks(cam, shape, verts, faces)
     out = frame_alignment_check({0: (moving, faces), 1: (moving, faces)}, masks,
                                 {"unit": {0: 1, 1: 2}}, {"unit": cam}, shape, ("unit",))
     assert out["best_lag"] == 0
     assert out["verdict"] == "aligned"
+    assert out["lag0_relative_shortfall"] == 0.0
 
 
 def test_frame_alignment_detects_a_one_frame_offset():
     cam, shape = camera(), (WIDTH, HEIGHT)
     verts, faces = square(0.3, 2.0)
-    shifted = np.stack([verts + np.array([0.02 * (f + 1), 0.0, 0.0]) for f in range(150)])
+    shifted = np.stack([verts + np.array([_offset(f + 1), 0.0, 0.0]) for f in range(150)])
     masks = _FakeMasks(cam, shape, verts, faces)
     out = frame_alignment_check({0: (shifted, faces), 1: (shifted, faces)}, masks,
                                 {"unit": {0: 1, 1: 2}}, {"unit": cam}, shape, ("unit",))
     assert out["best_lag"] == 1
     assert out["verdict"] == "MISALIGNED"
+    # a REAL one-frame offset is decisive, not a fraction of a percent
+    assert out["lag0_relative_shortfall"] > 0.05
 
 
 # ------------------------------------------------------- the report, when it is on disk

@@ -62,7 +62,7 @@ from scipy.spatial.transform import Rotation
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools" / "head"))
-from autoanim_gnm.commercial_multiview import load_camera_rig  # noqa: E402
+from autoanim_gnm.commercial_multiview import JOINT_INDEX, load_camera_rig  # noqa: E402
 from subject_map import mamma_index_for  # noqa: E402
 
 FIXTURE = "pushing_and_lifting_from_ground"
@@ -91,6 +91,7 @@ PROBE_JOINTS = {"pelvis": 0, "left_hip": 1, "right_hip": 2, "neck": 12, "head": 
 PELVIS = 0
 # body frame for the camera-independent fore-aft asymmetry figure
 NECK, LHIP, RHIP = 12, 1, 2
+ROOT_JOINT = JOINT_INDEX["root"]   # our 19-joint contract, for the ours-turned-round arm
 LIMB_PAIRS = ((20, 21), (18, 19), (4, 5), (7, 8))  # wrists, elbows, knees, ankles
 
 MIN_MASK_PX = 200            # at render resolution; below this the mask is a fragment
@@ -107,7 +108,8 @@ SEED = 20260902
 
 BASE_ARMS = ("ours_delivered", "ORACLE_mamma_mesh", "control_mean_body",
              "control_frozen_pose_tracked", "control_frozen_pose_static",
-             "control_shuffled_subject", "control_oracle_yaw180_facing")
+             "control_shuffled_subject", "control_oracle_yaw180_facing",
+             "control_ours_yaw180_facing")
 
 
 def sha256(path: Path) -> str:
@@ -408,38 +410,69 @@ def build_arms(mesh: dict, pred_vertices: dict, pred_joints: dict, smplx_faces: 
         turned = np.stack([-turned[..., 0], -turned[..., 1], turned[..., 2]], axis=-1)
         yaw[s] = ((turned + pelvis[:, None, :]).astype(np.float32), smplx_faces)
     arms["control_oracle_yaw180_facing"] = yaw
+
+    # The same turn applied to OUR delivered mesh, about our own triangulated pelvis.
+    # This is step D1's question asked of the pixels: if the delivery ships a 180-degree
+    # facing error, turning it round must IMPROVE its agreement with the footage. It is a
+    # control in the sense that one of the two orientations has to lose.
+    ours_yaw = {}
+    for s in (0, 1):
+        verts, faces = ours[s]
+        root = np.load(DELIVERY / f"subject-{s:02d}.body-track.npz")[
+            "triangulated_world_positions_z_up_m"][:, ROOT_JOINT].astype(np.float64)
+        # a frame with no triangulated root falls back to the mesh centroid
+        centroid = verts.mean(axis=1).astype(np.float64)
+        bad = ~np.isfinite(root).all(axis=1)
+        root[bad] = centroid[bad]
+        turned = verts.astype(np.float64) - root[:, None, :]
+        turned = np.stack([-turned[..., 0], -turned[..., 1], turned[..., 2]], axis=-1)
+        ours_yaw[s] = ((turned + root[:, None, :]).astype(np.float32), faces)
+    arms["control_ours_yaw180_facing"] = ours_yaw
     return arms
 
 
 def frame_alignment_check(ours: dict, masks: "MaskStore", subject_to_tracklet: dict,
                           scaled: dict, shape: tuple[int, int], cams: tuple[str, ...],
-                          stride: int = 10, lags: tuple[int, ...] = (-2, -1, 0, 1, 2)) -> dict:
+                          stride: int = 5, lags: tuple[int, ...] = (-2, -1, 0, 1, 2),
+                          tolerance: float = 0.01) -> dict:
     """Does our frame f line up with mask frame f? Verification, never selection.
 
     The oracle arm is MAMMA against MAMMA and shares an index by construction; OURS is a
     separate Blender export whose only alignment evidence is an action range. A one-frame
-    offset would cost a few points of IoU and be charged to the pipeline. Lag 0 must win;
-    the whole lag profile is reported so a reader can see the margin.
+    offset would cost a few points of IoU and be charged to the pipeline.
+
+    Two things this got wrong first, both worth keeping written down. The lag profile is
+    *flat near its peak* -- at 30 fps a body moves a few pixels per frame -- so the
+    verdict allows a relative `tolerance` rather than demanding lag 0 win outright, and
+    the margin is on the report either way. And the first version scored each lag on
+    whichever frames had a partner in range, which put lag -2 and lag 0 on DIFFERENT
+    populations near the ends of the take; with a moving subject that alone flipped the
+    winner and read as a timebase defect. Every lag is now scored on one frame set. On
+    the corrected check lag 0 leads by 1.2 % over four cameras at 960x540 and by 2.6 %
+    on A001 alone at 1920x1080.
     """
-    profile: dict[str, float] = {}
-    for lag in lags:
-        values = []
-        for cam in cams:
-            for s in (0, 1):
-                mask = masks.get(cam, subject_to_tracklet[cam][s])
-                verts, faces = ours[s]
-                for f in range(0, FRAMES, stride):
-                    g = f + lag
-                    if not 0 <= g < FRAMES:
-                        continue
-                    render = rasterise(verts[f], faces, scaled[cam], shape)
-                    values.append(score(render, mask[g])[2])
-        profile[str(lag)] = float(np.median(values))
+    # Same denominator across lags: only frames whose shifted partner exists for EVERY
+    # lag are scored, or a lag near the ends is judged on a different population.
+    span = max(abs(lag) for lag in lags)
+    frames = list(range(span, FRAMES - span, stride))
+    collected: dict[int, list[float]] = {lag: [] for lag in lags}
+    for cam in cams:
+        for s in (0, 1):
+            mask = masks.get(cam, subject_to_tracklet[cam][s])
+            verts, faces = ours[s]
+            for f in frames:
+                render = rasterise(verts[f], faces, scaled[cam], shape)
+                for lag in lags:
+                    collected[lag].append(score(render, mask[f + lag])[2])
+    profile = {str(lag): float(np.median(values)) for lag, values in collected.items()}
     best = max(profile, key=profile.get)
+    shortfall = (profile[best] - profile["0"]) / max(profile[best], 1e-9)
     return {"median_iou_by_lag_frames": profile, "best_lag": int(best),
-            "verdict": "aligned" if int(best) == 0 else "MISALIGNED",
+            "lag0_relative_shortfall": shortfall, "tolerance": tolerance,
+            "verdict": "aligned" if shortfall <= tolerance else "MISALIGNED",
             "note": "our exported frame f scored against mask frame f+lag, every "
-                    f"{stride}th frame, all cameras and both subjects; lag 0 must win"}
+                    f"{stride}th frame, every camera in the run and both subjects; lag 0 "
+                    f"must lead or trail the best lag by at most {tolerance:.0%}"}
 
 
 def arm_frame(entry: tuple[np.ndarray, np.ndarray], f: int) -> tuple[np.ndarray, np.ndarray]:
@@ -701,6 +734,29 @@ def main() -> None:
     facing["oracle_minus_yaw180_iou_all_frames"] = {
         "median": float(np.median(drops_all)),
         "min": float(np.min(drops_all)), "max": float(np.max(drops_all))}
+    # D1's question asked of the pixels: is the DELIVERED mesh facing the right way?
+    turned_better = []
+    for c, cam in enumerate(cams):
+        for s in (0, 1):
+            ok = population[c, s]
+            turned_better.append(
+                float(np.median(stats["control_ours_yaw180_facing"][c, s][ok, 2])
+                      - np.median(stats["ours_delivered"][c, s][ok, 2])))
+    facing["delivered_mesh_turned_180_minus_delivered_mesh_iou"] = {
+        "per_cell": turned_better,
+        "median": float(np.median(turned_better)),
+        "max": float(np.max(turned_better)),
+        "verdict": ("the delivered facing beats its own 180-degree turn on every camera "
+                    "and both subjects" if max(turned_better) < 0 else
+                    "AT LEAST ONE CELL PREFERS THE TURNED MESH -- read the per-cell list"),
+        "reading": "if the delivery shipped a 180-degree facing error, turning it round "
+                   "would IMPROVE agreement with the footage. One of the two orientations "
+                   "has to lose, and the instrument has the sensitivity to tell them apart "
+                   "(see oracle_minus_yaw180_iou_*). This does NOT clear a left/right "
+                   "MIRROR, which a silhouette cannot see on a fore-aft symmetric pose, "
+                   "and it does not speak to any internal 180-degree yaw that a later "
+                   "stage compensates -- it speaks only to the delivered surface.",
+    }
     facing["reading"] = (
         "a 180-degree facing error costs the ORACLE this much IoU on the very masks it "
         "otherwise fits best, so the silhouette IS a facing instrument on this take -- "

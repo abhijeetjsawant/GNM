@@ -65,12 +65,18 @@ def x_silhouette(_: dict) -> tuple[list, list]:
                             HIGHER, key=f"ours_iou_{cam}_{s:02d}"))
 
     fs = r.get("facing_sensitivity", {})
+    turned = fs.get("delivered_mesh_turned_180_minus_delivered_mesh_iou", {})
     figs.append(fig("IoU the silhouette loses when the ORACLE is turned 180 degrees, on the "
                     "frames where front and back are distinguishable (how much a silhouette "
                     "can see a facing error AT ALL -- step D1's gate rests on this)",
                     fs.get("oracle_minus_yaw180_iou_on_distinguishable_frames", {}).get("median"),
                     "IoU difference", REFERENCE, HIGHER, key="facing_sensitivity",
                     note=fs.get("reading", "")))
+
+    figs.append(fig("IoU the DELIVERED mesh would gain by being turned 180 degrees "
+                    "(negative means the shipped facing beats its own reversal)",
+                    turned.get("median"), "IoU difference", REFERENCE, LOWER,
+                    key="delivered_facing_margin", note=turned.get("verdict", "")))
 
     ctrls.append(fig("ORACLE: MAMMA's own mesh through the identical rasteriser against the "
                      "same masks -- the ceiling the masks and the rasteriser allow (both "
@@ -96,6 +102,9 @@ def x_silhouette(_: dict) -> tuple[list, list]:
         ("control_shuffled_subject", "control: subject 0's mesh against subject 1's mask"),
         ("control_oracle_yaw180_facing", "control: the ORACLE turned 180 degrees about its own "
                                          "pelvis -- a self-consistent human facing backwards"),
+        ("control_ours_yaw180_facing", "control: OUR delivered mesh turned 180 degrees about "
+                                       "our own triangulated pelvis -- step D1's question "
+                                       "asked of the pixels; it must score WORSE than ours"),
     ]
     for arm, label in controls:
         if arm not in arms:
