@@ -1054,6 +1054,32 @@ hand travel and how much its 9.6 mm of body shift. A fourth build — the root f
 the **pre-D2 clavicle anchor** — separates them exactly, and is the obvious next
 instrument. It was not run: this pass was capped at one.
 
+### 13.4b The gradient and the baseline are two different things
+
+Per tercile, the delivered hands' displacement beside the body's and the IoU fall:
+
+| | tercile | body moved | hands moved (D2b - delivered) | D2b - delivered IoU |
+|---|---|---|---|---|
+| subj 0 | upright | 13.6 mm | 144 / 177 mm | -0.0490 |
+| subj 0 | middle | 27.5 mm | 137 / 187 mm | -0.0796 |
+| subj 0 | most bent | 73.5 mm | 193 / 204 mm | -0.1151 |
+| subj 1 | upright | 9.9 mm | 181 / 189 mm | -0.0631 |
+| subj 1 | middle | 43.2 mm | 210 / 199 mm | -0.0497 |
+| subj 1 | most bent | 99.7 mm | 176 / 161 mm | -0.0664 |
+
+**Subject 1 settles the baseline and subject 0 does not settle the gradient.** On subject 1
+the body displacement grows **ten-fold**, 9.9 -> 99.7 mm, and the fall does not move; the
+hand travel is flat and so is the fall. On subject 0 the fall grows 2.3x while the hand
+travel grows only about 30 % and the body displacement grows 5.4x, so **subject 0's
+gradient is NOT explained by the arms**, and the trunk-axis offset -- plus the instrument's
+own 0.040 IoU of extra difficulty on bent frames, which the oracle measures -- remains a
+live contributor to it.
+
+The correct statement is therefore two statements. The **baseline** fall, present at full
+size where the body has moved 10 mm, is not the root placement. The **gradient**, which
+exists on one subject of two, is consistent with the trunk-axis offset and with the
+instrument, and this pass does not separate those two either.
+
 ### 13.5 Which mechanism the data support
 
 **Neither of the two on offer, and the honest answer is a third.** It is not the
@@ -1066,9 +1092,12 @@ what moved between them is measured. **The fall travels with the arms**, and the
 that isolates them — a root-identical, clavicle-only change — costs IoU on its own with
 its interval clear of zero.
 
-That does not vindicate the root placement. It says the silhouette is not the instrument
-that indicts it, and that D2's own clavicle re-aim carries a pixel cost nobody had measured
-until now. The missing pelvis frame remains a real modelling gap — the rig genuinely has no
+That does not vindicate the root placement, and 13.4b is the limit of the claim: the
+**baseline** fall is not the root placement, while subject 0's **gradient** may well be,
+and this pass does not separate that from the instrument's own difficulty on bent frames.
+What the pass does establish is that the silhouette is not the instrument that indicts the
+root placement on the frames where the root placement barely moves anything, and that D2's
+own clavicle re-aim carries a pixel cost nobody had measured until now. The missing pelvis frame remains a real modelling gap — the rig genuinely has no
 pelvis-versus-thorax separation, and the offset genuinely rides the trunk axis at +0.93 —
 but on this fixture it is not what the silhouette is pricing.
 
