@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-02T18:06:17",
+ "rendered": "2026-09-02T18:10:19",
  "git": {
-  "sha": "8054006",
+  "sha": "48d1ae2",
   "dirty": true
  },
  "rungs": [
@@ -181,7 +181,7 @@
    "id": "temporal",
    "n": 5,
    "title": "Temporal solve and smoothing",
-   "status": "measured on perfect 2D (1.15 mm, all of it this stage); dark on real footage",
+   "status": "measured on synthetic truth (I2, I7): 1.15 mm floor; the solve beats a line 6.7x on burst outages and loses on isolated drops; zero-phase smoother",
    "visuals": [
     {
      "title": "Our whole pipeline on a perfect detector: how far from the truth it lands",
@@ -208,6 +208,47 @@
        "label": "One camera shifted a frame",
        "role": "control",
        "value": 6.68
+      }
+     ]
+    },
+    {
+     "title": "What happens to a joint when only one camera can still see it",
+     "plain": "MAMMA's own skeleton projected into the four cameras is the exact truth here, so every millimetre is our reconstruction's. When a joint is lost for a run of frames the sequence solve lands nearly seven times closer than drawing a line through the gap. When the loss is a single isolated frame the line wins instead; the figures below the chart carry that arm.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ours, outages in bursts (real occlusion's shape)",
+       "role": "ours",
+       "value": 7.6745
+      },
+      {
+       "label": "Drawing a line instead, same joints and frames",
+       "role": "control",
+       "value": 51.4759
+      },
+      {
+       "label": "Frame 0's pose held for the whole take",
+       "role": "control",
+       "value": 694.6394
+      }
+     ]
+    },
+    {
+     "title": "What the smoothing window does to a bad detection",
+     "plain": "Exact truth from our own motion clips, no MAMMA anywhere in this chart. One landmark is thrown off by as much as our own detector's worst 1%; the shipped 300 ms window removes most of the damage, and removing the window leaves it.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ours, the shipped 300 ms window",
+       "role": "ours",
+       "value": 22.3946
+      },
+      {
+       "label": "With no smoothing at all",
+       "role": "control",
+       "value": 77.9523
       }
      ]
     }
@@ -623,7 +664,7 @@
     },
     {
      "title": "Which way the delivered character faces, part by part",
-     "plain": "+1 means a part points the same way the performer does in the footage; -1 means exactly the opposite way. The pelvis, chest, head and the mesh's own nose are all reversed; the feet, solved separately from the toes, are right. MAMMA's independent reading agrees with ours at +0.99, so this is not two instruments disagreeing about a few degrees: the body is turned round.",
+     "plain": "+1 means a part points the same way the performer does in the footage; -1 means exactly the opposite way. Since the 2026-09-02 fix every part points with the performer; before it the pelvis, chest, head and the mesh's own nose read -0.9 to -1.0 while the feet were right. The hatched bar, our capture turned 180 degrees, is what backwards looks like on this scale. MAMMA's independent reading of the performers is the ceiling a head can reach.",
      "better": "higher",
      "unit": "direction cosine",
      "bars": [

@@ -263,8 +263,10 @@ def x_sequence_and_oracle(spec: dict) -> tuple[list, list]:
     figs, ctrls = x_sequence(spec)
     sys.path.insert(0, str(ROOT / "tools/compare"))
     from extractors.i2_oracle import x_oracle_2d  # noqa: E402
+    from extractors.i7_temporal import x_temporal  # noqa: E402
     f2, c2 = x_oracle_2d(spec)
-    return figs + f2, ctrls + c2
+    f3, c3 = x_temporal(spec)
+    return figs + f2 + f3, ctrls + c2 + c3
 
 
 def x_feet_bar(spec: dict) -> tuple[list, list]:
@@ -476,7 +478,7 @@ RUNGS: list[dict[str, Any]] = [
                         "the fitter's 3D target, but only with 512-landmark input; not built.",
     ),
     dict(
-        id="temporal", n=5, regenerate=".venv/bin/python tools/compare/oracle_2d.py   # ~3.5 min; run-report.json comes from the production build",
+        id="temporal", n=5, regenerate=".venv/bin/python tools/compare/oracle_2d.py && .venv/bin/python tools/compare/temporal.py   # ~3.5 min + ~20 min; run-report.json comes from the production build",
         title="Temporal solve and smoothing",
         mamma="No separate stage. All frames are optimised jointly, and runs 3 and 4 of the fit carry "
               "`angular_acc_loss` (0.003 / 0.005) and `pts3d_temp_loss` (0.03) -- verified in the retained "
@@ -492,18 +494,23 @@ RUNGS: list[dict[str, Any]] = [
                    "so everything the oracle costs is THIS stage -- 1.15 mm median, largest on the wrists and ankles. "
                    "A noise arm injects MAMMA's own 2D residual deciles i.i.d. over 5 seeds.",
         instrument_missing="on REAL footage, still none valid: MAMMA's mesh is itself smoothed and its "
-                           "`triangulated_3d_pts` are correlated with the 2D being smoothed. The oracle measures "
-                           "the stage on a take with no dropped views, and its job is recovering joints a camera "
-                           "loses; I7's synthetic fixture with injected single-ray slots is what scores that.",
+                           "`triangulated_3d_pts` are correlated with the 2D being smoothed. I7 (2026-09-02, "
+                           "`tools/compare/temporal.py` -> `artifacts/compare/temporal.json`) scores the stage on "
+                           "synthetic truth with views dropped: in bursts (real occlusion's shape) the sequence "
+                           "solve lands 7.7 mm vs 51.5 for a drawn line; on isolated single-frame drops the line "
+                           "wins (1.6 vs 2.1) and that is not a defect. Savitzky-Golay is zero-phase (lag 0.00 even "
+                           "at 3x the window), so a lag band discriminates nothing; attenuation and error do. The "
+                           "held-out-camera lag reads +0.9 frames on D001 alone: a sync candidate for rung 0.",
         reference="MAMMA's pred_joints, projected and reconstructed -- exact by construction",
         blind="everything upstream of 2D: detector, calibration, distortion, sync, soft tissue and, above all, "
               "joint-definition error, which dominates every real-footage figure here. The noise arm is a lower "
               "bound twice over (MAMMA's residual is regularised toward its own landmarks, and it is injected "
               "i.i.d. while real detector error is correlated across joints, frames and cameras). No dropped "
               "views, so the sequence solve's actual job is never exercised. Head and toe solves not attempted.",
-        status="measured on perfect 2D (1.15 mm, all of it this stage); dark on real footage",
+        status="measured on synthetic truth (I2, I7): 1.15 mm floor; the solve beats a line 6.7x on burst outages and loses on isolated drops; zero-phase smoother",
         extract=x_sequence_and_oracle,
-        reports=["artifacts/commercial-multiview-soma77/run-report.json", "artifacts/compare/oracle-2d.json"],
+        reports=["artifacts/commercial-multiview-soma77/run-report.json", "artifacts/compare/oracle-2d.json",
+                 "artifacts/compare/temporal.json"],
         both_directions="MAMMA->ours: done (I2) -- the oracle arm for rungs 3-7: association and triangulation pass at "
                         "0.00 on perfect 2D; a one-frame camera shift costs 6.7-6.8 mm, about what MAMMA-grade 2D "
                         "noise costs (4.6 mm), and a crossed subject pairing 1,243 mm. Ours->MAMMA: no reference.",
@@ -750,6 +757,24 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Ours, performer 1", role="ours", key="floor_abs_our_subject_01"),
                    dict(label="Ours with MAMMA-grade 2D noise added", role="alt", key="noise_abs"),
                    dict(label="One camera shifted a frame", role="control", key="time_shift_+1")]),
+        dict(title="What happens to a joint when only one camera can still see it",
+             plain="MAMMA's own skeleton projected into the four cameras is the exact truth here, so every "
+                   "millimetre is our reconstruction's. When a joint is lost for a run of frames the sequence "
+                   "solve lands nearly seven times closer than drawing a line through the gap. When the loss is a "
+                   "single isolated frame the line wins instead; the figures below the chart carry that arm.",
+             better="lower",
+             bars=[dict(label="Ours, outages in bursts (real occlusion's shape)", role="ours",
+                        key="mamma_recovered_correlated_amplified"),
+                   dict(label="Drawing a line instead, same joints and frames", role="control",
+                        key="mamma_interp_only_correlated_amplified"),
+                   dict(label="Frame 0's pose held for the whole take", role="control", key="mamma_frozen")]),
+        dict(title="What the smoothing window does to a bad detection",
+             plain="Exact truth from our own motion clips, no MAMMA anywhere in this chart. One landmark is "
+                   "thrown off by as much as our own detector's worst 1%; the shipped 300 ms window removes most "
+                   "of the damage, and removing the window leaves it.",
+             better="lower",
+             bars=[dict(label="Ours, the shipped 300 ms window", role="ours", key="fk_spike2_shipped"),
+                   dict(label="With no smoothing at all", role="control", key="fk_spike2_identity")]),
     ],
     "shape": [
         dict(title="How far each body's limb lengths are from the performer's own",
@@ -870,9 +895,10 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Rig sized to performer 1", role="alt", key="sized_subject_01")]),
         dict(title="Which way the delivered character faces, part by part",
              plain="+1 means a part points the same way the performer does in the footage; -1 means exactly the "
-                   "opposite way. The pelvis, chest, head and the mesh's own nose are all reversed; the feet, solved "
-                   "separately from the toes, are right. MAMMA's independent reading agrees with ours at +0.99, so "
-                   "this is not two instruments disagreeing about a few degrees: the body is turned round.",
+                   "opposite way. Since the 2026-09-02 fix every part points with the performer; before it the "
+                   "pelvis, chest, head and the mesh's own nose read -0.9 to -1.0 while the feet were right. The "
+                   "hatched bar, our capture turned 180 degrees, is what backwards looks like on this scale. MAMMA's "
+                   "independent reading of the performers is the ceiling a head can reach.",
              better="higher",
              bars=[dict(label="Delivered pelvis", role="ours", key="fwd_delivered_torso_Hips_capture"),
                    dict(label="Delivered chest", role="ours", key="fwd_delivered_torso_Chest_capture"),

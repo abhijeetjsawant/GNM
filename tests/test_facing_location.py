@@ -176,26 +176,29 @@ class TestReport:
     def _report() -> dict:
         return json.loads(REPORT.read_text())
 
-    def test_the_delivered_rig_contradicts_itself_about_forward(self) -> None:
-        """The location, as one bit: the same rig read through its feet and through its
-        torso gives opposite handedness. No proper rotation can do that, so the posed
-        skeleton is not a rotation of its rest -- the torso carries the rest's mirror
-        through as a yaw and the independently-solved feet do not."""
+    def test_the_delivered_rig_agrees_with_itself_about_forward(self) -> None:
+        """The location, as one bit: BEFORE the 2026-09-02 fix the same rig read through its
+        feet and through its torso gave opposite handedness (`capture == mamma == feet ==
+        -torso`), which no proper rotation can do -- the torso carried the rest's mirror
+        through as a yaw and the independently-solved feet did not. Since the relabel
+        shipped, all four read the same sign. A recurrence of the mirror flips `torso`."""
         arms = self._report()["triple_product"]["arms"]
         for subject in ("subject_00", "subject_01"):
             feet = arms["delivered_rig_forward_from_its_FEET"][subject]["sign_median"]
             torso = arms["delivered_rig_forward_from_its_TORSO"][subject]["sign_median"]
             capture = arms["our_triangulated_capture"][subject]["sign_median"]
             mamma = arms["mamma_pred_joints"][subject]["sign_median"]
-            assert capture == mamma == feet == -torso
+            assert capture == mamma == feet == torso  # was `== -torso` until the fix
 
-    def test_the_delivered_surface_faces_backwards(self) -> None:
+    def test_the_delivered_surface_faces_forward(self) -> None:
         """Measured on the shipped GLB with no joint name involved -- the reading I6's
-        whole-body control could not give."""
+        whole-body control could not give. Until 2026-09-02 the nose's CI sat below -0.5
+        and the pelvis below -0.9 (the mirror); since the fix every part points with the
+        performer. The feet were right both before and after, being solved from the toes."""
         dots = self._report()["forward_dot"]
         for subject in ("subject_00", "subject_01"):
-            assert dots[subject]["delivered_MESH_nose"]["vs_our_capture_forward"]["ci95"][1] < -0.5
-            assert dots[subject]["delivered_torso_Hips"]["vs_our_capture_forward"]["median"] < -0.9
+            assert dots[subject]["delivered_MESH_nose"]["vs_our_capture_forward"]["ci95"][0] > 0.5   # was ci95[1] < -0.5
+            assert dots[subject]["delivered_torso_Hips"]["vs_our_capture_forward"]["median"] > 0.9  # was < -0.9
             # and the feet, solved separately, are right
             assert dots[subject]["delivered_feet"]["vs_our_capture_forward"]["median"] > 0.5
 

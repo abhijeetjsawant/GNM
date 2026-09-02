@@ -108,9 +108,9 @@
           "title": "Temporal: lag and outlier repair measured on synthetic truth",
           "plain": "Lower priority. Needs the synthetic fixture extended first.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
+          "finished": "2026-09-02",
           "report": "artifacts/compare/temporal.json",
           "blocked_on": null
         },
@@ -419,6 +419,26 @@
       "date": "2026-09-02",
       "step": "D1",
       "text": "D1 shipped: the delivered character faces the right way. Rebuilt from the cached detections with the regenerated asset; the rig and every triangulated point are byte-identical to the previous build, only the rotations turned. The old build is kept beside it for the record. D2, the clavicle origin, is next and needs the go."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "Rung 11's canonical figure for performer 1 moved 137.8 -> 137.4 mm across the rebuild. Not the mirror: the fix branch proved rungs 7 and 11 identical to four decimals with both arms at window 15. What changed is the window-9 head solve, and the neck takes a share of the chest-to-head rotation, so the Head joint (the scoreboard's 'nose') moves with it."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I7",
+      "text": "Synthetic exact truth through the real pipeline with dropped views injected. Recovery: on burst outages (real occlusion's shape) the sequence solve lands 7.7 mm vs 51.5 for a drawn line, P=1.00; on isolated single-frame drops the line wins (1.6 vs 2.1 mm), robustly -- not a defect, two good neighbours beat a solve. Smoothing: the shipped window costs 1.15 mm and is zero-phase (lag 0.00 even at 3x the window; a lag band on Savitzky-Golay discriminates nothing), attenuation 0.01 -> 0.17 at 3x; a detector p99 spike goes 21 -> 79 mm without the filter. Held-out-camera lag: the four folds disagree and D001 alone reads +0.9 frames; shifting D001 by one frame collapses all four -- a candidate one-frame sync offset for rung 0, one measurement not a claim. Thorax 9-vs-15: half the real gap is a heavy detector tail (heavy-tail i.i.d. +2.5 deg, the only arm that clears its seed spread; white noise +0.2); the other half is outside every synthetic arm and could be our frame or the reference. Eleven plan corrections in the report."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I7",
+      "text": "I7 done: with a perfect detector and views dropped in bursts, the sequence solve is seven times better than drawing a line; on isolated single-frame drops the line wins. The smoother delays nothing and removes most of a bad detection. One camera, D001, reads a frame late on the held-out test -- a sync candidate for the hardware lane. And half the thorax 9-vs-15 puzzle is the detector's heavy tail."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "H",
+      "text": "Sync candidate for lane H: the held-out-camera lag test reads +0.9 frames on D001 and about zero on the other three; moving D001 by one frame collapses every fold to within 0.17 frames. One measurement, to be confirmed on the owned rig, never corrected on this one."
     }
   ]
 }
