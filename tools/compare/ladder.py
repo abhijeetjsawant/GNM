@@ -192,6 +192,20 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
+    """Rung 7 carries two instruments: the scoreboard / SMPL-X arms and I1's retarget split.
+
+    I1's extractor lives in `tools/compare/extractors/i1_retarget.py` (the agent's stub,
+    wired here by the registry owner). Both report against two references that never
+    share an axis; each `fig` carries its own.
+    """
+    figs, ctrls = x_pose(spec)
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.i1_retarget import x_retarget  # noqa: E402
+    f2, c2 = x_retarget(spec)
+    return figs + f2, ctrls + c2
+
+
 def x_delivered(_: dict) -> tuple[list, list]:
     sb = _load("artifacts/compare/scoreboard-commercial-multiview-soma77.json")
     if not sb:
@@ -403,12 +417,20 @@ RUNGS: list[dict[str, Any]] = [
         blind="accuracy: the reference is itself SMPL-X, so fitting SMPL-X to our points shares its joint "
               "regressor with the thing scored against -- some of a gain can be convention convergence. Hands, "
               "feet, head: not in the 15.",
-        status="measured", extract=x_pose,
-        reports=["artifacts/compare/scoreboard-commercial-multiview-soma77.json", "artifacts/compare/smplx-pose-fit.json"],
-        both_directions="MAMMA->ours: its `pred_joints` mapped through the scoreboard's `PAIRS` into "
-                        "`positions_to_body_track` would isolate our retarget on MAMMA's FITTED joints (not its "
-                        "`triangulated_3d_pts`, which are 512 surface points and the converter takes 19 joints) -- "
-                        "buildable from disk, not built. Ours->MAMMA: see detector rung.",
+        status="measured; converter split by I1 (2026-09-02)", extract=x_pose_and_retarget,
+        reports=["artifacts/compare/scoreboard-commercial-multiview-soma77.json", "artifacts/compare/smplx-pose-fit.json",
+                 "artifacts/compare/retarget-cost.json"],
+        both_directions="MAMMA->ours (I1 arm B, built 2026-09-02): its `pred_joints` mapped through the scoreboard's "
+                        "`PAIRS` into `positions_to_body_track` -- the 4 unmapped joints (eyes, ears) filled with the "
+                        "nose position, proved inert (bit-identical rotations under a different filler); the converter "
+                        "REJECTS NaN, so the plan's NaN adapter was wrong. On MAMMA's rigid joints the sized rig lands "
+                        "at 52 / 51 mm on the arms and 3.4 mm on the legs; its own round-trip is 22 / 36 on the arms. "
+                        "On our capture the sized rig lands at 85 / 92 (arms) and the round-trip floor is 30 / 36 -- "
+                        "the gap above the floor is the input's bone-length wander (21 / 35 mm std across frames; "
+                        "MAMMA's is 0.0) plus the landmark-to-joint-origin convention, and nothing on our capture can "
+                        "split those two. Two plan premises fell: 're-solving' on a sized skeleton is bit-identical to "
+                        "replaying canonical rotations (the converter turns rest DIRECTIONS), and the Hips 0.98 literal "
+                        "is already gone. Ours->MAMMA: see detector rung.",
     ),
     dict(
         id="hands", n=8, title="Hands",

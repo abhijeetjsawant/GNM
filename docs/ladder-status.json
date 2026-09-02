@@ -42,9 +42,9 @@
           "title": "Split the retarget: how much is body proportions, how much is the converter",
           "plain": "Answers whether our biggest loss is the fixed body size or the maths that turns points into a skeleton. Also feeds MAMMA's own skeleton through our converter to price it on clean input.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
+          "finished": "2026-09-02",
           "report": "artifacts/compare/retarget-cost.json",
           "blocked_on": null
         },
@@ -259,6 +259,16 @@
       "date": "2026-09-02",
       "step": null,
       "text": "Ladder and plan committed and pushed (e8c88e9). Go given for lane I: I1, I2, I4, I6, I8 dispatched in parallel, one Opus agent per worktree."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I1",
+      "text": "Split the retarget. Sizing the rig to the performer recovers 95-125 mm on the arms, mostly shoulder span; the converter's own floor is 30-36 mm on the arms after sizing, 0.00 on the legs; the rest is input non-rigidity plus the joint-origin convention, which our capture cannot separate. The NaN adapter and the 'sized arm is a lower bound' premises were wrong; the Hips 0.98 literal is already gone."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I1",
+      "text": "I1 done: body proportions, mainly the shoulder span, are the bigger lever; the converter's own cost is 30-36 mm on the arms. D2's remaining target is the clavicle origin."
     }
   ]
 }
