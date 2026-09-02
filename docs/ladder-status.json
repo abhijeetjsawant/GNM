@@ -108,11 +108,11 @@
           "title": "Temporal: lag and outlier repair measured on synthetic truth",
           "plain": "Lower priority. Needs the synthetic fixture extended first.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-02",
           "finished": null,
           "report": "artifacts/compare/temporal.json",
-          "blocked_on": "fixture extension"
+          "blocked_on": null
         },
         {
           "id": "I8",
@@ -137,8 +137,8 @@
           "title": "Fix the character facing the wrong way",
           "plain": "Every delivered character currently faces 180 degrees away from where the performer faced.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-02",
           "finished": null,
           "report": null,
           "blocked_on": "I6 finds no shipped 180 deg yaw: turning our mesh around makes it worse on every camera. Re-locate the defect first (export-side compensation, a mislocated 2026-08-30 diagnosis, or a left/right mirror a silhouette cannot see). And fix camera_overlay.py's missing scene.render.fps before its flip check is trusted."
@@ -355,6 +355,21 @@
       "date": "2026-09-02",
       "step": "I5",
       "text": "I5 done: the hands gate exists and rejects frozen and drifting hands, but only the held-out camera can; smoothness bands reject nothing. It also says the shipped hand is under-smoothed and that MAMMA's hand is not a floor here. Lane I complete except I7."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I7",
+      "text": "worktree ladder/I7, Opus agent. Injection path exists in oracle_2d.py; single-ray slots exercise the sequence solve for the first time"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "worktree ladder/D1, Opus agent: LOCATE the defect and repair camera_overlay.py's timebase; no delivery change until the defect is placed and the thorax leak is closed (provenance.py exits 1 while it stands)"
+    },
+    {
+      "date": "2026-09-02",
+      "step": null,
+      "text": "Go given for I7 and for locating the facing defect (D1, location only). The D1 fix cannot ship until the thorax window decision lands, because the provenance gate fails a build while the leak stands."
     }
   ]
 }
