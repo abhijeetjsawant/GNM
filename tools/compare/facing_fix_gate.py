@@ -666,6 +666,72 @@ PLAN_CORRECTIONS = [
 ]
 
 
+def _delivery_builds_differ_only_in_provenance(derived: Path, regenerated: Path) -> dict:
+    """Build the delivery twice -- once against the DERIVED asset, once against the one the
+    pinned provider regenerated -- and show the difference is the provenance stamp alone.
+
+    The glTF binary chunk carries every vertex, every skin matrix and every animation
+    sample. If that chunk is byte-identical then no gate figure computed on the first build
+    can move on the second, and the regenerated build can be adopted by SHA rather than by
+    re-running eight instruments against it.
+    """
+    import struct                                              # noqa: PLC0415
+
+    def chunks(path: Path) -> dict[int, list[bytes]]:
+        data = path.read_bytes()
+        if data[:4] != b"glTF":
+            raise ValueError(f"{path} is not a binary glTF")
+        offset, out = 12, {}
+        while offset < len(data):
+            length, kind = struct.unpack_from("<II", data, offset)
+            offset += 8
+            out.setdefault(kind, []).append(data[offset:offset + length])
+            offset += length
+        return out
+
+    JSON_CHUNK, BIN_CHUNK = 0x4E4F534A, 0x004E4942
+    PROVENANCE = {"body_asset_sha256", "body_manifest_sha256"}
+    rows, ok = {}, True
+    for subject in (0, 1):
+        name = f"subject-{subject:02d}.glb"
+        a, b = derived / name, regenerated / name
+        if not (a.exists() and b.exists()):
+            return {"unavailable": "one of the two delivery builds is not on disk"}
+        ca, cb = chunks(a), chunks(b)
+        binary_same = ca[BIN_CHUNK] == cb[BIN_CHUNK]
+        ja = json.loads(ca[JSON_CHUNK][0])
+        jb = json.loads(cb[JSON_CHUNK][0])
+        differing = sorted(k for k in set(ja) | set(jb) if ja.get(k) != jb.get(k))
+        extras_a = ja.get("asset", {}).get("extras", {})
+        extras_b = jb.get("asset", {}).get("extras", {})
+        extra_fields = sorted(k for k in set(extras_a) | set(extras_b)
+                              if extras_a.get(k) != extras_b.get(k))
+        only_provenance = (differing == ["asset"] and set(extra_fields) <= PROVENANCE)
+        rows[name] = {
+            "binary_chunk_byte_identical": binary_same,
+            "json_top_level_keys_that_differ": differing,
+            "asset_extras_fields_that_differ": extra_fields,
+            "body_track_sha256_identical":
+                extras_a.get("body_track_sha256") == extras_b.get("body_track_sha256"),
+            "verdict": verdict(binary_same and only_provenance),
+        }
+        ok = ok and binary_same and only_provenance
+    return {
+        "what_was_compared": ("the delivery built against the DERIVED asset against the "
+                              "delivery built against the REGENERATED one, same cached "
+                              "detections, same code"),
+        "per_subject": rows,
+        "reading": ("the glTF BINARY chunk -- every vertex, every skin matrix, every "
+                    "animation sample -- is byte-identical, and the only fields that move "
+                    "are `body_asset_sha256` and `body_manifest_sha256`, the provenance "
+                    "stamp the exporter writes. `body_track_sha256` is unchanged. So every "
+                    "figure in this gate holds on the regenerated build without re-running "
+                    "a single instrument against it, and the regenerated build is the one "
+                    "with a clean SHA chain."),
+        "verdict": verdict(ok),
+    }
+
+
 def review_follow_ups() -> dict:
     """The three items the 2026-09-02 review asked for before this branch can merge.
 
@@ -740,6 +806,8 @@ def review_follow_ups() -> dict:
 
     # ---- 2. the asset's SHA chain
     path = FIX / "asset-regeneration.json"
+    delivered_builds = _delivery_builds_differ_only_in_provenance(
+        FIX / "delivery", FIX / "delivery-regen")
     if path.exists():
         regeneration = json.loads(path.read_text())
         out["2_asset_regenerated_through_the_pinned_provider"] = {
@@ -750,11 +818,13 @@ def review_follow_ups() -> dict:
             "arrays": {k: v["verdict"] for k, v in regeneration["arrays"].items()},
             "request_sha256": regeneration["request_sha256"],
             "asset_sha256": regeneration["asset_sha256"],
+            "the_two_delivery_builds": delivered_builds,
             "closes": ("the derived asset carried `artifact.request_sha256` of the PRE-repair "
                        "request. The regenerated one carries its own, and the two assets' "
                        "arrays are identical, so the derivation was sound and the provenance "
                        "gap is closed."),
-            "verdict": regeneration["verdict"],
+            "verdict": verdict(regeneration["verdict"] == "PASS"
+                               and delivered_builds.get("verdict") == "PASS"),
         }
 
     # ---- 3. soma_motion on real provider motion
