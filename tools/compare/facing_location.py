@@ -141,6 +141,14 @@ def digest(path: Path) -> str | None:
     return sha256(path.read_bytes()).hexdigest() if path.exists() else None
 
 
+def label_path(path: Path) -> str:
+    """`artifacts/` and `.cache/` are symlinks in a worktree, so `relative_to(ROOT)`
+    raises on a resolved path. Report a repo-relative label without resolving."""
+    import os
+
+    return os.path.relpath(path, ROOT)
+
+
 # ---------------------------------------------------------------------------------------
 # 1. the asset's own handedness, and the SHA chain that says which asset it is
 # ---------------------------------------------------------------------------------------
@@ -278,8 +286,8 @@ def sha_chain(delivery: Path = DELIVERY, asset_path: Path = ASSET) -> dict:
     report = json.loads((delivery / "run-report.json").read_text())
     i6_inputs = silhouette.get("input_sha256", {})
     return {
-        "delivery": str(delivery.relative_to(ROOT)),
-        "asset": str(asset_path.relative_to(ROOT)),
+        "delivery": label_path(delivery),
+        "asset": label_path(asset_path),
         "src_head_commit": head,
         "last_commit_touching_src": src,
         "delivery_mtime_utc": __import__("datetime").datetime.utcfromtimestamp(
@@ -367,7 +375,7 @@ def main() -> None:
     parser.add_argument("--probe", type=Path, default=PROBE)
     parser.add_argument("--label", default="D1 (locate)")
     args = parser.parse_args()
-    delivery, asset_path = args.delivery.resolve(), args.asset.resolve()
+    delivery, asset_path = args.delivery, args.asset
 
     names = json.loads((delivery / "subject-00.body-track.json").read_text())["joint_names"]
     skeleton = skeleton_for_joint_names(names)
@@ -601,6 +609,71 @@ def main() -> None:
                          "Both this AND the nose being negative is a YAW; only one of "
                          "them negative would be a reflection."),
             }
+        # ORACLE for the HEAD band specifically, added at D1 (fix). The reference forward
+        # every figure above is scored against is the BODY's, built from the pelvis and the
+        # neck. A head is not welded to a body: a performer can look sideways with their
+        # chest square, so the head's dot against the body forward is bounded by the
+        # performer's own neck, not by our solve. Scoring MAMMA's own head through the same
+        # frames measures that ceiling -- and "a gate no oracle can pass is miscalibrated"
+        # is this lane's standing rule (CLAUDE.md). MAMMA's head world rotation comes from
+        # its own `smplx_pose` chain, exactly as `tools/head/head_gate.py` builds it, and
+        # SMPL-X's canonical body faces +Z, so its head forward is that chain applied to
+        # (0, 0, 1). MAMMA's world IS the camera-rig world.
+        try:
+            from scipy.spatial.transform import Rotation as _R
+
+            pose = np.load(MA3D / f"smplx_params_body_id-{mapping[s]:02d}.npz",
+                           allow_pickle=True)["smplx_pose"].astype(np.float64)[:frames]
+            chain = (0, 3, 6, 9, 12, 15)      # pelvis, spine1-3, neck, head
+            head_world = _R.from_rotvec(pose[:, 3 * chain[0]:3 * chain[0] + 3]).as_matrix()
+            for joint in chain[1:]:
+                head_world = head_world @ _R.from_rotvec(
+                    pose[:, 3 * joint:3 * joint + 3]).as_matrix()
+            mamma_head_forward = unit(head_world @ np.array([0.0, 0.0, 1.0]))
+            dots["ORACLE_mamma_head_forward_vs_our_capture_forward"] = {
+                "vs_our_capture_forward": block_bootstrap_median(
+                    np.einsum("fj,fj->f", mamma_head_forward, fwd_c)),
+                "vs_mamma_forward": block_bootstrap_median(
+                    np.einsum("fj,fj->f", mamma_head_forward, fwd_m)),
+                "note": ("THE CEILING FOR THE HEAD BAND. MAMMA's own head direction, from "
+                         "its `smplx_pose` chain, scored against the same body-derived "
+                         "forward every other row uses. Our Head cannot beat this, and a "
+                         "band above it is a band on the performer's neck rather than on "
+                         "any pipeline."),
+            }
+        except (OSError, KeyError, ValueError) as error:      # noqa: BLE001
+            dots["ORACLE_mamma_head_forward_vs_our_capture_forward"] = {
+                "unavailable": f"{type(error).__name__}: {error}"}
+
+        if probe:
+            # The mesh nose chord is NOT the head's forward axis. It runs from the centroid
+            # of the 40 most posterior head vertices to the 40 most anterior, and in the
+            # bind pose that chord is tilted below rig +Z by the asset's own geometry. This
+            # row is that tilt, measured with no reference in it at all -- it is the fixed
+            # offset between the `delivered_Head` figure and the `delivered_MESH_nose` one,
+            # and without it the two look like a disagreement instead of a chord angle.
+            sampled = probe["subjects"][f"subject_{s:02d}"]["frames"]
+            centroids = probe["subjects"][f"subject_{s:02d}"]["centroids_world_z_up_m"]
+            nose_axis = unit(np.array(centroids["head_plus_z"])
+                             - np.array(centroids["head_minus_z"]))
+            head_z = unit(rig_to_capture(
+                rotate(world[:, names.index("Head")], (0.0, 0.0, 1.0))))[sampled]
+            rest_sets = probe["rest_sets_rig_space"]
+            chord_rest = (np.asarray(rest_sets["head_plus_z"]["centroid_xyz_m"])
+                          - np.asarray(rest_sets["head_minus_z"]["centroid_xyz_m"]))
+            dots["delivered_MESH_nose_vs_its_own_Head_joint_forward"] = {
+                "vs_our_capture_forward": block_bootstrap_median(
+                    np.einsum("fj,fj->f", nose_axis, head_z)),
+                "rest_chord_tilt_below_rig_plus_z_deg": float(np.degrees(np.arccos(
+                    float(chord_rest[2] / np.linalg.norm(chord_rest))))),
+                "note": ("no reference and no capture enters this row: it is the mesh's own "
+                         "nose chord against its own Head joint's +Z axis. The repair is an "
+                         "exact 180 degree yaw about each joint's own UP axis, which "
+                         "reverses the +Z component of this chord and PRESERVES its up "
+                         "component -- so the nose figure cannot flip to the same magnitude "
+                         "it had, and the difference is arithmetic, not a residual error."),
+            }
+
         # ORACLE: MAMMA's own answer to the same question, through our frames. It measures
         # the floor our frame definitions impose -- how well two independent estimates of
         # "which way is this person facing" can ever agree on this take.
