@@ -1305,16 +1305,32 @@ def thorax_window_probe(source_key: str, cameras, records: list[list[dict]],
                     float(np.mean(values)), 4)
                 entry[f"window_{window}"][f"{statistic}_seed_sd"] = (
                     round(float(np.std(values, ddof=1)), 4) if len(values) > 1 else 0.0)
-        entry["p95_gap_9_minus_15_deg"] = round(
-            entry["window_9"]["p95_deg"] - entry["window_15"]["p95_deg"], 4)
+        # Per-seed gaps, not a difference of two seed-averaged numbers: the seed is the
+        # unit of variation, so the spread of the GAP is what says whether the gap is
+        # there at all. On the frame-correlated arms it is larger than the gap.
+        per_seed_gap = [s["9"]["p95_deg"] - s["15"]["p95_deg"] for s in per_seed]
+        entry["p95_gap_9_minus_15_deg"] = round(float(np.mean(per_seed_gap)), 4)
+        entry["p95_gap_seed_sd_deg"] = (round(float(np.std(per_seed_gap, ddof=1)), 4)
+                                        if len(per_seed_gap) > 1 else 0.0)
+        entry["p95_gap_per_seed_deg"] = [round(float(v), 4) for v in per_seed_gap]
         arms[label] = entry
         print(f"    [{source_key}] {label}: p95 {entry['window_9']['p95_deg']} deg at 9, "
               f"{entry['window_15']['p95_deg']} at 15, gap "
-              f"{entry['p95_gap_9_minus_15_deg']:+.2f} deg")
+              f"{entry['p95_gap_9_minus_15_deg']:+.2f} +/- {entry['p95_gap_seed_sd_deg']:.2f} deg")
 
-    gaps = {name: arm["p95_gap_9_minus_15_deg"] for name, arm in arms.items() if arm.get("ran")}
+    gaps = {name: {"gap_deg": arm["p95_gap_9_minus_15_deg"],
+                   "seed_sd_deg": arm["p95_gap_seed_sd_deg"],
+                   "seeds": arm["seeds"],
+                   "separated_from_zero": bool(
+                       arm["seeds"] > 1
+                       and abs(arm["p95_gap_9_minus_15_deg"]) > 2.0 * arm["p95_gap_seed_sd_deg"])}
+            for name, arm in arms.items() if arm.get("ran")}
     target = 4.5, 6.5
-    reproduces = [name for name, gap in gaps.items() if target[0] <= gap <= target[1]]
+    # An arm only "reproduces" the gate's gap if the gap is in band AND is separated from
+    # zero by its own seed spread. Without the second clause a 17 deg seed sd would let a
+    # coin flip qualify, which is how a number becomes a finding it cannot support.
+    reproduces = [name for name, entry in gaps.items()
+                  if target[0] <= entry["gap_deg"] <= target[1] and entry["separated_from_zero"]]
     return {
         "question": "THORAX_SMOOTHING_FRAMES moved 15 -> 9 on a synthetic sweep that found "
                     "the two windows about equal (3.86 vs 3.91 deg p95, seed sd 0.55). On "
@@ -1933,7 +1949,11 @@ def thorax_verdict(sources: dict) -> dict:
                     probe["arms_reproducing_a_gap_of_that_order"],
             }
     free = by_source.get("fk_synthetic", {})
-    gaps = free.get("p95_gap_9_minus_15_deg", {})
+    gaps = {name: entry["gap_deg"]
+            for name, entry in free.get("p95_gap_9_minus_15_deg", {}).items()}
+    solid = {name: entry["gap_deg"]
+             for name, entry in free.get("p95_gap_9_minus_15_deg", {}).items()
+             if entry["separated_from_zero"]}
     reproduces = free.get("arms_reproducing_a_gap_of_that_order", [])
     if reproduces:
         answer = (f"On the MAMMA-free arm, {', '.join(reproduces)} reproduces a 9-vs-15 p95 gap "
@@ -1943,10 +1963,17 @@ def thorax_verdict(sources: dict) -> dict:
                   "in tail shape, in whether the displacement persists across frames, and in "
                   "whether views go missing together.")
     elif gaps:
-        widest = max(gaps, key=lambda name: gaps[name])
+        pool = solid or gaps
+        widest = max(pool, key=lambda name: pool[name])
         answer = (
-            f"NO noise model here reproduces a 4.5-6.5 deg gap; the widest is {widest} at "
-            f"{gaps[widest]:+.2f} deg. Two readings survive and this instrument cannot "
+            f"NO noise model here reproduces a 4.5-6.5 deg gap that its own seed spread "
+            f"separates from zero; the widest that does is {widest} at "
+            f"{pool[widest]:+.2f} deg, roughly half the gate's. Read every gap beside its "
+            "`seed_sd_deg`: the frame-correlated arms move the ABSOLUTE p95 enormously and "
+            "their gaps are smaller than their own seed spread, which is the mechanism "
+            "rather than a null result -- error a smoother cannot remove makes both windows "
+            "equally bad, so correlation destroys the window's leverage instead of widening "
+            "it. Two readings survive and this instrument cannot "
             "separate them. Either the real gap is not a property of our frame at all -- "
             "which would point at the second candidate, that MAMMA's own head is "
             "over-smoothed and a 15-frame window merely matched it, and that is a statement "
