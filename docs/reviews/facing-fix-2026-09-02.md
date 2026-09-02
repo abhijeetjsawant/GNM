@@ -427,6 +427,19 @@ notarised) and **MPFB 2.0.16** under the repaired `DEFAULT_MPFB_JOINT_MAP`, into
 | `vertices_m`, `triangles`, `joint_indices`, `joint_weights`, `joint_names`, `parents`, `neck_seam_vertex_indices` | exact equality | **identical** |
 | `local_rest_matrices`, `inverse_bind_matrices`, `gnm_head_socket_matrix` | max absolute difference | **0.0** |
 
+**The delivery was then rebuilt against the regenerated run** (`delivery-regen/`) and the
+two builds compared chunk by chunk, because the file digests differ for an uninteresting
+reason. The glTF **binary chunk — every vertex, every skin matrix, every animation
+sample — is byte-identical** on both subjects, `body_track_sha256` is unchanged, and the
+only fields that move are `body_asset_sha256` and `body_manifest_sha256`: the provenance
+stamp the exporter writes into `asset.extras`, now pointing at the regenerated asset. The
+`.mapping.npz` files differ in the same one field and nothing else. **So every figure in
+this gate holds on the regenerated build without re-running a single instrument against
+it**, and the regenerated build is the one with a clean SHA chain. The comparison is
+computed in the gate, not asserted here, so a future divergence in the binary chunk fails
+rather than reads.
+
+
 **Every array is bit-identical to the derived asset**, so the permutation derivation was
 sound and its only defect was provenance. `request_sha256` moves from
 `fbed121a…` (delivered, `LeftUpperArm → upperarm01.R`) to
