@@ -203,7 +203,7 @@
   ],
   "decisions_for_user": [
     "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
-    "D2: the clavicle fix is built and gated on ladder/D2 and failed two must-bands for reasons outside the clavicle (root placement, and a pivot only 60-170 mm from its landmark). Choose: merge as-is (arms land better, clavicle jitters more, oracle reads 67/79 until the root is fixed); re-scope as D2 + root placement (round trip ~0.5 mm; delivery and jitter being measured); or hold D2 until the per-performer skeleton (D3/D5) puts the pivot and clavicle length where the performer's are."
+    "D2: the clavicle fix is built and gated on ladder/D2 (pushed, unmerged) and failed two must-bands for reasons outside the clavicle. Measured on the branch, shipping nothing: D2 + root placement (Hips placed so the rig's hip joints land on the captured hips, the skeleton's own geometry, no constant) meets the round-trip band on both rigs (0.5/0.1 mm canonical, 0.07/0.04 sized, legs 0.00), lands the delivered arms 124->51 and 90->30 mm, keeps MAMMA's arm in step, and relieves the ground projection (the current build is hoisted 142/110 mm off the floor; 83/49 under it). But the clavicle jitter is unfixed in every configuration: frames over a human's peak joint rate 40/33 against 32/11 before D2, and sized + root makes performer 1 worse. Recommendation: re-scope as D2 + root placement and do not merge until the clavicle's temporal defect has its own step with its own gate (the head's physical-ceiling reject is the precedent), or accept the temporal regression explicitly. Holding for D3-D5 buys nothing on jitter."
   ],
   "log": [
     {
@@ -450,6 +450,11 @@
       "date": "2026-09-02",
       "step": "D2",
       "text": "D2 built and gated on ladder/D2 (not merged): the clavicle aimed from the rig's own shoulder origin; delivered arms land 181->124 and 218->90 mm on our capture and 200->131, 220->90 on MAMMA's joints, but the canonical round trip reads 67/79 mm, all of it the root placement (Hips on the hip-landmark midpoint, hip joints 80 mm below; 0.5/0.1 mm with the drop removed), and the clavicle chain jitters: frames over the human peak rate 32->48 and 11->49, steps to 160 deg. The pivot sits 60-170 mm from its landmark against 400 before, so landmark wander becomes angle. Two must-bands failed; Sol reviewed; no merge."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D2",
+      "text": "D2 variant measured on the branch, nothing shipped: D2 + root placement passes the pinned round trip on both rigs (0.51/0.08 canonical, 0.07/0.04 sized) and lands the delivered arms 124->51 / 90->30 mm; the projection is relieved, not fought (hoist 142->83, 110->49 mm, penetration 0). The pre-registered prediction that the root fix would shorten the lever was wrong: the rig's shoulder origin already sat at or above the captured shoulder, so the lever lengthened in every cell (79-99 -> 101-160 mm). What discriminates is two constraints: |lever - upper-arm rest length| predicts placement, and the p5 lever predicts jitter. Jitter is unfixed under every variant (40/33 frames over the ceiling vs 32/11 pre-D2; sized + root 41/35). Picture: artifacts/compare/d2-clavicle/jitter/."
     }
   ]
 }
