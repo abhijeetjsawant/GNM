@@ -202,8 +202,7 @@
     }
   ],
   "decisions_for_user": [
-    "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
-    "Thorax smoothing window (I8): the proposal is 9 frames, bracket 5-9, against the shipped 15. Be clear what the data supports: p95 alone does NOT separate 9 from 15 below 0.77x real thorax speed (0.47 of paired draws, +0.07 deg); the case rests on lag and attenuation (15 lags 1.8 frames and loses 32% of peak yaw rate) and on both fixture biases running toward wider windows, which makes 9 an upper bound. Decide whether to change it in the shipped head solve (lane D, one line plus a head-gate re-run with the MAMMA arm reporting only)."
+    "Lane H: decide the rig and book the marker session; performer releases covering ML training use."
   ],
   "log": [
     {
@@ -385,6 +384,11 @@
       "date": "2026-09-02",
       "step": "D1",
       "text": "Sol reviewed the facing fix proposal: build it on a branch, try renaming the Left/Right bones before mirroring any geometry, and rerun I1, rungs 7 and 11, the head gate and I6 as regression gates. It merges only after the thorax decision and a second review."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I8",
+      "text": "THORAX_SMOOTHING_FRAMES changed 15 -> 9 on the user's decision; provenance audit now CLEAN (exit 0). Head gate re-run with the MAMMA arm reporting only: P1 median improved on both performers (6.39 -> 5.52, 8.25 -> 7.19 deg, gated), p95 worse on performer 0 (16.4 -> 20.0) and better on performer 1 (27.5 -> 22.2); the oracle floor rose on both (3.62 -> 4.27, 3.87 -> 4.31) because a narrower window leaves more frame jitter in the reference frame itself. Performer 0's gate verdict flipped PASS -> FAIL on the p95 band. Reverting on that would be selecting on the MAMMA arm, so the value stands; the outcome is recorded, not smoothed."
     }
   ]
 }

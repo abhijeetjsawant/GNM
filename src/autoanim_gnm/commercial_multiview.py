@@ -1672,11 +1672,24 @@ def positions_to_body_track(
 
 
 
-# Half a second at 30 fps. The torso frame is a NONLINEAR function of its landmarks, so
+# Nine frames at 30 fps. The torso frame is a NONLINEAR function of its landmarks, so
 # smoothing the positions does not smooth the frame -- a per-frame frame stays jittery on
 # smoothed points. A reference that jitters charges its own wobble to whatever is measured
-# against it. Chosen by the oracle arm alone; see `_thorax_frames`.
-THORAX_SMOOTHING_FRAMES = 15
+# against it.
+#
+# PROVENANCE: synthetic truth, selected without MAMMA (I8, 2026-09-02,
+# `tools/head/thorax_window_sweep.py` -> `artifacts/compare/thorax-window-sweep.json`).
+# Exact thorax frames from the tracked FK fixture, played at 0.58-0.77x of our own capture's
+# thorax speed, with noise at our own detector's self-agreement amplitude injected in pixels
+# and recovered through the real triangulator; the p95 angular error has an INTERIOR optimum
+# at 9 (bracket 5-9) at every stride that reaches real speed. Two fixture biases (under-speed,
+# white rather than correlated noise) both push the answer wider, so 9 is an upper bound.
+# p95 alone does not separate 9 from 15 below 0.77x real speed; the case for 9 over the
+# previous 15 rests on lag and attenuation: 15 lags the true frame by 1.8 frames and loses
+# 32 % of peak yaw rate. The value was 15 from 2026-09-01 (commit 08a6c89), chosen on the
+# MAMMA oracle arm -- that sweep is kept in `_thorax_frames`'s docstring as a REPORT, and it
+# no longer selects anything. Changed to 9 on the user's decision, 2026-09-02.
+THORAX_SMOOTHING_FRAMES = 9
 
 
 def _thorax_frames(
@@ -1693,10 +1706,14 @@ def _thorax_frames(
     an independent audit later showed the reference's OWN best-case arm could not pass
     under it, which is what forced the first repair.
 
-    **The window was chosen by the oracle arm alone** -- the reference's own head expressed
-    in this frame, which contains none of our head estimate -- and the choice has an
-    interior optimum rather than running away, which is what distinguishes matching a real
-    property from degenerating toward a constant:
+    **History, reports only.** The window was FIRST chosen (2026-09-01) on the oracle arm --
+    the reference's own head expressed in this frame, which contains none of our head
+    estimate -- which made it a shipped constant selected on MAMMA and therefore a leak
+    (I8). It was re-selected on 2026-09-02 from synthetic truth with our own detector's
+    noise (see `THORAX_SMOOTHING_FRAMES` above): 9, not 15. The oracle sweep below is kept
+    because it shows the same SHAPE (an interior optimum, a median that prefers narrower
+    than the p95) and it never selects again. Read it as one performer's p95 minimum at
+    15 and the other's falling monotonically to 31 -- no window was the argmin on both:
 
     | window | oracle P1 median | oracle P1 p95 |
     |---|---|---|

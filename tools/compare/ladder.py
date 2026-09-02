@@ -583,8 +583,8 @@ RUNGS: list[dict[str, Any]] = [
         reference="MAMMA's head orientation expressed in our thorax frame",
         blind="absolute orientation (a tracking gate mean-removes each take); accuracy (parity only); the "
               "jitter band, which the solver regularises directly",
-        status="measured, one performer misses P1 p95 by 1.18 deg; its thorax window is the one MAMMA-chosen "
-               "shipped constant (I8), re-selected at 9 on synthetic truth, change pending",
+        status="measured; thorax window now 9 (synthetic truth, 2026-09-02): medians improved on both performers, "
+               "p95 mixed, the gate's own floor rose, performer 0 flipped PASS -> FAIL on p95",
         extract=x_head_and_provenance,
         reports=["artifacts/head-lane/head-gate-shipped.json", "artifacts/compare/provenance.json",
                  "artifacts/compare/thorax-window-sweep.json"],
@@ -592,7 +592,12 @@ RUNGS: list[dict[str, Any]] = [
                         "Provenance (I8, 2026-09-02): 89 delivery constants audited, 1 leak "
                         "(`THORAX_SMOOTHING_FRAMES`, chosen on the MAMMA oracle arm), 2 declared (the camera rig "
                         "IS `ma_cap`; the example footage), 17 of unknown origin, none MAMMA-derived. "
-                        "`provenance.py` exits non-zero while a leak stands.",
+                        "`provenance.py` exits non-zero while a leak stands; it exits 0 since the window moved to 9 "
+                        "on 2026-09-02. Re-run at 9 (MAMMA arm REPORTS): gated P1 median 6.39 -> 5.52 and "
+                        "8.25 -> 7.19 deg; p95 16.4 -> 20.0 (worse) and 27.5 -> 22.2 (better); the oracle floor "
+                        "rose 3.62 -> 4.27 and 3.87 -> 4.31, as a narrower window must -- it leaves more frame jitter "
+                        "in the reference frame, which charges MAMMA's head too. Performer 0 now fails the p95 band. "
+                        "Reverting on that would select on the MAMMA arm, so 9 stands and the verdict is reported.",
     ),
     dict(
         id="feet", n=10, regenerate=".venv/bin/python tools/feet/mamma_feet_bar.py",

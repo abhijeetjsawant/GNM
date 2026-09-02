@@ -1,7 +1,7 @@
 """Step I8: the provenance audit and the thorax window sweep, tested for their claims.
 
 These do not assert `provenance.py` exits zero. It exits ONE today, deliberately --
-`THORAX_SMOOTHING_FRAMES` is a known leak and the script is meant to gate a delivery
+`THORAX_SMOOTHING_FRAMES` WAS the known leak (re-selected on synthetic truth 2026-09-02) and the script is meant to gate a delivery
 build on exactly that. What is tested is the classification: that the rule finds the leak
 it is supposed to find, that a declared item is declared rather than condemned, that
 `unknown` stays honest, and that the sweep's own scoring functions behave.
@@ -43,10 +43,14 @@ def sweep():
 
 # ------------------------------------------------------------------------ the audit
 
-def test_the_known_leak_is_classified_as_a_leak(provenance):
+def test_the_former_leak_is_now_selected_on_synthetic_truth(provenance):
+    # I8 found THORAX_SMOOTHING_FRAMES chosen on the MAMMA oracle arm; on 2026-09-02 it was
+    # re-selected on synthetic truth and the constant changed (15 -> 9). The entry must say
+    # where it comes from NOW and keep the history of where it came from.
     entry = provenance.CURATED["THORAX_SMOOTHING_FRAMES"]
-    assert entry["provenance"] == provenance.MAMMA_DERIVED
-    assert "oracle" in entry["evidence"]
+    assert entry["provenance"] == provenance.SYNTHETIC
+    assert "thorax_window_sweep" in entry["evidence"]
+    assert "oracle" in entry["evidence"]  # the history is kept, not erased
 
 
 def test_the_scan_reaches_the_delivery_entry_points(provenance):
@@ -56,11 +60,13 @@ def test_the_scan_reaches_the_delivery_entry_points(provenance):
         assert name in live
 
 
-def test_the_manifest_finds_the_leak_and_the_declared_rig(provenance):
+def test_the_manifest_is_clean_and_finds_the_declared_rig(provenance):
     scanned, _ = provenance.scan()
     manifest = provenance.classify(scanned)
     leaks = [e for e in manifest if e["provenance"] == provenance.MAMMA_DERIVED]
-    assert [e["name"] for e in leaks] == ["THORAX_SMOOTHING_FRAMES"]
+    assert leaks == [], [e["name"] for e in leaks]  # the manifest is clean since 2026-09-02
+    thorax = next(e for e in manifest if e["name"] == "THORAX_SMOOTHING_FRAMES")
+    assert thorax["provenance"] == provenance.SYNTHETIC
     declared = [e for e in provenance.DATA_INPUTS
                 if e["provenance"] == provenance.DECLARED_MAMMA]
     paths = " ".join(e["path"] for e in declared)

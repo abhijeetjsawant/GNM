@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-02T16:21:22",
+ "rendered": "2026-09-02T16:50:02",
  "git": {
-  "sha": "d28f66b",
+  "sha": "1dd8223",
   "dirty": true
  },
  "rungs": [
@@ -451,7 +451,7 @@
    "id": "head",
    "n": 9,
    "title": "Head orientation",
-   "status": "measured, one performer misses P1 p95 by 1.18 deg; its thorax window is the one MAMMA-chosen shipped constant (I8), re-selected at 9 on synthetic truth, change pending",
+   "status": "measured; thorax window now 9 (synthetic truth, 2026-09-02): medians improved on both performers, p95 mixed, the gate's own floor rose, performer 0 flipped PASS -> FAIL on p95",
    "visuals": [
     {
      "title": "How closely the head follows MAMMA's, relative to the chest",
@@ -462,32 +462,32 @@
       {
        "label": "Ours, performer 0",
        "role": "ours",
-       "value": 6.391261102226377
+       "value": 5.52027564645114
       },
       {
        "label": "MAMMA through our frames, 0",
        "role": "mamma",
-       "value": 3.618589769707424
+       "value": 4.272005605650526
       },
       {
        "label": "A head that never moves, 0",
        "role": "control",
-       "value": 15.421264821716928
+       "value": 15.292875765874374
       },
       {
        "label": "Ours, performer 1",
        "role": "ours",
-       "value": 8.249401996536818
+       "value": 7.1874202113228165
       },
       {
        "label": "MAMMA through our frames, 1",
        "role": "mamma",
-       "value": 3.869243656214892
+       "value": 4.312137895230447
       },
       {
        "label": "A head that never moves, 1",
        "role": "control",
-       "value": 16.170521898183676
+       "value": 16.33427353497602
       }
      ]
     }

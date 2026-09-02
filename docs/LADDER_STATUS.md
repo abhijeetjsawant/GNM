@@ -25,16 +25,15 @@ Done: I0, I1, I2, I3, I4, I5, I6, I8. In flight: I7, D1. Blocked: nothing.
 ## Decisions waiting on the user
 
 - Lane H: decide the rig and book the marker session; performer releases covering ML training use.
-- Thorax smoothing window (I8): the proposal is 9 frames, bracket 5-9, against the shipped 15. Be clear what the data supports: p95 alone does NOT separate 9 from 15 below 0.77x real thorax speed (0.47 of paired draws, +0.07 deg); the case rests on lag and attenuation (15 lags 1.8 frames and loses 32% of peak yaw rate) and on both fixture biases running toward wider windows, which makes 9 an upper bound. Decide whether to change it in the shipped head solve (lane D, one line plus a head-gate re-run with the MAMMA arm reporting only).
 
 ## Recent log
 
-- 2026-09-02 [I7] worktree ladder/I7, Opus agent. Injection path exists in oracle_2d.py; single-ray slots exercise the sequence solve for the first time
 - 2026-09-02 [D1] worktree ladder/D1, Opus agent: LOCATE the defect and repair camera_overlay.py's timebase; no delivery change until the defect is placed and the thorax leak is closed (provenance.py exits 1 while it stands)
 - 2026-09-02 [—] Go given for I7 and for locating the facing defect (D1, location only). The D1 fix cannot ship until the thorax window decision lands, because the provenance gate fails a build while the leak stands.
 - 2026-09-02 [D1] LOCATED: a real left/right mirror in the rig naming, at three sites; the 2026-08-30 diagnosis was right, I6's yaw control was not facing-sensitive. Overlay timebase bug fixed (46ee1e0). Fix proposal and gate in docs/reviews/facing-location-2026-09-02.md.
 - 2026-09-02 [D1] D1 located: the delivered character IS turned round -- pelvis, chest, head and the mesh's own nose all point opposite the performer (forward-dot -0.92 to -1.00), the feet point the right way because they are solved separately. It is a left/right naming mirror in the rig, in three places, not a yaw. The overlay script that the original diagnosis used had a timebase bug, now fixed, and the original diagnosis stands. The fix waits on the thorax decision.
 - 2026-09-02 [D1] Sol reviewed the facing fix proposal: build it on a branch, try renaming the Left/Right bones before mirroring any geometry, and rerun I1, rungs 7 and 11, the head gate and I6 as regression gates. It merges only after the thorax decision and a second review.
+- 2026-09-02 [I8] THORAX_SMOOTHING_FRAMES changed 15 -> 9 on the user's decision; provenance audit now CLEAN (exit 0). Head gate re-run with the MAMMA arm reporting only: P1 median improved on both performers (6.39 -> 5.52, 8.25 -> 7.19 deg, gated), p95 worse on performer 0 (16.4 -> 20.0) and better on performer 1 (27.5 -> 22.2); the oracle floor rose on both (3.62 -> 4.27, 3.87 -> 4.31) because a narrower window leaves more frame jitter in the reference frame itself. Performer 0's gate verdict flipped PASS -> FAIL on the p95 band. Reverting on that would be selecting on the MAMMA arm, so the value stands; the outcome is recorded, not smoothed.
 
 ## How to resume
 

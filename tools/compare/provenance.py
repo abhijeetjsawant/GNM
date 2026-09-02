@@ -88,17 +88,18 @@ ENTRY_POINTS = (
 CURATED: dict[str, dict] = {
     # ---------------------------------------------------------------- the known leak
     "THORAX_SMOOTHING_FRAMES": dict(
-        provenance=MAMMA_DERIVED,
-        evidence="src/autoanim_gnm/commercial_multiview.py:1678 -- 'Chosen by the oracle "
-                 "arm alone; see `_thorax_frames`'. The `_thorax_frames` docstring gives "
-                 "the sweep, whose columns are 'oracle P1 median / p95' -- MAMMA's own "
-                 "head orientation expressed in our thorax frame. Commit 08a6c89 'head: a "
-                 "sharper reference frame': 'Smoothing our thorax as a rotation, window "
-                 "chosen by the ORACLE arm alone'. Its caller `_solve_head_for_subject` "
-                 "(:1854) is the shipped head solve.",
-        selected_against="MAMMA pred_joints -> MAMMA's head orientation, artifacts/mamma",
-        remedy="tools/head/thorax_window_sweep.py re-selects it on synthetic truth with "
-               "our own detector's noise; the constant moves in lane D, not here.",
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py -- value 9 since 2026-09-02, with the "
+                 "PROVENANCE block above it: selected by `tools/head/thorax_window_sweep.py` "
+                 "(artifacts/compare/thorax-window-sweep.json) on exact FK thorax frames with our "
+                 "own detector's self-agreement noise, interior p95 optimum at 9 (bracket 5-9), "
+                 "an upper bound. HISTORY: the value was 15 from 2026-09-01 (commit 08a6c89), "
+                 "chosen on the MAMMA oracle arm -- the leak I8 found. That sweep survives in "
+                 "`_thorax_frames`'s docstring as a report and selects nothing. The user took "
+                 "the decision to change it on 2026-09-02; the head gate was re-run after.",
+        selected_against="synthetic truth (tracked FK fixture); the MAMMA arm reported beside it",
+        remedy="none open. If the value moves again it must move on synthetic truth, a held-out "
+               "camera or anatomy -- never on the MAMMA arm.",
     ),
     # ---------------------------------------------------------------- anatomy / literature
     "MAXIMUM_FRAME_TRAVEL_DEG": dict(
