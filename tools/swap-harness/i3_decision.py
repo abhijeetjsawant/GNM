@@ -76,11 +76,16 @@ SEMANTIC_EXCLUSIONS = {
             "SMPL-X joint 15, also a skull-interior head joint but of a DIFFERENT "
             "skeleton, so the pair carries a convention offset of centimetres that is "
             "not detector error. Excluded from the scored population; kept as a control.",
-    "left_eye": "SMPL-X here is the LOCKED-HEAD variant (jaw and eyes zero), so its eye "
-                "joints do not move and are not a reference. No PAIRS entry.",
-    "right_eye": "the locked-head SMPL-X's eye joints are held at zero by MAMMA's own "
-                 "configuration, so there is nothing on the reference side that moves. No "
-                 "PAIRS entry.",
+    "left_eye": "`pred_joints` DOES carry SMPL-X eye joints (23/24) and they move with "
+                "the head, 82-91 mm from the head joint -- so the reason is not that there "
+                "is nothing there. It is that an eyeball-CENTRE joint and SOMA-77's eye "
+                "landmark are different points by a convention, the scoreboard's PAIRS "
+                "never mapped them, and the locked-head fit holds the eyes at zero "
+                "relative to the skull so they carry no independent information. Scoring "
+                "them would price a convention offset as detector error.",
+    "right_eye": "as left_eye: the joint exists and moves, but it is an eyeball centre "
+                 "against a surface eye landmark, unmapped in PAIRS, and locked to the "
+                 "skull by MAMMA's locked-head configuration.",
     "left_ear": "SOMA-77 has no ears; `left_ear`/`right_ear` are schema-only and are "
                 "populated on zero frames (CLAUDE.md). Nothing to score.",
     "right_ear": "SOMA-77 has no ears either side; the contract slot exists and is "
