@@ -90,6 +90,7 @@ def x_temporal(_: dict) -> tuple[list, list]:
             arm = arms.get(arm_key)
             if not arm or arm.get("ran") is False:
                 continue
+            ray = arm.get("recovered_error_along_the_surviving_ray", {})
             figs.append(fig(f"[{short}] error on the joints only one camera saw, "
                             f"{arm_label}",
                             _median(arm.get("error_on_recovered_cells")), "mm median", ref,
@@ -99,7 +100,12 @@ def x_temporal(_: dict) -> tuple[list, list]:
                                  f"({arm['cells']['single_ray_fraction'] * 100:.2f} % of "
                                  f"{arm['cells']['total']}); "
                                  f"{arm['cells']['demoted_to_interpolation']} demoted to the "
-                                 "fill by the solve's own 14 px ray gate"))
+                                 "fill by the solve's own 14 px ray gate. Recovery THEN "
+                                 "smoothing, not the solve alone. "
+                                 f"{ray.get('median')} of the residual lies along the one "
+                                 "surviving viewing ray (0.577 would be isotropic), which is "
+                                 "the direction a single ray and a reprojection are both "
+                                 "blind to"))
             figs.append(fig(f"[{short}] single-ray cells produced, {arm_label}",
                             arm["cells"]["single_ray_fraction"], "fraction of cells", ref,
                             HIGHER, key=f"{tag}_single_ray_fraction_{arm_key}",
@@ -228,6 +234,14 @@ def x_temporal(_: dict) -> tuple[list, list]:
                                  "frames median"))
 
     held = r.get("held_out_camera_lag", {})
+    probe = held.get("sync_hypothesis_probe", {})
+    probe_note = ""
+    if probe.get("ran"):
+        probe_note = (f" One fold ({probe['suspect_camera']}) stands apart from the others by "
+                      "most of a frame. Moving that camera's own content a frame each way and "
+                      "rerunning all four folds puts the smallest mean minimum at shift "
+                      f"{probe['shift_that_minimises_it']} -- a CANDIDATE sync offset for "
+                      "rung 0, not a temporal finding, and one measurement short of a claim.")
     for name, fold in (held.get("folds") or {}).items():
         if not fold.get("ran"):
             ctrls.append(fig(f"held-out fold {name}: did not run",
@@ -241,7 +255,7 @@ def x_temporal(_: dict) -> tuple[list, list]:
                              "one fixed frame set at every shift; "
                              f"{fold.get('scored_slots')} slots. BLIND TO DEPTH -- a residual "
                              "along the held-out camera's ray costs nothing, so this sees "
-                             "transverse lag only"))
+                             "transverse lag only." + probe_note))
     return figs, ctrls
 
 

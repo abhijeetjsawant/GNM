@@ -606,6 +606,49 @@ def cells_from_log(log: SequenceSolveLog, mapping: dict[int, int], names: tuple[
             "no_ray": (~direct) & (support == 0)}
 
 
+def along_ray_fraction(cameras, positions: np.ndarray, truth19: np.ndarray,
+                       mapping: dict[int, int], names: tuple[str, ...], keep: np.ndarray,
+                       recovered: np.ndarray) -> dict:
+    """How much of a recovered cell's error lies ALONG the one ray that saw it.
+
+    "Blind to depth" is a structural claim everywhere else in this lane; here it can
+    be a number. A single ray fixes two of three degrees of freedom, so whatever the
+    solve gets wrong should lie mostly along that ray -- the point sliding toward
+    whatever the limb-length and smoothness terms prefer. A high fraction says the
+    recovery figure is flattered by geometry the instrument cannot see; a low one
+    says the solve is going wrong transversally, which a ray SHOULD have prevented.
+    """
+    columns = [cm.JOINT_INDEX[n] for n in names]
+    fractions, skipped = [], 0
+    for ours, theirs in mapping.items():
+        for frame, index in zip(*np.nonzero(recovered[ours])):
+            joint = columns[index]
+            seen = np.nonzero(keep[theirs, frame, :, joint])[0]
+            if len(seen) != 1:
+                # the mask left more than one view and a depth cull removed the rest;
+                # the surviving ray is then not identifiable from the mask alone
+                skipped += 1
+                continue
+            point = truth19[theirs, frame, joint]
+            error = positions[ours, frame, joint] - point
+            magnitude = float(np.linalg.norm(error))
+            if magnitude < 1e-9 or not np.isfinite(point).all():
+                continue
+            ray = point - cameras[int(seen[0])].camera_center_world_m
+            ray = ray / max(float(np.linalg.norm(ray)), 1e-12)
+            fractions.append(abs(float(np.dot(error, ray))) / magnitude)
+    if not fractions:
+        return {"n": 0, "skipped_ambiguous_ray": skipped}
+    array = np.asarray(fractions)
+    return {"n": int(array.size), "skipped_ambiguous_ray": skipped,
+            "median": round(float(np.median(array)), 4),
+            "p95": round(float(np.percentile(array, 95)), 4),
+            "note": "|error . ray| / |error| for the single camera that saw the cell. "
+                    "1.0 is error entirely along the viewing ray, which no reprojection "
+                    "and no single-ray geometry can see; 0.577 is the isotropic "
+                    "expectation for a random direction in three dimensions."}
+
+
 def by_frame(values: np.ndarray, cells: np.ndarray) -> list[np.ndarray]:
     """Per-frame lists for the block bootstrap: frames are the resampling unit."""
     return [values[:, frame][cells[:, frame]] for frame in range(values.shape[1])]
@@ -943,6 +986,11 @@ def score_recovery_arm(name: str, cameras, records, keep: np.ndarray, truth19: n
                         ("two_or_more_view_cells", cells["direct"])):
         entry[f"error_on_{label}"] = summarise(errors[mask])
         entry[f"control_interpolation_only_on_{label}"] = summarise(control_errors[mask])
+    entry["recovered_error_along_the_surviving_ray"] = along_ray_fraction(
+        cameras, positions, truth19, mapping, names, keep, cells["recovered"])
+    entry["recovered_note"] = (
+        "these millimetres are the stage's OUTPUT -- recovery and then the fill and the "
+        "Savitzky-Golay window, in that order. They are not the sequence solve alone.")
     if int(cells["recovered"].sum()) >= 2:
         entry["margin_on_recovered_cells"] = block_bootstrap_pair(
             by_frame(errors, cells["recovered"]), by_frame(control_errors, cells["recovered"]))
@@ -963,7 +1011,8 @@ def score_recovery_arm(name: str, cameras, records, keep: np.ndarray, truth19: n
 
 # --------------------------------------------------------------------- held-out camera
 
-def held_out_camera_lag(sweep: int = LAG_SWEEP) -> dict:
+def held_out_camera_lag(sweep: int = LAG_SWEEP, shift_camera: int | None = None,
+                        shift: int = 0) -> dict:
     """Real footage. Three cameras in, the fourth used only to score, four folds.
 
     The 3D under test never saw the held-out camera. The IDENTITY of each subject
@@ -978,6 +1027,18 @@ def held_out_camera_lag(sweep: int = LAG_SWEEP) -> dict:
     cameras = working_cameras()
     records = [cm.load_observation_jsonl(SOMA77_WORK / f"{name}-soma77-observations.jsonl")
                for name in CAMERAS]
+    if shift_camera is not None and shift:
+        # `oracle_2d.time_shifted` moves one camera's CONTENT, which is the only way
+        # to express a rig one frame out of sync: the pipeline refuses streams whose
+        # frame NUMBERS differ. It restamps those numbers from zero, which is right
+        # for the oracle's synthetic records and wrong here -- the delivered run's
+        # observations are stamped [60, 210), so the restamped camera would no longer
+        # line up with the other three and `reconstruct_multiview` would refuse the
+        # whole rig. Put the original stamps back; the content stays shifted.
+        moved = o2.time_shifted(records, shift_camera, shift)
+        for row, original in zip(moved[shift_camera], records[shift_camera], strict=True):
+            row["frame_index"] = original["frame_index"]
+        records = moved
     captured: list[np.ndarray] = []
 
     def recording_associator(*args, **kwargs):
@@ -1055,6 +1116,11 @@ def held_out_camera_lag(sweep: int = LAG_SWEEP) -> dict:
     return {
         "what_it_is": "our smoothed 3D from three cameras, reprojected into the fourth and "
                       "swept against that camera's own SOMA-77 detections",
+        "camera_shift_applied": None if not shift else
+        f"{CAMERAS[shift_camera]} content moved {shift:+d} frame",
+        "sign_convention": "argmin = +L means the held-out camera's frame t agrees with our "
+                           "3D at frame t + L, i.e. our trajectory arrives L frames late "
+                           "against that camera's clock",
         "footage": "the delivered SOMA-77 run, frames [60,210) of "
                    "pushing_and_lifting_from_ground, 2 subjects",
         "frame_set": "fixed before the sweep and identical at every shift: the held-out "
@@ -1069,6 +1135,72 @@ def held_out_camera_lag(sweep: int = LAG_SWEEP) -> dict:
                     "lag effect at these speeds -- read the SHAPE of the curve and its "
                     "minimum, never the absolute pixels.",
         "folds": folds,
+    }
+
+
+def sync_probe(baseline: dict) -> dict:
+    """Is one fold's non-zero minimum a lag, or is that camera a frame out of sync?
+
+    A HYPOTHESIS TEST, NOT A CONCLUSION. If the folds disagree -- three near zero
+    and one near a whole frame -- a temporal-stage lag is the wrong explanation,
+    because the stage is the same one in all four folds. A camera whose own clock
+    is a frame off is the right shape of explanation: held out, it is compared
+    directly and reads a whole frame; included, it drags the 3D a fraction of a
+    frame and the other three read slightly the other way.
+
+    So: move the suspect camera's content by -1 and +1 and rerun all four folds. If
+    one shift collapses every fold toward zero, that is the offset. CLAUDE.md asks
+    for a second independent measurement before acting, and this is the first, so
+    the report says "candidate", names rung 0 (calibration and sync, not owned) and
+    stops there.
+    """
+    folds = baseline.get("folds", {})
+    ran = {name: fold for name, fold in folds.items() if fold.get("ran")}
+    if len(ran) < 2:
+        return {"ran": False, "reason": "fewer than two folds ran"}
+    suspect = max(ran, key=lambda name: abs(ran[name]["argmin_subframe"]))
+    others = [abs(ran[name]["argmin_subframe"]) for name in ran if name != suspect]
+    if abs(ran[suspect]["argmin_subframe"]) < 0.5 or max(others, default=1.0) > 0.5:
+        return {"ran": False,
+                "reason": "no fold stands out from the others by half a frame; there is "
+                          "nothing here a sync offset would explain",
+                "argmin_subframe_by_fold": {n: f["argmin_subframe"] for n, f in ran.items()}}
+    index = CAMERAS.index(suspect)
+    print(f"  one fold ({suspect}) sits {ran[suspect]['argmin_subframe']:+.2f} frames from "
+          "zero while the others do not; probing it as a sync offset")
+    shifted = {}
+    for shift in (-1, +1):
+        result = held_out_camera_lag(shift_camera=index, shift=shift)
+        shifted[f"{shift:+d}"] = {
+            name: fold.get("argmin_subframe") for name, fold in result["folds"].items()}
+        print(f"    {suspect} content {shift:+d} frame -> argmin by fold: {shifted[f'{shift:+d}']}")
+    baseline_by_fold = {name: fold["argmin_subframe"] for name, fold in ran.items()}
+    spread = {"0": round(float(np.mean([abs(v) for v in baseline_by_fold.values()])), 3)}
+    for key, value in shifted.items():
+        finite = [abs(v) for v in value.values() if v is not None]
+        spread[key] = round(float(np.mean(finite)), 3) if finite else None
+    best = min((k for k in spread if spread[k] is not None), key=lambda k: spread[k])
+    return {
+        "ran": True,
+        "suspect_camera": suspect,
+        "what_it_is": "the same four folds with the suspect camera's content moved a frame "
+                      "each way; a sync offset should make one shift collapse EVERY fold's "
+                      "minimum toward zero, while a temporal lag -- the same stage in all "
+                      "four folds -- should not care which camera moved",
+        "argmin_subframe_by_fold": {"0": baseline_by_fold, **shifted},
+        "mean_absolute_argmin_by_shift": spread,
+        "shift_that_minimises_it": best,
+        "verdict": (
+            f"CANDIDATE, not a finding: the mean absolute minimum is smallest at shift {best}. "
+            "This is one measurement on one take, and CLAUDE.md asks for a second, independent "
+            "one before acting. It belongs to RUNG 0 (calibration and sync, 'not owned' -- the "
+            "rig here is MAMMA's own `ma_cap`), not to the temporal rung: nothing about the "
+            "smoother changes between folds, so a per-fold disagreement cannot be the "
+            "smoother. I2 measured a one-frame camera shift at 6.7-6.8 mm, about what "
+            "MAMMA-grade 2D noise costs, so it is worth the owned fixture checking."
+            if best != "0" else
+            "no shift beats the unshifted arm, so the odd fold is not explained by a "
+            "one-frame offset on that camera and stays unexplained."),
     }
 
 
@@ -1387,8 +1519,9 @@ def main() -> int:
                    "this report that could ever select a shipped constant, and it selects "
                    "nothing today."),
         may_select=True, spike_px=spike_px, spike_source=spike_source)
-    sources["fk_synthetic"]["clips"] = list(clips)
-    sources["fk_synthetic"]["stride"] = args.stride
+    fk = sources["fk_synthetic"]
+    fk["clips"] = list(clips)
+    fk["stride"] = args.stride
 
     # ---- source 2: MAMMA pred_joints. REPORTS, NEVER SELECTS. ------------------
     mamma_source, mamma_truth19, mamma_names = mamma_trajectory()
@@ -1401,10 +1534,31 @@ def main() -> int:
                    "not share an axis with the fk_synthetic arm's."),
         may_select=False, spike_px=spike_px, spike_source=spike_source)
 
+    # A speed comparison, not a millimetre one: how fast the MAMMA-free clips move
+    # against how fast the reference take does. Naming the shortfall is the point.
+    real_speed = sources["mamma_pred_joints"]["true_joint_speed"]
+    fk["speed_shortfall"] = {
+        "fk_p95_m_s": fk["true_joint_speed"]["p95_m_s"],
+        "reference_take_p95_m_s": real_speed["p95_m_s"],
+        "ratio": round(fk["true_joint_speed"]["p95_m_s"] / real_speed["p95_m_s"], 3),
+        "note": (f"stride {args.stride} is what `tools/head/thorax_window_sweep.py` found "
+                 "necessary to approach real speeds, and it still falls short: these clips "
+                 f"reach p95 {fk['true_joint_speed']['p95_m_s']} m/s against the reference "
+                 f"take's {real_speed['p95_m_s']} m/s. A smoothing window costs what it costs "
+                 "in proportion to how fast the joint is moving, so every smoothing figure on "
+                 f"this arm is a LOWER BOUND. The take is {fk['frames']} frames, so its block "
+                 "bootstrap has two blocks and its intervals are thin by construction, and its "
+                 "frozen-trajectory control fails by a smaller factor than the 150-frame arm's "
+                 "for the same reason -- a short take barely moves, so a constant is not far "
+                 "from it. Longer, faster, owned takes are lane H's job. Comparing SPEEDS "
+                 "across the two sources is legitimate; comparing their millimetres is not."),
+    }
+
     held_out = {"ran": False, "reason": "skipped by --skip-held-out"}
     if not args.skip_held_out:
         print("\nheld-out-camera lag on real footage")
         held_out = held_out_camera_lag()
+        held_out["sync_hypothesis_probe"] = sync_probe(held_out)
 
     report = {
         "instrument": "I7 temporal -- recovery and smoothing",
