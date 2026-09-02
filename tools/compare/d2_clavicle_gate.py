@@ -964,6 +964,1082 @@ def root_variant_block(subject, mamma_body_id) -> dict:
     return entry
 
 
+# ========================================================================== D2b
+# THE ROOT PLACED ON THE CAPTURED HIPS. This half SHIPS: `positions_to_body_track`
+# now reads
+#     root_translation[frame] = pelvis - rest["Hips"] - _leg_root_offset(hips_world, rest)
+# with `_leg_root_offset` returning `R_hips . mid(rest[LeftUpperLeg], rest[RightUpperLeg])`,
+# so FK's UpperLeg midpoint -- the rig's femoral joint centres, which is what a `left_hip`
+# landmark IS -- lands on the captured hip midpoint instead of the rig's `Hips` joint
+# landing there and the leg roots hanging 80 mm below it. Every term is the skeleton's own
+# rest geometry; no constant arrives, and the 80 is never written down.
+#
+# WHAT THIS MEANS FOR EVERY D2 FIGURE ABOVE. The D2 bands were measured against a shipped
+# converter that had no root fix. To keep them meaning what they meant, `main()` runs every
+# pre-existing block inside `with root_offset(zero_offset):` -- the D2-alone arm, reached by
+# swapping the offset helper for one that returns the zero vector, through the identical
+# code path. `d2_regression_check` then compares the result against `gate-d2-prior.json`,
+# the file this run replaces, and FAILS if any D2 band moved. Without that check the
+# extension could silently rewrite D2's committed numbers.
+SHIPPED_OFFSET = cm._leg_root_offset
+REBUILD_ROOT = OUT_DIR / "delivery-root"
+PRIOR_GATE = OUT_DIR / "gate-d2-prior.json"
+
+BAND_D2B_ARMS_MM = 5.0        # the round trip, both rigs -- D2's own pre-registered band
+BAND_FK_HIP_M = 1e-6          # theorem 1; FK returns float32, so a micron is its floor
+BAND_OFFSET_M = 1e-12         # theorem 2, in float64 on the helper's own return value
+BAND_ROOT_F32_M = 1e-6        # theorem 2 on the track's float32 root arrays
+LIFT_SWEEP_MM = [10.0 * i for i in range(17)]     # 0 .. 160 mm, control (c)
+
+REF_ABSOLUTE = ("the captured hip-landmark midpoint in ABSOLUTE capture world, Z-up "
+                "metres, AFTER the ground projection. NOT root-relative -- that is the "
+                "whole point: every own-capture figure in D2 removed exactly this")
+REF_SILHOUETTE = ("MAMMA's SAM2 masks -- pixels of the actual footage, the one retained "
+                  "artifact on this fixture that is not model-mediated")
+
+# ------------------------------------------------------------------ the offset variants
+def zero_offset(hips_world, rest):
+    """CONTROL (a) and the BEFORE arm: D2 alone, `Hips` back on the captured midpoint."""
+    return np.zeros(3)
+
+
+def sign_flipped_offset(hips_world, rest):
+    """CONTROL (b): the identical lift with its SIGN flipped -- the rig 80 mm LOWER.
+
+    Must fail. It is the same magnitude, the same frame, the same code path; only the
+    direction differs, so it separates "a lift of the right size" from "the right lift".
+    """
+    return -SHIPPED_OFFSET(hips_world, rest)
+
+
+def along_hips_up(metres: float):
+    """CONTROL (c): a lift of `metres` along the HIPS' OWN up axis.
+
+    The sweep is the no-constant demonstration. At the skeleton's own value -- read from
+    `rest`, 80.0 mm on this rig -- this IS the shipped derivation; at every other value it
+    is a tuned constant, and the band must reject all of them.
+    """
+    def helper(hips_world, rest):
+        return _rotate_vector(hips_world, np.asarray((0.0, -float(metres), 0.0)))
+    return helper
+
+
+def world_vertical(metres: float):
+    """CONTROL (d): the same 80 mm as a WORLD vertical. THE PLAUSIBLE SHORTCUT.
+
+    It agrees with the derivation exactly when the pelvis is upright and diverges as
+    `2*sin(tilt/2)*80 mm` as it leans, so on a take called "pushing and lifting from
+    ground" it must fail, and it must fail HARDEST on the most-tilted frames. This is the
+    control that discriminates the derivation from a number: a reader who accepts "lift the
+    rig 80 mm" without asking *in which frame* gets this.
+    """
+    def helper(hips_world, rest):
+        return np.asarray((0.0, -float(metres), 0.0))
+    return helper
+
+
+class root_offset(object):
+    """`with root_offset(helper):` -- swap the module attribute the converter calls."""
+
+    def __init__(self, helper):
+        self.helper = helper
+
+    def __enter__(self):
+        self.saved = cm._leg_root_offset
+        cm._leg_root_offset = self.helper
+
+    def __exit__(self, *exc):
+        cm._leg_root_offset = self.saved
+        return False
+
+
+class watch_projection(object):
+    """Record the track HANDED TO the real ground projection, and the one it returns.
+
+    `positions_to_body_track` discards the diagnostics and only the projected track ever
+    reaches disk, so three of this step's theorems -- which are about the converter's
+    output, before the projection adds its own vertical -- are unreachable from an
+    artifact. The projection is WRAPPED, never re-implemented (CLAUDE.md).
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    def __enter__(self):
+        self.saved = cm.project_generated_foot_contacts
+        real, store = self.saved, self.calls
+
+        def wrapper(track, **kwargs):
+            projected, diagnostics = real(track, **kwargs)
+            store.append({"incoming": track, "projected": projected,
+                          "diagnostics": diagnostics.as_dict(),
+                          "kwargs": {k: v for k, v in kwargs.items()}})
+            return projected, diagnostics
+
+        cm.project_generated_foot_contacts = wrapper
+        return self.calls
+
+    def __exit__(self, *exc):
+        cm.project_generated_foot_contacts = self.saved
+        return False
+
+
+def solve_d2b(src_z_up, skeleton=None, offset=None, helper=None):
+    """One real solve with an offset helper and an origin helper installed.
+
+    Returns `(pre_projection_track, projected_track, fk, projection_call)`.
+    """
+    with root_offset(offset if offset is not None else SHIPPED_OFFSET):
+        with origin(helper or TRUE_ORIGIN):
+            with watch_projection() as calls:
+                track = rc.solve(src_z_up, skeleton)
+    call = calls[-1]
+    return call["incoming"], track, rc.fk_of(track, skeleton), call
+
+
+def round_trip_d2b(src_z_up, skeleton=None, offset=None):
+    """solve -> FK -> landmarks -> solve, with the SAME offset on both passes."""
+    _, _, fk1, _ = solve_d2b(src_z_up, skeleton, offset)
+    synth = rc.landmarks_from_fk(fk1, skeleton)
+    _, _, fk2, _ = solve_d2b(rc.Z_UP_FROM_Y_UP(synth), skeleton, offset)
+    return rc.score(fk2, synth, skeleton or DETAILED_HUMANOID), fk1, fk2, synth
+
+
+def _stats_mm(v):
+    return {"median_mm": round(float(np.median(v)) * 1000.0, 2),
+            "p5_mm": round(float(np.percentile(v, 5)) * 1000.0, 2),
+            "p95_mm": round(float(np.percentile(v, 95)) * 1000.0, 2)}
+
+
+# ------------------------------------------------------------------ the theorems
+def d2b_theorems(src_z_up, skeleton, rig_label) -> dict:
+    """Assertions, not measurements. Every one is pre-projection except where it says so."""
+    skel = skeleton or DETAILED_HUMANOID
+    points_y = rc.Y_UP_FROM_Z_UP(src_z_up)
+    seen: list = []
+
+    def recording(hips_world, rest):
+        value = SHIPPED_OFFSET(hips_world, rest)
+        seen.append((np.asarray(hips_world, dtype=np.float64).copy(),
+                     np.asarray(value, dtype=np.float64).copy(),
+                     np.asarray(rest["LeftUpperLeg"], dtype=np.float64).copy(),
+                     np.asarray(rest["RightUpperLeg"], dtype=np.float64).copy()))
+        return value
+
+    pre_fixed, _, _, _ = solve_d2b(src_z_up, skeleton, offset=recording)
+    pre_zero, _, _, _ = solve_d2b(src_z_up, skeleton, offset=zero_offset)
+
+    fk_pre = forward_kinematics_positions(
+        np.asarray(pre_fixed.root_translation_m, dtype=np.float64),
+        np.asarray(pre_fixed.local_rotations_xyzw, dtype=np.float64),
+        skeleton=skel).astype(np.float64)
+    leg_mid = 0.5 * (fk_pre[:, skel.index("LeftUpperLeg")]
+                     + fk_pre[:, skel.index("RightUpperLeg")])
+    captured = 0.5 * (points_y[:, cm.JOINT_INDEX["left_hip"]]
+                      + points_y[:, cm.JOINT_INDEX["right_hip"]])
+    t1 = np.linalg.norm(leg_mid - captured, axis=1)
+
+    hips_world = np.stack([row[0] for row in seen])
+    offsets = np.stack([row[1] for row in seen])
+    mid_rest = 0.5 * (np.stack([row[2] for row in seen])
+                      + np.stack([row[3] for row in seen]))
+    half_drop = float(-np.median(mid_rest[:, 1]))
+    predicted = _rotate_vector(hips_world, np.broadcast_to(
+        np.asarray((0.0, half_drop, 0.0)), offsets.shape))
+    t2a = np.linalg.norm((-offsets) - predicted, axis=1)
+    lateral = float(np.max(np.abs(mid_rest[:, [0, 2]])))
+
+    root_fixed = np.asarray(pre_fixed.root_translation_m, dtype=np.float64)
+    root_zero = np.asarray(pre_zero.root_translation_m, dtype=np.float64)
+    n = min(len(root_fixed), len(offsets))
+    t2b = np.linalg.norm((root_fixed[:n] - root_zero[:n]) - (-offsets[:n]), axis=1)
+
+    qa = np.asarray(pre_zero.local_rotations_xyzw, dtype=np.float64)
+    qb = np.asarray(pre_fixed.local_rotations_xyzw, dtype=np.float64)
+    names = list(pre_zero.joint_names)
+    differ = {names[i] for i in range(len(names))
+              if not np.array_equal(qa[:, i], qb[:, i])}
+
+    return {
+        "rig": rig_label,
+        "T1_fk_upperleg_midpoint_is_the_captured_hip_midpoint": {
+            "max_m": float(t1.max()), "median_m": float(np.median(t1)),
+            "band_m": BAND_FK_HIP_M, "ok": bool(t1.max() <= BAND_FK_HIP_M),
+            "where": "PRE-PROJECTION -- the converter's own output. The ground projection "
+                     "then adds its own vertical, which is what item 3 measures.",
+            "why_not_tighter": "forward_kinematics_positions returns float32, so a "
+                               "metre-scale coordinate is quantised at ~1e-7 m and a "
+                               "micron is its floor over a four-joint chain. The plan's "
+                               "1e-6 is that floor, not a slack band.",
+        },
+        "T2a_the_offset_is_R_hips_times_the_skeletons_own_half_drop": {
+            "half_drop_read_from_rest_m": round(half_drop, 6),
+            "max_lateral_component_of_mid_rest_m": lateral,
+            "max_m": float(t2a.max()), "band_m": BAND_OFFSET_M,
+            "ok": bool(t2a.max() <= BAND_OFFSET_M and lateral <= 1e-12),
+            "why": "float64, on the helper's own return value, recorded by wrapping it. "
+                   "The lateral check is what licenses writing the offset as "
+                   "R_hips . (0, 0.08, 0): the two UpperLeg rest offsets are mirror "
+                   "images in X, so their midpoint is a pure up-axis vector on this rig "
+                   "AND on the sized one (tools/head/sized_skeleton.py scales the hip "
+                   "half-span in X only). 0.08 is READ, never written.",
+        },
+        "T2b_the_root_moved_by_exactly_that_and_nothing_else": {
+            "max_m": float(t2b.max()), "band_m": BAND_ROOT_F32_M,
+            "ok": bool(t2b.max() <= BAND_ROOT_F32_M),
+            "why": "BodyTrack.root_translation_m is float32, so this arm cannot be "
+                   "checked at 1e-9 as the plan asked; 1e-12 is checked in float64 in "
+                   "T2a instead and this one carries float32's own resolution. "
+                   "Deviation from the plan, recorded rather than worked around.",
+        },
+        "T3_only_the_clavicle_chain_moved_pre_projection": {
+            "differing_local_rotations": sorted(differ),
+            "ok": bool(differ <= (CLAVICLE_CHAIN | HANDS)),
+            "contains_the_chain": bool(CLAVICLE_CHAIN <= differ),
+            "why": "PRE-PROJECTION. On the DELIVERED track the set is larger and must be: "
+                   "`project_generated_foot_contacts` rewrites the FOOT locals inside "
+                   "contact runs, and the runs move when the root does. The corrected "
+                   "prediction is on disk, in `d2b_bit_identity`.",
+        },
+    }
+
+
+# ------------------------------------------------------------------ absolute placement
+def hip_absolute_offset(tracks: Path, subject: int) -> dict:
+    """THE FIGURE D2b OWNS AND NO ROOT-RELATIVE INSTRUMENT CAN SEE.
+
+    The delivered rig's own hip joints -- FK's UpperLeg midpoint of the SHIPPED track,
+    after the ground projection -- minus the captured hip midpoint, in absolute capture
+    world. D2's every own-capture figure removed exactly this vector by construction.
+    """
+    names = json.loads((tracks / f"subject-{subject:02d}.body-track.json").read_text())[
+        "joint_names"]
+    base = skeleton_for_joint_names(names)
+    track = np.load(tracks / f"subject-{subject:02d}.body-track.npz")
+    cap_z = np.asarray(track["triangulated_world_positions_z_up_m"], dtype=np.float64)
+    world = forward_kinematics_positions(
+        np.asarray(track["root_translation_m"], dtype=np.float64),
+        np.asarray(track["local_rotations_xyzw"], dtype=np.float64),
+        skeleton=base).astype(np.float64)
+    to_z = np.stack([world[..., 0], -world[..., 2], world[..., 1]], axis=-1)
+    rig_hip = 0.5 * (to_z[:, names.index("LeftUpperLeg")] + to_z[:, names.index("RightUpperLeg")])
+    pelvis = 0.5 * (cap_z[:, cm.JOINT_INDEX["left_hip"]] + cap_z[:, cm.JOINT_INDEX["right_hip"]])
+    ok = np.isfinite(pelvis).all(axis=1)
+    delta = (rig_hip - pelvis)[ok]
+    torso_up = (cap_z[:, cm.JOINT_INDEX["neck"]] - pelvis)[ok]
+    torso_up = torso_up / np.linalg.norm(torso_up, axis=1, keepdims=True)
+    tilt = np.degrees(np.arccos(np.clip(torso_up[:, 2], -1.0, 1.0)))
+    norm = np.linalg.norm(delta, axis=1)
+    horizontal = np.linalg.norm(delta[:, :2], axis=1)
+
+    def q(v, scale=1000.0):
+        return {"median": round(float(np.median(v)) * scale, 2),
+                "p5": round(float(np.percentile(v, 5)) * scale, 2),
+                "p95": round(float(np.percentile(v, 95)) * scale, 2)}
+
+    return {
+        "reference": REF_ABSOLUTE,
+        "frames": int(ok.sum()),
+        "component_x_mm": q(delta[:, 0]), "component_y_mm": q(delta[:, 1]),
+        "component_z_up_mm": q(delta[:, 2]),
+        "horizontal_mm": q(horizontal), "norm_mm": q(norm),
+        "pelvis_tilt_from_vertical_deg": {
+            "median": round(float(np.median(tilt)), 2),
+            "p95": round(float(np.percentile(tilt, 95)), 2),
+            "max": round(float(tilt.max()), 2)},
+        "correlation_with_pelvis_tilt": {
+            "horizontal": round(float(np.corrcoef(horizontal, tilt)[0, 1]), 4),
+            "vertical": round(float(np.corrcoef(delta[:, 2], tilt)[0, 1]), 4),
+            "norm": round(float(np.corrcoef(norm, tilt)[0, 1]), 4)},
+        "note": "the vertical component is dominated by the projection's single uncapped "
+                "hoist, which is set by the WORST frame; the horizontal component and the "
+                "tilt correlation are what the per-frame root fix moves.",
+    }
+
+
+LEGS_SIX = ("left_hip", "right_hip", "left_knee", "right_knee",
+            "left_ankle", "right_ankle")
+
+
+def rung11_block(arms: dict, rng) -> dict:
+    """Rung 11's own statistic on three builds, LEGS AND ARMS SEPARATED.
+
+    `arms` maps a label to the output of `scoreboard_errors`. Every margin is a paired
+    moving-block bootstrap on IDENTICAL drawn frames, block 15, 2000 draws, because the
+    per-frame series here has lag-1 autocorrelation near 0.99 and ordinary resampling
+    would be invalid (CLAUDE.md).
+    """
+    out: dict = {"reference": REF_MAMMA, "subjects": {}}
+    scopes = (("all", list(sb.PAIRS)), ("arms", list(ARMS_SIX)), ("legs", list(LEGS_SIX)))
+    for s in ("subject_00", "subject_01"):
+        entry: dict = {}
+        for arm in ("canon", "sized"):
+            for scope, names in scopes:
+                stat, _ = median_of_joint_medians(names)
+                stacks = {label: np.stack([data[s][arm][n] for n in names], axis=1)
+                          for label, data in arms.items()}
+                row = {f"{label}_mm": round(stat(v), 2) for label, v in stacks.items()}
+                if "delivered_before_D2" in stacks and "D2b" in stacks:
+                    row["margin_delivered_minus_D2b"] = block_bootstrap(
+                        stacks["delivered_before_D2"], stacks["D2b"], rng, statistic=stat)
+                if "D2" in stacks and "D2b" in stacks:
+                    row["margin_D2_minus_D2b"] = block_bootstrap(
+                        stacks["D2"], stacks["D2b"], rng, statistic=stat)
+                entry[f"{arm}_{scope}"] = row
+        out["subjects"][s] = entry
+    return out
+
+
+# ------------------------------------------------------------------ the D2b block
+D2B_PREREGISTERED = {
+    "1_faithful_swap": (
+        "The SHIPPED derivation must reproduce the instrument-side variant D2 measured "
+        "(gate-d2-prior.json, root_placement_variant) to 0.00 mm on every figure it "
+        "reported: round trip 0.51 / 0.08 canonical and 0.07 / 0.04 sized, delivered arms "
+        "on our capture 50.62 / 30.28, hoist 83.01 / 49.06. Anything else means the src "
+        "edit is not what was measured."),
+    "2_theorems": (
+        "FK's UpperLeg midpoint equals the captured hip midpoint per frame; the root moved "
+        "by exactly R_hips . (0, 0.08, 0) and by nothing else; PRE-PROJECTION no local "
+        "rotation outside the clavicle chain moved. ON DISK the differing set must ALSO "
+        "contain the two FEET -- `project_generated_foot_contacts` rewrites foot locals "
+        "inside contact runs and the runs move with the root -- and the facing instrument "
+        "still cannot move, because it reads Hips, chest, Neck, Head and the mesh nose and "
+        "not one of those is a foot."),
+    "3_absolute_placement": (
+        "MECHANISM, WRITTEN BEFORE THE NUMBERS. The projection adds ONE uncapped scalar "
+        "vertical hoist for the whole take, set by the single worst frame, plus small "
+        "capped per-contact corrections. The root fix adds R_hips . (0, 0.08, 0) PER "
+        "FRAME. So before D2b the delivered hip offset is `hoist.z + correction + "
+        "R.(0,-0.08,0)`: a horizontal part near 80*sin(tilt) and a vertical part that the "
+        "hoist has already absorbed ON AVERAGE. Prediction: after D2b the HORIZONTAL "
+        "component and the tilt CORRELATION collapse, while the median VERTICAL component "
+        "barely moves, because the hoist re-solves to the new geometry (142 -> 83 mm and "
+        "110 -> 49 mm were measured in D2). The remaining vertical is the legs' surplus "
+        "length -- canonical thigh 430 mm against ~400 measured -- and is D5's, not D2b's. "
+        "D2b MOVES the placement error from the converter to the projection, where it is "
+        "now visible; it does not remove it. RUNG 11: the legs should improve MODESTLY and "
+        "NOT to zero -- tens of millimetres, concentrated on tilted frames, with the "
+        "vertical residual unchanged -- because only the horizontal, tilt-dependent term "
+        "leaves. The arms ride the same root and should improve at least as much, since "
+        "they also carry D2's clavicle gain."),
+    "4_the_sized_replay_defect": (
+        "PRE-REGISTERED AS A RISK: the root is computed from the rig's own UpperLeg rest "
+        "offset, while rung 11's `sized` arm REPLAYS canonical rotations and root on a "
+        "skeleton whose UpperLeg offset is scaled, so the replayed hips could be misplaced "
+        "by R.(0, 0.08*(k-1), 0). Measured either way, and re-solved reported beside "
+        "replayed."),
+    "5_temporal": (
+        "D2b carries NO temporal band. The clavicle-chain frames over the physical ceiling "
+        "of 26.67 deg/frame are reported before / D2 / D2b on both rigs, with per-joint "
+        "median / p95 / max steps, as D2c's baseline. D2's instrument-side variant "
+        "measured 40 and 33 on the canonical rig; the shipped derivation must reproduce "
+        "that."),
+    "6_contacts": (
+        "The foot contacts change with the root (performer 0 went [47, 42] -> [37, 60] "
+        "under the variant). Contact counts, foot heights, the applied hoist and the "
+        "penetration after projection are reported before and after; penetration after "
+        "must be 0.000 mm in every case."),
+}
+
+
+def d2b_subject_block(subject, mamma_body_id) -> dict:
+    src = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")[
+        "triangulated_world_positions_z_up_m"]
+    src = src[np.isfinite(src).all(axis=(1, 2))]
+    points_y = rc.Y_UP_FROM_Z_UP(src)
+    skel_sz, _ = sized_skeleton(DETAILED_HUMANOID, src)
+    legacy = legacy_anchor(points_y)
+    entry: dict = {}
+
+    # ---- 1. the faithful swap, and the delivered / round-trip arms on both rigs
+    rigs: dict = {}
+    tracks_for_temporal: dict = {}
+    for rig_label, skel in (("canonical", None), ("sized_resolved", skel_sz)):
+        rig: dict = {}
+        for arm_label, off in (("D2_alone", zero_offset), ("D2b_shipped", None)):
+            pre, projected, fk, call = solve_d2b(src, skel, off)
+            rt, _, _, _ = round_trip_d2b(src, skel, off)
+            diag = call["diagnostics"]
+            before = np.asarray(call["incoming"].root_translation_m, dtype=np.float64)
+            after = np.asarray(call["projected"].root_translation_m, dtype=np.float64)
+            applied = np.linalg.norm(after - before, axis=1)
+            rig[arm_label] = {
+                "delivered_on_our_capture": groups(rc.score(fk, points_y,
+                                                            skel or DETAILED_HUMANOID)),
+                "roundtrip": groups(rt),
+                "roundtrip_per_landmark_arms": per_landmark_arms(rt),
+                "ground_projection": {
+                    "diagnostics": diag, "kwargs": call["kwargs"],
+                    "feet": foot_heights(projected),
+                    "applied_root_correction_median_mm": round(
+                        float(np.median(applied)) * 1000.0, 2),
+                    "applied_root_correction_max_mm": round(float(applied.max()) * 1000.0, 2),
+                },
+            }
+            tracks_for_temporal[f"{rig_label}_{arm_label}"] = projected
+        rigs[rig_label] = rig
+    entry["rigs"] = rigs
+
+    # ---- the pre-D2 arm, for the three-way temporal baseline only
+    for rig_label, skel in (("canonical", None), ("sized_resolved", skel_sz)):
+        _, projected, _, _ = solve_d2b(src, skel, zero_offset, helper=legacy)
+        tracks_for_temporal[f"{rig_label}_before_D2"] = projected
+
+    entry["temporal_baseline_for_D2c"] = {
+        "ceiling_deg_per_frame": round(PHYSICAL_CEILING_DEG_PER_FRAME, 2),
+        "reference": "a human joint's peak angular rate, ~800 deg/s, at 30 fps",
+        "canonical_before_D2_vs_D2": temporal_block(
+            tracks_for_temporal["canonical_before_D2"],
+            tracks_for_temporal["canonical_D2_alone"]),
+        "canonical_D2_vs_D2b": temporal_block(
+            tracks_for_temporal["canonical_D2_alone"],
+            tracks_for_temporal["canonical_D2b_shipped"]),
+        "sized_D2_vs_D2b": temporal_block(
+            tracks_for_temporal["sized_resolved_D2_alone"],
+            tracks_for_temporal["sized_resolved_D2b_shipped"]),
+        "note": "no band. D2b changes where the rig SITS, and the clavicle direction with "
+                "it; whether the arm still travels like a body is D2c's question and this "
+                "is its baseline.",
+    }
+
+    # ---- 2. the theorems
+    entry["theorems_canonical"] = d2b_theorems(src, None, "canonical")
+    entry["theorems_sized"] = d2b_theorems(src, skel_sz, "sized")
+
+    # ---- the controls, every one through the identical code path
+    controls: dict = {}
+    e_sign, _, _, _ = round_trip_d2b(src, None, sign_flipped_offset)
+    _, _, fk_sign, _ = solve_d2b(src, None, sign_flipped_offset)
+    controls["b_sign_flipped"] = {
+        "roundtrip": groups(e_sign),
+        "delivered_on_our_capture": groups(rc.score(fk_sign, points_y, DETAILED_HUMANOID)),
+        "band_arms_median_mm": BAND_D2B_ARMS_MM,
+        "must": "FAIL",
+        "why": "the same magnitude, the same frame, the opposite direction. It separates "
+               "'a lift of the right size' from 'the right lift'.",
+    }
+
+    sweep: dict = {}
+    for mm in LIFT_SWEEP_MM:
+        e, _, _, _ = round_trip_d2b(src, None, along_hips_up(mm / 1000.0))
+        g = groups(e)
+        sweep[f"{mm:.0f}"] = {"arms_median_mm": g["arms"], "legs_median_mm": g["legs"],
+                              "torso_median_mm": g["torso"]}
+    passing = [k for k, v in sweep.items() if v["arms_median_mm"] <= BAND_D2B_ARMS_MM]
+    skeleton_own_mm = round(-500.0 * (float(DETAILED_HUMANOID.joints[
+        DETAILED_HUMANOID.index("LeftUpperLeg")].rest_translation_m[1])
+        + float(DETAILED_HUMANOID.joints[
+            DETAILED_HUMANOID.index("RightUpperLeg")].rest_translation_m[1])), 1)
+    controls["c_lift_sweep_along_the_hips_up_axis"] = {
+        "swept_mm": "0 .. 160 in steps of 10, along the hips' own up axis",
+        "per_lift": sweep,
+        "values_passing_the_band": passing,
+        "the_skeletons_own_value_mm": skeleton_own_mm,
+        "band_arms_median_mm": BAND_D2B_ARMS_MM,
+        "why": "NO GATE A CONSTANT CAN PASS, in its strongest available form: the band is "
+               "reached only at the value the skeleton itself supplies, which the shipped "
+               "code READS from `rest` and never writes down.",
+    }
+
+    e_wv, _, _, _ = round_trip_d2b(src, None, world_vertical(skeleton_own_mm / 1000.0))
+    _, _, fk_wv, _ = solve_d2b(src, None, world_vertical(skeleton_own_mm / 1000.0))
+    err_wv = rc.score(fk_wv, points_y, DETAILED_HUMANOID)
+    pelvis = 0.5 * (src[:, cm.JOINT_INDEX["left_hip"]] + src[:, cm.JOINT_INDEX["right_hip"]])
+    up = src[:, cm.JOINT_INDEX["neck"]] - pelvis
+    up = up / np.linalg.norm(up, axis=1, keepdims=True)
+    tilt = np.degrees(np.arccos(np.clip(up[:, 2], -1.0, 1.0)))
+    steep = tilt >= np.percentile(tilt, 75.0)
+    _, _, fk_ship, _ = solve_d2b(src, None, None)
+    err_ship = rc.score(fk_ship, points_y, DETAILED_HUMANOID)
+    controls["d_world_vertical_instead_of_the_hips_frame"] = {
+        "lift_mm": skeleton_own_mm,
+        "roundtrip": groups(e_wv),
+        "delivered_arms_median_mm": round(float(np.median(np.concatenate(
+            [err_wv[n] for n in rc.GROUPS["arms"]]))), 2),
+        "delivered_arms_on_the_most_tilted_quartile_mm": round(float(np.median(
+            np.concatenate([err_wv[n][steep] for n in rc.GROUPS["arms"]]))), 2),
+        "shipped_arms_on_the_most_tilted_quartile_mm": round(float(np.median(
+            np.concatenate([err_ship[n][steep] for n in rc.GROUPS["arms"]]))), 2),
+        "delivered_legs_on_the_most_tilted_quartile_mm": round(float(np.median(
+            np.concatenate([err_wv[n][steep] for n in rc.GROUPS["legs"]]))), 2),
+        "pelvis_tilt_quartile_threshold_deg": round(float(np.percentile(tilt, 75.0)), 2),
+        "band_arms_median_mm": BAND_D2B_ARMS_MM,
+        "must": "FAIL, and hardest on the tilted frames",
+        "why": "THE PLAUSIBLE SHORTCUT. 'Lift the rig 80 mm' is right only while the "
+               "pelvis is upright; the derivation is in the HIPS' frame and this is not. "
+               "It is the control that discriminates a derivation from a number.",
+    }
+    controls["e_legs_and_torso_are_0.00_under_every_variant"] = {
+        "sweep": sorted({v["legs_median_mm"] for v in sweep.values()}
+                        | {v["torso_median_mm"] for v in sweep.values()}),
+        "sign_flipped": [groups(e_sign)["legs"], groups(e_sign)["torso"]],
+        "world_vertical": [groups(e_wv)["legs"], groups(e_wv)["torso"]],
+        "shipped": [rigs["canonical"]["D2b_shipped"]["roundtrip"]["legs"],
+                    rigs["canonical"]["D2b_shipped"]["roundtrip"]["torso"]],
+        "why": "the legs are measured landmark-to-landmark and no root or origin enters "
+               "them. 0.00 here is NOT evidence the placement is right -- it is evidence "
+               "that a translation-invariant chain scored root-relatively cannot see a "
+               "translation. That is D2b's whole point.",
+    }
+    entry["controls"] = controls
+
+    # ---- 4. the sized replay, and whether the pre-registered defect occurs
+    canon_mid = 0.5 * (np.asarray(DETAILED_HUMANOID.joints[
+        DETAILED_HUMANOID.index("LeftUpperLeg")].rest_translation_m, dtype=np.float64)
+        + np.asarray(DETAILED_HUMANOID.joints[
+            DETAILED_HUMANOID.index("RightUpperLeg")].rest_translation_m, dtype=np.float64))
+    sized_mid = 0.5 * (np.asarray(skel_sz.joints[
+        skel_sz.index("LeftUpperLeg")].rest_translation_m, dtype=np.float64)
+        + np.asarray(skel_sz.joints[
+            skel_sz.index("RightUpperLeg")].rest_translation_m, dtype=np.float64))
+    entry["sized_replay_defect"] = {
+        "canonical_upperleg_midpoint_rest_m": [float(v) for v in canon_mid],
+        "sized_upperleg_midpoint_rest_m": [float(v) for v in sized_mid],
+        "canonical_hips_rest_m": [float(v) for v in np.asarray(
+            DETAILED_HUMANOID.joints[DETAILED_HUMANOID.index("Hips")].rest_translation_m)],
+        "sized_hips_rest_m": [float(v) for v in np.asarray(
+            skel_sz.joints[skel_sz.index("Hips")].rest_translation_m)],
+        "misplacement_of_the_replayed_sized_hips_mm": round(
+            float(np.linalg.norm(sized_mid - canon_mid)) * 1000.0, 4),
+        "occurs": bool(np.linalg.norm(sized_mid - canon_mid) > 1e-9),
+        "finding": "PRE-REGISTERED AND DID NOT OCCUR, and the mechanism is the reason, not "
+                   "luck: `tools/head/sized_skeleton.py` scales the hip half-span in X "
+                   "ONLY -- `rest_translation_m=(off[0]*k, off[1], off[2])` -- and never "
+                   "touches `Hips`. The two UpperLeg offsets are mirror images in X, so "
+                   "their MIDPOINT is unchanged by any hip-span sizing and the replayed "
+                   "sized rig's hips land exactly where the canonical ones do. The check "
+                   "stays in the gate: a future sizing that scaled the UpperLeg Y would "
+                   "reintroduce the defect and this assertion would catch it.",
+    }
+
+    # ---- arm B, on its own reference
+    pred = np.load(rc.MA3D / f"verts_joints_body_id-{mamma_body_id:02d}.npz",
+                   allow_pickle=True)["pred_joints"].astype(np.float64)
+    pred = pred[np.isfinite(pred).all(axis=(1, 2))]
+    m_src = rc.adapt_mamma(pred)
+    m_points_y = rc.Y_UP_FROM_Z_UP(m_src)
+    m_skel, _ = sized_skeleton(DETAILED_HUMANOID, m_src)
+    arm_b: dict = {"reference": REF_ARMB, "mamma_body_id": f"body_id-{mamma_body_id:02d}"}
+    for rig_label, skel in (("canonical", None), ("sized_resolved", m_skel)):
+        for arm_label, off in (("D2_alone", zero_offset), ("D2b_shipped", None)):
+            _, _, fk_b, _ = solve_d2b(m_src, skel, off)
+            arm_b[f"{rig_label}_{arm_label}"] = groups(
+                rc.score(fk_b, m_points_y, skel or DETAILED_HUMANOID))
+    arm_b["not_comparable_with"] = ("the own-capture arms -- a different body, different "
+                                    "poses, a different joint convention. Never one axis.")
+    entry["arm_B_mamma_joints_in"] = arm_b
+    return entry
+
+
+def d2b_bit_identity() -> dict:
+    """The D2 rebuild against the D2b rebuild, on disk. Both are delivered tracks."""
+    out: dict = {"held": True, "checks": {},
+                 "compares": f"{REBUILD} (D2 alone) against {REBUILD_ROOT} (D2b)"}
+
+    def check(name, ok, detail=""):
+        out["checks"][name] = {"ok": bool(ok), "detail": detail}
+        if not ok:
+            out["held"] = False
+
+    feet = {"LeftFoot", "RightFoot"}
+    for s in (0, 1):
+        a = np.load(REBUILD / f"subject-{s:02d}.body-track.npz")
+        b = np.load(REBUILD_ROOT / f"subject-{s:02d}.body-track.npz")
+        names = json.loads((REBUILD / f"subject-{s:02d}.body-track.json").read_text())[
+            "joint_names"]
+        for key in ("triangulated_world_positions_z_up_m",
+                    "raw_triangulated_world_positions_z_up_m", "ticks"):
+            same = (a[key].dtype == b[key].dtype and a[key].shape == b[key].shape
+                    and a[key].tobytes() == b[key].tobytes())
+            check(f"subject_{s:02d}.{key}_byte_identical", same, str(a[key].shape))
+        check(f"subject_{s:02d}.root_translation_m_MUST_differ",
+              not np.array_equal(a["root_translation_m"], b["root_translation_m"]),
+              "the whole point of the step")
+        qa, qb = a["local_rotations_xyzw"], b["local_rotations_xyzw"]
+        differ = {names[i] for i in range(len(names))
+                  if not np.array_equal(qa[:, i], qb[:, i])}
+        out["checks"][f"subject_{s:02d}.differing_local_rotations"] = {
+            "ok": True, "detail": sorted(differ)}
+        check(f"subject_{s:02d}.differing_locals_are_the_clavicle_chain_the_hands_and_the_feet",
+              differ <= (CLAVICLE_CHAIN | HANDS | feet),
+              f"unexpected: {sorted(differ - CLAVICLE_CHAIN - HANDS - feet)}")
+        check(f"subject_{s:02d}.no_torso_neck_head_or_leg_local_moved",
+              not (differ & {"Hips", "Spine", "Chest", "UpperChest", "Neck", "Head",
+                             "LeftEye", "RightEye", "LeftUpperLeg", "RightUpperLeg",
+                             "LeftLowerLeg", "RightLowerLeg", "LeftToes", "RightToes"}),
+              sorted(differ))
+        contacts = {"D2": [int(a["foot_contacts"][:, i].sum()) for i in (0, 1)],
+                    "D2b": [int(b["foot_contacts"][:, i].sum()) for i in (0, 1)]}
+        out["checks"][f"subject_{s:02d}.foot_contact_frames"] = {"ok": True,
+                                                                 "detail": str(contacts)}
+
+    for name in sorted(p.name for p in (REBUILD / "work").glob("*observations.jsonl")):
+        x = (REBUILD / "work" / name).read_bytes()
+        y = (REBUILD_ROOT / "work" / name).read_bytes()
+        check(f"work/{name}_byte_identical", x == y, f"{len(x)} vs {len(y)} bytes")
+    out["means"] = (
+        "The FEET are in the differing set and MUST be: `project_generated_foot_contacts` "
+        "rewrites the foot locals inside contact runs, and the runs move when the root "
+        "does. The plan's set was the PRE-PROJECTION one (asserted separately, in "
+        "`theorems_*.T3`). The facing instrument still cannot move under this change: it "
+        "reads the Hips, chest, Neck and Head rotations and the mesh nose, not one of "
+        "which is a foot, and the triangulated positions, which are the same bytes. It is "
+        "measured anyway -- facing-d2b.json.")
+    return out
+
+
+def d2_regression_check(report) -> dict:
+    """Did extending this gate move any D2 number? It must not.
+
+    Every pre-existing block now runs inside `with root_offset(zero_offset)`, which is
+    supposed to be the D2 converter exactly. This compares the result against
+    `gate-d2-prior.json` -- the file this run replaces -- band by band.
+    """
+    if not PRIOR_GATE.exists():
+        return {"ok": None, "why": "no prior gate.json on disk to compare against"}
+    prior = json.loads(PRIOR_GATE.read_text())
+    rows, worst = [], 0.0
+    index = {r["band"]: r for r in prior.get("gate", [])}
+    for r in report["gate"]:
+        old = index.get(r["band"])
+        if old is None:
+            continue
+        for field in ("before", "after"):
+            a, b = old.get(field), r.get(field)
+            if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+                delta = abs(float(a) - float(b))
+                worst = max(worst, delta)
+                if delta > 0.005:
+                    rows.append({"band": r["band"], "field": field, "prior": a, "now": b})
+    return {"ok": not rows, "max_abs_difference": round(worst, 6), "moved": rows,
+            "band": 0.005,
+            "why": "the D2 bands are measured through the zero-offset helper, which is the "
+                   "pre-D2b converter through the identical code path. If any of them "
+                   "moved, this extension rewrote D2's committed figures and the report "
+                   "above cannot be read as D2's."}
+
+
+def _g(node, *path, default=None):
+    """Nested `dict.get`, so a missing prior figure reads as None instead of raising."""
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return default
+        node = node[key]
+    return node
+
+
+def _zero_offset_root_variant(subject, mamma_body_id) -> dict:
+    """D2's root-placement variant, re-measured through the zero-offset helper.
+
+    It was written when `src/` had no root fix. Running it unchanged against a shipped
+    fix would double-apply the offset, so the D2 converter is restored around it exactly
+    as it is around `subject_block`.
+    """
+    with root_offset(zero_offset):
+        return root_variant_block(subject, mamma_body_id)
+
+
+SILHOUETTE_D2B = OUT_DIR / "silhouette-d2b.json"
+SILHOUETTE_D2 = OUT_DIR / "silhouette-d2.json"
+SILHOUETTE_COMMITTED = ROOT / "artifacts/compare/silhouette.json"
+SILHOUETTE_REGEN = (
+    "for arm in delivery delivery-root: .venv/bin/python tools/compare/silhouette.py "
+    "--delivery artifacts/compare/d2-clavicle/$arm "
+    "--work artifacts/compare/d2-clavicle/silhouette-work-$arm "
+    "--out artifacts/compare/d2-clavicle/silhouette-$arm.json  "
+    "(written as silhouette-d2.json and silhouette-d2b.json). DEVIATION FROM THE PLAN, "
+    "recorded: the plan said `--work <rebuild>/work`; a dedicated work directory is used "
+    "instead, seeded with `artifacts/compare/i6`'s MAMMA-derived caches "
+    "(masks-960x540*.npz, mean-body-0*.npy). Those read MAMMA's masks and mean bodies and "
+    "never our track -- the ORACLE bit-identity check below is the proof that reusing "
+    "them changed nothing.")
+
+
+def _silhouette_rows(report, arm_name="ours_delivered") -> dict:
+    """One arm's IoU / precision / recall per camera per subject, flattened.
+
+    `silhouette.py` writes `arms.<arm>.<camera>.<subject>.{iou,precision,recall}.median`.
+    Precision and recall travel with the IoU and are never collapsed into it: the
+    degenerate a mesh instrument actually produces -- something too big -- buys recall
+    with precision, which an IoU alone would hide.
+    """
+    rows: dict = {}
+    arm = _g(report, "arms", arm_name, default={})
+    for camera, per_camera in (arm or {}).items():
+        if not isinstance(per_camera, dict):
+            continue
+        for subject, cell in per_camera.items():
+            if not isinstance(cell, dict) or "iou" not in cell:
+                continue
+            rows[f"{camera}/{subject}"] = {
+                "iou_median": round(float(_g(cell, "iou", "median", default=float("nan"))), 4),
+                "precision_median": round(
+                    float(_g(cell, "precision", "median", default=float("nan"))), 4),
+                "recall_median": round(
+                    float(_g(cell, "recall", "median", default=float("nan"))), 4),
+                "frames_scored": cell.get("frames_scored"),
+            }
+    return rows
+
+
+def _delivered_shift() -> dict:
+    """How far the delivered rig actually MOVED between the two rebuilds, in metres.
+
+    A measurement, not a mechanism. The silhouette scores a projection of the whole mesh,
+    so before anyone reasons about why an overlap changed, the size of the displacement it
+    is pricing belongs on the page. Reported in the rig's own Y-up frame, per joint, as the
+    median signed vertical move and the median displacement norm.
+    """
+    if not (REBUILD_ROOT / "subject-00.body-track.npz").exists() or \
+            not (REBUILD / "subject-00.body-track.npz").exists():
+        return {}
+    out: dict = {"units": "mm, in the rig's Y-up world, D2b minus D2 (positive = higher)"}
+    for subject in (0, 1):
+        names = json.loads((REBUILD / f"subject-{subject:02d}.body-track.json").read_text())[
+            "joint_names"]
+        base = skeleton_for_joint_names(names)
+        fk = {}
+        for label, path in (("D2", REBUILD), ("D2b", REBUILD_ROOT)):
+            t = np.load(path / f"subject-{subject:02d}.body-track.npz")
+            fk[label] = forward_kinematics_positions(
+                np.asarray(t["root_translation_m"], dtype=np.float64),
+                np.asarray(t["local_rotations_xyzw"], dtype=np.float64),
+                skeleton=base).astype(np.float64)
+        delta = fk["D2b"] - fk["D2"]
+        row = {}
+        for name in ("Hips", "UpperChest", "Head", "LeftFoot", "RightFoot",
+                     "LeftUpperLeg", "LeftHand"):
+            i = names.index(name)
+            row[name] = {
+                "vertical_median_mm": round(float(np.median(delta[:, i, 1])) * 1000.0, 2),
+                "displacement_median_mm": round(
+                    float(np.median(np.linalg.norm(delta[:, i], axis=1))) * 1000.0, 2)}
+        out[f"subject_{subject:02d}"] = row
+    return out
+
+
+def silhouette_block() -> dict:
+    """I6 on the D2b rebuild against the committed I6 report. SEPARATE REFERENCE.
+
+    A silhouette is scored against MAMMA's SAM2 masks -- pixels of the actual footage --
+    and it is the only figure in this gate whose reference is not another model. It is
+    also blind to depth, to a left/right mirror of a fore-aft symmetric pose, and to
+    everything inside the outline, so it cannot separate a shape error from a pose error.
+    """
+    out: dict = {"reference": REF_SILHOUETTE, "regenerate": SILHOUETTE_REGEN,
+                 "available": SILHOUETTE_D2B.exists()}
+    if not SILHOUETTE_D2B.exists():
+        out["why_absent"] = f"{SILHOUETTE_D2B} not written yet"
+        return out
+    after = json.loads(SILHOUETTE_D2B.read_text())
+    out["after_per_camera_subject"] = _silhouette_rows(after)
+    out["after_oracle_mamma_mesh"] = _silhouette_rows(after, "ORACLE_mamma_mesh")
+    out["after_control_mean_body"] = _silhouette_rows(after, "control_mean_body")
+    if SILHOUETTE_D2.exists():
+        out["d2_alone_per_camera_subject"] = _silhouette_rows(
+            json.loads(SILHOUETTE_D2.read_text()))
+        out["d2_alone_note"] = ("the D2 rebuild, so before/D2/D2b is a three-way "
+                                "attribution and not one difference carrying two changes.")
+    out["how_far_the_delivered_rig_moved"] = _delivered_shift()
+    if SILHOUETTE_COMMITTED.exists():
+        before = json.loads(SILHOUETTE_COMMITTED.read_text())
+        out["before_per_camera_subject"] = _silhouette_rows(before)
+        out["before_oracle_mamma_mesh"] = _silhouette_rows(before, "ORACLE_mamma_mesh")
+        out["before_control_mean_body"] = _silhouette_rows(before, "control_mean_body")
+        out["oracle_and_control_must_be_unchanged"] = {
+            "max_abs_oracle_iou_difference": max(
+                (abs(v["iou_median"] - out["after_oracle_mamma_mesh"][k]["iou_median"])
+                 for k, v in out["before_oracle_mamma_mesh"].items()
+                 if k in out["after_oracle_mamma_mesh"]), default=None),
+            "why": "the oracle is MAMMA's own mesh and the control is a mean body; "
+                   "neither reads our track, so a rebuild of ours must leave them "
+                   "bit-stable. Anything else means the two runs are not comparable.",
+        }
+        out["before_note"] = ("the COMMITTED artifacts/compare/silhouette.json, which was "
+                              "measured on the delivered build -- pre-D2 and pre-D2b. It "
+                              "is the only before arm available without a third render.")
+        pairs = [(b.get("iou_median"), out["after_per_camera_subject"][k].get("iou_median"))
+                 for k, b in out["before_per_camera_subject"].items()
+                 if k in out["after_per_camera_subject"]]
+        pairs = [(a, b) for a, b in pairs if isinstance(a, (int, float))
+                 and isinstance(b, (int, float))]
+        if pairs:
+            out["before_iou"] = round(float(np.median([a for a, _ in pairs])), 4)
+            out["after_iou"] = round(float(np.median([b for _, b in pairs])), 4)
+            out["cells_where_iou_fell"] = sum(1 for a, b in pairs if b < a)
+            out["cells"] = len(pairs)
+            if "d2_alone_per_camera_subject" in out:
+                d2 = [out["d2_alone_per_camera_subject"][k]["iou_median"]
+                      for k in out["before_per_camera_subject"]
+                      if k in out["d2_alone_per_camera_subject"]]
+                out["d2_alone_iou"] = round(float(np.median(d2)), 4) if d2 else None
+            out["note"] = ("median over the eight camera-subject cells of the per-cell "
+                           "median IoU. Precision and recall are reported per cell and "
+                           "never collapsed into IoU: the degenerate a mesh instrument "
+                           "actually produces -- something too big -- buys recall with "
+                           "precision.")
+    return out
+
+
+def d2b_verdicts(report) -> list:
+    rows = []
+
+    def row(name, band, before, after, interval, ok, reference, note=""):
+        rows.append({"band": name, "band_value": band, "before": before, "after": after,
+                     "interval": interval, "verdict": "PASS" if ok else "FAIL",
+                     "reference": reference, "note": note})
+
+    d2b = report["d2b_root_placement"]
+    chain6 = ("LeftShoulder", "RightShoulder", "LeftUpperArm", "RightUpperArm",
+              "LeftLowerArm", "RightLowerArm")
+
+    def over_ceiling(block, when):
+        return sum(_g(block, "joints", n, when, "frames_over_the_physical_ceiling",
+                      default=0) for n in chain6)
+
+    for s in ("subject_00", "subject_01"):
+        d = d2b["subjects"][s]
+        canon = d["rigs"]["canonical"]
+        sized = d["rigs"]["sized_resolved"]
+
+        # ---- FAITHFUL SWAP. The reference arm is THIS RUN's `root_placement_variant`,
+        # which is recomputed from source under `zero_offset` on every run and is therefore
+        # regenerable from a fresh checkout. `gate-d2-prior.json` is a gitignored artifact
+        # and is used only by `d2_regression_check`, which degrades to `ok: null` without it.
+        pv = _g(report, "root_placement_variant", "subjects", s, default={})
+        pairs = [
+            ("round trip, canonical", _g(pv, "canonical", "D2_plus_root", "roundtrip", "arms"),
+             canon["D2b_shipped"]["roundtrip"]["arms"]),
+            ("round trip, sized", _g(pv, "sized_resolved", "D2_plus_root", "roundtrip", "arms"),
+             sized["D2b_shipped"]["roundtrip"]["arms"]),
+            ("delivered arms, canonical",
+             _g(pv, "canonical", "D2_plus_root", "delivered_on_our_capture", "arms"),
+             canon["D2b_shipped"]["delivered_on_our_capture"]["arms"]),
+            ("delivered arms, sized",
+             _g(pv, "sized_resolved", "D2_plus_root", "delivered_on_our_capture", "arms"),
+             sized["D2b_shipped"]["delivered_on_our_capture"]["arms"]),
+            ("hoist, canonical (the projection's uncapped vertical term, mm)",
+             round(1000.0 * _g(pv, "canonical", "D2_plus_root", "ground_projection",
+                               "diagnostics", "ground_penetration_before_m", default=0.0), 2),
+             round(1000.0 * _g(canon, "D2b_shipped", "ground_projection", "diagnostics",
+                               "ground_penetration_before_m", default=0.0), 2)),
+            ("clavicle-chain frames over the physical ceiling, canonical",
+             over_ceiling(_g(pv, "canonical", "temporal_D2_alone_vs_D2_plus_root",
+                             default={}), "after"),
+             over_ceiling(_g(d, "temporal_baseline_for_D2c", "canonical_D2_vs_D2b",
+                             default={}), "after")),
+        ]
+        worst = max((abs(a - b) for _, a, b in pairs if a is not None and b is not None),
+                    default=None)
+        row(f"FAITHFUL SWAP. the shipped derivation reproduces D2's instrument-side "
+            f"variant, {s}", "<= 0.005 mm (and exactly, on the integer frame counts) on "
+            "every figure D2 reported",
+            None, worst, None, worst is not None and worst <= 0.005, REF_ROUNDTRIP,
+            "candidate and control differ in ONE expression and nothing else; the "
+            "reference arm is recomputed from source in this same run under the "
+            "zero-offset helper, so it regenerates. "
+            + "; ".join(f"{k}: variant {a} vs shipped {b}" for k, a, b in pairs))
+
+        # ---- THEOREMS
+        for label, key in (("canonical", "theorems_canonical"), ("sized", "theorems_sized")):
+            t = d[key]
+            for name in ("T1_fk_upperleg_midpoint_is_the_captured_hip_midpoint",
+                         "T2a_the_offset_is_R_hips_times_the_skeletons_own_half_drop",
+                         "T2b_the_root_moved_by_exactly_that_and_nothing_else",
+                         "T3_only_the_clavicle_chain_moved_pre_projection"):
+                row(f"THEOREM {name.split('_')[0]}, {label} rig, {s}",
+                    t[name].get("band_m", "set equality"), None,
+                    t[name].get("max_m"), None, t[name]["ok"],
+                    "the rig's own geometry, asserted not measured", t[name].get("why", ""))
+
+        # ---- THE ROUND TRIP
+        for label, rig in (("canonical", canon), ("sized", sized)):
+            worst_lm = max(rig["D2b_shipped"]["roundtrip_per_landmark_arms"].values())
+            row(f"A(D2b). round-trip arms, all six landmarks <= {BAND_D2B_ARMS_MM} mm, "
+                f"{label} rig, {s}", f"<= {BAND_D2B_ARMS_MM} mm median",
+                rig["D2_alone"]["roundtrip"]["arms"], rig["D2b_shipped"]["roundtrip"]["arms"],
+                None, worst_lm <= BAND_D2B_ARMS_MM, REF_ROUNDTRIP,
+                "D2's OWN pre-registered band, which D2 failed at 67/79 mm on a premise "
+                "that was false. The before arm is D2 alone, through the same code path.")
+            row(f"A(D2b). round-trip legs and torso stay 0.00, {label} rig, {s}",
+                "== 0.00 mm exact", rig["D2_alone"]["roundtrip"]["legs"],
+                rig["D2b_shipped"]["roundtrip"]["legs"], None,
+                rig["D2b_shipped"]["roundtrip"]["legs"] == 0.0
+                and rig["D2b_shipped"]["roundtrip"]["torso"] == 0.0, REF_ROUNDTRIP,
+                "and it proves nothing about placement: a translation-invariant chain "
+                "scored root-relatively cannot see a translation.")
+
+        # ---- THE CONTROLS
+        c = d["controls"]
+        row(f"CONTROL (b). the lift with its sign flipped must FAIL, {s}",
+            f"> {BAND_D2B_ARMS_MM} mm", None, c["b_sign_flipped"]["roundtrip"]["arms"],
+            None, c["b_sign_flipped"]["roundtrip"]["arms"] > BAND_D2B_ARMS_MM,
+            REF_ROUNDTRIP, c["b_sign_flipped"]["why"])
+        sw = c["c_lift_sweep_along_the_hips_up_axis"]
+        best = min(sw["per_lift"], key=lambda k: sw["per_lift"][k]["arms_median_mm"])
+        row(f"CONTROL (c1). the sweep's MINIMUM is at the skeleton's own lift, {s}",
+            f"argmin over 0..160 mm == {sw['the_skeletons_own_value_mm']} mm", None,
+            float(best), None,
+            float(best) == sw["the_skeletons_own_value_mm"], REF_ROUNDTRIP,
+            f"the curve: " + ", ".join(f"{k}:{v['arms_median_mm']}"
+                                       for k, v in sw["per_lift"].items()))
+        row(f"CONTROL (c2). ONLY the skeleton's own lift clears the band, {s}",
+            f"exactly one of 17 lifts <= {BAND_D2B_ARMS_MM} mm, and it is "
+            f"{sw['the_skeletons_own_value_mm']} mm", None,
+            len(sw["values_passing_the_band"]),
+            None, sw["values_passing_the_band"] == [f"{sw['the_skeletons_own_value_mm']:.0f}"],
+            REF_ROUNDTRIP,
+            f"passing lifts: {sw['values_passing_the_band']}. REPORTED AS IT FELL AND NOT "
+            "TIGHTENED: where a neighbouring 10 mm step also clears 5 mm, this row FAILS "
+            "and says so. The band alone does not uniquely select the derivation on that "
+            "subject; c1 and c3 are what do. " + sw["why"])
+        wv = c["d_world_vertical_instead_of_the_hips_frame"]
+        row(f"CONTROL (d). the same lift as a WORLD vertical must FAIL, {s}",
+            f"> {BAND_D2B_ARMS_MM} mm, and worse on the tilted quartile", None,
+            wv["roundtrip"]["arms"], None, wv["roundtrip"]["arms"] > BAND_D2B_ARMS_MM,
+            REF_ROUNDTRIP,
+            f"delivered arms on the most-tilted quartile: {wv['delivered_arms_on_the_most_tilted_quartile_mm']} "
+            f"mm against the shipped {wv['shipped_arms_on_the_most_tilted_quartile_mm']} mm. "
+            + wv["why"])
+        legs = c["e_legs_and_torso_are_0.00_under_every_variant"]
+        row(f"CONTROL (e). legs and torso read 0.00 under EVERY variant, {s}",
+            "== 0.00 mm", None, max(legs["sweep"] + legs["sign_flipped"]
+                                    + legs["world_vertical"] + legs["shipped"]), None,
+            max(legs["sweep"] + legs["sign_flipped"] + legs["world_vertical"]
+                + legs["shipped"]) == 0.0, REF_ROUNDTRIP, legs["why"])
+
+        # ---- ABSOLUTE PLACEMENT
+        abs_block = d2b["absolute_hip_placement"]["subjects"][s]
+        for label in ("D2", "D2b"):
+            if label not in abs_block:
+                continue
+        b0, b2 = abs_block.get("D2"), abs_block.get("D2b")
+        if b0 and b2:
+            row(f"ABSOLUTE. the delivered hip joints against the captured hips, "
+                f"HORIZONTAL, {s}", "reported with p5/p95; D2b's own figure, and no "
+                "root-relative instrument can see it",
+                b0["horizontal_mm"]["median"], b2["horizontal_mm"]["median"],
+                [b2["horizontal_mm"]["p5"], b2["horizontal_mm"]["p95"]], True,
+                REF_ABSOLUTE,
+                f"tilt correlation {b0['correlation_with_pelvis_tilt']['horizontal']} -> "
+                f"{b2['correlation_with_pelvis_tilt']['horizontal']}")
+            row(f"ABSOLUTE. the same, VERTICAL (capture +Z), {s}",
+                "reported. The projection's ONE uncapped hoist dominates it",
+                b0["component_z_up_mm"]["median"], b2["component_z_up_mm"]["median"],
+                [b2["component_z_up_mm"]["p5"], b2["component_z_up_mm"]["p95"]], True,
+                REF_ABSOLUTE,
+                "what remains is the legs' surplus length -- canonical thigh 430 mm "
+                "against ~400 measured -- and it is D5's. D2b MOVES the placement error "
+                "from the converter to the projection, where it is now visible.")
+
+        # ---- RUNG 11
+        r11 = d2b.get("rung11", {}).get("subjects", {}).get(s, {})
+        for scope in ("all", "arms", "legs"):
+            k = f"canon_{scope}"
+            if k not in r11:
+                continue
+            e = r11[k]
+            margin = e.get("margin_D2_minus_D2b", {})
+            row(f"RUNG 11. agreement with MAMMA, canonical rig, {scope.upper()}, {s}",
+                "reported, no band -- MAMMA is a reference, not a target",
+                e.get("D2_mm"), e.get("D2b_mm"), margin.get("ci95_mm"), True, REF_MAMMA,
+                f"delivered (pre-D2) {e.get('delivered_before_D2_mm')}; "
+                f"p(wrong sign) {margin.get('p_wrong_sign')}. Positive margin means D2b "
+                "agrees better. ABSOLUTE capture world -- this is the arm that can see "
+                "placement at all.")
+
+        # ---- CONTACTS AND HOIST
+        for label, rig in (("canonical", canon), ("sized", sized)):
+            g0 = rig["D2_alone"]["ground_projection"]
+            g2 = rig["D2b_shipped"]["ground_projection"]
+            row(f"CONTACTS. penetration after projection is 0, {label} rig, {s}",
+                "< 0.001 mm -- the projection drives it to float32's floor, a few "
+                "NANOmetres, not to a bit-exact zero",
+                round(1000.0 * g0["diagnostics"].get("ground_penetration_after_m", 0.0), 4),
+                round(1000.0 * g2["diagnostics"].get("ground_penetration_after_m", 0.0), 4),
+                None,
+                abs(g2["diagnostics"].get("ground_penetration_after_m", 0.0)) < 1e-6,
+                "the rig's own feet against the estimated floor",
+                f"contacts {g0['diagnostics'].get('contact_frames')} -> "
+                f"{g2['diagnostics'].get('contact_frames')}; applied root correction "
+                f"{g0['applied_root_correction_median_mm']} -> "
+                f"{g2['applied_root_correction_median_mm']} mm median")
+
+    # ---- CONTROL (c3): a SHIPPED constant is ONE number for the whole pipeline, so the
+    # question a tuned lift has to answer is not "does some value pass on this subject" but
+    # "does one value pass on BOTH". This is the same formulation D2's scalar sweep used
+    # (its cross-subject transfer figures), not a band invented after the fact.
+    sweeps = {s: d2b["subjects"][s]["controls"]["c_lift_sweep_along_the_hips_up_axis"]
+              for s in ("subject_00", "subject_01")}
+    own = sweeps["subject_00"]["the_skeletons_own_value_mm"]
+    both = [k for k in sweeps["subject_00"]["per_lift"]
+            if all(v["per_lift"][k]["arms_median_mm"] <= BAND_D2B_ARMS_MM
+                   for v in sweeps.values())]
+    row("CONTROL (c3). no lift OTHER than the skeleton's own clears the band on BOTH "
+        "subjects", f"the only lift passing on both is {own} mm", None, len(both), None,
+        both == [f"{own:.0f}"], REF_ROUNDTRIP,
+        f"lifts clearing {BAND_D2B_ARMS_MM} mm on both subjects: {both}. NO GATE A "
+        "CONSTANT CAN PASS, in the form that matters for something that ships: a constant "
+        "is ONE number for every performer. 90 mm clears the band on subject 1 (4.64 mm) "
+        "and misses it on subject 0 (6.46 mm). The shipped code chooses nothing -- it "
+        "READS the value from `rest`, and a differently proportioned rig gets a different "
+        "one, which is what `test_root_placement.py::test_the_sized_round_trip_closes_too` "
+        "pins.")
+
+    bi = d2b.get("bit_identity")
+    if bi:
+        row("THEOREM. on disk: positions, raw positions, ticks and every observation file "
+            "byte-identical; the differing locals are the clavicle chain, the hands and "
+            "the FEET", "set equality", None, None, None, bi["held"],
+            "the D2 rebuild against the D2b rebuild", bi["means"])
+    sil = d2b.get("silhouette")
+    if sil and sil.get("available") and sil.get("before_iou") is not None:
+        row("I6. silhouette IoU against MAMMA's SAM2 masks must NOT fall, D2b rebuild",
+            "median over the eight camera-subject cells must not be below the committed "
+            "I6 figure",
+            sil.get("before_iou"), sil.get("after_iou"), None,
+            sil.get("after_iou") >= sil.get("before_iou"), REF_SILHOUETTE,
+            f"D2 alone: {sil.get('d2_alone_iou')}. IoU fell in "
+            f"{sil.get('cells_where_iou_fell')} of {sil.get('cells')} cells, and BOTH "
+            f"precision and recall fell in each, so the mesh moved OFF the pixels rather "
+            f"than changing size. The ORACLE (MAMMA's own mesh) is bit-identical between "
+            f"the two runs "
+            f"(max IoU difference "
+            f"{_g(sil, 'oracle_and_control_must_be_unchanged', 'max_abs_oracle_iou_difference')}"
+            f"), so the two runs are comparable and the fall is real. "
+            + sil.get("note", ""))
+    reg = report.get("d2_regression_check", {})
+    if reg.get("ok") is not None:
+        row("META. extending this gate did not move any D2 figure",
+            "<= 0.005 mm on every D2 band", None, reg.get("max_abs_difference"), None,
+            bool(reg["ok"]), "gate-d2-prior.json, the file this run replaces", reg["why"])
+    return rows
+
+
+D2B_BLIND_TO = (
+    "THE HOIST THAT REMAINS. D2b does not put the character on the ground correctly; it "
+    "moves the placement error OUT of the converter and INTO the ground projection, where "
+    "it is now visible as one uncapped vertical scalar per take (~83 mm and ~49 mm). That "
+    "residue is the legs' surplus length -- the canonical thigh is 430 mm against roughly "
+    "400 measured on these performers -- and it is D5's, not this step's. "
+    "TWIST, unchanged from D2: `_world_for_bone` is the minimal rotation from the parent's "
+    "frame, so the arm inherits the clavicle's roll and no joint-origin score in this lane "
+    "can see it. "
+    "THE TEMPORAL DEFECT. D2 left the clavicle chain jittering above a human's peak joint "
+    "rate. D2b reports the counts and carries NO band for them; D2c owns that question. "
+    "SELF-REFERENCE. The round trip scores the converter against its own output, so it "
+    "cannot see detector error, triangulation error, or any convention shared between "
+    "input and reference -- and its own hip convention WAS exactly such a defect, which is "
+    "why it took a change of reference frame to expose it. Now that the convention agrees, "
+    "the round trip's 0.5 mm is a consistency figure and NOT an accuracy figure. "
+    "THE SCOREBOARD is agreement with an instrument, not accuracy; neither side has ground "
+    "truth, and a change that improves agreement could be moving toward MAMMA's error. "
+    "THE SILHOUETTE is blind to depth, to left/right mirroring of a fore-aft symmetric "
+    "pose, and to everything inside the outline."
+)
+
+
 # ------------------------------------------------------------------ verdicts
 def verdicts(report) -> list:
     rows = []
@@ -1121,8 +2197,13 @@ def main() -> int:
         "blind_to": BLIND_TO,
         "subjects": {},
     }
-    for s in (0, 1):
-        report["subjects"][f"subject_{s:02d}"] = subject_block(s, mapping[s], rng, report)
+    # EVERY D2 BLOCK RUNS THROUGH THE ZERO-OFFSET HELPER. D2's figures were measured
+    # against a converter with no root fix; D2b ships one. `zero_offset` is that converter,
+    # reached by swapping one module attribute, so the bands below keep meaning what they
+    # meant -- and `d2_regression_check` proves it against the file this run replaces.
+    with root_offset(zero_offset):
+        for s in (0, 1):
+            report["subjects"][f"subject_{s:02d}"] = subject_block(s, mapping[s], rng, report)
 
     if REBUILD.exists() and (REBUILD / "subject-00.body-track.npz").exists():
         report["bit_identity"] = bit_identity()
@@ -1135,7 +2216,11 @@ def main() -> int:
         report["rebuild_missing"] = str(REBUILD)
 
     report["root_placement_variant"] = {
-        "shipping": "NOTHING. Every swap here is instrument-side; src/ is untouched by it.",
+        "shipping": "NOTHING WHEN THIS WAS WRITTEN (D2). It SHIPPED as D2b on 2026-09-03, "
+                    "and this block is retained unchanged, measured through the "
+                    "zero-offset helper, as the record of what was predicted and found "
+                    "before the derivation was in the source. `d2b_root_placement` below "
+                    "measures the shipped one and checks it reproduces this to 0.00 mm.",
         "derivation": "root_translation = pelvis - rest[Hips] - R_hips . mid(rest[LeftUpperLeg], "
                       "rest[RightUpperLeg]), from FK's UpperLegMid = root + rest[Hips] + "
                       "R_hips . mid set equal to the captured hip midpoint. No constant: "
@@ -1145,10 +2230,50 @@ def main() -> int:
                            "it measures a SIZED solve's feet on CANONICAL rest lengths. "
                            "Pre-existing, unchanged here, and it limits what the sized "
                            "ground figures can be asked to mean.",
-        "subjects": {f"subject_{s:02d}": root_variant_block(s, mapping[s]) for s in (0, 1)},
+        "subjects": {f"subject_{s:02d}": _zero_offset_root_variant(s, mapping[s])
+                     for s in (0, 1)},
     }
     report["gate"] = verdicts(report)
     report["verdict"] = "PASS" if all(r["verdict"] == "PASS" for r in report["gate"]) else "FAIL"
+    report["d2_regression_check"] = d2_regression_check(report)
+
+    # ------------------------------------------------------------------ D2b, as shipped
+    d2b: dict = {
+        "step": "D2b -- the root placed on the captured hips",
+        "shipping": "src/autoanim_gnm/commercial_multiview.py: `_leg_root_offset`, and the "
+                    "`root_translation[frame]` line that subtracts it.",
+        "derivation": "root_translation = pelvis - rest[Hips] - R_hips . mid(rest[LeftUpperLeg], "
+                      "rest[RightUpperLeg]), from FK's UpperLegMid = root + rest[Hips] + "
+                      "R_hips . mid set equal to the captured hip midpoint. No constant: "
+                      "every term is the skeleton's own rest geometry.",
+        "pre_registered": D2B_PREREGISTERED,
+        "blind_to": D2B_BLIND_TO,
+        "bands": {"roundtrip_arms_median_mm": BAND_D2B_ARMS_MM,
+                  "theorem_fk_hip_m": BAND_FK_HIP_M,
+                  "theorem_offset_m": BAND_OFFSET_M,
+                  "theorem_root_float32_m": BAND_ROOT_F32_M},
+        "subjects": {f"subject_{s:02d}": d2b_subject_block(s, mapping[s]) for s in (0, 1)},
+    }
+    d2b["absolute_hip_placement"] = {"reference": REF_ABSOLUTE, "subjects": {}}
+    arms_for_rung11: dict = {}
+    for label, path in (("delivered_before_D2", TRACKS), ("D2", REBUILD),
+                        ("D2b", REBUILD_ROOT)):
+        if not (path / "subject-00.body-track.npz").exists():
+            continue
+        arms_for_rung11[label] = scoreboard_errors(path, mapping)
+        for s in (0, 1):
+            d2b["absolute_hip_placement"]["subjects"].setdefault(
+                f"subject_{s:02d}", {})[label] = hip_absolute_offset(path, s)
+    if len(arms_for_rung11) > 1:
+        d2b["rung11"] = rung11_block(arms_for_rung11, rng)
+    if (REBUILD_ROOT / "subject-00.body-track.npz").exists() and \
+            (REBUILD / "subject-00.body-track.npz").exists():
+        d2b["bit_identity"] = d2b_bit_identity()
+    d2b["silhouette"] = silhouette_block()
+    report["d2b_root_placement"] = d2b
+    report["d2b_gate"] = d2b_verdicts(report)
+    report["d2b_verdict"] = ("PASS" if all(r["verdict"] == "PASS" for r in report["d2b_gate"])
+                             else "FAIL")
     (OUT_DIR / "gate.json").write_text(json.dumps(report, indent=2, default=float))
     console(report)
     print(f"\nwrote {OUT_DIR / 'gate.json'}")
@@ -1164,7 +2289,15 @@ def console(report) -> None:
         b = "-" if r["before"] is None else f"{r['before']:9.2f}"
         a = "-" if r["after"] is None else f"{r['after']:9.2f}"
         print(f"{r['band'][:72]:<72} {b:>9} {a:>9}  {r['verdict']}")
-    print(f"\nOVERALL: {report['verdict']}")
+    print(f"\nOVERALL (D2 as a step): {report['verdict']}")
+    if report.get("d2b_gate"):
+        print(f"\n=== D2b, the root placed on the captured hips")
+        print(f"{'band':<72} {'before':>9} {'after':>9}  verdict")
+        for r in report["d2b_gate"]:
+            b = "-" if not isinstance(r["before"], (int, float)) else f"{r['before']:9.2f}"
+            a = "-" if not isinstance(r["after"], (int, float)) else f"{r['after']:9.4g}"
+            print(f"{r['band'][:72]:<72} {b:>9} {a:>9}  {r['verdict']}")
+        print(f"\nD2b VERDICT: {report['d2b_verdict']}")
 
 
 if __name__ == "__main__":

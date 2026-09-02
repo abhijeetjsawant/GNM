@@ -575,3 +575,361 @@ forward smoothly across frames 47–50, while in the D2 rebuild it pops — at f
 is drawn in and angled down with the hand by the other performer's neck, and one frame later
 it has snapped out straight and horizontal, a visible single-frame shoulder dislocation that
 the positional score prices at zero.
+
+---
+
+## 12. D2b: the root placed on the captured hips
+
+Branch `ladder/D2`, from `662c844`, 2026-09-03. One expression ships, in
+`src/autoanim_gnm/commercial_multiview.py`:
+
+```python
+root_translation[frame] = pelvis - rest["Hips"] - _leg_root_offset(hips_world, rest)
+```
+
+with `_leg_root_offset` returning `R_hips · mid(rest["LeftUpperLeg"], rest["RightUpperLeg"])`.
+Forward kinematics puts the rig's leg roots at `root + rest[Hips] + R_hips · mid`; the
+captured `left_hip` / `right_hip` landmarks are taken to be the femoral joint centres, so
+the **leg roots** — not `Hips` — belong on their midpoint. Setting `UpperLegMid = pelvis`
+gives exactly the line above. Every term is the skeleton's own rest geometry, read from the
+caller's `rest` dict; **0.08 is never written down**, and
+`tests/test_root_placement.py::test_no_constant_arrived_with_the_root_fix` parses the
+shipped function with `ast` and allows no numeric literal but the `0.5` of a midpoint.
+
+The helper is module level and called by bare name, exactly as `_joint_origin` is, so every
+control below runs through the identical code path rather than a re-implementation of it.
+The clavicle origin needed no change: `_joint_origin` walks from `root_translation`, so
+D2's fix carries automatically, which is what §9 predicted.
+
+### 12.1 Regenerating everything
+
+```
+PYTHONPATH=$PWD/src .venv/bin/python scripts/build_commercial_multiview_comparison.py \
+   --videos .cache/mamma/data/mamma_example/pushing_and_lifting_from_ground/videos \
+   --calibration-yaml .cache/mamma/configs/examples/calib/iphones_outdoors.yaml \
+   --detector soma77 --output artifacts/compare/d2-clavicle/delivery-root
+PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d2_clavicle_gate.py
+PYTHONPATH=$PWD/src python3 tools/swap-harness/retarget_cost.py \
+   --tracks artifacts/commercial-multiview-soma77 \
+   --out artifacts/compare/d2-clavicle/retarget-cost-d2b.json
+PYTHONPATH=$PWD/src .venv/bin/python tools/compare/mamma_scoreboard.py \
+   --tracks artifacts/compare/d2-clavicle/delivery-root --label d2b-root-after
+PYTHONPATH=$PWD/src .venv/bin/python tools/compare/facing_location.py \
+   --delivery artifacts/compare/d2-clavicle/delivery-root \
+   --out artifacts/compare/d2-clavicle/facing-d2b.json --label "D2b"
+.venv/bin/python tools/compare/silhouette.py \
+   --delivery artifacts/compare/d2-clavicle/delivery-root \
+   --work artifacts/compare/d2-clavicle/silhouette-work-d2b \
+   --out artifacts/compare/d2-clavicle/silhouette-d2b.json     # and the same for `delivery`
+```
+
+The rebuild re-extracted and re-detected nothing: all eight `work/*observations.jsonl` are
+byte-identical to the delivered build's. **Deviation from the plan, recorded:** the plan
+said `--work <rebuild>/work` for the silhouette; a dedicated work directory is used instead,
+seeded with `artifacts/compare/i6`'s MAMMA-derived caches (`masks-960x540*.npz`,
+`mean-body-0*.npy`). Those read MAMMA's masks and mean bodies and never our track, and the
+ORACLE arm reading **bit-identical (max IoU difference 0.0000)** between the two runs is the
+proof that reusing them changed nothing.
+
+**Every D2 figure in §§1–11 above still stands, and is checked.** The gate now runs every
+pre-existing block inside `with root_offset(zero_offset)` — the pre-D2b converter, reached
+by swapping one module attribute — and `d2_regression_check` compares the result against the
+gate.json this run replaced: **max absolute difference 0.000 mm across every D2 band.**
+
+### 12.2 The pre-registered expectations, and whether each was met
+
+| | expectation | outcome |
+|---|---|---|
+| **1** | the shipped derivation reproduces D2's instrument-side variant to 0.00 mm | **MET, 0.00 on every figure**, including the hoist and the integer over-ceiling counts. Round trip 0.51 / 0.08 canonical and 0.07 / 0.04 sized; delivered arms 50.62 / 30.28; hoist 83.01 / 49.06. |
+| **2** | the four theorems | **MET**, and the plan's set for theorem 3 was wrong — see below. T1 max 4.2e-7 m; T2a 0.0 at 1e-12 in float64; T2b 4.5e-7 m; T3 exactly the clavicle chain and the two hands. |
+| **3** | horizontal placement and tilt correlation collapse; vertical barely moves; rung 11 legs improve modestly, not to zero | **MET, almost exactly as written.** |
+| **4** | the replayed sized arm gets a new hip misplacement | **DID NOT OCCUR**, and the mechanism is the reason, not luck — see below. |
+| **5** | temporal reported, no band, 40 / 33 expected on the canonical rig | **MET: 40 and 33.** |
+| **6** | contacts change; penetration after must be 0 | **MET.** [47, 42] → [37, 60] and [6, 27] → [7, 27]; penetration after 3.4 and 1.5 **nano**metres. |
+| — | the silhouette | **NOT PRE-REGISTERED AS A BAND, AND IT FELL.** §12.6. |
+
+### 12.3 The gate
+
+`tools/compare/d2_clavicle_gate.py` → `artifacts/compare/d2-clavicle/gate.json`, block
+`d2b_root_placement`, verdict `d2b_verdict`. Bootstraps are moving-block, block 15, 2000
+draws, seed 20260902, both arms on identical drawn frames.
+
+| band | before (D2 alone) | D2b | interval | verdict |
+|---|---|---|---|---|
+| **FAITHFUL SWAP.** reproduces D2's variant, both subjects | — | 0.00 | — | PASS |
+| **THEOREM T1.** FK UpperLeg midpoint = captured hip midpoint, both rigs, both subjects | — | ≤ 4.2e-7 m | band 1e-6 | PASS |
+| **THEOREM T2a.** the offset is `R_hips·(0, 0.08, 0)`, 0.08 read from `rest` | — | 0.0 | band 1e-12 | PASS |
+| **THEOREM T2b.** the root moved by exactly that and nothing else | — | ≤ 4.5e-7 m | band 1e-6 | PASS |
+| **THEOREM T3.** pre-projection, only the clavicle chain + hands moved | — | held | — | PASS |
+| **A(D2b).** round-trip arms ≤ 5 mm, canonical, subj 0 / 1 | 67.25 / 79.32 | **0.51 / 0.08** | — | PASS |
+| **A(D2b).** round-trip arms ≤ 5 mm, sized, subj 0 / 1 | 49.36 / 52.72 | **0.07 / 0.04** | — | PASS |
+| **A(D2b).** round-trip legs and torso = 0.00, both rigs, both subjects | 0.00 | 0.00 | — | PASS |
+| **CONTROL (b).** the lift sign-flipped must fail, subj 0 / 1 | — | 54.71 / 85.69 | — | PASS |
+| **CONTROL (c1).** the sweep's minimum is at the skeleton's own lift, both | — | 80 mm | — | PASS |
+| **CONTROL (c2).** ONLY that lift clears the band, subj 0 | — | 1 of 17 | — | PASS |
+| **CONTROL (c2).** same, subj 1 | — | **2 of 17** | — | **FAIL** |
+| **CONTROL (c3).** no lift but the skeleton's own clears the band on BOTH subjects | — | 1 | — | PASS |
+| **CONTROL (d).** the same lift as a WORLD vertical must fail, subj 0 / 1 | — | 26.04 / 38.59 | — | PASS |
+| **CONTROL (e).** legs and torso 0.00 under every variant | — | 0.00 | — | PASS |
+| **ABSOLUTE.** delivered hip joints vs captured hips, HORIZONTAL, subj 0 / 1 | 26.20 / 42.95 | **0.00 / 0.00** | p95 10.69 / 4.17 | reported |
+| **ABSOLUTE.** the same, VERTICAL, subj 0 / 1 | 53.30 / 32.31 | 55.11 / 27.71 | p5–p95 49.6–62.0 / 22.9–27.7 | reported |
+| **RUNG 11.** canonical, all joints, subj 0 / 1 | 151.58 / 103.91 | **71.30 / 67.92** | [50.6, 87.5] / [27.1, 57.9] | reported |
+| **RUNG 11.** canonical, ARMS, subj 0 / 1 | 186.93 / 117.27 | **83.72 / 68.34** | [83.7, 120.8] / [35.8, 66.0] | reported |
+| **RUNG 11.** canonical, LEGS, subj 0 / 1 | 64.82 / 81.80 | 58.62 / 63.54 | [−7.3, 14.3] / [−3.8, 62.9] | reported |
+| **CONTACTS.** penetration after projection ≈ 0, both rigs, both subjects | 0.000 | 0.0000034 mm | — | PASS |
+| **THEOREM (on disk).** positions, raw positions, ticks, observations byte-identical; differing locals = clavicle chain + hands + **feet** | — | held | — | PASS |
+| **I6 SILHOUETTE.** median IoU must not fall | 0.5847 | **0.5191** (D2 alone: 0.5574) | 8 of 8 cells fell | **FAIL** |
+| **META.** extending this gate moved no D2 figure | — | 0.000 mm | — | PASS |
+
+**Overall D2b: FAIL**, on control (c2) for subject 1 and on the silhouette.
+
+### 12.4 Three things the plan got wrong on contact with the code
+
+**(a) Theorem 3's joint set is right only before the ground projection.**
+`project_generated_foot_contacts` rewrites `rotations[:, foot_index]` inside contact runs,
+and the runs move when the root does ([47, 42] → [37, 60]). So on the **delivered** tracks
+the differing set is the clavicle chain, the two hands **and the two feet**, and the gate
+asserts that corrected set on disk while asserting the plan's set on the pre-projection
+track. The consequence the plan drew from theorem 3 survives with one correction: the
+facing instrument reads the Hips, chest, Neck and Head rotations and the mesh nose, and not
+one of those is a foot. Measured rather than asserted — `facing-d2b.json` against the
+committed `facing-location.json`: **every forward-dot median and every handedness figure is
+identical to five decimals**, including the mesh nose, except
+`delivered_feet vs_our_capture_forward` on subject 0 (0.96980 → 0.97071), which is the
+contact-run rewrite. The position-derived figures (`basis_assertion`, the yaw-180
+displacement control in `i6_reconciliation`) move, as they must: the root moved, and they
+are distances.
+
+**(b) The sized-replay defect cannot occur under `sized_skeleton`.** The plan expected the
+replayed `sized` arm's hips to be misplaced by `R·(0, 0.08·(k−1), 0)`. Measured
+misplacement: **0.0000 mm**, and the mechanism is why. `tools/head/sized_skeleton.py`
+scales the hip half-span in **X only** —
+`rest_translation_m=(off[0]*k, off[1], off[2])` — and never touches `Hips`. The two
+UpperLeg rest offsets are mirror images in X, so their **midpoint** is unchanged by any
+hip-span sizing. The assertion stays in the gate: a future sizing that scaled the UpperLeg
+Y would reintroduce the defect and this check would catch it.
+
+**(c) The 5 mm band admits one neighbour on subject 1, and it has not been tightened.**
+Sweeping the lift 0 → 160 mm in 10 mm steps along the hips' own up axis:
+
+| lift, mm | 0 | 40 | 60 | 70 | **80** | 90 | 100 | 160 |
+|---|---|---|---|---|---|---|---|---|
+| subj 0, round-trip arms | 67.25 | 36.62 | 17.82 | 8.13 | **0.51** | 6.46 | 11.46 | 22.70 |
+| subj 1, round-trip arms | 79.32 | 32.38 | 12.98 | 5.81 | **0.08** | 4.64 | 8.25 | 18.26 |
+
+The minimum is at the skeleton's own 80 mm on both subjects, but on subject 1 the 90 mm
+step also clears 5 mm at 4.64. That row is reported as **FAIL** rather than the band being
+moved. What disposes of the tuned-constant degenerate is control (c3): a shipped constant
+is **one number for every performer**, and 90 mm misses the band on subject 0 at 6.46 mm,
+so exactly one lift of the seventeen clears it on both — the one the code reads from
+`rest` and never writes down.
+
+### 12.5 What D2b actually changed, and what it did not
+
+**It moved the placement error out of the converter and into the ground projection, where
+it is now visible. It did not remove it.**
+
+The delivered rig's own hip joints — FK's UpperLeg midpoint of the shipped track, *after*
+the projection — against the captured hip midpoint, in absolute capture world:
+
+| | horizontal (median) | vertical, capture +Z (median) | norm (median / p95) | correlation with pelvis tilt |
+|---|---|---|---|---|
+| subj 0, delivered (pre-D2) and D2 — identical | 26.20 mm | 53.30 mm | 59.48 / 117.53 | **0.975** |
+| subj 0, **D2b** | **0.00 mm** (p95 10.69) | 55.11 mm | **55.11 / 61.98** | **0.183** |
+| subj 1, delivered and D2 — identical | 42.95 mm | 32.31 mm | 53.55 / 127.20 | **0.999** |
+| subj 1, **D2b** | **0.00 mm** (p95 4.17) | 27.71 mm | **27.71 / 27.71** | **0.357** |
+
+The pre-registered mechanism, written before the numbers: the projection adds **one**
+uncapped scalar vertical hoist per take, chosen by the single worst frame
+(`body_projection.py:1209`, `roots[:, 1] += penetration_before`, no bound), while the root
+fix adds `R_hips·(0, 0.08, 0)` **per frame**, whose vertical part shrinks and whose
+horizontal part grows as the pelvis tilts. So the horizontal term and the tilt correlation
+should collapse and the median vertical should barely move, because the hoist re-solves.
+**That is what happened**: the hoist falls 142.37 → 83.01 mm and 109.54 → 49.06 mm, and the
+median vertical hip offset moves by +1.8 mm and −4.6 mm. The delivered rows the D2 report
+could not see — every own-capture figure there is root-relative — are the p95 of the norm:
+117.53 → 61.98 and 127.20 → 27.71 mm. **The tail is where the tilt-dependent term lived.**
+
+That the pre-D2 and D2 rows are *identical* is itself the point: D2 moved no hip, and no
+root-relative instrument in this lane could see this vector at all.
+
+Rung 11, MAMMA's joints, absolute capture world, the scoreboard's own statistic, legs and
+arms separated, paired moving-block bootstrap on identical draws:
+
+| | pre-D2 | D2 | D2b | D2 − D2b margin, 95 % CI, p(wrong sign) |
+|---|---|---|---|---|
+| subj 0, canonical, all 15 | 151.58 | 151.58 | **71.30** | 72.39 [50.61, 87.48] p 0.000 |
+| subj 0, canonical, six arms | 231.21 | 186.93 | **83.72** | 108.90 [83.69, 120.81] p 0.000 |
+| subj 0, canonical, six legs | 64.82 | 64.82 | 58.62 | 4.79 [−7.33, 14.33] **p 0.124** |
+| subj 0, sized, six legs | 77.90 | 77.90 | **80.44** | −3.93 [−7.16, 10.81] **p 0.246** |
+| subj 1, canonical, all 15 | 137.38 | 103.91 | **67.92** | 41.17 [27.12, 57.89] p 0.000 |
+| subj 1, canonical, six arms | 241.47 | 117.27 | **68.34** | 48.72 [35.82, 65.97] p 0.000 |
+| subj 1, canonical, six legs | 81.80 | 81.80 | 63.54 | 23.48 [−3.83, 62.89] **p 0.115** |
+| subj 1, sized, six legs | 81.45 | 81.45 | 71.42 | 15.09 [1.36, 51.35] p 0.012 |
+
+**Read the leg rows carefully.** Three of the four have intervals that reach zero, and
+subject 0's sized legs read *worse* by 3.93 mm with the interval spanning zero — not
+established either way. That is the pre-registration met, not evaded: the legs were
+predicted to improve **modestly and not to zero**, because only the horizontal,
+tilt-dependent part of the hip error leaves and the vertical residue — the legs' surplus
+length, canonical thigh 430 mm against roughly 400 measured — stays. The arm rows are the
+ones whose intervals clear zero at p 0.000.
+
+Arm B, on its own reference and never differenced with the rows above: canonical arms
+130.52 → 52.84 and 89.55 → 30.80; sized 62.96 → 32.57 and 66.92 → 30.05. Its legs and torso
+do not move at all, which is the same theorem in a different body.
+
+Contacts and the ground, both rigs (the sized rows are byte-identical to the canonical ones
+because `project_generated_foot_contacts` hardcodes `DETAILED_HUMANOID` — §11.3,
+pre-existing and unchanged):
+
+| | contacts | hoist (uncapped) | max per-contact correction (cap 80 mm) | lowest foot median | penetration after |
+|---|---|---|---|---|---|
+| subj 0, D2 alone | [47, 42] | 142.37 mm | 34.49 mm | 0.04181 m | 0.000 mm |
+| subj 0, **D2b** | [37, 60] | **83.01 mm** | 38.23 mm | 0.05461 m | 0.0000034 mm |
+| subj 1, D2 alone | [6, 27] | 109.54 mm | 16.08 mm | 0.07959 m | 0.0000015 mm |
+| subj 1, **D2b** | [7, 27] | **49.06 mm** | 16.72 mm | 0.08991 m | 0.0000015 mm |
+
+Temporal, the baseline D2c inherits. **No band; D2b makes no claim here.** Clavicle-chain
+frames above 26.67°/frame (a human's ~800°/s at 30 fps), canonical rig:
+
+| | pre-D2 | D2 | D2b |
+|---|---|---|---|
+| subj 0 | 32 | 48 | **40** |
+| subj 1 | 11 | 49 | **33** |
+| subj 0, sized | — | 43 | 41 |
+| subj 1, sized | — | 22 | **35** |
+
+Median step falls everywhere (subj 0 LeftShoulder 2.58° → 1.90°, subj 1 2.46° → 1.53°) and
+the worst single step goes both ways: subject 1's LeftShoulder 160.57° → 39.34°, subject
+0's RightShoulder 109.22° → **164.48°**. Legs, neck and head step-angles are bit-identical.
+**D2's jitter regression is reduced and not resolved, and the sized rig gets worse on
+subject 1.** That is D2c's.
+
+### 12.6 The silhouette fell, on every camera and both performers
+
+`artifacts/compare/d2-clavicle/silhouette-d2b.json`, against MAMMA's SAM2 masks — the one
+retained artifact on this fixture that is **not** model-mediated. Median IoU over the eight
+camera-subject cells: **0.5847 (delivered, pre-D2) → 0.5574 (D2 alone) → 0.5191 (D2b)**.
+It fell in 8 of 8 cells, and **both precision and recall fell in every one**, so the mesh
+moved *off* the pixels rather than changing size. The ORACLE arm — MAMMA's own mesh through
+our scoring path, which reads none of our track — is bit-identical between the runs (max IoU
+difference 0.0000), so the two runs are comparable and the fall is real.
+
+What moved: the delivered rig's every joint translates by the **same** median displacement,
+27.87 mm on subject 0 and 43.16 mm on subject 1, of which the vertical part is +2.53 and
+−4.59 mm. It is an almost purely **horizontal** rigid shift, and it equals the horizontal
+hip offset D2b removes (26.20 and 42.95 mm). So the silhouette is pricing exactly the change
+this step makes, and it prices it as worse.
+
+**Two readings, and this instrument cannot separate them.**
+
+1. **The derivation's premise may be false.** "The captured `left_hip` / `right_hip`
+   landmarks ARE the femoral joint centres" is an assumption, inherited from
+   `retarget_cost.landmarks_from_fk`'s comment and from the SOMA-77 adapter, and never
+   measured. Everything downstream of it here is exact — the theorems hold to a micron —
+   but exactness about a premise is not evidence for the premise. The silhouette is the
+   first instrument in this lane with evidence bearing on it, and it points the other way.
+2. **The mesh is the wrong body, by a lot.** Even the *before* arm reads precision ≈ 0.87
+   with recall ≈ 0.64: our mesh covers under two thirds of the mask while almost all of it
+   lands inside, against MAMMA's oracle at 0.84–0.88 IoU. That is a shape mismatch large
+   enough (D5: shoulder span 540 mm against 346 and 363 measured; thigh 430 against ~400)
+   that a 3–4 cm rigid shift can move the overlap either way without saying which placement
+   is anatomically right. D2 alone, which moved no hip at all, also cost 0.027 of IoU.
+
+**No mechanism is claimed here.** What would discriminate is a per-frame IoU series
+correlated with pelvis tilt — `silhouette.py` retains only medians and p05, so it was not
+available — or a direct measurement of where the delivered mesh's own hip surface sits
+relative to its `UpperLeg` joint. Neither was done. The honest statement is that the step's
+internal derivation is exact, its absolute placement against **our own** captured hips is
+now zero horizontally, and the one instrument that reads photographs disagrees.
+
+### 12.7 The committed test that D2b makes false, and the one-line fix
+
+`tests/test_clavicle_origin.py::test_the_roundtrip_residual_is_root_placement_not_the_clavicle`
+**fails**, by design:
+
+```
+assert max(shipped[n] for n in ARM_LANDMARKS) > 5.0
+E   assert 0.008797753306019427 > 5.0
+```
+
+It asserts the *inverse* of D2b: that the shipped round trip exceeds 5 mm and only closes
+when the hip drop is removed from the re-solve. That was D2's finding and its own docstring
+named the remedy — "Fix the root/hip placement convention first". Both of its assertions are
+now false (`_hip_drop_removed` on pass 2 double-corrects). It was **deliberately not
+edited**: the brief for this step forbids touching an existing test file. The owner's fix is
+two inequalities:
+
+```python
+assert max(shipped[n] for n in ARM_LANDMARKS) <= 1.0          # was > 5.0
+assert max(corrected[n] for n in ARM_LANDMARKS) > 5.0         # was <= 1.0
+```
+
+and the docstring's tense. `tests/test_root_placement.py::test_the_canonical_round_trip_now_lands_the_arms_within_a_millimetre`
+and `::test_the_zero_offset_variant_fails_the_same_round_trip` are that pair, written the
+right way round.
+
+Two other failures are **pre-existing at `662c844`** and reproduce with identical assertion
+text with the D2b edit stashed out:
+`test_body_compositor.py::test_unified_preview_is_explicitly_diagnostic_and_uses_one_video_clock`
+and `test_head_orientation.py::test_body_track_head_is_a_constant_without_a_solve_and_moves_with_one`
+(`assert 12.470848083496094 > 20.0`, identical before and after). Everything else passes:
+95 of 98 in the committed set, and 9 of 9 in `tests/test_root_placement.py`.
+
+`body_projection.py`'s second projection function, `constrain_restrained_root_travel`
+(:108), is **not** on the capture path — its only callers are
+`speech_motion_candidates.py:199` and `scripts/build_audio_acting_shot.py:325`. Checked, not
+assumed. `body_compositor.py:237` and `body_export.py:463` pass the root through unchanged
+and need no edit; their tests pass.
+
+### 12.8 What this is blind to
+
+* **The hoist that remains.** D2b does not put the character on the ground correctly. It
+  moves the error from the converter into the projection, where it is one uncapped vertical
+  scalar per take (83 and 49 mm), and that residue is the legs' surplus length. **D5.**
+* **The premise.** Nothing here measures whether the detector's hip landmark is the femoral
+  joint centre. §12.6 is the only evidence, and it is ambiguous.
+* **Self-reference.** The round trip scores the converter against its own output. Its
+  0.51 / 0.08 mm is a *consistency* figure, not an accuracy figure — and its own hip
+  convention was exactly such a shared defect, which is why it took a change of reference
+  frame to expose it in the first place. Now that the two agree again, it can no longer see
+  this class of error at all.
+* **Twist**, unchanged from D2 §6: `_world_for_bone` passes the clavicle's roll down the
+  arm and no joint-origin score in this lane can see it.
+* **The temporal defect.** Reduced, not resolved, and worse on the sized rig for
+  subject 1. **D2c.**
+* **The scoreboard** is agreement with an instrument, not accuracy; neither side has ground
+  truth.
+* **The silhouette** is blind to depth, to a left/right mirror of a fore-aft symmetric pose,
+  and to everything inside the outline. It cannot separate a shape error from a pose error,
+  which is exactly the ambiguity in §12.6.
+
+### 12.9 In plain language
+
+The rig has two hip joints, one at the top of each thigh, and the cameras see roughly where
+the performer's are. Until now the code put a *different* bone on that spot — the pelvis
+root, which sits about 8 cm higher — so the whole skeleton hung 8 cm low on its own hips,
+on every frame. Nobody noticed, because every check in this lane measures distances
+*between* joints or *relative to* the hips, and a whole body sliding 8 cm cancels out of
+both. The floor-contact stage then quietly hoisted the character back up by about 14 cm to
+stop its feet sinking through the ground.
+
+Now the thigh joints go where the cameras say the hips are. Sideways, the delivered
+character's hips land exactly on the measured ones — the miss goes from 2.6 and 4.3 cm to
+zero, and, more tellingly, it stops depending on how far the performer is bent over, which
+it used to almost perfectly. The independent reference fitter agrees the joints improved:
+15 cm to 7 cm on one performer, 10 cm to 7 cm on the other. The floor stage now has to lift
+the character only half as far, because it is no longer sunk by its own convention.
+
+Two things must be said beside that. The up-and-down miss did **not** go away — it moved
+from one stage to another, where it is now a single visible number per shot, and what is
+left of it is that the rig's legs are about 3 cm too long for these performers. That is a
+later step. And the one measurement here that is scored against the actual photographs
+rather than against other software — how well the character's outline covers the person cut
+out of the video — got **worse**, on all four cameras and both performers. The character
+has moved off the person by about 3–4 cm sideways, which is precisely the correction this
+step makes. Either the point the detector calls a hip is not the point the rig calls a hip,
+or the stock character is simply the wrong shape by enough that moving it correctly can
+still look worse. This report does not know which, says so, and leaves the number in plain
+sight rather than in a footnote.
