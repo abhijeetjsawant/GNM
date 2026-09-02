@@ -141,7 +141,7 @@
           "started": "2026-09-02",
           "finished": null,
           "report": null,
-          "blocked_on": "I6 finds no shipped 180 deg yaw: turning our mesh around makes it worse on every camera. Re-locate the defect first (export-side compensation, a mislocated 2026-08-30 diagnosis, or a left/right mirror a silhouette cannot see). And fix camera_overlay.py's missing scene.render.fps before its flip check is trusted."
+          "blocked_on": "the fix (three sites: rig rest X, bound mesh mirror, CANONICAL_HEAD_AXES) waits on the thorax-window decision, because provenance.py fails a build while that leak stands, and on Sol's review of the proposal"
         },
         {
           "id": "D2",
@@ -370,6 +370,16 @@
       "date": "2026-09-02",
       "step": null,
       "text": "Go given for I7 and for locating the facing defect (D1, location only). The D1 fix cannot ship until the thorax window decision lands, because the provenance gate fails a build while the leak stands."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "LOCATED: a real left/right mirror in the rig naming, at three sites; the 2026-08-30 diagnosis was right, I6's yaw control was not facing-sensitive. Overlay timebase bug fixed (46ee1e0). Fix proposal and gate in docs/reviews/facing-location-2026-09-02.md."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "D1 located: the delivered character IS turned round -- pelvis, chest, head and the mesh's own nose all point opposite the performer (forward-dot -0.92 to -1.00), the feet point the right way because they are solved separately. It is a left/right naming mirror in the rig, in three places, not a yaw. The overlay script that the original diagnosis used had a timebase bug, now fixed, and the original diagnosis stands. The fix waits on the thorax decision."
     }
   ]
 }

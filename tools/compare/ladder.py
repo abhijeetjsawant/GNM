@@ -195,6 +195,17 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_delivered_all(spec: dict) -> tuple[list, list]:
+    """Rung 11: the scoreboard arms plus D1's facing location
+    (`tools/compare/extractors/d1_facing.py`, wired by the registry owner). The facing figures are
+    direction cosines on their own axis; the scoreboard figures are millimetres."""
+    figs, ctrls = x_delivered(spec)
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.d1_facing import x_facing  # noqa: E402
+    f2, c2 = x_facing(spec)
+    return figs + f2, ctrls + c2
+
+
 def x_hands_report(spec: dict) -> tuple[list, list]:
     """Rung 8: I5's extractor, `tools/compare/extractors/i5_hands.py`, wired by the registry owner."""
     sys.path.insert(0, str(ROOT / "tools/compare"))
@@ -617,8 +628,13 @@ RUNGS: list[dict[str, Any]] = [
         title="Mesh and delivered skeleton -- the end-to-end rung, deliberately last",
         mamma="`get_smplx_forward` -> `pred_vertices` (150, 10475, 3) and `pred_joints` (150, 127, 3); then "
               "`ma_vis` overlays. Research-licensed; never ships.",
-        ours="Retarget onto the fixed rig, MPFB mesh, exported GLB/FBX. Carries the 180 deg facing defect "
-             "(BODY_LANE_PLAN.md) until fixed.",
+        ours="Retarget onto the fixed rig, MPFB mesh, exported GLB/FBX. Turned round: D1 (2026-09-02) placed the "
+             "facing defect as a left/right naming MIRROR in the rig at three sites (the rest skeleton's `Left` bones "
+             "sit on the mesh's anatomical right; the bound mesh follows; `CANONICAL_HEAD_AXES` hardcodes the same "
+             "handedness) -- pelvis, chest, head and the mesh's own nose point opposite the performer (forward-dot "
+             "-0.92 to -1.00), the feet point the right way because f6a4973 solves them from the toes. Not a yaw: "
+             "the rig's handedness reads -1 from its feet and +1 from its torso, which no rotation can do. "
+             "The 2026-08-30 diagnosis was right; I6's yaw control moved the limbs too and was not facing-sensitive.",
         interface="what a user receives",
         supplied_by_mamma="nothing -- this is our whole pipeline, scored against MAMMA's whole pipeline",
         instrument="`tools/compare/mamma_scoreboard.py` (canon / sized arms)",
@@ -626,8 +642,8 @@ RUNGS: list[dict[str, Any]] = [
                   "rungs and only those two may sit on one axis",
         blind="everything the per-stage rungs are blind to, compounded; and it cannot attribute -- that is what "
               "the rungs above are for",
-        status="measured", extract=x_delivered,
-        reports=["artifacts/compare/scoreboard-commercial-multiview-soma77.json"],
+        status="measured; faces the wrong way (a naming mirror, located, fix pending)", extract=x_delivered_all,
+        reports=["artifacts/compare/scoreboard-commercial-multiview-soma77.json", "artifacts/compare/facing-location.json"],
         both_directions="-",
     ),
 ]
@@ -814,6 +830,20 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Rig sized to performer 0", role="alt", key="sized_subject_00"),
                    dict(label="Delivered, one fixed body, 1", role="ours", key="canon_subject_01"),
                    dict(label="Rig sized to performer 1", role="alt", key="sized_subject_01")]),
+        dict(title="Which way the delivered character faces, part by part",
+             plain="+1 means a part points the same way the performer does in the footage; -1 means exactly the "
+                   "opposite way. The pelvis, chest, head and the mesh's own nose are all reversed; the feet, solved "
+                   "separately from the toes, are right. MAMMA's independent reading agrees with ours at +0.99, so "
+                   "this is not two instruments disagreeing about a few degrees: the body is turned round.",
+             better="higher",
+             bars=[dict(label="Delivered pelvis", role="ours", key="fwd_delivered_torso_Hips_capture"),
+                   dict(label="Delivered chest", role="ours", key="fwd_delivered_torso_Chest_capture"),
+                   dict(label="Delivered head", role="ours", key="fwd_delivered_Head_capture"),
+                   dict(label="The delivered mesh's nose", role="ours", key="fwd_delivered_MESH_nose_capture"),
+                   dict(label="Delivered feet (solved from the toes)", role="alt", key="fwd_delivered_feet_capture"),
+                   dict(label="MAMMA's reading of the performers", role="mamma", key="oracle_forward"),
+                   dict(label="Our capture turned 180 degrees", role="control",
+                        key="CONTROL_yaw180_about_the_subjects_own_up_fwd")]),
     ],
 }
 

@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-02T15:37:26",
+ "rendered": "2026-09-02T16:21:22",
  "git": {
-  "sha": "500c82d",
+  "sha": "d28f66b",
   "dirty": true
  },
  "rungs": [
@@ -573,7 +573,7 @@
    "id": "delivered",
    "n": 11,
    "title": "Mesh and delivered skeleton -- the end-to-end rung, deliberately last",
-   "status": "measured",
+   "status": "measured; faces the wrong way (a naming mirror, located, fix pending)",
    "visuals": [
     {
      "title": "The delivered character against MAMMA's joints, end to end",
@@ -600,6 +600,49 @@
        "label": "Rig sized to performer 1",
        "role": "alt",
        "value": 113.03823809049733
+      }
+     ]
+    },
+    {
+     "title": "Which way the delivered character faces, part by part",
+     "plain": "+1 means a part points the same way the performer does in the footage; -1 means exactly the opposite way. The pelvis, chest, head and the mesh's own nose are all reversed; the feet, solved separately from the toes, are right. MAMMA's independent reading agrees with ours at +0.99, so this is not two instruments disagreeing about a few degrees: the body is turned round.",
+     "better": "higher",
+     "unit": "direction cosine",
+     "bars": [
+      {
+       "label": "Delivered pelvis",
+       "role": "ours",
+       "value": -0.9999999999999998
+      },
+      {
+       "label": "Delivered chest",
+       "role": "ours",
+       "value": -0.9932358791321203
+      },
+      {
+       "label": "Delivered head",
+       "role": "ours",
+       "value": -0.9155198834077263
+      },
+      {
+       "label": "The delivered mesh's nose",
+       "role": "ours",
+       "value": -0.9468375407589025
+      },
+      {
+       "label": "Delivered feet (solved from the toes)",
+       "role": "alt",
+       "value": 0.9387795534601501
+      },
+      {
+       "label": "MAMMA's reading of the performers",
+       "role": "mamma",
+       "value": 0.9924851301821289
+      },
+      {
+       "label": "Our capture turned 180 degrees",
+       "role": "control",
+       "value": -0.8087662097232308
       }
      ]
     }

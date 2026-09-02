@@ -72,22 +72,29 @@ def chart_svg(comp: dict) -> str:
     better = comp.get("better", "lower")
     dir_word = "Lower is better ◀" if better == "lower" else "Higher is better ▶"
     vmax = max(abs(float(b["value"])) for b in bars) or 1.0
+    diverging = any(float(b["value"]) < 0 for b in bars)  # signed figures: zero sits mid-track, bars go both ways
     # geometry: label column, bar track, value column; one row per bar
     w, lab_w, val_w, row_h, gap, pad_top = 480, 200, 54, 17, 6, 6
     track = w - lab_w - val_w - 16
+    half = track / 2.0
+    zero_x = lab_w + half if diverging else lab_w
     h = pad_top + len(bars) * (row_h + gap) + 6
     rows = []
     for i, b in enumerate(bars):
         y = pad_top + i * (row_h + gap)
         v = float(b["value"])
-        bw = max(2.0, track * abs(v) / vmax)
+        span = half if diverging else track
+        bw = max(2.0, span * abs(v) / vmax)
+        x0 = zero_x - bw if (diverging and v < 0) else zero_x
         role = b.get("role", "ours")
         title = f'{b["label"]}: {_fmt(v)} {comp.get("unit", "")} ({ROLE_WORD.get(role, role)})'
+        vx = (x0 - 6) if (diverging and v < 0) else (x0 + bw + 6)
+        anchor = ' text-anchor="end"' if (diverging and v < 0) else ""
         rows.append(
             f'<g><title>{e(title)}</title>'
             f'<text class="lbl" x="{lab_w - 8}" y="{y + row_h * 0.72:.1f}" text-anchor="end">{e(_short(b["label"], 34))}</text>'
-            f'<rect class="b-{e(role)}" x="{lab_w}" y="{y}" width="{bw:.1f}" height="{row_h}" rx="3" ry="3"/>'
-            f'<text class="val" x="{lab_w + bw + 6:.1f}" y="{y + row_h * 0.72:.1f}">{_fmt(v)}</text></g>')
+            f'<rect class="b-{e(role)}" x="{x0:.1f}" y="{y}" width="{bw:.1f}" height="{row_h}" rx="3" ry="3"/>'
+            f'<text class="val" x="{vx:.1f}" y="{y + row_h * 0.72:.1f}"{anchor}>{_fmt(v)}</text></g>')
     roles_present = []
     for b in bars:
         if b.get("role") not in roles_present:
@@ -98,7 +105,7 @@ def chart_svg(comp: dict) -> str:
         f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="{e(comp["title"])}">'
         f'<defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">'
         f'<line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern></defs>'
-        f'<line class="axis" x1="{lab_w}" y1="{pad_top - 3}" x2="{lab_w}" y2="{h - 4}"/>'
+        f'<line class="axis" x1="{zero_x:.1f}" y1="{pad_top - 3}" x2="{zero_x:.1f}" y2="{h - 4}"/>'
         + "".join(rows) + "</svg>")
     return (f'<div class="chart"><h4>{e(comp["title"])}</h4>'
             f'<p class="plain">{e(comp.get("plain", ""))}</p>'

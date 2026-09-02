@@ -29,12 +29,12 @@ Done: I0, I1, I2, I3, I4, I5, I6, I8. In flight: I7, D1. Blocked: nothing.
 
 ## Recent log
 
-- 2026-09-02 [I3] I3 done: the detector's error is mostly per-joint, not a per-camera offset, so the next detector step is training on our own labels. Two old headline figures were retired.
-- 2026-09-02 [I5] Held-out camera protocol is a report: 36.5 mm at the subject, mean over 16 hand x fold cells (27-54 per hand). Frozen hands rejected 16/16; a prior-dominated solver drifts at constant velocity with jitter BETTER than MAMMA and is rejected only by the held-out camera; a lag of one frame is caught 6/16; zero-phase low-pass beats the shipped default 14/16 -- the shipped hand is under-smoothed. MAMMA's hand through the same protocol scores 42 mm, above ours: the floor is SOMA-77 pixel error plus a 26-73 mm MHR-to-SMPL-X convention gap, so the gate discriminates degenerate motion, not accuracy. Prior-dominated arm's held-out folds unfinished (54 min/cell).
 - 2026-09-02 [I5] I5 done: the hands gate exists and rejects frozen and drifting hands, but only the held-out camera can; smoothness bands reject nothing. It also says the shipped hand is under-smoothed and that MAMMA's hand is not a floor here. Lane I complete except I7.
 - 2026-09-02 [I7] worktree ladder/I7, Opus agent. Injection path exists in oracle_2d.py; single-ray slots exercise the sequence solve for the first time
 - 2026-09-02 [D1] worktree ladder/D1, Opus agent: LOCATE the defect and repair camera_overlay.py's timebase; no delivery change until the defect is placed and the thorax leak is closed (provenance.py exits 1 while it stands)
 - 2026-09-02 [—] Go given for I7 and for locating the facing defect (D1, location only). The D1 fix cannot ship until the thorax window decision lands, because the provenance gate fails a build while the leak stands.
+- 2026-09-02 [D1] LOCATED: a real left/right mirror in the rig naming, at three sites; the 2026-08-30 diagnosis was right, I6's yaw control was not facing-sensitive. Overlay timebase bug fixed (46ee1e0). Fix proposal and gate in docs/reviews/facing-location-2026-09-02.md.
+- 2026-09-02 [D1] D1 located: the delivered character IS turned round -- pelvis, chest, head and the mesh's own nose all point opposite the performer (forward-dot -0.92 to -1.00), the feet point the right way because they are solved separately. It is a left/right naming mirror in the rig, in three places, not a yaw. The overlay script that the original diagnosis used had a timebase bug, now fixed, and the original diagnosis stands. The fix waits on the thorax decision.
 
 ## How to resume
 
