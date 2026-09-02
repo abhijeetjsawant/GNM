@@ -137,9 +137,19 @@ class DependencyIssue:
         }
 
 
-# MPFB's anatomical .L is positive Blender X, whereas AutoAnim's canonical
-# Left joints are negative X.  The explicit mapping records that label swap;
-# the worker never guesses it from names.
+# MPFB's anatomical .L is positive Blender X and so is AutoAnim's canonical Left, so
+# each side maps to its own side.  The explicit mapping is kept so that the worker never
+# guesses it from names.
+#
+# THIS MAP IS WHERE THE 2026-08-30 FACING DEFECT WAS BORN.  Until 2026-09-02 it read
+# `LeftShoulder -> clavicle.R`, deliberately, to satisfy a comment that said "AutoAnim's
+# canonical Left joints are negative X".  They were -- and that was itself the error: the
+# skeleton publishes `handedness: right, up +Y, forward +Z`, in which the anatomical left
+# is +X, and the MPFB mesh's nose, eyes and toes all sit at +Z.  So the swap bound every
+# bone named Left to the mesh's anatomical right, and every delivered character shipped
+# yawed 180 degrees.  docs/reviews/facing-fix-2026-09-02.md.  An asset built before that
+# date carries the old labels and must be relabelled (tools/compare/d1_asset_relabel.py)
+# or regenerated; it is not interchangeable with one built from this map.
 DEFAULT_MPFB_JOINT_MAP: dict[str, str] = {
     "Root": "root",
     "Hips": "spine05",
@@ -148,28 +158,28 @@ DEFAULT_MPFB_JOINT_MAP: dict[str, str] = {
     "UpperChest": "spine01",
     "Neck": "neck01",
     "Head": "head",
-    "LeftEye": "eye.R",
-    "RightEye": "eye.L",
-    "LeftShoulder": "clavicle.R",
-    "LeftUpperArm": "upperarm01.R",
-    "LeftLowerArm": "lowerarm01.R",
-    "LeftHand": "wrist.R",
-    "RightShoulder": "clavicle.L",
-    "RightUpperArm": "upperarm01.L",
-    "RightLowerArm": "lowerarm01.L",
-    "RightHand": "wrist.L",
-    "LeftUpperLeg": "upperleg01.R",
-    "LeftLowerLeg": "lowerleg01.R",
-    "LeftFoot": "foot.R",
-    "LeftToes": "toe1-1.R",
-    "RightUpperLeg": "upperleg01.L",
-    "RightLowerLeg": "lowerleg01.L",
-    "RightFoot": "foot.L",
-    "RightToes": "toe1-1.L",
+    "LeftEye": "eye.L",
+    "RightEye": "eye.R",
+    "LeftShoulder": "clavicle.L",
+    "LeftUpperArm": "upperarm01.L",
+    "LeftLowerArm": "lowerarm01.L",
+    "LeftHand": "wrist.L",
+    "RightShoulder": "clavicle.R",
+    "RightUpperArm": "upperarm01.R",
+    "RightLowerArm": "lowerarm01.R",
+    "RightHand": "wrist.R",
+    "LeftUpperLeg": "upperleg01.L",
+    "LeftLowerLeg": "lowerleg01.L",
+    "LeftFoot": "foot.L",
+    "LeftToes": "toe1-1.L",
+    "RightUpperLeg": "upperleg01.R",
+    "RightLowerLeg": "lowerleg01.R",
+    "RightFoot": "foot.R",
+    "RightToes": "toe1-1.R",
 }
 
 DETAILED_MPFB_JOINT_MAP: dict[str, str] = dict(DEFAULT_MPFB_JOINT_MAP)
-for _side, _mpfb_side in (("Left", "R"), ("Right", "L")):
+for _side, _mpfb_side in (("Left", "L"), ("Right", "R")):
     for _finger_index, _finger in enumerate(
         ("Thumb", "Index", "Middle", "Ring", "Little"), start=1
     ):

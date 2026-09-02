@@ -67,6 +67,11 @@ from sized_skeleton import sized_skeleton  # noqa: E402
 
 TRACKS = ROOT / "artifacts/commercial-multiview-soma77"
 OUT = ROOT / "artifacts/compare/retarget-cost.json"
+# D1 (fix): `--tracks`/`--out` point this at a rebuild without touching the delivery.
+if "--tracks" in sys.argv:
+    TRACKS = ROOT / sys.argv[sys.argv.index("--tracks") + 1]
+if "--out" in sys.argv:
+    OUT = ROOT / sys.argv[sys.argv.index("--out") + 1]
 
 # Which rig joint carries which captured landmark, read off the chain table in
 # positions_to_body_track: each chain rotates the parent so the child's REST

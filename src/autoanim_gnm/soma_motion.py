@@ -632,32 +632,39 @@ _DELTA_MAPPING = {
     "UpperChest": "Chest",
     "Neck": "Neck2",
     "Head": "Head",
-    # SOMA anatomical left is positive source X, while AutoAnim's reviewed
-    # canonical skeleton defines Left on negative X. Swap anatomical labels at
-    # this explicit boundary; the MPFB provider requires the same convention
-    # correction.
-    "LeftShoulder": "RightShoulder",
-    "LeftUpperArm": "RightArm",
-    "LeftLowerArm": "RightForeArm",
-    "LeftHand": "RightHand",
-    "RightShoulder": "LeftShoulder",
-    "RightUpperArm": "LeftArm",
-    "RightLowerArm": "LeftForeArm",
-    "RightHand": "LeftHand",
-    "LeftUpperLeg": "RightLeg",
-    "LeftLowerLeg": "RightShin",
-    "LeftFoot": "RightFoot",
-    "LeftToes": "RightToeBase",
-    "RightUpperLeg": "LeftLeg",
-    "RightLowerLeg": "LeftShin",
-    "RightFoot": "LeftFoot",
-    "RightToes": "LeftToeBase",
+    # SOMA anatomical left is positive source X, and so is AutoAnim's since 2026-09-02:
+    # both declare right-handed, up +Y, forward +Z, in which the left is `up x forward`.
+    # Each side therefore maps to its own side.
+    #
+    # THIS BOUNDARY USED TO SWAP THEM, and the reason was written beside it -- "AutoAnim's
+    # reviewed canonical skeleton defines Left on negative X". That was true, and it was
+    # itself the defect: the swap here was a COMPENSATION for the rig's mirrored naming,
+    # so removing the mirror without removing the compensation would have shipped every
+    # SOMA performer with their arms and legs exchanged. Nothing on this lane has a
+    # capture fixture that would have caught it.
+    # docs/reviews/facing-fix-2026-09-02.md; tests/test_facing_fix.py.
+    "LeftShoulder": "LeftShoulder",
+    "LeftUpperArm": "LeftArm",
+    "LeftLowerArm": "LeftForeArm",
+    "LeftHand": "LeftHand",
+    "RightShoulder": "RightShoulder",
+    "RightUpperArm": "RightArm",
+    "RightLowerArm": "RightForeArm",
+    "RightHand": "RightHand",
+    "LeftUpperLeg": "LeftLeg",
+    "LeftLowerLeg": "LeftShin",
+    "LeftFoot": "LeftFoot",
+    "LeftToes": "LeftToeBase",
+    "RightUpperLeg": "RightLeg",
+    "RightLowerLeg": "RightShin",
+    "RightFoot": "RightFoot",
+    "RightToes": "RightToeBase",
 }
 
 
 def _detailed_delta_mapping() -> dict[str, str]:
     mapping = dict(_DELTA_MAPPING)
-    for target_side, source_side in (("Left", "Right"), ("Right", "Left")):
+    for target_side, source_side in (("Left", "Left"), ("Right", "Right")):
         mapping.update(
             {
                 f"{target_side}ThumbMetacarpal": f"{source_side}HandThumb1",

@@ -524,7 +524,15 @@ def main() -> None:
     ap.add_argument("--cameras", default=",".join(CAMERAS))
     ap.add_argument("--skip-point-to-surface", action="store_true")
     ap.add_argument("--out", default=str(REPORT))
+    # D1 (fix): the same instrument pointed at a rebuild. The delivered directory is
+    # never written to and its report stays the BEFORE arm.
+    ap.add_argument("--delivery", default=str(DELIVERY))
+    ap.add_argument("--work", default=str(WORK))
     args = ap.parse_args()
+    # Rebound rather than threaded: DELIVERY and WORK are read from a dozen places and
+    # threading them would be a rewrite of an instrument that is already trusted.
+    global DELIVERY, WORK          # noqa: PLW0603
+    DELIVERY, WORK = Path(args.delivery).resolve(), Path(args.work).resolve()
     cams = tuple(c for c in args.cameras.split(",") if c)
     width, height = NATIVE[0] // args.scale, NATIVE[1] // args.scale
     shape = (width, height)

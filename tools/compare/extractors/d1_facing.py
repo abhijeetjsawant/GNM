@@ -29,6 +29,12 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 REPORT = "artifacts/compare/facing-location.json"
+# D1 (fix). The AFTER arm is the SAME instrument pointed at a rebuild under
+# `artifacts/compare/d1-fix/`; `FIX_GATE` is the bands applied to both arms. When the
+# after report is absent this extractor behaves exactly as it did at D1 (locate), so the
+# ladder page is correct at either step and never mixes the two on one bar.
+AFTER_REPORT = "artifacts/compare/d1-fix/facing-after.json"
+FIX_GATE = "artifacts/compare/d1-fix/facing-fix-gate.json"
 
 sys.path.insert(0, str(ROOT / "tools" / "compare"))
 try:  # pragma: no cover - exercised by whichever import path is available
@@ -47,6 +53,14 @@ REF_CAPTURE = ("our own triangulated capture's forward direction, unit(left x up
                "hips and neck -- an estimate, not truth")
 REF_MAMMA = ("MAMMA `pred_joints` forward direction, built the same way from its own hips "
              "and neck -- a second independent estimate, never a target")
+# The AFTER figures carry their own reference string, because they are measured on
+# DIFFERENT BYTES: a rebuild on branch `ladder/D1-fix` against a relabelled asset, which is
+# not merged and is not what anyone has received. A bar labelled with this string and a
+# bar labelled REF_CAPTURE describe two different deliveries and must never be averaged.
+REF_CAPTURE_AFTER = (REF_CAPTURE + " -- scored on the D1 (fix) REBUILD under "
+                     "artifacts/compare/d1-fix/, branch ladder/D1-fix, NOT the delivery")
+REF_MAMMA_AFTER = (REF_MAMMA + " -- scored on the D1 (fix) REBUILD under "
+                   "artifacts/compare/d1-fix/, branch ladder/D1-fix, NOT the delivery")
 SUBJECTS = ("subject_00", "subject_01")
 
 
@@ -54,13 +68,19 @@ def _mean(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
-def x_facing(_: dict) -> tuple[list, list]:
-    path = ROOT / REPORT
+def _load(relative: str) -> dict | None:
+    path = ROOT / relative
     if not path.exists():
-        return [], []
+        return None
     try:
-        report = json.loads(path.read_text())
+        return json.loads(path.read_text())
     except (OSError, ValueError):
+        return None
+
+
+def x_facing(_: dict) -> tuple[list, list]:
+    report = _load(REPORT)
+    if report is None:
         return [], []
 
     dots = report.get("forward_dot", {})
@@ -160,6 +180,109 @@ def x_facing(_: dict) -> tuple[list, list]:
                          "direction cosine", REF_CAPTURE, better, key=f"{arm}_fwd"))
         ctrls.append(fig(f"{label} [handedness sign]", sign(arm), "sign", REF_CAPTURE, COUNT,
                          key=f"{arm}_hand"))
+
+    figs_after, ctrls_after = _after_figures()
+    return figs + figs_after, ctrls + ctrls_after
+
+
+def _after_figures() -> tuple[list, list]:
+    """D1 (fix): the same quantities on the REBUILD, keyed `*_after`.
+
+    Kept in its own function and its own key namespace so that nothing can quietly
+    overwrite a BEFORE bar with an AFTER one. If the rebuild is absent -- and it is
+    absent for anyone who has not run the branch -- this returns nothing and the page is
+    exactly the D1 (locate) page.
+    """
+    after = _load(AFTER_REPORT)
+    if after is None:
+        return [], []
+    gate = _load(FIX_GATE) or {}
+    dots = after.get("forward_dot", {})
+    triples = after.get("triple_product", {}).get("arms", {})
+    figs: list[dict] = []
+    ctrls: list[dict] = []
+
+    def dot(group: str, reference: str) -> float | None:
+        return _mean([
+            dots[s][group][reference]["median"] for s in SUBJECTS
+            if group in dots.get(s, {}) and reference in dots[s][group]
+        ])
+
+    parts = (
+        ("delivered_torso_Hips", "which way the REBUILT pelvis points"),
+        ("delivered_torso_Chest", "which way the REBUILT chest points"),
+        ("delivered_Head", "which way the REBUILT head points"),
+        ("delivered_MESH_nose", "which way the REBUILT MESH's NOSE points -- measured on "
+                                "the rebuilt GLB through the real skinning, vertex sets "
+                                "picked from the bind pose by geometry"),
+        ("delivered_feet", "which way the REBUILT feet point -- the part that was already "
+                           "right and had to STAY inside its old interval"),
+    )
+    for key, label in parts:
+        figs.append(fig(f"{label} (+1 = with the performer, -1 = exactly opposed)",
+                        dot(key, "vs_our_capture_forward"), "direction cosine",
+                        REF_CAPTURE_AFTER, HIGHER, key=f"fwd_{key}_capture_after"))
+        if dot(key, "vs_mamma_forward") is not None:
+            figs.append(fig(f"{label}, against MAMMA's independent answer",
+                            dot(key, "vs_mamma_forward"), "direction cosine",
+                            REF_MAMMA_AFTER, HIGHER, key=f"fwd_{key}_mamma_after"))
+
+    for arm, label in (
+        ("delivered_rig_forward_from_its_FEET",
+         "the REBUILT rig, forward read from its FEET"),
+        ("delivered_rig_forward_from_its_TORSO",
+         "THE SAME rebuilt rig, forward read from its TORSO -- these two AGREEING is the "
+         "repair stated as one bit, exactly as their disagreeing was the defect"),
+        ("delivered_MESH_surface", "the rebuilt mesh's own skin"),
+    ):
+        figs.append(fig(f"handedness sign of {label} (-1 on every real human here)",
+                        _mean([triples[arm][s]["sign_median"] for s in SUBJECTS
+                               if arm in triples and s in triples[arm]]),
+                        "sign", REF_CAPTURE_AFTER, COUNT, key=f"hand_{arm}_after"))
+
+    rest = after.get("rest_convention", {})
+    for asset in ("asset_mpfb_neutral_body", "code_DETAILED_HUMANOID"):
+        figs.append(fig(f"handedness sign of the REBUILT rest skeleton in `{asset}`",
+                        rest.get(asset, {}).get("handedness_triple_product_sign"), "sign",
+                        "the asset file itself", COUNT, key=f"hand_rest_{asset}_after"))
+
+    controls = after.get("delivered_rig_controls", {})
+
+    def control_dot(name: str) -> float | None:
+        return _mean([controls[name][s]["forward_dot_vs_our_capture"]["median"]
+                      for s in SUBJECTS
+                      if name in controls and s in controls[name]])
+
+    def control_sign(name: str) -> float | None:
+        return _mean([controls[name][s]["handedness_sign_median"] for s in SUBJECTS
+                      if name in controls and s in controls[name]])
+
+    for name, label, better in (
+        ("DELIVERED_CONTROL_yaw180",
+         "control: the REPAIRED character turned 180 degrees about each subject's own "
+         "vertical -- a proper rotation, so it keeps the handedness sign and must fail "
+         "the forward-dot", LOWER),
+        ("DELIVERED_CONTROL_yaw90",
+         "control: the repaired character turned 90 degrees -- must fail the forward-dot",
+         LOWER),
+        ("DELIVERED_CONTROL_sagittal_mirror",
+         "control: the repaired character mirrored in each subject's own sagittal plane. "
+         "Left and right exchanged, facing untouched, so it PASSES the forward-dot and "
+         "only the handedness sign rejects it", HIGHER),
+    ):
+        ctrls.append(fig(f"{label} [forward-dot]", control_dot(name), "direction cosine",
+                         REF_CAPTURE_AFTER, better, key=f"{name}_fwd_after"))
+        ctrls.append(fig(f"{label} [handedness sign]", control_sign(name), "sign",
+                         REF_CAPTURE_AFTER, COUNT, key=f"{name}_hand_after"))
+
+    if gate:
+        ctrls.append(fig("the PRE-REPAIR delivery put through the identical band function "
+                         "-- if this ever passes, the gate is broken. Reported as the "
+                         "number of (subject, part, reference) cells that fail",
+                         float(gate["degenerate_controls"]["the_pre_repair_build"]
+                               ["forward_dot_cells_failing"]),
+                         "failing cells", "the D1 (fix) gate's own bands", COUNT,
+                         key="pre_repair_cells_failing"))
     return figs, ctrls
 
 

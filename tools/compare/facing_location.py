@@ -145,9 +145,9 @@ def digest(path: Path) -> str | None:
 # 1. the asset's own handedness, and the SHA chain that says which asset it is
 # ---------------------------------------------------------------------------------------
 
-def rest_convention() -> dict:
-    """Read the mirror off the shipped asset. No capture, no reference, no camera."""
-    asset = np.load(ASSET)
+def rest_convention(asset_path: Path = ASSET) -> dict:
+    """Read the handedness off the shipped asset. No capture, no reference, no camera."""
+    asset = np.load(asset_path)
     names = [str(v) for v in asset["joint_names"].tolist()]
     vertices = asset["vertices_m"].astype(np.float64)
     parents = np.asarray(asset["parents"], dtype=np.int64)
@@ -257,31 +257,33 @@ def head_convention() -> dict:
     }
 
 
-def sha_chain() -> dict:
+def sha_chain(delivery: Path = DELIVERY, asset_path: Path = ASSET) -> dict:
     head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
     src = subprocess.run(
         ["git", "-C", str(ROOT), "log", "-1", "--format=%h %ad %s", "--date=iso", "--", "src/"],
         capture_output=True, text=True).stdout.strip()
     files = {
-        "subject-00.glb": DELIVERY / "subject-00.glb",
-        "subject-01.glb": DELIVERY / "subject-01.glb",
-        "subject-00.body-track.npz": DELIVERY / "subject-00.body-track.npz",
-        "subject-01.body-track.npz": DELIVERY / "subject-01.body-track.npz",
-        "camera-rig.json": DELIVERY / "camera-rig.json",
-        "run-report.json": DELIVERY / "run-report.json",
-        "neutral-body.npz": ASSET,
+        "subject-00.glb": delivery / "subject-00.glb",
+        "subject-01.glb": delivery / "subject-01.glb",
+        "subject-00.body-track.npz": delivery / "subject-00.body-track.npz",
+        "subject-01.body-track.npz": delivery / "subject-01.body-track.npz",
+        "camera-rig.json": delivery / "camera-rig.json",
+        "run-report.json": delivery / "run-report.json",
+        "neutral-body.npz": asset_path,
     }
     shas = {name: digest(path) for name, path in files.items()}
     silhouette = json.loads((ROOT / "artifacts/compare/silhouette.json").read_text())
     feet = json.loads((ROOT / "artifacts/feet-lane/mamma-feet-bar.json").read_text())
-    report = json.loads((DELIVERY / "run-report.json").read_text())
+    report = json.loads((delivery / "run-report.json").read_text())
     i6_inputs = silhouette.get("input_sha256", {})
     return {
+        "delivery": str(delivery.relative_to(ROOT)),
+        "asset": str(asset_path.relative_to(ROOT)),
         "src_head_commit": head,
         "last_commit_touching_src": src,
         "delivery_mtime_utc": __import__("datetime").datetime.utcfromtimestamp(
-            (DELIVERY / "subject-00.glb").stat().st_mtime).isoformat() + "Z",
+            (delivery / "subject-00.glb").stat().st_mtime).isoformat() + "Z",
         "sha256": shas,
         "i6_rendered_these_glbs": {
             "subject-00": i6_inputs.get("subject-00.glb") == shas["subject-00.glb"],
@@ -354,27 +356,38 @@ def mamma_arrays(body_id: int, frames: int) -> np.ndarray:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=OUT)
+    # D1 (fix) added these three. The AFTER arm is the same instrument pointed at a
+    # rebuild under `artifacts/compare/d1-fix/`; the delivered directory is never touched,
+    # and `artifacts/compare/facing-location.json` stays the BEFORE arm, scored on the old
+    # bytes by the old code. Running this build's FK against the old rotations would be
+    # meaningless -- `across` comes from FK positions, so old rotations on a negated rest
+    # flip the handedness sign for a reason that has nothing to do with the delivery.
+    parser.add_argument("--delivery", type=Path, default=DELIVERY)
+    parser.add_argument("--asset", type=Path, default=ASSET)
+    parser.add_argument("--probe", type=Path, default=PROBE)
+    parser.add_argument("--label", default="D1 (locate)")
     args = parser.parse_args()
+    delivery, asset_path = args.delivery.resolve(), args.asset.resolve()
 
-    names = json.loads((DELIVERY / "subject-00.body-track.json").read_text())["joint_names"]
+    names = json.loads((delivery / "subject-00.body-track.json").read_text())["joint_names"]
     skeleton = skeleton_for_joint_names(names)
     parents = [j.parent for j in DETAILED_HUMANOID.joints]
-    rig_camera = json.loads((DELIVERY / "camera-rig.json").read_text())["cameras"]
+    rig_camera = json.loads((delivery / "camera-rig.json").read_text())["cameras"]
 
-    tracks = [np.load(DELIVERY / f"subject-{s:02d}.body-track.npz") for s in (0, 1)]
+    tracks = [np.load(delivery / f"subject-{s:02d}.body-track.npz") for s in (0, 1)]
     ours = np.stack([t["triangulated_world_positions_z_up_m"] for t in tracks])
     mapping = mamma_index_for(ours)
-    probe = json.loads(PROBE.read_text()) if PROBE.exists() else None
+    probe = json.loads(args.probe.read_text()) if args.probe.exists() else None
 
     report: dict = {
-        "step": "D1 (locate)",
+        "step": args.label,
         "title": "where the facing defect lives -- the rig's handedness, the delivered "
                  "surface, and what I6's control actually moved",
         "fixture": "pushing_and_lifting_from_ground",
         "frames": int(len(ours[0])),
         "subject_correspondence": {f"our_{k}": f"body_id-{v:02d}" for k, v in mapping.items()},
-        "sha_chain": sha_chain(),
-        "rest_convention": rest_convention(),
+        "sha_chain": sha_chain(delivery, asset_path),
+        "rest_convention": rest_convention(asset_path),
         "basis_assertion": {},
         "triple_product": {"definition": triple.__doc__, "arms": {}},
         "forward_dot": {},
@@ -501,6 +514,51 @@ def main() -> None:
                 "fraction_of_frames_positive": float(np.mean(values[ok] > 0)),
                 "forward_dot_vs_capture_median": float(
                     np.median(np.einsum("fj,fj->f", unit(forward_x), fwd_c)[ok])),
+                "frames": int(ok.sum()),
+            }
+
+        # ---- 2b. the same controls, applied to the DELIVERED RIG ------------------------
+        # The capture-arm controls above transform our capture and score its FOOT
+        # direction against its own pelvis/neck forward, whose untransformed ceiling is
+        # +0.86 -- so a "median > +0.9" band cannot be applied to them and the mirror
+        # control could never be shown to PASS the forward-dot. These score the rig the
+        # gate actually scores: the delivered torso's own face axis and its own by-name
+        # across, so the untransformed arm sits where the delivered torso sits and every
+        # control is read on the gate's own scale. Same three transforms, same algebra.
+        rig_across = fk[:, names.index("RightUpperArm")] - fk[:, names.index("LeftUpperArm")]
+        rig_up = fk[:, names.index("Neck")] - fk[:, names.index("Hips")]
+        delivered_controls = {
+            "DELIVERED_untransformed": ("identity", None),
+            "DELIVERED_CONTROL_yaw180": ("rotation", np.pi),
+            "DELIVERED_CONTROL_yaw90": ("rotation", np.pi / 2),
+            "DELIVERED_CONTROL_sagittal_mirror": ("reflection", None),
+        }
+        for name, (kind, angle) in delivered_controls.items():
+            up_hat = unit(rig_up)
+            a_par = up_hat * np.einsum("fj,fj->f", rig_across, up_hat)[:, None]
+            f_par = up_hat * np.einsum("fj,fj->f", torso_z, up_hat)[:, None]
+            a_perp, f_perp = rig_across - a_par, torso_z - f_par
+            if kind == "identity":
+                across_x, forward_x = rig_across, torso_z
+            elif kind == "rotation":
+                def turn(v, angle=angle):
+                    return v * np.cos(angle) + np.cross(up_hat, v) * np.sin(angle)
+                across_x, forward_x = a_par + turn(a_perp), f_par + turn(f_perp)
+            else:
+                across_x, forward_x = a_par - a_perp, torso_z
+            values = triple(across_x, rig_up, forward_x)
+            ok = np.isfinite(values)
+            dots = np.einsum("fj,fj->f", unit(forward_x), fwd_c)
+            entry = report.setdefault("delivered_rig_controls", {}).setdefault(
+                name, {"note": ("the DELIVERED rig's own torso face axis and by-name "
+                                "across, transformed exactly; the identity row is the "
+                                "arm the gate scores")})
+            entry[f"subject_{s:02d}"] = {
+                "handedness_sign_median": float(np.sign(np.median(values[ok]))),
+                "fraction_of_frames_positive": float(np.mean(values[ok] > 0)),
+                "forward_dot_vs_our_capture": block_bootstrap_median(dots),
+                "forward_dot_vs_mamma": block_bootstrap_median(
+                    np.einsum("fj,fj->f", unit(forward_x), fwd_m)),
                 "frames": int(ok.sum()),
             }
 

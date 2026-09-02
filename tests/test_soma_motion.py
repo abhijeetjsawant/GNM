@@ -29,8 +29,8 @@ def _rest_positions() -> np.ndarray:
     offsets = np.zeros((77, 3), dtype=np.float32)
     offsets[:, 1] = 0.04
     offsets[0] = 0.0
-    # SOMA's anatomical left is positive X; AutoAnim canonical Left is
-    # negative X and the projection explicitly swaps the side convention.
+    # SOMA's anatomical left is positive X, and so is AutoAnim's canonical Left since
+    # 2026-09-02, so the projection passes each side straight through.
     offsets[SOMASKEL77_NAMES.index("LeftShoulder")] = (0.10, 0.05, 0.0)
     offsets[SOMASKEL77_NAMES.index("RightShoulder")] = (-0.10, 0.05, 0.0)
     offsets[SOMASKEL77_NAMES.index("LeftLeg")] = (0.08, -0.10, 0.0)
@@ -191,9 +191,13 @@ def test_projection_preserves_body_motion_but_not_face_eye_or_raw_contacts() -> 
     )
 
     projected = project_soma_to_body_track(source)
-    body_right_arm = CANONICAL_HUMANOID.index("RightUpperArm")
+    # SOMA's LeftArm reaches our LeftUpperArm. It used to reach RightUpperArm, because
+    # `_DELTA_MAPPING` compensated for the rig's mirrored Left/Right naming; that mirror
+    # was removed on 2026-09-02 and the compensation with it.
+    # docs/reviews/facing-fix-2026-09-02.md.
+    body_left_arm = CANONICAL_HUMANOID.index("LeftUpperArm")
     np.testing.assert_allclose(
-        projected.local_rotations_xyzw[:, body_right_arm],
+        projected.local_rotations_xyzw[:, body_left_arm],
         rotations[:, SOMASKEL77_NAMES.index("LeftArm")],
         atol=1e-7,
     )
@@ -374,7 +378,11 @@ def test_projection_removes_nonidentity_source_rest_joint_bases() -> None:
     np.testing.assert_allclose(projected.local_rotations_xyzw, identities, atol=1e-6)
 
 
-def test_projection_swaps_soma_positive_x_left_into_canonical_negative_x_left() -> None:
+def test_projection_keeps_soma_positive_x_left_on_canonical_positive_x_left() -> None:
+    """Both skeletons declare right-handed, up +Y, forward +Z, in which the anatomical
+    left is +X, so this boundary passes each side straight through. It used to SWAP them
+    -- a compensation for the rig's mirrored naming -- and the swap was removed with the
+    mirror on 2026-09-02. docs/reviews/facing-fix-2026-09-02.md."""
     source = _motion()
     rotations = source.local_rotations_xyzw.copy()
     half = np.deg2rad(30.0) / 2.0
@@ -396,7 +404,7 @@ def test_projection_swaps_soma_positive_x_left_into_canonical_negative_x_left() 
     target_right = projected.local_rotations_xyzw[
         :, CANONICAL_HUMANOID.index("RightUpperArm")
     ]
-    np.testing.assert_allclose(target_left[:, 2], np.sin(half), atol=1.0e-6)
-    np.testing.assert_allclose(target_left[:, 3], np.cos(half), atol=1.0e-6)
-    np.testing.assert_allclose(target_right[:, :3], 0.0, atol=1.0e-6)
-    np.testing.assert_allclose(target_right[:, 3], 1.0, atol=1.0e-6)
+    np.testing.assert_allclose(target_right[:, 2], np.sin(half), atol=1.0e-6)
+    np.testing.assert_allclose(target_right[:, 3], np.cos(half), atol=1.0e-6)
+    np.testing.assert_allclose(target_left[:, :3], 0.0, atol=1.0e-6)
+    np.testing.assert_allclose(target_left[:, 3], 1.0, atol=1.0e-6)

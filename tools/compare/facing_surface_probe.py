@@ -24,7 +24,11 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:]
 OUT = argv[0]
 GLB_DIR = argv[1] if len(argv) > 1 else "artifacts/commercial-multiview-soma77"
-ASSET = ".cache/autoanim_gnm/body-provider/run/detailed-hands/neutral-body.npz"
+# The asset the GLBs were bound to. D1 (fix) rebuilds against a relabelled asset under
+# `artifacts/compare/d1-fix/body-run/`, and the vertex-order guard below compares the
+# imported bind pose against it, so it must be the asset that build actually used.
+ASSET = argv[2] if len(argv) > 2 else (
+    ".cache/autoanim_gnm/body-provider/run/detailed-hands/neutral-body.npz")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 FPS = int(json.load(open(f"{GLB_DIR}/subject-00.body-track.json"))["timebase"]["sample_rate_hz"])
@@ -60,12 +64,18 @@ report = {
         key: {"vertices": len(idx), "centroid_xyz_m": [float(v) for v in rest[idx].mean(0)]}
         for key, idx in SETS.items()
     },
+    "asset": ASSET,
     "rest_reading": (
-        "In the BIND pose the nose set (head_plus_z) sits at rig +Z and the bones named "
-        "Left sit at rig -X. A body facing +Z with up +Y is right-handed only if its "
-        "anatomical left is +X, so the asset's Left-named bones are on the mesh's "
-        "anatomical RIGHT. That is the mirror, read off the shipped asset."
+        "In the BIND pose the nose set (head_plus_z) sits at rig +Z. A body facing +Z "
+        "with up +Y is right-handed only if its anatomical left is +X. Until 2026-09-02 "
+        "the bones named Left sat at rig -X, so the asset's Left-named bones drove the "
+        "mesh's anatomical RIGHT: that was the mirror, read off the shipped asset. "
+        "`left_named_mean_x_m` below states which side this asset is on."
     ),
+    "left_named_mean_x_m": float(
+        rest[dominant == names.index("LeftUpperArm")][:, 0].mean()),
+    "right_named_mean_x_m": float(
+        rest[dominant == names.index("RightUpperArm")][:, 0].mean()),
     "subjects": {},
 }
 
