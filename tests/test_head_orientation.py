@@ -190,12 +190,35 @@ def test_body_track_head_is_a_constant_without_a_solve_and_moves_with_one():
         positions, sample_rate_hz=30, provenance_sha256=provenance,
         head_world_rotations=rotations,
     )
-    moved = solved.local_rotations_xyzw[:, HEAD_INDEX]
-    travel = np.degrees(2.0 * np.arccos(np.clip(np.abs(moved[:, 3]), 0.0, 1.0)))
+    # Since f6a4973 the neck takes NECK_ROTATION_SHARE of the chest-to-head rotation and the
+    # head keeps the rest, so the supplied rotation reaches the rig as the COMPOSITION of the
+    # two locals, and neither local alone carries it. Compose down the chain and score that.
+    from scipy.spatial.transform import Rotation as _R
+
+    def _world(track, joint_name):
+        index = DETAILED_HUMANOID.index(joint_name)
+        chain = []
+        while index != -1:
+            chain.append(index)
+            index = DETAILED_HUMANOID.joints[index].parent
+        out = _R.identity(len(track.ticks))
+        for i in reversed(chain):
+            out = out * _R.from_quat(np.asarray(track.local_rotations_xyzw[:, i], dtype=np.float64))
+        return out
+
+    head_world = _world(solved, "Head")
+    relative = head_world[0].inv() * head_world
+    travel = np.degrees(relative.magnitude())
     assert float(np.ptp(travel)) > 20.0, "the supplied head rotation did not reach the rig"
-    assert np.allclose(
-        solved.local_rotations_xyzw[:, NECK_INDEX], (0.0, 0.0, 0.0, 1.0), atol=1e-9
-    ), "the neck must keep the torso frame; splitting the chain is unmeasured"
+    # Magnitude relative to frame 0 (angle 0) spans 0..25 over a +-25 degree sinusoid.
+    assert abs(float(np.ptp(travel)) - 25.0) < 1.0, (
+        "a 25 degree head rotation must arrive as 25 degrees composed, not as one half of it"
+    )
+    neck = solved.local_rotations_xyzw[:, NECK_INDEX]
+    neck_travel = np.degrees(2.0 * np.arccos(np.clip(np.abs(neck[:, 3]), 0.0, 1.0)))
+    assert float(np.ptp(neck_travel)) > 5.0, (
+        "the neck carries its share of the head-on-torso rotation (NECK_ROTATION_SHARE)"
+    )
     assert np.array_equal(welded.root_translation_m, solved.root_translation_m), (
         "supplying a head rotation must not move the root"
     )
