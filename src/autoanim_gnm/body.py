@@ -113,6 +113,19 @@ def _joint(
 # Anthropometric values are a neutral 1.70 m authoring template, not an
 # identity/body estimator.  Identity-specific proportions can replace the rest
 # translations in a future immutable character-body revision.
+#
+# HANDEDNESS. `as_dict()` publishes this skeleton as right-handed, up +Y, forward +Z.
+# In that frame the anatomical LEFT is `up x forward` = +X, so every joint named Left
+# sits at POSITIVE X. Until 2026-09-02 they sat at negative X -- the skeleton
+# contradicted the contract it published -- and because the mesh's nose, eyes and toes
+# are all at +Z, the bones named Left drove the mesh's anatomical RIGHT. Anything that
+# aimed the rig from a captured body then had to choose between "the bones named Left
+# land on the performer's left" and "the face points forward"; `_frame_alignment` chose
+# the first and every delivered character came out yawed 180 degrees.
+# docs/reviews/facing-location-2026-09-02.md located it; docs/reviews/facing-fix-2026-09-02.md
+# is the repair. The sign here, the MPFB joint map in `body_provider`, the two
+# `_frame_alignment` source axes in `commercial_multiview` and `CANONICAL_HEAD_AXES` in
+# `head_orientation` are ONE convention stated in four places and must agree.
 CANONICAL_HUMANOID = HumanoidSkeleton(
     (
         _joint("Root", -1, (0.0, 0.0, 0.0), "Root"),
@@ -143,77 +156,77 @@ CANONICAL_HUMANOID = HumanoidSkeleton(
         _joint(
             "LeftEye",
             6,
-            (-0.032, 0.045, 0.075),
+            (0.032, 0.045, 0.075),
             "Root/Hips/Spine/Chest/UpperChest/Neck/Head/LeftEye",
             "leftEye",
         ),
         _joint(
             "RightEye",
             6,
-            (0.032, 0.045, 0.075),
+            (-0.032, 0.045, 0.075),
             "Root/Hips/Spine/Chest/UpperChest/Neck/Head/RightEye",
             "rightEye",
         ),
         _joint(
             "LeftShoulder",
             4,
-            (-0.11, 0.10, 0.0),
+            (0.11, 0.10, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/LeftShoulder",
             "leftShoulder",
         ),
         _joint(
             "LeftUpperArm",
             9,
-            (-0.16, 0.0, 0.0),
+            (0.16, 0.0, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/LeftShoulder/LeftUpperArm",
             "leftUpperArm",
         ),
         _joint(
             "LeftLowerArm",
             10,
-            (-0.26, 0.0, 0.0),
+            (0.26, 0.0, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/LeftShoulder/LeftUpperArm/LeftLowerArm",
             "leftLowerArm",
         ),
         _joint(
             "LeftHand",
             11,
-            (-0.24, 0.0, 0.0),
+            (0.24, 0.0, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/LeftShoulder/LeftUpperArm/LeftLowerArm/LeftHand",
             "leftHand",
         ),
         _joint(
             "RightShoulder",
             4,
-            (0.11, 0.10, 0.0),
+            (-0.11, 0.10, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/RightShoulder",
             "rightShoulder",
         ),
         _joint(
             "RightUpperArm",
             13,
-            (0.16, 0.0, 0.0),
+            (-0.16, 0.0, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/RightShoulder/RightUpperArm",
             "rightUpperArm",
         ),
         _joint(
             "RightLowerArm",
             14,
-            (0.26, 0.0, 0.0),
+            (-0.26, 0.0, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/RightShoulder/RightUpperArm/RightLowerArm",
             "rightLowerArm",
         ),
         _joint(
             "RightHand",
             15,
-            (0.24, 0.0, 0.0),
+            (-0.24, 0.0, 0.0),
             "Root/Hips/Spine/Chest/UpperChest/RightShoulder/RightUpperArm/RightLowerArm/RightHand",
             "rightHand",
         ),
         _joint(
             "LeftUpperLeg",
             1,
-            (-0.09, -0.08, 0.0),
+            (0.09, -0.08, 0.0),
             "Root/Hips/LeftUpperLeg",
             "leftUpperLeg",
         ),
@@ -241,7 +254,7 @@ CANONICAL_HUMANOID = HumanoidSkeleton(
         _joint(
             "RightUpperLeg",
             1,
-            (0.09, -0.08, 0.0),
+            (-0.09, -0.08, 0.0),
             "Root/Hips/RightUpperLeg",
             "rightUpperLeg",
         ),
@@ -284,7 +297,8 @@ def _finger_joints() -> tuple[JointSpec, ...]:
     )
     for side in ("Left", "Right"):
         hand_index = CANONICAL_HUMANOID.index(f"{side}Hand")
-        sign = -1.0 if side == "Left" else 1.0
+        # +X is the anatomical left; see the handedness note above CANONICAL_HUMANOID.
+        sign = 1.0 if side == "Left" else -1.0
         vrm_side = side.lower()
         for finger_name, proximal_offset, segment_length in finger_specs:
             if finger_name == "ThumbMetacarpal":

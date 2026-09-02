@@ -46,6 +46,7 @@ from triangulate_soma import triangulate  # noqa: E402
 
 MA3D = Path("artifacts/mamma/mamma-4cam-five-second-v2/output/ma_3d/pushing_and_lifting_from_ground")
 OUT = Path("artifacts/head-lane")
+ROOT_DIR = Path(__file__).resolve().parents[2]
 # The delivered tracks the gate reads its torso frame from. A module constant rather
 # than a literal so an alternative build (e.g. a different detector width) can be
 # scored through THIS gate instead of a copy of it.
@@ -309,6 +310,57 @@ def main() -> None:
                 "travel_p95_deg": m_travel_p95,
             },
             "arms": arms,
+        }
+
+    # ABSOLUTE FACING, carried here as a standing figure so the head's verdict can never
+    # again be read without it. Every band above MEAN-REMOVES each take, so this gate
+    # scores TRACKING and is structurally blind to a constant offset -- a head pointing
+    # backwards, smoothly, on every frame passes it (CLAUDE.md; and D1 measured exactly
+    # that shipping for a month). The forward-dot from `tools/compare/facing_location.py`
+    # is the reading that is not blind to it, so it is quoted beside the verdict rather
+    # than living in another report. It is not a band here and nothing above depends on
+    # it; it is the caveat, printed.
+    facing_paths = (
+        ROOT_DIR / "artifacts/compare/d1-fix/facing-after.json",
+        ROOT_DIR / "artifacts/compare/facing-location.json",
+    )
+    facing = None
+    for candidate in facing_paths:
+        if candidate.exists():
+            try:
+                facing = (str(candidate), json.loads(candidate.read_text()))
+                break
+            except (OSError, ValueError):
+                continue
+    if facing is not None:
+        source, values = facing
+        report["absolute_facing_not_a_band"] = {
+            "source": source,
+            "what_it_is": ("the delivered Head's own +Z against the direction the footage "
+                           "says the performer faces. +1 is with the performer, -1 exactly "
+                           "opposed. Every band in this file is blind to it."),
+            "per_subject": {
+                subject: {
+                    "forward_dot_vs_our_capture": values["forward_dot"][subject]
+                    .get("delivered_Head", {}).get("vs_our_capture_forward", {}).get("median"),
+                    "forward_dot_vs_mamma": values["forward_dot"][subject]
+                    .get("delivered_Head", {}).get("vs_mamma_forward", {}).get("median"),
+                    "ORACLE_mamma_own_head_vs_our_capture": values["forward_dot"][subject]
+                    .get("ORACLE_mamma_head_forward_vs_our_capture_forward", {})
+                    .get("vs_our_capture_forward", {}).get("median"),
+                }
+                for subject in ("subject_00", "subject_01")
+                if subject in values.get("forward_dot", {})
+            },
+            "reading": ("the reference is the BODY's forward, from the pelvis and the neck, "
+                        "so a head is not expected to reach +1 -- the ORACLE row is what "
+                        "this figure can reach on this take. What it rules out is a "
+                        "REVERSAL, which is what the mean-removed bands cannot see."),
+        }
+    else:
+        report["absolute_facing_not_a_band"] = {
+            "unavailable": ("run tools/compare/facing_location.py -- without it this "
+                            "gate's verdict carries no statement about absolute facing"),
         }
 
     destination = OUT / ("head-gate-shipped.json" if gauge_applied else "head-gate.json")

@@ -1394,8 +1394,11 @@ def _finger_rest_local(joint_name: str) -> np.ndarray:
     degrees = FINGER_REST_CURL_DEG[segment]
     if "Thumb" in joint_name:
         degrees *= FINGER_REST_CURL_THUMB_SCALE
-    # Left and right hands curl toward opposite sides of the rig's X axis.
-    sign = -1.0 if joint_name.startswith("Left") else 1.0
+    # Left and right hands curl toward opposite sides of the rig's X axis. The sign
+    # follows the rest skeleton: +X is the anatomical left (see body.CANONICAL_HUMANOID),
+    # so it flipped with it on 2026-09-02 -- otherwise the fingers would curl backwards on
+    # both hands, which no joint gate and no forward-dot can see.
+    sign = 1.0 if joint_name.startswith("Left") else -1.0
     half = math.radians(sign * degrees) * 0.5
     return np.asarray((math.sin(half), 0.0, 0.0, math.cos(half)))
 
@@ -1520,8 +1523,13 @@ def positions_to_body_track(
         shoulder_across = at("left_shoulder") - at("right_shoulder")
         hip_across = at("left_hip") - at("right_hip")
         torso_up = neck - pelvis
-        hips_world = _frame_alignment((0.0, 1.0, 0.0), (-1.0, 0.0, 0.0), torso_up, hip_across)
-        torso_world = _frame_alignment((0.0, 1.0, 0.0), (-1.0, 0.0, 0.0), torso_up, shoulder_across)
+        # The source secondary axis names the rig axis that is the subject's LEFT.
+        # It read (-1, 0, 0) until 2026-09-02, which was true of the bone NAMES and
+        # false of the geometry those bones carry, so the torso came out yawed 180
+        # degrees; +X is the anatomical left in the convention the skeleton publishes.
+        # docs/reviews/facing-fix-2026-09-02.md.
+        hips_world = _frame_alignment((0.0, 1.0, 0.0), (1.0, 0.0, 0.0), torso_up, hip_across)
+        torso_world = _frame_alignment((0.0, 1.0, 0.0), (1.0, 0.0, 0.0), torso_up, shoulder_across)
         # Read the hips' rest height from the skeleton rather than repeating it.
         # It was written as a literal (0, 0.98, 0), duplicating body.py's canonical
         # Hips offset -- harmless while every character is canonical, and a latent

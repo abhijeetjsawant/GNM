@@ -114,10 +114,12 @@ def test_block_bootstrap_reports_a_median_and_an_interval() -> None:
     assert out["block_length"] == 15
 
 
-def test_the_shipped_rest_skeleton_is_mirrored_relative_to_its_own_mesh() -> None:
-    """The finding, read straight out of code with no artefacts and no capture: the bones
-    named Left sit at -X while the eyes and toes sit at +Z. A right-handed body facing +Z
-    with up +Y has its anatomical left at +X, so this is a mirror."""
+def test_the_rest_skeleton_is_no_longer_mirrored_relative_to_its_own_mesh() -> None:
+    """The D1 finding, and then its repair, read straight out of code with no artefacts and
+    no capture. Until 2026-09-02 the bones named Left sat at -X while the eyes and toes sat
+    at +Z; a right-handed body facing +Z with up +Y has its anatomical left at +X, so that
+    was a mirror. `docs/reviews/facing-fix-2026-09-02.md` negated the rest X, and this test
+    was inverted rather than deleted so the direction of the repair stays on the record."""
     sys.path.insert(0, str(ROOT / "src"))
     from autoanim_gnm.commercial_multiview import DETAILED_HUMANOID
 
@@ -126,25 +128,24 @@ def test_the_shipped_rest_skeleton_is_mirrored_relative_to_its_own_mesh() -> Non
         offset = np.asarray(joint.rest_translation_m, dtype=np.float64)
         positions[joint.name] = offset if joint.parent == -1 else (
             offset + positions[DETAILED_HUMANOID.joints[joint.parent].name])
-    assert positions["LeftUpperArm"][0] < 0 < positions["RightUpperArm"][0]
+    assert positions["RightUpperArm"][0] < 0 < positions["LeftUpperArm"][0]
     assert positions["LeftEye"][2] > positions["Head"][2]           # the face is at +Z
     assert positions["LeftToes"][2] > positions["LeftFoot"][2]      # and so are the toes
     across = positions["RightUpperArm"] - positions["LeftUpperArm"]
     up = positions["Neck"] - positions["Hips"]
     forward = positions["LeftToes"] - positions["LeftFoot"]
-    # +1 here; every real human measured in this lane reads -1.
-    assert np.sign(np.dot(np.cross(across, up), forward)) == 1.0
+    # -1, which is what every real human measured in this lane reads. It was +1 before.
+    assert np.sign(np.dot(np.cross(across, up), forward)) == -1.0
 
 
-def test_the_head_solve_carries_the_same_mirror_at_its_own_site() -> None:
-    """The mirror's THIRD site. The head is not carried by the torso frame -- it is set as
-    an absolute world rotation from its own rigid fit -- so mirroring the skeleton and the
-    mesh would not reach it. `CANONICAL_HEAD_AXES` independently declares the subject's
-    left to be rig -X and forward to be rig -Z, while the asset's nose, eyes and toes are
-    all at rig +Z. It is a perfectly good right-handed frame and it is the mirror image of
-    the geometry it drives, which is why the delivered head points backwards by its own
-    route. If this test ever fails, the third fix step has landed and the assertion should
-    be inverted, not deleted."""
+def test_the_head_solve_no_longer_carries_the_mirror_at_its_own_site() -> None:
+    """The mirror's THIRD site, and its repair. The head is not carried by the torso frame
+    -- it is set as an absolute world rotation from its own rigid fit -- so mirroring the
+    skeleton and the mesh does not reach it. `CANONICAL_HEAD_AXES` used to declare the
+    subject's left to be rig -X and forward to be rig -Z, while the asset's nose, eyes and
+    toes are all at rig +Z: a perfectly good right-handed frame that was a 180 degree yaw
+    of the geometry it drives, which is why the delivered head pointed backwards by its own
+    route. Inverted on 2026-09-02 as this docstring instructed, not deleted."""
     sys.path.insert(0, str(ROOT / "src"))
     from autoanim_gnm.head_orientation import CANONICAL_HEAD_AXES
 
@@ -155,9 +156,9 @@ def test_the_head_solve_carries_the_same_mirror_at_its_own_site() -> None:
     def to_rig(v: np.ndarray) -> np.ndarray:      # capture (Z up) -> rig (Y up)
         return np.array([v[0], v[2], -v[1]])
 
-    assert np.allclose(to_rig(forward), [0.0, 0.0, -1.0])
-    # ...while the asset it drives puts the face at rig +Z. Same mirror, second site.
-    assert not np.allclose(to_rig(forward), [0.0, 0.0, 1.0])
+    # ...and the asset it drives puts the face at rig +Z, which it now agrees with.
+    assert np.allclose(to_rig(forward), [0.0, 0.0, 1.0])
+    assert not np.allclose(to_rig(forward), [0.0, 0.0, -1.0])
 
 
 def test_camera_overlay_sets_the_scene_fps_before_it_imports() -> None:

@@ -113,14 +113,18 @@ def test_canonical_skeleton_is_parent_ordered_and_interchange_ready() -> None:
     rest_rotations = np.zeros((25, 4), dtype=np.float32)
     rest_rotations[:, 3] = 1.0
     rest_positions = forward_kinematics_positions(np.zeros(3), rest_rotations)
+    # +X is the anatomical LEFT in the coordinate system asserted just above (right-handed,
+    # up +Y, forward +Z, so left = up x forward = +X). These two read -0.09 and +0.09 until
+    # 2026-09-02, which is the naming mirror that yawed every delivered character; the
+    # assertion encoded the defect. docs/reviews/facing-fix-2026-09-02.md.
     np.testing.assert_allclose(
         rest_positions[CANONICAL_HUMANOID.index("LeftFoot")],
-        [-0.09, 0.05, 0.02],
+        [0.09, 0.05, 0.02],
         atol=1e-7,
     )
     np.testing.assert_allclose(
         rest_positions[CANONICAL_HUMANOID.index("RightToes")],
-        [0.09, 0.0, 0.16],
+        [-0.09, 0.0, 0.16],
         atol=1e-7,
     )
     inverse_bind = canonical_inverse_bind_matrices()

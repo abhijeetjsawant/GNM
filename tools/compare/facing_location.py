@@ -141,13 +141,21 @@ def digest(path: Path) -> str | None:
     return sha256(path.read_bytes()).hexdigest() if path.exists() else None
 
 
+def label_path(path: Path) -> str:
+    """`artifacts/` and `.cache/` are symlinks in a worktree, so `relative_to(ROOT)`
+    raises on a resolved path. Report a repo-relative label without resolving."""
+    import os
+
+    return os.path.relpath(path, ROOT)
+
+
 # ---------------------------------------------------------------------------------------
 # 1. the asset's own handedness, and the SHA chain that says which asset it is
 # ---------------------------------------------------------------------------------------
 
-def rest_convention() -> dict:
-    """Read the mirror off the shipped asset. No capture, no reference, no camera."""
-    asset = np.load(ASSET)
+def rest_convention(asset_path: Path = ASSET) -> dict:
+    """Read the handedness off the shipped asset. No capture, no reference, no camera."""
+    asset = np.load(asset_path)
     names = [str(v) for v in asset["joint_names"].tolist()]
     vertices = asset["vertices_m"].astype(np.float64)
     parents = np.asarray(asset["parents"], dtype=np.int64)
@@ -257,31 +265,33 @@ def head_convention() -> dict:
     }
 
 
-def sha_chain() -> dict:
+def sha_chain(delivery: Path = DELIVERY, asset_path: Path = ASSET) -> dict:
     head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
     src = subprocess.run(
         ["git", "-C", str(ROOT), "log", "-1", "--format=%h %ad %s", "--date=iso", "--", "src/"],
         capture_output=True, text=True).stdout.strip()
     files = {
-        "subject-00.glb": DELIVERY / "subject-00.glb",
-        "subject-01.glb": DELIVERY / "subject-01.glb",
-        "subject-00.body-track.npz": DELIVERY / "subject-00.body-track.npz",
-        "subject-01.body-track.npz": DELIVERY / "subject-01.body-track.npz",
-        "camera-rig.json": DELIVERY / "camera-rig.json",
-        "run-report.json": DELIVERY / "run-report.json",
-        "neutral-body.npz": ASSET,
+        "subject-00.glb": delivery / "subject-00.glb",
+        "subject-01.glb": delivery / "subject-01.glb",
+        "subject-00.body-track.npz": delivery / "subject-00.body-track.npz",
+        "subject-01.body-track.npz": delivery / "subject-01.body-track.npz",
+        "camera-rig.json": delivery / "camera-rig.json",
+        "run-report.json": delivery / "run-report.json",
+        "neutral-body.npz": asset_path,
     }
     shas = {name: digest(path) for name, path in files.items()}
     silhouette = json.loads((ROOT / "artifacts/compare/silhouette.json").read_text())
     feet = json.loads((ROOT / "artifacts/feet-lane/mamma-feet-bar.json").read_text())
-    report = json.loads((DELIVERY / "run-report.json").read_text())
+    report = json.loads((delivery / "run-report.json").read_text())
     i6_inputs = silhouette.get("input_sha256", {})
     return {
+        "delivery": label_path(delivery),
+        "asset": label_path(asset_path),
         "src_head_commit": head,
         "last_commit_touching_src": src,
         "delivery_mtime_utc": __import__("datetime").datetime.utcfromtimestamp(
-            (DELIVERY / "subject-00.glb").stat().st_mtime).isoformat() + "Z",
+            (delivery / "subject-00.glb").stat().st_mtime).isoformat() + "Z",
         "sha256": shas,
         "i6_rendered_these_glbs": {
             "subject-00": i6_inputs.get("subject-00.glb") == shas["subject-00.glb"],
@@ -354,27 +364,61 @@ def mamma_arrays(body_id: int, frames: int) -> np.ndarray:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=OUT)
+    # D1 (fix) added these three. The AFTER arm is the same instrument pointed at a
+    # rebuild under `artifacts/compare/d1-fix/`; the delivered directory is never touched,
+    # and `artifacts/compare/facing-location.json` stays the BEFORE arm, scored on the old
+    # bytes by the old code. Running this build's FK against the old rotations would be
+    # meaningless -- `across` comes from FK positions, so old rotations on a negated rest
+    # flip the handedness sign for a reason that has nothing to do with the delivery.
+    parser.add_argument("--delivery", type=Path, default=DELIVERY)
+    parser.add_argument("--asset", type=Path, default=ASSET)
+    parser.add_argument("--probe", type=Path, default=PROBE)
+    parser.add_argument("--label", default="D1 (locate)")
     args = parser.parse_args()
+    delivery, asset_path = args.delivery, args.asset
 
-    names = json.loads((DELIVERY / "subject-00.body-track.json").read_text())["joint_names"]
+    names = json.loads((delivery / "subject-00.body-track.json").read_text())["joint_names"]
     skeleton = skeleton_for_joint_names(names)
     parents = [j.parent for j in DETAILED_HUMANOID.joints]
-    rig_camera = json.loads((DELIVERY / "camera-rig.json").read_text())["cameras"]
+    rig_camera = json.loads((delivery / "camera-rig.json").read_text())["cameras"]
 
-    tracks = [np.load(DELIVERY / f"subject-{s:02d}.body-track.npz") for s in (0, 1)]
+    tracks = [np.load(delivery / f"subject-{s:02d}.body-track.npz") for s in (0, 1)]
     ours = np.stack([t["triangulated_world_positions_z_up_m"] for t in tracks])
     mapping = mamma_index_for(ours)
-    probe = json.loads(PROBE.read_text()) if PROBE.exists() else None
+    probe = json.loads(args.probe.read_text()) if args.probe.exists() else None
+
+    # THE FOOTGUN THIS GUARD EXISTS FOR. Every by-name figure below comes from FORWARD
+    # KINEMATICS: `triple()`'s `across` is a difference of FK positions. Run this script's
+    # repaired skeleton against the PRE-repair rotations -- which is what happens if it is
+    # pointed at the delivery from the D1 (fix) branch, or run after the merge and before
+    # the delivery is rebuilt -- and the handedness sign inverts for a reason that has
+    # nothing to do with the delivery, silently, into `artifacts/compare/facing-location.json`,
+    # which is the BEFORE arm the fix gate scores and which `tests/test_facing_location.py`
+    # reads. So refuse rather than score. The same hazard applies to every by-name tool in
+    # this lane until the delivery is rebuilt; this one guards the file it would corrupt.
+    convention = rest_convention(asset_path)
+    asset_sign = convention["asset_mpfb_neutral_body"]["handedness_triple_product_sign"]
+    code_sign = convention["code_DETAILED_HUMANOID"]["handedness_triple_product_sign"]
+    if asset_sign != code_sign:
+        raise SystemExit(
+            f"REFUSING TO SCORE: the code skeleton (handedness {code_sign:+.0f}) and the "
+            f"asset at {label_path(asset_path)} (handedness {asset_sign:+.0f}) disagree "
+            "about which side is left. Forward kinematics would put the rig's bones on the "
+            "wrong side of the body and every by-name figure here would be wrong in a way "
+            "no band could detect. Rebuild the delivery against an asset that matches the "
+            "code, or point --asset at the one it was built from. "
+            "docs/reviews/facing-fix-2026-09-02.md"
+        )
 
     report: dict = {
-        "step": "D1 (locate)",
+        "step": args.label,
         "title": "where the facing defect lives -- the rig's handedness, the delivered "
                  "surface, and what I6's control actually moved",
         "fixture": "pushing_and_lifting_from_ground",
         "frames": int(len(ours[0])),
         "subject_correspondence": {f"our_{k}": f"body_id-{v:02d}" for k, v in mapping.items()},
-        "sha_chain": sha_chain(),
-        "rest_convention": rest_convention(),
+        "sha_chain": sha_chain(delivery, asset_path),
+        "rest_convention": convention,
         "basis_assertion": {},
         "triple_product": {"definition": triple.__doc__, "arms": {}},
         "forward_dot": {},
@@ -504,6 +548,51 @@ def main() -> None:
                 "frames": int(ok.sum()),
             }
 
+        # ---- 2b. the same controls, applied to the DELIVERED RIG ------------------------
+        # The capture-arm controls above transform our capture and score its FOOT
+        # direction against its own pelvis/neck forward, whose untransformed ceiling is
+        # +0.86 -- so a "median > +0.9" band cannot be applied to them and the mirror
+        # control could never be shown to PASS the forward-dot. These score the rig the
+        # gate actually scores: the delivered torso's own face axis and its own by-name
+        # across, so the untransformed arm sits where the delivered torso sits and every
+        # control is read on the gate's own scale. Same three transforms, same algebra.
+        rig_across = fk[:, names.index("RightUpperArm")] - fk[:, names.index("LeftUpperArm")]
+        rig_up = fk[:, names.index("Neck")] - fk[:, names.index("Hips")]
+        delivered_controls = {
+            "DELIVERED_untransformed": ("identity", None),
+            "DELIVERED_CONTROL_yaw180": ("rotation", np.pi),
+            "DELIVERED_CONTROL_yaw90": ("rotation", np.pi / 2),
+            "DELIVERED_CONTROL_sagittal_mirror": ("reflection", None),
+        }
+        for name, (kind, angle) in delivered_controls.items():
+            up_hat = unit(rig_up)
+            a_par = up_hat * np.einsum("fj,fj->f", rig_across, up_hat)[:, None]
+            f_par = up_hat * np.einsum("fj,fj->f", torso_z, up_hat)[:, None]
+            a_perp, f_perp = rig_across - a_par, torso_z - f_par
+            if kind == "identity":
+                across_x, forward_x = rig_across, torso_z
+            elif kind == "rotation":
+                def turn(v, angle=angle):
+                    return v * np.cos(angle) + np.cross(up_hat, v) * np.sin(angle)
+                across_x, forward_x = a_par + turn(a_perp), f_par + turn(f_perp)
+            else:
+                across_x, forward_x = a_par - a_perp, torso_z
+            values = triple(across_x, rig_up, forward_x)
+            ok = np.isfinite(values)
+            dots = np.einsum("fj,fj->f", unit(forward_x), fwd_c)
+            entry = report.setdefault("delivered_rig_controls", {}).setdefault(
+                name, {"note": ("the DELIVERED rig's own torso face axis and by-name "
+                                "across, transformed exactly; the identity row is the "
+                                "arm the gate scores")})
+            entry[f"subject_{s:02d}"] = {
+                "handedness_sign_median": float(np.sign(np.median(values[ok]))),
+                "fraction_of_frames_positive": float(np.mean(values[ok] > 0)),
+                "forward_dot_vs_our_capture": block_bootstrap_median(dots),
+                "forward_dot_vs_mamma": block_bootstrap_median(
+                    np.einsum("fj,fj->f", unit(forward_x), fwd_m)),
+                "frames": int(ok.sum()),
+            }
+
         # ---- 3. the forward-dot ---------------------------------------------------------
         groups = {
             "delivered_torso_Hips": ["Hips"],
@@ -543,6 +632,71 @@ def main() -> None:
                          "Both this AND the nose being negative is a YAW; only one of "
                          "them negative would be a reflection."),
             }
+        # ORACLE for the HEAD band specifically, added at D1 (fix). The reference forward
+        # every figure above is scored against is the BODY's, built from the pelvis and the
+        # neck. A head is not welded to a body: a performer can look sideways with their
+        # chest square, so the head's dot against the body forward is bounded by the
+        # performer's own neck, not by our solve. Scoring MAMMA's own head through the same
+        # frames measures that ceiling -- and "a gate no oracle can pass is miscalibrated"
+        # is this lane's standing rule (CLAUDE.md). MAMMA's head world rotation comes from
+        # its own `smplx_pose` chain, exactly as `tools/head/head_gate.py` builds it, and
+        # SMPL-X's canonical body faces +Z, so its head forward is that chain applied to
+        # (0, 0, 1). MAMMA's world IS the camera-rig world.
+        try:
+            from scipy.spatial.transform import Rotation as _R
+
+            pose = np.load(MA3D / f"smplx_params_body_id-{mapping[s]:02d}.npz",
+                           allow_pickle=True)["smplx_pose"].astype(np.float64)[:frames]
+            chain = (0, 3, 6, 9, 12, 15)      # pelvis, spine1-3, neck, head
+            head_world = _R.from_rotvec(pose[:, 3 * chain[0]:3 * chain[0] + 3]).as_matrix()
+            for joint in chain[1:]:
+                head_world = head_world @ _R.from_rotvec(
+                    pose[:, 3 * joint:3 * joint + 3]).as_matrix()
+            mamma_head_forward = unit(head_world @ np.array([0.0, 0.0, 1.0]))
+            dots["ORACLE_mamma_head_forward_vs_our_capture_forward"] = {
+                "vs_our_capture_forward": block_bootstrap_median(
+                    np.einsum("fj,fj->f", mamma_head_forward, fwd_c)),
+                "vs_mamma_forward": block_bootstrap_median(
+                    np.einsum("fj,fj->f", mamma_head_forward, fwd_m)),
+                "note": ("THE CEILING FOR THE HEAD BAND. MAMMA's own head direction, from "
+                         "its `smplx_pose` chain, scored against the same body-derived "
+                         "forward every other row uses. Our Head cannot beat this, and a "
+                         "band above it is a band on the performer's neck rather than on "
+                         "any pipeline."),
+            }
+        except (OSError, KeyError, ValueError) as error:      # noqa: BLE001
+            dots["ORACLE_mamma_head_forward_vs_our_capture_forward"] = {
+                "unavailable": f"{type(error).__name__}: {error}"}
+
+        if probe:
+            # The mesh nose chord is NOT the head's forward axis. It runs from the centroid
+            # of the 40 most posterior head vertices to the 40 most anterior, and in the
+            # bind pose that chord is tilted below rig +Z by the asset's own geometry. This
+            # row is that tilt, measured with no reference in it at all -- it is the fixed
+            # offset between the `delivered_Head` figure and the `delivered_MESH_nose` one,
+            # and without it the two look like a disagreement instead of a chord angle.
+            sampled = probe["subjects"][f"subject_{s:02d}"]["frames"]
+            centroids = probe["subjects"][f"subject_{s:02d}"]["centroids_world_z_up_m"]
+            nose_axis = unit(np.array(centroids["head_plus_z"])
+                             - np.array(centroids["head_minus_z"]))
+            head_z = unit(rig_to_capture(
+                rotate(world[:, names.index("Head")], (0.0, 0.0, 1.0))))[sampled]
+            rest_sets = probe["rest_sets_rig_space"]
+            chord_rest = (np.asarray(rest_sets["head_plus_z"]["centroid_xyz_m"])
+                          - np.asarray(rest_sets["head_minus_z"]["centroid_xyz_m"]))
+            dots["delivered_MESH_nose_vs_its_own_Head_joint_forward"] = {
+                "vs_our_capture_forward": block_bootstrap_median(
+                    np.einsum("fj,fj->f", nose_axis, head_z)),
+                "rest_chord_tilt_below_rig_plus_z_deg": float(np.degrees(np.arccos(
+                    float(chord_rest[2] / np.linalg.norm(chord_rest))))),
+                "note": ("no reference and no capture enters this row: it is the mesh's own "
+                         "nose chord against its own Head joint's +Z axis. The repair is an "
+                         "exact 180 degree yaw about each joint's own UP axis, which "
+                         "reverses the +Z component of this chord and PRESERVES its up "
+                         "component -- so the nose figure cannot flip to the same magnitude "
+                         "it had, and the difference is arithmetic, not a residual error."),
+            }
+
         # ORACLE: MAMMA's own answer to the same question, through our frames. It measures
         # the floor our frame definitions impose -- how well two independent estimates of
         # "which way is this person facing" can ever agree on this take.

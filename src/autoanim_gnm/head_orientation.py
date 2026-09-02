@@ -57,9 +57,21 @@ MAXIMUM_FRAME_TRAVEL_DEG = 60.0
 
 
 # The head's anatomical axes, expressed in the CAPTURE convention (Z-up, and the rig's
-# canonical facing -Z maps to capture +Y -- see `positions_to_body_track`). Columns are
+# canonical facing +Z maps to capture -Y -- see `positions_to_body_track`). Columns are
 # (subject's left, up through the skull, forward). Right-handed: left x up = forward.
-CANONICAL_HEAD_AXES = np.asarray(((-1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0))).T
+#
+# THE MIRROR'S THIRD SITE, repaired 2026-09-02. Until then this read
+# `((-1,0,0), (0,0,1), (0,1,0)).T` -- subject's left at rig -X, forward at rig -Z. That
+# is a perfectly good right-handed frame (determinant +1), and it is a 180 degree YAW of
+# this one about the skull's own long axis, not a reflection. It was the mirror image of
+# the geometry it drives: the asset's nose, eyes and toes are all at rig +Z and the body
+# track's own `gaze_direction_body` is (0, 0, 1). The head does NOT inherit the torso
+# frame -- since 981e437 it is an absolute world rotation from its own rigid fit -- so
+# repairing the skeleton and the mesh does not reach it, and a body turned round with a
+# head left backwards is what missing this line looks like.
+# Rig +X (the anatomical left) is capture +X; rig +Y is capture +Z; rig +Z (the face) is
+# capture -Y. `left x up = forward` still holds.
+CANONICAL_HEAD_AXES = np.asarray(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0))).T
 
 
 class HeadOrientationError(RuntimeError):

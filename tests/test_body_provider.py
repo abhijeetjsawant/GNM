@@ -188,8 +188,11 @@ def test_default_request_pins_reviewed_official_provider_and_ordered_joint_map()
         "system_assets_sha256": SYSTEM_ASSETS_SHA,
     }
     assert tuple(request["skeleton"]["joint_map"]) == CANONICAL_HUMANOID.names
-    assert request["skeleton"]["joint_map"]["LeftEye"] == "eye.R"
-    assert request["skeleton"]["joint_map"]["RightUpperArm"] == "upperarm01.L"
+    # Each side maps to its own side. Until 2026-09-02 these read "eye.R" and
+    # "upperarm01.L" -- the deliberate label swap that put every bone named Left on the
+    # mesh's anatomical right. docs/reviews/facing-fix-2026-09-02.md.
+    assert request["skeleton"]["joint_map"]["LeftEye"] == "eye.L"
+    assert request["skeleton"]["joint_map"]["RightUpperArm"] == "upperarm01.R"
 
 
 @pytest.mark.parametrize(
@@ -201,7 +204,7 @@ def test_default_request_pins_reviewed_official_provider_and_ordered_joint_map()
         (lambda request: request["output"].update(asset_npz="../escape.npz"), "basename"),
         (lambda request: request["output"].update(asset_npz=".npz"), "must end"),
         (lambda request: request["output"].update(manifest_json="different.json"), "basenames must match"),
-        (lambda request: request["skeleton"]["joint_map"].update(LeftEye="eye.L"), "reviewed MPFB"),
+        (lambda request: request["skeleton"]["joint_map"].update(LeftEye="eye.R"), "reviewed MPFB"),
     ],
 )
 def test_request_validation_fails_closed(mutation, match: str) -> None:
