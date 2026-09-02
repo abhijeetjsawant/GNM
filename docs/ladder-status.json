@@ -389,6 +389,16 @@
       "date": "2026-09-02",
       "step": "I8",
       "text": "THORAX_SMOOTHING_FRAMES changed 15 -> 9 on the user's decision; provenance audit now CLEAN (exit 0). Head gate re-run with the MAMMA arm reporting only: P1 median improved on both performers (6.39 -> 5.52, 8.25 -> 7.19 deg, gated), p95 worse on performer 0 (16.4 -> 20.0) and better on performer 1 (27.5 -> 22.2); the oracle floor rose on both (3.62 -> 4.27, 3.87 -> 4.31) because a narrower window leaves more frame jitter in the reference frame itself. Performer 0's gate verdict flipped PASS -> FAIL on the p95 band. Reverting on that would be selecting on the MAMMA arm, so the value stands; the outcome is recorded, not smoothed."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I8",
+      "text": "Sol's read of the head gate at window 9: the candidate's p95 rise on performer 0 (+3.6 deg) sits inside the oracle floor's rise (+4.0), so the PASS -> FAIL flip is the frame moving under a fixed band, not the head degrading; candidate-minus-oracle in the same frame improved on both performers. Open question logged on I8: the synthetic sweep put 9 and 15 level, the real floor did not, so either the white-noise model is too gentle or MAMMA's frame is over-smoothed; sent to I7 to size. The delivered body-track files still carry the window-15 head until the one rebuild after the facing fix lands."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I8",
+      "text": "Paired block bootstrap re-run at window 9 (tools/head/bootstrap_margin.py, 2000 draws, identical draws): head-minus-oracle p95 gap 1.8 deg on performer 0 and 5.3 on performer 1 at block 20; P(candidate passes the 20 deg band) 0.39 / 0.22; P(oracle passes) 0.84 / 0.88. At window 15 the oracle passed at 1.00. So the fixed 20 deg p95 band is now one the reference's own answer fails on about one draw in seven: the gate is near miscalibrated for this frame, which is a calibration fact about the gate, recorded and NOT acted on -- moving the band on this evidence would select on the MAMMA arm. The paired gap is now a standing ladder figure."
     }
   ]
 }

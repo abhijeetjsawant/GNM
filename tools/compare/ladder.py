@@ -235,6 +235,22 @@ def x_head_and_provenance(spec: dict) -> tuple[list, list]:
     (`tools/compare/extractors/i8_provenance.py`, wired by the registry owner). The sweep is
     referenced to synthetic truth; the gate to MAMMA. Different references, separate figs."""
     figs, ctrls = x_head(spec)
+    # The paired gap to the oracle floor -- candidate minus MAMMA's own head through the same
+    # frame, on identical block-bootstrap draws -- is the one head figure the gate's frame
+    # cannot move, and the board names it as what ground truth would turn into a target.
+    bm = _load("artifacts/head-lane/bootstrap-margin.json")
+    if bm:
+        ref = "our own thorax frame with its floor removed: candidate p95 minus MAMMA's head p95 through the SAME frame, identical draws (block 20)"
+        for s, t in (("subject_00", "subject 00"), ("subject_01", "subject 01")):
+            b = bm.get("subjects", {}).get(s, {}).get("20", {})
+            figs.append(fig(f"head gap to the oracle floor, paired p95, {t}", b.get("paired_gap_median_deg"),
+                            "deg", ref, key=f"head_gap_{s}",
+                            note="the frame's own jitter cancels in this figure; the absolute band's verdict does not"))
+            ctrls.append(fig(f"P(oracle passes the 20 deg p95 band), {t} (a gate no oracle can pass is miscalibrated)",
+                             b.get("P_oracle_passes"), "probability", "block bootstrap, 2000 draws, block 20", HIGHER,
+                             key=f"head_oracle_pass_{s}"))
+            ctrls.append(fig(f"P(candidate passes the 20 deg p95 band), {t}", b.get("P_candidate_passes"),
+                             "probability", "block bootstrap, 2000 draws, block 20", HIGHER, key=f"head_cand_pass_{s}"))
     sys.path.insert(0, str(ROOT / "tools/compare"))
     from extractors.i8_provenance import x_provenance  # noqa: E402
     f2, c2 = x_provenance(spec)
@@ -571,7 +587,7 @@ RUNGS: list[dict[str, Any]] = [
                         "price the detector for hands, is still not built.",
     ),
     dict(
-        id="head", n=9, regenerate=".venv/bin/python tools/head/gate_the_shipped_head.py && .venv/bin/python tools/compare/provenance.py; .venv/bin/python tools/head/thorax_window_sweep.py",
+        id="head", n=9, regenerate=".venv/bin/python tools/head/gate_the_shipped_head.py && .venv/bin/python tools/head/head_gate.py && .venv/bin/python tools/head/bootstrap_margin.py && .venv/bin/python tools/compare/provenance.py; .venv/bin/python tools/head/thorax_window_sweep.py",
         title="Head orientation",
         mamma="A locked-head SMPL-X: jaw and eyes zero, head orientation is the body pose's neck/head joints "
               "driven by the 512 landmarks' head region.",
@@ -586,8 +602,8 @@ RUNGS: list[dict[str, Any]] = [
         status="measured; thorax window now 9 (synthetic truth, 2026-09-02): medians improved on both performers, "
                "p95 mixed, the gate's own floor rose, performer 0 flipped PASS -> FAIL on p95",
         extract=x_head_and_provenance,
-        reports=["artifacts/head-lane/head-gate-shipped.json", "artifacts/compare/provenance.json",
-                 "artifacts/compare/thorax-window-sweep.json"],
+        reports=["artifacts/head-lane/head-gate-shipped.json", "artifacts/head-lane/bootstrap-margin.json",
+                 "artifacts/compare/provenance.json", "artifacts/compare/thorax-window-sweep.json"],
         both_directions="MAMMA->ours: done (oracle arm). Ours->MAMMA: not meaningful; its head is locked. "
                         "Provenance (I8, 2026-09-02): 89 delivery constants audited, 1 leak "
                         "(`THORAX_SMOOTHING_FRAMES`, chosen on the MAMMA oracle arm), 2 declared (the camera rig "
@@ -806,6 +822,13 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Ours, performer 1", role="ours", key="head_subject_01"),
                    dict(label="MAMMA through our frames, 1", role="mamma", key="oracle_subject_01"),
                    dict(label="A head that never moves, 1", role="control", key="constant_subject_01")]),
+        dict(title="How far above the floor the head sits, once the frame's own jitter is cancelled",
+             plain="Our head's worst-case (p95) disagreement minus MAMMA's own head scored through the same "
+                   "frame, on identical bootstrap draws. This is the figure a change to the chest frame cannot "
+                   "move, and the one ground truth would turn into a target.",
+             better="lower",
+             bars=[dict(label="Ours, performer 0", role="ours", key="head_gap_subject_00"),
+                   dict(label="Ours, performer 1", role="ours", key="head_gap_subject_01")]),
     ],
     "feet": [
         dict(title="How closely each foot follows MAMMA's, once the constant offset is removed",

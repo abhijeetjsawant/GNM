@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-02T16:50:02",
+ "rendered": "2026-09-02T16:55:00",
  "git": {
-  "sha": "1dd8223",
+  "sha": "4e1a52f",
   "dirty": true
  },
  "rungs": [
@@ -488,6 +488,24 @@
        "label": "A head that never moves, 1",
        "role": "control",
        "value": 16.33427353497602
+      }
+     ]
+    },
+    {
+     "title": "How far above the floor the head sits, once the frame's own jitter is cancelled",
+     "plain": "Our head's worst-case (p95) disagreement minus MAMMA's own head scored through the same frame, on identical bootstrap draws. This is the figure a change to the chest frame cannot move, and the one ground truth would turn into a target.",
+     "better": "lower",
+     "unit": "deg",
+     "bars": [
+      {
+       "label": "Ours, performer 0",
+       "role": "ours",
+       "value": 1.8326611268337238
+      },
+      {
+       "label": "Ours, performer 1",
+       "role": "ours",
+       "value": 5.3381473535469475
       }
      ]
     }
