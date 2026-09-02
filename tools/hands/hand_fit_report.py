@@ -146,6 +146,10 @@ BOOTSTRAP_SEED = 20260902
 GATE_THRESHOLD_PX = 9.0          # the retained `keep` mask's threshold
 LOWPASS_FRAMES = 15
 PRIOR_DOMINATED_WEIGHT = 1000.0
+# A hand with under a millimetre of fingertip excursion is not moving. The
+# threshold is reference-free on purpose: MAMMA's own amplitude would be a
+# band read off the instrument that is forbidden from selecting anything.
+COLLAPSED_AMPLITUDE_MM = 1.0
 
 # MHR chain slots, by name, in the order `build_hand_chain` returns them.
 KNUCKLES = ("index1", "middle1", "ring1", "pinky1")
@@ -289,7 +293,10 @@ def run_fit(cams, hand: dict, held_out: int | None, arm: str,
     # Written to a sibling and renamed, because a half-written .npz is
     # indistinguishable from a finished one to `path.exists()` and a later pass
     # would read a truncated array as if it were a fit.
-    partial = path.with_suffix(".npz.partial")
+    # `np.savez_compressed` appends `.npz` unless the name already ends in it, so
+    # the temporary name has to end in `.npz` too or the rename below chases a file
+    # that was never created.
+    partial = path.with_name(path.stem + ".partial.npz")
     np.savez_compressed(
         partial, positions=positions, seconds=np.asarray(time.time() - started),
         observations_used=np.asarray(int((weights > 0.0).sum())))
@@ -669,28 +676,46 @@ def arms_for(hand: dict, chain, candidate: np.ndarray) -> dict[str, np.ndarray]:
 
 REJECTED_BY = {
     "CONTROL_frozen_rest_hand":
-        "held-out reprojection AND fingertip amplitude (0 by construction). Neither "
-        "is a quantity the solver optimises on the held-out camera.",
+        "the held-out camera, and the collapsed-amplitude clause (0 mm by "
+        "construction). Two independent clauses, neither of them a quantity the "
+        "solver optimises on a camera it never saw.",
     "CONTROL_frozen_medoid_pose":
-        "held-out reprojection AND fingertip amplitude. This is the well-placed "
-        "constant -- a real, valid hand pose -- so it is the harder of the two.",
-    "CONTROL_lag_1_frame": "held-out reprojection only. Its jitter is IDENTICAL to "
-        "the candidate's (a rigid time shift of the same series), which is the "
-        "cleanest demonstration on this page that the thrash figure rejects nothing.",
-    "CONTROL_lag_3_frames": "held-out reprojection only; jitter identical to the candidate's.",
-    "CONTROL_lag_5_frames": "held-out reprojection only; jitter identical to the candidate's.",
-    "CONTROL_duplicated_frames": "held-out reprojection. Its jitter is WORSE than the "
-        "candidate's (frame doubling puts energy at the Nyquist frequency), so jitter "
-        "happens to agree here -- by accident of this control's shape, not because a "
-        "smoothness figure can detect a stalled solve.",
-    "CONTROL_low_pass_zero_phase": "held-out reprojection and fingertip amplitude. Its "
-        "jitter is far BETTER than the candidate's, so a jitter band would prefer it.",
-    "CONTROL_low_pass_causal_lagged": "held-out reprojection. Jitter better than the "
-        "candidate's, amplitude comparable -- rejected only by the held-out camera.",
-    "CONTROL_prior_dominated": "held-out reprojection and fingertip amplitude. Its "
-        "jitter is the BEST number on this page: a perfectly smooth, perfectly wrong "
-        "hand passing a smoothness gate outright, which is the failure this rung's "
-        "band was rewritten to exclude.",
+        "the held-out camera, and the collapsed-amplitude clause. This is the "
+        "well-placed constant -- a real, anatomically valid hand pose taken from the "
+        "candidate's own take -- so it is the harder of the two frozen arms and the "
+        "one worth reading.",
+    "CONTROL_lag_1_frame":
+        "the held-out camera ALONE. Its jitter is identical to the candidate's -- a "
+        "rigid time shift has the same second-difference distribution -- and its "
+        "amplitude is identical too, so this arm is invisible to every figure except "
+        "reprojection into a view the fit never saw. Whether one frame is enough for "
+        "the held-out camera to see it is measured, not assumed.",
+    "CONTROL_lag_3_frames":
+        "the held-out camera alone; jitter and amplitude identical to the candidate's.",
+    "CONTROL_lag_5_frames":
+        "the held-out camera alone; jitter and amplitude identical to the candidate's.",
+    "CONTROL_duplicated_frames":
+        "the held-out camera. Frame doubling puts energy at the Nyquist frequency, so "
+        "its jitter is WORSE than the candidate's -- a smoothness figure would happen "
+        "to agree here, by the accident of this control's shape rather than because a "
+        "smoothness figure can see a stalled solve.",
+    "CONTROL_low_pass_zero_phase":
+        "the held-out camera and the amplitude clause. Its jitter is far BETTER than "
+        "the candidate's, so a jitter band would prefer it outright. Note what the "
+        "measurement says: at the shipped `pose_smooth_weight` of 0.25 this arm is "
+        "often NOT rejected, because half a second of zero-phase smoothing genuinely "
+        "improves reprojection into an unseen camera. That is the shipped default "
+        "being under-regularised, reported by the gate, not a hole in it.",
+    "CONTROL_low_pass_causal_lagged":
+        "the held-out camera. Jitter better than the candidate's and amplitude "
+        "comparable, so reprojection is the only figure that can see the lag.",
+    "CONTROL_prior_dominated":
+        "the held-out camera ALONE, and this arm is the reason the rung needs one. A "
+        "second-difference penalty at weight 1000 does not freeze the hand: zero "
+        "acceleration is CONSTANT VELOCITY, so the solution drifts smoothly and "
+        "measures LARGER amplitude than the candidate at a jitter better than MAMMA's. "
+        "It passes a smoothness band, it passes an amplitude band, and it is wrong. "
+        "Only reprojection into a camera the fit never saw can reject it.",
 }
 
 
@@ -756,12 +781,31 @@ def measure_hand(name: str, cams, layout: dict, mapping_our_to_mamma: dict,
         }
         for arm, result in scored.items():
             row = {k: v for k, v in result.items() if not k.startswith("_")}
+            if arm != "ORACLE_mamma_hand_joints":
+                arm_local = wrist_local_frame(
+                    arms[arm], hand["wrist"], knuckles, index1, pinky1)
+                figures = articulation(arm_local[:, tips], float(np.median(
+                    np.linalg.norm(candidate[:, middle1] - hand["wrist"], axis=1))))
+                row["fingertip_amplitude_mm"] = figures["amplitude_mm"]
+                row["fingertip_jitter_mm"] = figures["jitter_mm"]
             if arm != "candidate":
                 row["P_candidate_beats_this_arm_block_bootstrap"] = \
                     probability_candidate_beats(scored["candidate"], result, index, frames)
             if arm.startswith("CONTROL"):
+                # Two independent clauses, and a control fails if EITHER fires.
+                # The held-out clause is the reprojection the fit never saw; the
+                # amplitude clause is "is the hand moving at all", which no solver
+                # here optimises and which is the clause the gate card names for the
+                # frozen arms. The amplitude threshold is reference-free -- a
+                # millimetre of excursion, not a band read off MAMMA -- because a
+                # threshold taken from the reference would be the reference
+                # selecting something.
+                beaten = row["P_candidate_beats_this_arm_block_bootstrap"] >= 0.95
+                collapsed = row["fingertip_amplitude_mm"] < COLLAPSED_AMPLITUDE_MM
                 row["rejected_by"] = REJECTED_BY[arm]
-                row["rejected"] = row["P_candidate_beats_this_arm_block_bootstrap"] >= 0.95
+                row["rejected_by_held_out_camera"] = bool(beaten)
+                row["rejected_by_collapsed_amplitude"] = bool(collapsed)
+                row["rejected"] = bool(beaten or collapsed)
             fold["arms"][arm] = row
         fold["lag1_autocorrelation_of_the_candidate_residual_series"] = \
             lag_one_autocorrelation(scored["candidate"]["_pixels"],
@@ -966,6 +1010,18 @@ def build(hands: list[str], folds: list[int], compute: bool) -> dict:
         for arm, row in f["arms"].items()
         if arm.startswith("CONTROL") and not row["rejected"]})
 
+    oracle = [f["arms"]["ORACLE_mamma_hand_joints"]["median_mm_at_the_subject"]
+              for v in subjects.values() for f in v["folds"].values()]
+    by_clause = {"held_out_camera": 0, "collapsed_amplitude": 0, "both": 0}
+    for v in subjects.values():
+        for f in v["folds"].values():
+            for arm, row in f["arms"].items():
+                if not arm.startswith("CONTROL") or not row["rejected"]:
+                    continue
+                a, b = row["rejected_by_held_out_camera"], row["rejected_by_collapsed_amplitude"]
+                by_clause["both" if a and b else
+                          "held_out_camera" if a else "collapsed_amplitude"] += 1
+
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_by": "tools/hands/hand_fit_report.py",
@@ -1041,6 +1097,20 @@ def build(hands: list[str], folds: list[int], compute: bool) -> dict:
             "controls_rejected": controls_rejected,
             "controls_scored": controls_total,
             "controls_NOT_rejected": not_rejected,
+            "controls_rejected_by_clause": by_clause,
+            "ORACLE_floor_mean_mm": (round(float(np.mean(oracle)), 1) if oracle else None),
+            "ORACLE_floor_range_mm": ([round(float(np.min(oracle)), 1),
+                                       round(float(np.max(oracle)), 1)] if oracle else None),
+            "what_the_oracle_floor_means":
+                "MAMMA's own hand joints, on the MHR chain's slots, scored against the "
+                "same SOMA-77 held-out observations. It is NOT a competitor and the "
+                "candidate beating it is not a claim of superiority: our fit minimises "
+                "SOMA-77 pixels on three cameras and MAMMA never saw SOMA-77 at all. "
+                "What it measures is the floor this protocol imposes -- SOMA-77's own 2D "
+                "error plus the MHR-to-SMPL-X joint convention gap, which the per-slot "
+                "table puts at 26-73 mm in 3D. Read it as: a held-out figure at or below "
+                "this floor cannot be separated from the reference's own answer by this "
+                "instrument, so the gate discriminates degenerate motion, not accuracy.",
             "how_each_control_is_rejected": REJECTED_BY,
             "note": "every control above is rejected by the held-out camera, by "
                     "fingertip amplitude, or by both. None is rejected by jitter -- the "
@@ -1054,6 +1124,25 @@ def build(hands: list[str], folds: list[int], compute: bool) -> dict:
             "block in PIXELS; measured at 1.9 % of the objective. Reconciling the units "
             "is solver work and belongs behind this gate, not inside the step that "
             "builds it.",
+        "arms_absent_from_this_report": {
+            "CONTROL_prior_dominated, held-out folds": {
+                "present": "its FOUR-CAMERA fit and therefore its amplitude, jitter and "
+                           "roughness, on every hand -- see hands.*.articulation.CONTROLS",
+                "absent": "its leave-one-camera-out reprojection, on every hand and fold",
+                "why": "a prior-dominated refit takes ~54 min per hand per fold on this "
+                       "machine against ~16-23 min for the candidate, and the grid was "
+                       "stopped after the four-camera arms landed. Recorded as absent "
+                       "rather than filled: a placeholder here would be a fabricated "
+                       "figure for the one control the rung most needs.",
+                "regenerate": ".venv/bin/python tools/hands/hand_fit_report.py "
+                              "--fits-only  (cached, resumable; then --assemble)",
+                "what_it_would_decide": "this arm drifts smoothly at LARGER amplitude "
+                                        "than the candidate with jitter better than "
+                                        "MAMMA's, so it passes both articulation clauses. "
+                                        "Its held-out reprojection is the only figure "
+                                        "that can reject it, and it is the missing one.",
+            },
+        },
         "blind_to": [
             "depth along the held-out camera's rays -- reprojection into one camera "
             "cannot score it, and that is the direction fingers are least determined in",
