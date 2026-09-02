@@ -400,8 +400,12 @@ RUNGS: list[dict[str, Any]] = [
                         "every cell: our pose/retarget error is larger than the shape error a mean body carries "
                         "(a D4/D6 fact). Turning the oracle 180 deg costs 0.35-0.62 IoU on front/back-distinct "
                         "frames, so the surface sees facing; turning OUR mesh 180 deg makes it WORSE in 8 of 8 "
-                        "cells (decisively in 7) -- D1's premise of a shipped 180 deg yaw is not what the surface "
-                        "finds, and D1 must re-locate the defect before fixing it. Ours->MAMMA: nothing to feed.",
+                        "cells (decisively in 7). RESOLVED by D1 (2026-09-02): the defect is a naming mirror, and the fix -- "
+                        "which turns every torso and head joint 180 deg with the limbs held still -- moves IoU on 5 of "
+                        "8 cells within their spread with mixed signs. So this instrument cannot see facing with the "
+                        "limbs held; its yaw-180 control moved the limbs too and measured whole-body yaw. Facing is "
+                        "scored by the forward-dot and the handedness triple product on rung 11, not here. "
+                        "Ours->MAMMA: nothing to feed.",
     ),
     dict(
         id="detector", n=2, regenerate="python3 tools/swap-harness/sam3d_ladder.py && python3 tools/swap-harness/common_mode.py && python3 tools/swap-harness/mamma_residuals.py   # SYSTEM python3; run-report.json comes from the production build",

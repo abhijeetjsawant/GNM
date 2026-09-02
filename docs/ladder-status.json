@@ -399,6 +399,11 @@
       "date": "2026-09-02",
       "step": "I8",
       "text": "Paired block bootstrap re-run at window 9 (tools/head/bootstrap_margin.py, 2000 draws, identical draws): head-minus-oracle p95 gap 1.8 deg on performer 0 and 5.3 on performer 1 at block 20; P(candidate passes the 20 deg band) 0.39 / 0.22; P(oracle passes) 0.84 / 0.88. At window 15 the oracle passed at 1.00. So the fixed 20 deg p95 band is now one the reference's own answer fails on about one draw in seven: the gate is near miscalibrated for this frame, which is a calibration fact about the gate, recorded and NOT acted on -- moving the band on this evidence would select on the MAMMA arm. The paired gap is now a standing ladder figure."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "D1 fix built on its branch (relabel, not geometry: every torso and head joint turns exactly 180 deg about its own up axis, nothing else moves, I1 and rungs 7/9/11 identical to four decimals; the mirror lived at five sites, the head axes were a half-turn not a mirror). Sol reviewed: not merging yet -- three items first: render the hands before and after (a curl sign can flip with the frame and no gate sees a pose), regenerate the asset through Blender/MPFB so its request hash matches the corrected joint map, and one handedness check on a real SOMA motion export. Two gate bands failed for instrument reasons and are recorded as gate findings: the head cannot reach a forward-dot of 0.9 that MAMMA's own head does not reach (0.84), and I6's silhouette cannot see facing with the limbs held."
     }
   ]
 }
