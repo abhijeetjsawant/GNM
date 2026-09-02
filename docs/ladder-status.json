@@ -26,15 +26,105 @@
       "title": "Instruments: build the measuring tools first",
       "plain": "Each of these reads files MAMMA already left on disk and writes one report. They run in parallel, one agent each, and none of them changes what we ship.",
       "steps": [
-        {"id": "I0", "title": "The ladder itself: registry, history, published page", "plain": "The scoreboard that every later step reports into. Done and published.", "owner": "fable", "state": "done", "started": "2026-09-01", "finished": "2026-09-02", "report": "artifacts/compare/ladder.json", "blocked_on": null},
-        {"id": "I1", "title": "Split the retarget: how much is body proportions, how much is the converter", "plain": "Answers whether our biggest loss is the fixed body size or the maths that turns points into a skeleton. Also feeds MAMMA's own skeleton through our converter to price it on clean input.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": "artifacts/compare/retarget-cost.json", "blocked_on": null},
-        {"id": "I2", "title": "Perfect-2D oracle: run our whole pipeline on MAMMA's own skeleton", "plain": "Shows the floor our pipeline imposes even with a perfect detector, so we can tell our errors from the detector's.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": "artifacts/compare/oracle-2d.json", "blocked_on": null},
-        {"id": "I3", "title": "Detector reports that actually discriminate", "plain": "Three separate detector figures with controls, replacing a headline number that compared two different things.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": "artifacts/compare/detector-*.json", "blocked_on": "I1, I2, I4, I6 first"},
-        {"id": "I4", "title": "Score MAMMA's feet, then ours against them", "plain": "We have never measured the bar for feet. Until we do, nothing about feet can be claimed either way.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": "artifacts/feet-lane/mamma-feet-bar.json", "blocked_on": null},
-        {"id": "I5", "title": "Hands: the held-out-camera test as a report", "plain": "The hand fit prototype has good numbers in a document only. Make it write a report with the right controls.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": "artifacts/handfit-arrays/held-out.json", "blocked_on": "I1, I2, I4, I6 first"},
-        {"id": "I6", "title": "Surface check: our mesh outline against MAMMA's person masks", "plain": "The first measurement of the body's surface rather than its joints. Also the gate the facing fix needs.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": "artifacts/compare/silhouette.json", "blocked_on": "identity resolution across three id spaces first"},
-        {"id": "I7", "title": "Temporal: lag and outlier repair measured on synthetic truth", "plain": "Lower priority. Needs the synthetic fixture extended first.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": "artifacts/compare/temporal.json", "blocked_on": "fixture extension"},
-        {"id": "I8", "title": "Provenance audit: no shipped constant chosen on MAMMA", "plain": "One constant in the shipped head solve was picked using MAMMA. It must be re-chosen from our own data before the next build.", "owner": "opus-agent", "state": "blocked", "started": null, "finished": null, "report": "artifacts/compare/provenance.json", "blocked_on": "THORAX_SMOOTHING_FRAMES re-selection rule not yet defined"}
+        {
+          "id": "I0",
+          "title": "The ladder itself: registry, history, published page",
+          "plain": "The scoreboard that every later step reports into. Done and published.",
+          "owner": "fable",
+          "state": "done",
+          "started": "2026-09-01",
+          "finished": "2026-09-02",
+          "report": "artifacts/compare/ladder.json",
+          "blocked_on": null
+        },
+        {
+          "id": "I1",
+          "title": "Split the retarget: how much is body proportions, how much is the converter",
+          "plain": "Answers whether our biggest loss is the fixed body size or the maths that turns points into a skeleton. Also feeds MAMMA's own skeleton through our converter to price it on clean input.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-02",
+          "finished": null,
+          "report": "artifacts/compare/retarget-cost.json",
+          "blocked_on": null
+        },
+        {
+          "id": "I2",
+          "title": "Perfect-2D oracle: run our whole pipeline on MAMMA's own skeleton",
+          "plain": "Shows the floor our pipeline imposes even with a perfect detector, so we can tell our errors from the detector's.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-02",
+          "finished": null,
+          "report": "artifacts/compare/oracle-2d.json",
+          "blocked_on": null
+        },
+        {
+          "id": "I3",
+          "title": "Detector reports that actually discriminate",
+          "plain": "Three separate detector figures with controls, replacing a headline number that compared two different things.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": "artifacts/compare/detector-*.json",
+          "blocked_on": "I1, I2, I4, I6 first"
+        },
+        {
+          "id": "I4",
+          "title": "Score MAMMA's feet, then ours against them",
+          "plain": "We have never measured the bar for feet. Until we do, nothing about feet can be claimed either way.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-02",
+          "finished": null,
+          "report": "artifacts/feet-lane/mamma-feet-bar.json",
+          "blocked_on": null
+        },
+        {
+          "id": "I5",
+          "title": "Hands: the held-out-camera test as a report",
+          "plain": "The hand fit prototype has good numbers in a document only. Make it write a report with the right controls.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": "artifacts/handfit-arrays/held-out.json",
+          "blocked_on": "I1, I2, I4, I6 first"
+        },
+        {
+          "id": "I6",
+          "title": "Surface check: our mesh outline against MAMMA's person masks",
+          "plain": "The first measurement of the body's surface rather than its joints. Also the gate the facing fix needs.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-02",
+          "finished": null,
+          "report": "artifacts/compare/silhouette.json",
+          "blocked_on": "identity resolution across three id spaces first"
+        },
+        {
+          "id": "I7",
+          "title": "Temporal: lag and outlier repair measured on synthetic truth",
+          "plain": "Lower priority. Needs the synthetic fixture extended first.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": "artifacts/compare/temporal.json",
+          "blocked_on": "fixture extension"
+        },
+        {
+          "id": "I8",
+          "title": "Provenance audit: no shipped constant chosen on MAMMA",
+          "plain": "One constant in the shipped head solve was picked using MAMMA. It must be re-chosen from our own data before the next build.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-02",
+          "finished": null,
+          "report": "artifacts/compare/provenance.json",
+          "blocked_on": null
+        }
       ]
     },
     {
@@ -42,25 +132,133 @@
       "title": "Delivery: change one part at a time",
       "plain": "Each step changes exactly one thing in what we ship, after its measuring tool exists. Strictly in order.",
       "steps": [
-        {"id": "D1", "title": "Fix the character facing the wrong way", "plain": "Every delivered character currently faces 180 degrees away from where the performer faced.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": null, "blocked_on": "I6"},
-        {"id": "D2", "title": "Fix the converter: shoulder origin and hip height", "plain": "Two known defects in the maths that turns points into a skeleton, worth 36 to 47 mm on the arms.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": null, "blocked_on": "D1, I1"},
-        {"id": "D3", "title": "A skeleton per performer, carried all the way to export", "plain": "Today the body size is one fixed rig. This makes a per-performer skeleton flow through every stage without silently reverting.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": null, "blocked_on": "D2"},
-        {"id": "D4", "title": "A real pose solver (momentum on the MHR body)", "plain": "Replace the hand-written conversion with a proper solver, body size held fixed, so the solver is judged alone.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": null, "blocked_on": "D3"},
-        {"id": "D5", "title": "Size the skeleton to each performer", "plain": "Fit bone lengths per performer with a licence-clean body model. Interim until the marker session.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": null, "blocked_on": "D4"},
-        {"id": "D6", "title": "Bind the mesh to the sized skeleton", "plain": "The visible body follows the fitted skeleton; checked against the surface instrument.", "owner": "opus-agent", "state": "planned", "started": null, "finished": null, "report": null, "blocked_on": "D5, I6"}
+        {
+          "id": "D1",
+          "title": "Fix the character facing the wrong way",
+          "plain": "Every delivered character currently faces 180 degrees away from where the performer faced.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": "I6"
+        },
+        {
+          "id": "D2",
+          "title": "Fix the converter: shoulder origin and hip height",
+          "plain": "Two known defects in the maths that turns points into a skeleton, worth 36 to 47 mm on the arms.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": "D1, I1"
+        },
+        {
+          "id": "D3",
+          "title": "A skeleton per performer, carried all the way to export",
+          "plain": "Today the body size is one fixed rig. This makes a per-performer skeleton flow through every stage without silently reverting.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": "D2"
+        },
+        {
+          "id": "D4",
+          "title": "A real pose solver (momentum on the MHR body)",
+          "plain": "Replace the hand-written conversion with a proper solver, body size held fixed, so the solver is judged alone.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": "D3"
+        },
+        {
+          "id": "D5",
+          "title": "Size the skeleton to each performer",
+          "plain": "Fit bone lengths per performer with a licence-clean body model. Interim until the marker session.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": "D4"
+        },
+        {
+          "id": "D6",
+          "title": "Bind the mesh to the sized skeleton",
+          "plain": "The visible body follows the fitted skeleton; checked against the surface instrument.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": "D5, I6"
+        }
       ]
     }
   ],
   "decisions_for_user": [
-    "Give the go for lane I: five instrument agents in parallel (I1, I2, I4, I6, I8).",
-    "Commit the ladder and plan files so worktree agents can see them (they branch from the last commit).",
     "Lane H: decide the rig and book the marker session; performer releases covering ML training use."
   ],
   "log": [
-    {"date": "2026-09-01", "step": "I0", "text": "Measured where we stand against MAMMA on the body: our capture reaches it, the fixed rig loses about a hundred millimetres."},
-    {"date": "2026-09-02", "step": "I0", "text": "Built the substitution ladder: MAMMA divided into twelve stages, ours beside each, figures only from reports on disk, with history. Two instruments that only printed now write reports."},
-    {"date": "2026-09-02", "step": "I0", "text": "Execution plan reviewed independently by Codex and Sol. The shape fit moved from first to fifth; instruments come first; three lanes."},
-    {"date": "2026-09-02", "step": "I8", "text": "Found a constant in the shipped head solve that was chosen using MAMMA. Open until re-chosen from our own data."},
-    {"date": "2026-09-02", "step": "I4", "text": "The delivered foot has been solved from the ball-of-foot landmark since yesterday; the old feet measurement now scores the solver against its own input and is retired."}
+    {
+      "date": "2026-09-01",
+      "step": "I0",
+      "text": "Measured where we stand against MAMMA on the body: our capture reaches it, the fixed rig loses about a hundred millimetres."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I0",
+      "text": "Built the substitution ladder: MAMMA divided into twelve stages, ours beside each, figures only from reports on disk, with history. Two instruments that only printed now write reports."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I0",
+      "text": "Execution plan reviewed independently by Codex and Sol. The shape fit moved from first to fifth; instruments come first; three lanes."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I8",
+      "text": "Found a constant in the shipped head solve that was chosen using MAMMA. Open until re-chosen from our own data."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I4",
+      "text": "The delivered foot has been solved from the ball-of-foot landmark since yesterday; the old feet measurement now scores the solver against its own input and is retired."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I1",
+      "text": "worktree ladder/I1, Opus agent"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I2",
+      "text": "worktree ladder/I2, Opus agent"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I4",
+      "text": "worktree ladder/I4, Opus agent"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I6",
+      "text": "worktree ladder/I6, Opus agent; id resolution is its first deliverable"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I8",
+      "text": "worktree ladder/I8, Opus agent. Rule for THORAX_SMOOTHING_FRAMES set by Fable: sweep the window on synthetic truth (tracked FK fixture, noise at our own detector's self-consistency amplitude), choose the p95 minimum with an interior optimum required; the MAMMA sweep is reported beside it and never selects; the agent proposes, the constant is changed only in lane D"
+    },
+    {
+      "date": "2026-09-02",
+      "step": null,
+      "text": "Ladder and plan committed and pushed (e8c88e9). Go given for lane I: I1, I2, I4, I6, I8 dispatched in parallel, one Opus agent per worktree."
+    }
   ]
 }

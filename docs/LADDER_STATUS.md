@@ -7,35 +7,36 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0. In flight: nothing. Blocked: I8.
+Done: I0. In flight: I1, I2, I4, I6, I8. Blocked: nothing.
 
 ## In flight
 
-- nothing in flight
+- **I1** Split the retarget: how much is body proportions, how much is the converter — an Opus agent, since 2026-09-02
+- **I2** Perfect-2D oracle: run our whole pipeline on MAMMA's own skeleton — an Opus agent, since 2026-09-02
+- **I4** Score MAMMA's feet, then ours against them — an Opus agent, since 2026-09-02
+- **I6** Surface check: our mesh outline against MAMMA's person masks — an Opus agent, since 2026-09-02
+- **I8** Provenance audit: no shipped constant chosen on MAMMA — an Opus agent, since 2026-09-02
 
 ## Next up (unblocked, not started)
 
-- **I1** Split the retarget: how much is body proportions, how much is the converter — an Opus agent
-- **I2** Perfect-2D oracle: run our whole pipeline on MAMMA's own skeleton — an Opus agent
-- **I4** Score MAMMA's feet, then ours against them — an Opus agent
+- none
 
 ## Blocked
 
-- **I8** Provenance audit: no shipped constant chosen on MAMMA — blocked on: THORAX_SMOOTHING_FRAMES re-selection rule not yet defined
+- none
 
 ## Decisions waiting on the user
 
-- Give the go for lane I: five instrument agents in parallel (I1, I2, I4, I6, I8).
-- Commit the ladder and plan files so worktree agents can see them (they branch from the last commit).
 - Lane H: decide the rig and book the marker session; performer releases covering ML training use.
 
 ## Recent log
 
-- 2026-09-01 [I0] Measured where we stand against MAMMA on the body: our capture reaches it, the fixed rig loses about a hundred millimetres.
-- 2026-09-02 [I0] Built the substitution ladder: MAMMA divided into twelve stages, ours beside each, figures only from reports on disk, with history. Two instruments that only printed now write reports.
-- 2026-09-02 [I0] Execution plan reviewed independently by Codex and Sol. The shape fit moved from first to fifth; instruments come first; three lanes.
-- 2026-09-02 [I8] Found a constant in the shipped head solve that was chosen using MAMMA. Open until re-chosen from our own data.
-- 2026-09-02 [I4] The delivered foot has been solved from the ball-of-foot landmark since yesterday; the old feet measurement now scores the solver against its own input and is retired.
+- 2026-09-02 [I1] worktree ladder/I1, Opus agent
+- 2026-09-02 [I2] worktree ladder/I2, Opus agent
+- 2026-09-02 [I4] worktree ladder/I4, Opus agent
+- 2026-09-02 [I6] worktree ladder/I6, Opus agent; id resolution is its first deliverable
+- 2026-09-02 [I8] worktree ladder/I8, Opus agent. Rule for THORAX_SMOOTHING_FRAMES set by Fable: sweep the window on synthetic truth (tracked FK fixture, noise at our own detector's self-consistency amplitude), choose the p95 minimum with an interior optimum required; the MAMMA sweep is reported beside it and never selects; the agent proposes, the constant is changed only in lane D
+- 2026-09-02 [—] Ladder and plan committed and pushed (e8c88e9). Go given for lane I: I1, I2, I4, I6, I8 dispatched in parallel, one Opus agent per worktree.
 
 ## How to resume
 
