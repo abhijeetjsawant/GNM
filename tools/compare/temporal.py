@@ -1345,6 +1345,13 @@ def thorax_window_probe(source_key: str, cameras, records: list[list[dict]],
             "thorax frame against exact truth. Both are degrees; they share no reference and "
             "MUST NOT share an axis. Only the ORDER of the 9-vs-15 gap is being compared, and "
             "only to ask which noise model contains whatever real footage has."),
+        "cross_check_against_I8s_sweep": (
+            "The white arm is the same experiment I8 ran, through a different harness: I8 "
+            "injects into `triangulate_point` and reads 3.86 deg p95 at window 9 and 3.91 at "
+            "15; this injects into the 2D records and runs the whole pipeline. Two "
+            "independent harnesses agreeing on the white arm within seed spread is what "
+            "licenses reading the heavy-tail arm's wider gap as a property of the NOISE and "
+            "not of the harness."),
         "how_this_differs_from_I8s_sweep": (
             "I8 injects i.i.d. per-view noise straight into `triangulate_point`, one joint at "
             "a time, with no association, no sequence solve and no missing views. This runs "
@@ -1973,16 +1980,17 @@ def thorax_verdict(sources: dict) -> dict:
             "their gaps are smaller than their own seed spread, which is the mechanism "
             "rather than a null result -- error a smoother cannot remove makes both windows "
             "equally bad, so correlation destroys the window's leverage instead of widening "
-            "it. Two readings survive and this instrument cannot "
-            "separate them. Either the real gap is not a property of our frame at all -- "
-            "which would point at the second candidate, that MAMMA's own head is "
-            "over-smoothed and a 15-frame window merely matched it, and that is a statement "
-            "about the REFERENCE and not about our smoother -- or real footage carries a "
-            "term none of these arms has: calibration error, distortion, sync error, "
-            "soft-tissue artefact, or joint-definition error, every one of which is absent "
-            "from a projected trajectory by construction. What can be said positively is "
-            "that heavy tails, frame-correlated error and correlated view loss, at OUR "
-            "detector's own measured amplitude, are NOT individually enough to explain it.")
+            "it. So: HALF THE GAP IS THE TAIL. The other half is something none of these "
+            "arms contains, and THIS INSTRUMENT CANNOT SAY WHETHER THAT SOMETHING IS IN OUR "
+            "FRAME OR IN THE REFERENCE. Both readings the question offered remain open and "
+            "this measurement does not rank them: a projected trajectory contains no MAMMA "
+            "head, so nothing here can see whether MAMMA's frame is over-smoothed; and a "
+            "projected trajectory also contains no calibration error, no distortion, no sync "
+            "error, no soft-tissue artefact and no joint-definition error, so nothing here "
+            "can see those either. What can be said positively, and only this: at OUR "
+            "detector's own measured amplitude, heavy tails buy about half the gap, "
+            "frame-correlated error and correlated view loss buy none of it, and white noise "
+            "buys none -- which is why I8's sweep could not see it.")
     else:
         answer = "the probe did not run on the MAMMA-free arm"
     return {
