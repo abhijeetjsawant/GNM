@@ -1039,6 +1039,11 @@ def held_out_camera_lag(sweep: int = LAG_SWEEP, shift_camera: int | None = None,
         for row, original in zip(moved[shift_camera], records[shift_camera], strict=True):
             row["frame_index"] = original["frame_index"]
         records = moved
+    # Resolved here, at the top, and not in the return: this describes the argument
+    # the caller passed, and computing it after the sweep loops is how it came to be
+    # computed from a loop variable instead.
+    applied_shift = (None if not shift
+                     else f"{CAMERAS[shift_camera]} content moved {shift:+d} frame")
     captured: list[np.ndarray] = []
 
     def recording_associator(*args, **kwargs):
@@ -1068,26 +1073,30 @@ def held_out_camera_lag(sweep: int = LAG_SWEEP, shift_camera: int | None = None,
         # detection must exist AND our reprojection must be finite at every shift
         # in the range, or the curve would be comparing populations.
         usable = np.ones((positions.shape[0], frames, len(cm.JOINT_NAMES)), dtype=bool)
-        for shift in range(-sweep, sweep + 1):
-            shifted = np.clip(np.arange(frames) + shift, 0, frames - 1)
-            usable &= detected & np.isfinite(positions[:, shifted]).all(axis=3)
+        for lag in range(-sweep, sweep + 1):
+            moved_frames = np.clip(np.arange(frames) + lag, 0, frames - 1)
+            usable &= detected & np.isfinite(positions[:, moved_frames]).all(axis=3)
         interior = np.zeros(frames, dtype=bool)
         interior[sweep:frames - sweep] = True
         usable &= interior[None, :, None]
         curve = {}
-        for shift in range(-sweep, sweep + 1):
+        # `lag`, NOT `shift`: `shift` is this function's PARAMETER (the deliberate
+        # sync offset applied to one camera's content) and a loop that reuses the
+        # name leaves it holding the last swept value by the time the report is
+        # built. That is exactly what happened, and it crashed on `CAMERAS[None]`.
+        for lag in range(-sweep, sweep + 1):
             residuals = []
             for subject in range(positions.shape[0]):
                 rows, joints = np.nonzero(usable[subject])
                 if rows.size == 0:
                     continue
-                points = positions[subject, np.clip(rows + shift, 0, frames - 1), joints]
+                points = positions[subject, np.clip(rows + lag, 0, frames - 1), joints]
                 projected, depth = camera.project(points)
                 target = observed[subject, rows, joints, :2]
                 good = depth > 0.0
                 residuals.append(np.linalg.norm(projected[good] - target[good], axis=1))
             pooled = np.concatenate(residuals) if residuals else np.zeros(0)
-            curve[shift] = round(float(np.median(pooled)), 4) if pooled.size else None
+            curve[lag] = round(float(np.median(pooled)), 4) if pooled.size else None
         shifts = sorted(curve)
         values = [curve[s] for s in shifts]
         best = int(np.argmin([v if v is not None else math.inf for v in values]))
@@ -1116,8 +1125,7 @@ def held_out_camera_lag(sweep: int = LAG_SWEEP, shift_camera: int | None = None,
     return {
         "what_it_is": "our smoothed 3D from three cameras, reprojected into the fourth and "
                       "swept against that camera's own SOMA-77 detections",
-        "camera_shift_applied": None if not shift else
-        f"{CAMERAS[shift_camera]} content moved {shift:+d} frame",
+        "camera_shift_applied": applied_shift,
         "sign_convention": "argmin = +L means the held-out camera's frame t agrees with our "
                            "3D at frame t + L, i.e. our trajectory arrives L frames late "
                            "against that camera's clock",

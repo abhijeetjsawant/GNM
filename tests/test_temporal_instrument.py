@@ -273,6 +273,34 @@ def test_truth19_gathers_into_the_pipeline_s_own_joint_order():
     assert np.isnan(out[:, :, cm.JOINT_INDEX["left_ear"]]).all()
 
 
+# ---------------------------------------------------- a defect that cost a whole run
+
+def test_no_loop_variable_shadows_its_own_function_s_parameter():
+    """`held_out_camera_lag(shift_camera, shift)` swept `for shift in range(...)`.
+
+    By the time the report was built, `shift` held the last swept value instead of
+    the caller's argument, and a `None if not shift` guard evaluated the wrong
+    branch and crashed on `CAMERAS[None]` -- after thirteen minutes of pipeline
+    runs and with nothing written. Nothing in the numbers would have looked wrong;
+    it simply lost the run. This checks the whole module, not the one function.
+    """
+    import ast
+
+    tree = ast.parse((ROOT / "tools/compare/temporal.py").read_text())
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        arguments = {a.arg for a in node.args.args + node.args.kwonlyargs}
+        for inner in ast.walk(node):
+            if not isinstance(inner, (ast.For, ast.AsyncFor)):
+                continue
+            for target in ast.walk(inner.target):
+                if isinstance(target, ast.Name) and target.id in arguments:
+                    offenders.append(f"{node.name} rebinds its parameter {target.id!r}")
+    assert not offenders, offenders
+
+
 # --------------------------------------------------------------------------- extractor
 
 def _minimal_report() -> dict:
