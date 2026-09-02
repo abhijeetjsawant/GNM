@@ -420,3 +420,158 @@ instead of 40 cm, and a short lever magnifies wobble. The arm ends up in a much 
 place and gets there less smoothly. Both of those are in the record with numbers, because a
 measurement that only reports the half you liked is the failure this project keeps
 guarding against.
+
+---
+
+## 11. The root-placement variant, measured, not shipped
+
+One measurement pass on the branch after the gate review. **Nothing here ships.** Every
+swap is instrument-side, in `tools/compare/d2_clavicle_gate.py`; `src/` is untouched by it.
+Regenerate with the gate's own command; the block lands in `gate.json` under
+`root_placement_variant`, and the gate's verdict stays **FAIL**.
+
+### 11.1 The derivation, and it introduces no constant
+
+Forward kinematics puts the leg roots at `UpperLegMid = root + rest[Hips] + R_hips·mid`,
+with `mid = ½(rest[LeftUpperLeg] + rest[RightUpperLeg])` and `rest[Root] = 0`. The captured
+`left_hip`/`right_hip` landmarks *are* the femoral joint centres, so the rig's **leg roots**
+— not `Hips` — belong on their midpoint. Setting `UpperLegMid = pelvis`:
+
+&nbsp;&nbsp;&nbsp;&nbsp;`root_translation = pelvis − rest[Hips] − R_hips·mid`
+
+against the shipped `pelvis − rest[Hips]`. Every term is the skeleton's own rest geometry.
+It acts in two places and only using both is faithful: on the **rotations**, because
+`_joint_origin` reads `root_translation` (this is exactly what `hip_drop_removed` produces,
+since a change in the root shifts every FK origin by that vector); and on the **root
+itself**, which must move *before* `project_generated_foot_contacts` runs or item 2's
+question is not being asked. So the projection is **wrapped, never re-implemented** — the
+wrapper shifts the incoming track, hands it to the real function, and captures the
+diagnostics `positions_to_body_track` discards.
+
+### 11.2 The pre-registered prediction was refuted, and its premise was wrong
+
+> *Set by the coordinator before this ran:* on the canonical rig the root fix raises the
+> pivot to landmark height and **shortens the lever further**, so canonical placement may
+> get **worse** than D2 alone and jitter may **grow**; on the sized rig both should improve.
+
+**Placement (median mm, lower is better):**
+
+| | rig | D2 alone | **D2 + root** |
+|---|---|---|---|
+| subj 0 | canonical, delivered arms | 124.39 | **50.62** |
+| subj 0 | canonical, round trip | 67.25 | **0.51** |
+| subj 0 | sized, delivered arms | 78.33 | **24.99** |
+| subj 0 | sized, round trip | 49.36 | **0.07** |
+| subj 1 | canonical, delivered arms | 89.56 | **30.28** |
+| subj 1 | canonical, round trip | 79.32 | **0.08** |
+| subj 1 | sized, delivered arms | 79.63 | **23.56** |
+| subj 1 | sized, round trip | 52.72 | **0.04** |
+
+Legs and torso are unchanged in every cell (32.48 / 30.03 canonical, 19.54 / 15.96 sized;
+round-trip legs and torso 0.00 throughout). Arm B moves the same way on its own reference:
+canonical 130.52 → 52.84 and 89.55 → 30.80, sized 62.96 → 32.57 and 66.92 → 30.05.
+
+**Canonical placement improved by a factor of 2.5–3, not worse.** The prediction is
+refuted, and so is the mechanism behind it:
+
+**Direction lever — `|landmark − the point the DIRECTION is measured from|` (median / p5 mm):**
+
+| variant | subj 0 L / R | subj 1 L / R |
+|---|---|---|
+| legacy anchor, canonical | 205.8 / 196.4 · 179.4 / 139.2 | 195.9 / 136.5 · 190.9 / 130.2 |
+| D2, canonical | 88.2 / 73.0 · 78.7 / 61.5 | 98.5 / 55.1 · 84.8 / 48.8 |
+| **D2 + root, canonical** | 100.7 / 67.4 · 109.4 / 48.0 | 159.8 / 98.8 · 136.8 / 87.7 |
+| **D2 + root, sized** | 123.4 / 100.1 · 112.3 / 59.9 | 125.8 / 63.6 · 115.1 / 59.7 |
+
+(This is deliberately *not* "pivot-to-landmark distance" in general: under the legacy anchor
+the bone still pivots at the rig's Shoulder origin while the direction comes off the torso
+axis, and it is the **direction's** lever that converts landmark noise into bone noise.)
+
+**The root fix LENGTHENS the lever in every cell** — 88.2 → 100.7, 98.5 → 159.8 — because
+the rig's shoulder origin was already at or above the captured shoulder, so raising it
+moves it *away*. The prediction's premise ("shortens the lever further") is measurably
+backwards.
+
+And the lever explains the placement, which is the useful part: the arm root is placed one
+`UpperArm` rest length (160 mm canonical) along the ray, so the residual tracks
+**|lever − 160 mm|**, not the lever itself. Subject 0's D2+root canonical right shoulder
+has a 109.4 mm lever → |109.4 − 160| = 50.6 mm, against a measured 50.62 mm. Subject 1's
+159.8 / 136.8 mm levers sit almost exactly at the rest length → 30.28 mm. **The
+discriminating constraint is not "short lever" but "lever ≠ the bone's own rest length",**
+and the root fix moves both subjects toward it on the canonical rig by accident of their
+proportions — which is precisely why D5 owns the general case.
+
+**Jitter (clavicle-chain frames above 26.67°/frame; median / p95 / max step, degrees):**
+
+| | rig | D2 alone | D2 + root |
+|---|---|---|---|
+| subj 0 | canonical, over-ceiling | 48 | **40** |
+| subj 0 | canonical, LSh · RSh max | 88.94 · 109.22 | 138.98 · 164.48 |
+| subj 0 | sized, over-ceiling | 43 | 41 |
+| subj 1 | canonical, over-ceiling | 49 | **33** |
+| subj 1 | canonical, LSh · RSh max | 160.57 · 150.47 | **39.34 · 53.57** |
+| subj 1 | sized, over-ceiling | 22 | **35** |
+
+Mixed, and it does not resolve the regression. Median steps fall everywhere (2.58 → 1.90,
+2.46 → 1.53); the over-ceiling count falls on both canonical rigs; but the *worst* single
+step grows on subject 0 canonical (109 → 164°) and the sized rig gets **worse** on subject 1
+(22 → 35 frames). So the second half of the prediction — "on the sized rig both should
+improve" — is **half met**: placement improves everywhere, jitter does not.
+
+**The two cells that were supposed to decide the scoping question do not decide it.**
+Placement says "D2 + root placement" is a strong pairing on either rig. Jitter says the
+per-performer skeleton is still load-bearing, because the one cell that should have been
+best — sized, root-corrected — is the cell where subject 1's jitter is worst. On this
+evidence D2 + root placement is a **viable scoping option for placement and not a fix for
+jitter**, and jitter remains D3/D5's to answer.
+
+### 11.3 The ground projection absorbs the lift, through the term that has no cap
+
+The coordinator's premise here is also off by a call-site: `project_generated_foot_contacts`
+defaults to `maximum_root_correction_m = 0.05`, but `positions_to_body_track` **overrides it
+to 0.08** (`commercial_multiview.py:1752`). The gate records the value actually passed.
+
+| | requested lift | contact frames | max contact correction (cap 80 mm) | penetration lift applied (med / max) | lowest foot min / median (m) | floor (m) | penetration after |
+|---|---|---|---|---|---|---|---|
+| subj 0, D2 alone | 0.00 mm | [47, 42] | 34.49 mm | 142.37 / 170.99 mm | 0.00000 / 0.04181 | 0.01169 | 0.000 mm |
+| subj 0, **D2 + root** | 80.00 mm | [37, 60] | 38.23 mm | **83.01 / 94.67 mm** | −0.00000 / 0.05461 | 0.00071 | 0.000 mm |
+| subj 1, D2 alone | 0.00 mm | [6, 27] | 16.08 mm | 109.54 / 113.40 mm | 0.00000 / 0.07959 | 0.01473 | 0.000 mm |
+| subj 1, **D2 + root** | 80.00 mm | [7, 27] | 16.72 mm | **49.06 / 51.57 mm** | 0.00000 / 0.08991 | 0.01254 | 0.000 mm |
+
+**The cap is never approached and never was the risk.** The capped, per-contact-run
+correction moves barely at all under an 80 mm lift (34.49 → 38.23, 16.08 → 16.72 mm) and
+stays less than half the 80 mm cap. What absorbs the lift is a different, **uncapped**
+term: `body_projection.py:1209–1211` adds `penetration_before` to the root's Y outright,
+with no bound at all. That term *falls* by ~59–60 mm (the lift's vertical component after
+the subjects' lean), 142.37 → 83.01 and 109.54 → 49.06 mm. Ground penetration after
+projection is 0.000 mm in every case, and contact counts barely move.
+
+Two things worth carrying out of that. First, **the root fix does not fight the ground
+projection; it relieves it** — the pipeline was hoisting the character ~140 / ~110 mm to
+keep it out of the floor, and after the fix it hoists ~83 / ~49 mm, because the rig is no
+longer sunk by its own hip convention. Second, **the projection's real degree of freedom is
+uncapped**, which means "the root correction is capped at 80 mm" is not a statement about
+how far this stage can move the character vertically. Nothing here changes it.
+
+One more, and it limits what the sized rows above can be asked to mean: the sized and
+canonical ground rows are **byte-identical**, because `project_generated_foot_contacts`
+hardcodes `DETAILED_HUMANOID` (`body_projection.py:1127` and its FK calls) and never sees
+the sized skeleton. Pre-existing, unchanged here, recorded because a sized ground figure
+that cannot see the sizing is not a sized ground figure.
+
+### 11.4 The picture
+
+`tools/compare/d2_jitter_sheet.py` → `artifacts/compare/d2-clavicle/jitter/`:
+`jitter-contact-sheet-subject01-LeftShoulder.png` (frames 44–54, both builds, each tile
+labelled with the step it is about to take and boxed red when it exceeds a human's peak
+rate), `jitter-zoom-subject01-f047-050.png` (the spike at 5×), and
+`jitter-A001-subject01-before-vs-after.mp4` (frames 40–70 side by side). It wraps
+`tools/swap-harness/camera_overlay.py`, which sets the scene fps from the track *before* the
+glTF import; the POSE CHECK reads 57 / 95 mm, which is the known ground-projection offset
+and not a timebase error.
+
+**What the eye sees:** in the delivered build the near performer's outstretched arm swings
+forward smoothly across frames 47–50, while in the D2 rebuild it pops — at frame 48 the arm
+is drawn in and angled down with the hand by the other performer's neck, and one frame later
+it has snapped out straight and horizontal, a visible single-frame shoulder dislocation that
+the positional score prices at zero.

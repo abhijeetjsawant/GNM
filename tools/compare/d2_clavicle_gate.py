@@ -37,6 +37,7 @@ Writes: artifacts/compare/d2-clavicle/gate.json
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 import sys
@@ -724,6 +725,245 @@ def scoreboard_block(before, after, rng) -> dict:
     return out
 
 
+
+# =========================================================================== ROOT VARIANT
+# Measured on the branch, SHIPPING NOTHING. Everything here is an instrument-side swap;
+# `src/` is untouched by it.
+#
+# THE DERIVATION, and it introduces no constant. Forward kinematics puts the leg roots at
+#     UpperLegMid = root_translation + rest[Root] + rest[Hips] + R_hips . mid
+# with mid = 0.5 * (rest[LeftUpperLeg] + rest[RightUpperLeg]) and rest[Root] = 0. The
+# captured `left_hip`/`right_hip` landmarks ARE the femoral joint centres, so the rig's leg
+# roots -- not `Hips` -- are what belongs on their midpoint. Setting UpperLegMid = pelvis,
+#     root_translation = pelvis - rest[Hips] - R_hips . mid
+# against the shipped `root_translation = pelvis - rest[Hips]`. Every term is the
+# skeleton's own rest geometry.
+#
+# TWO PLACES IT HAS TO ACT, and only using both is faithful:
+#   * the ROTATIONS -- `_joint_origin` reads `root_translation`, so the clavicle direction
+#     moves. `hip_drop_removed` above produces exactly this, because a change in
+#     `root_translation` shifts every FK origin by exactly that vector.
+#   * the ROOT ITSELF -- and it must be shifted BEFORE `project_generated_foot_contacts`
+#     runs, or the question in item 2 is not being asked. So the projection is WRAPPED,
+#     never re-implemented: the wrapper shifts the incoming track and hands it to the real
+#     function, whose diagnostics it also captures (`positions_to_body_track` discards them).
+ROOT_VARIANT_PREDICTION = (
+    "Set by the coordinator BEFORE this ran, and recorded here verbatim: on the CANONICAL "
+    "rig the root fix raises the pivot to landmark height and SHORTENS the direction lever "
+    "further, so canonical placement may get WORSE than D2 alone and jitter may GROW; on "
+    "the SIZED rig both should IMPROVE. Those two cells decide whether 'D2 + root "
+    "placement' is a scoping option or whether D2 waits for the per-performer skeleton "
+    "(D3/D5)."
+)
+
+
+class root_on_the_leg_roots(object):
+    """`with root_on_the_leg_roots() as diag:` -- wrap the foot projection, do not re-write it.
+
+    CLAUDE.md: wrap the pipeline to instrument it. A hand-rolled projection would be a
+    different function with the same name, and the whole point of item 2 is what THIS one
+    does when it is handed a root 80 mm higher than it expects.
+    """
+
+    def __init__(self):
+        self.diagnostics = []
+
+    def __enter__(self):
+        self.saved = cm.project_generated_foot_contacts
+        real = self.saved
+        store = self.diagnostics
+
+        def wrapper(track, **kwargs):
+            rotations = np.asarray(track.local_rotations_xyzw, dtype=np.float64)
+            roots = np.asarray(track.root_translation_m, dtype=np.float64)
+            names = list(track.joint_names)
+            hips_world = cm._quaternion_multiply(
+                rotations[:, names.index("Root")], rotations[:, names.index("Hips")])
+            rest = {n: np.asarray(j.rest_translation_m, dtype=np.float64)
+                    for n, j in zip(names, DETAILED_HUMANOID.joints)}
+            mid = 0.5 * (rest["LeftUpperLeg"] + rest["RightUpperLeg"])
+            shift = _rotate_vector(hips_world, np.broadcast_to(mid, roots.shape))
+            lifted = dataclasses.replace(
+                track, root_translation_m=(roots - shift).astype(np.float32))
+            projected, diag = real(lifted, **kwargs)
+            store.append({
+                "requested_root_lift_mm": round(float(np.median(
+                    np.linalg.norm(shift, axis=1))) * 1000.0, 2),
+                "diagnostics": diag.as_dict(),
+                "root_before_projection": np.asarray(lifted.root_translation_m, np.float64),
+                "root_after_projection": np.asarray(projected.root_translation_m, np.float64),
+                "feet": foot_heights(projected),
+                "kwargs": {k: v for k, v in kwargs.items()},
+            })
+            return projected, diag
+
+        cm.project_generated_foot_contacts = wrapper
+        return self.diagnostics
+
+    def __exit__(self, *exc):
+        cm.project_generated_foot_contacts = self.saved
+        return False
+
+
+class record_projection(object):
+    """The same capture with NO shift -- the delivered path, so the two are comparable."""
+
+    def __init__(self):
+        self.diagnostics = []
+
+    def __enter__(self):
+        self.saved = cm.project_generated_foot_contacts
+        real = self.saved
+        store = self.diagnostics
+
+        def wrapper(track, **kwargs):
+            projected, diag = real(track, **kwargs)
+            store.append({
+                "requested_root_lift_mm": 0.0,
+                "diagnostics": diag.as_dict(),
+                "root_before_projection": np.asarray(track.root_translation_m, np.float64),
+                "root_after_projection": np.asarray(projected.root_translation_m, np.float64),
+                "feet": foot_heights(projected),
+                "kwargs": {k: v for k, v in kwargs.items()},
+            })
+            return projected, diag
+
+        cm.project_generated_foot_contacts = wrapper
+        return self.diagnostics
+
+    def __exit__(self, *exc):
+        cm.project_generated_foot_contacts = self.saved
+        return False
+
+
+def foot_heights(track) -> dict:
+    """The lowest point of either foot, per frame, on the CANONICAL rig.
+
+    `project_generated_foot_contacts` hardcodes `DETAILED_HUMANOID` (body_projection.py
+    :1127 and its FK calls), so it measures a sized solve's feet on canonical rest lengths.
+    That is pre-existing and is not changed here; it is recorded because it is exactly the
+    sort of thing that makes a sized-rig ground figure mean less than it looks.
+    """
+    fk = forward_kinematics_positions(
+        np.asarray(track.root_translation_m, dtype=np.float64),
+        np.asarray(track.local_rotations_xyzw, dtype=np.float64),
+        skeleton=DETAILED_HUMANOID).astype(np.float64)
+    idx = [DETAILED_HUMANOID.index(n) for n in
+           ("LeftFoot", "LeftToes", "RightFoot", "RightToes")]
+    low = np.min(fk[:, idx, 1], axis=1)
+    return {"lowest_foot_point_min_m": round(float(low.min()), 5),
+            "lowest_foot_point_median_m": round(float(np.median(low)), 5),
+            "floor_estimate_m": round(float(np.percentile(
+                np.stack([np.min(fk[:, [idx[0], idx[1]], 1], axis=1),
+                          np.min(fk[:, [idx[2], idx[3]], 1], axis=1)], axis=1), 2.0)), 5)}
+
+
+def solve_variant(src_z_up, skeleton=None, helper=None, root_fix=False):
+    """One solve, with the origin helper and (optionally) the root fix both installed."""
+    capture = root_on_the_leg_roots() if root_fix else record_projection()
+    with origin(helper or TRUE_ORIGIN):
+        with capture as store:
+            track = rc.solve(src_z_up, skeleton)
+    return track, rc.fk_of(track, skeleton), (store[-1] if store else None)
+
+
+def direction_levers(src_z_up, skeleton, helper) -> dict:
+    """|landmark - the point the DIRECTION is measured from|, per shoulder.
+
+    NOT the pivot-to-landmark distance in general: for the legacy anchor the bone still
+    pivots at the rig's Shoulder origin while the direction is taken from the torso axis,
+    and it is the DIRECTION's lever that sets how much landmark noise becomes bone noise.
+    That is the quantity this step's jitter regression turns on, so it is the one reported.
+    """
+    points = rc.Y_UP_FROM_Z_UP(src_z_up)
+    seen: dict = {}
+    real = helper or TRUE_ORIGIN
+
+    def recording(world, frame, root_translation, rest, joint_name):
+        value = real(world, frame, root_translation, rest, joint_name)
+        seen.setdefault(joint_name, {})[frame] = np.asarray(value).copy()
+        return value
+
+    with origin(recording):
+        rc.solve(src_z_up, skeleton)
+    out = {}
+    for joint, landmark in (("LeftShoulder", "left_shoulder"),
+                            ("RightShoulder", "right_shoulder")):
+        frames = sorted(seen.get(joint, {}))
+        if not frames:
+            continue
+        origins = np.stack([seen[joint][f] for f in frames])
+        target = points[frames][:, cm.JOINT_INDEX[landmark]]
+        d = np.linalg.norm(target - origins, axis=1) * 1000.0
+        out[joint] = {"median_mm": round(float(np.median(d)), 1),
+                      "p5_mm": round(float(np.percentile(d, 5)), 1),
+                      "min_mm": round(float(d.min()), 1)}
+    return out
+
+
+def root_variant_block(subject, mamma_body_id) -> dict:
+    src = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")[
+        "triangulated_world_positions_z_up_m"]
+    src = src[np.isfinite(src).all(axis=(1, 2))]
+    points_y = rc.Y_UP_FROM_Z_UP(src)
+    skel_sz, _ = sized_skeleton(DETAILED_HUMANOID, src)
+    entry: dict = {}
+
+    for rig_label, skel in (("canonical", None), ("sized_resolved", skel_sz)):
+        rig: dict = {}
+        for arm_label, helper, root_fix in (("D2_alone", None, False),
+                                            ("D2_plus_root", hip_drop_removed, True)):
+            track, fk, projection = solve_variant(src, skel, helper, root_fix)
+            err = rc.score(fk, points_y, skel or DETAILED_HUMANOID)
+            # the round trip, with the SAME variant on both passes
+            synth = rc.landmarks_from_fk(fk, skel)
+            t2, fk2, _ = solve_variant(rc.Z_UP_FROM_Y_UP(synth), skel, helper, root_fix)
+            rt = rc.score(fk2, synth, skel or DETAILED_HUMANOID)
+            rig[arm_label] = {
+                "delivered_on_our_capture": groups(err),
+                "roundtrip": groups(rt),
+                "ground_projection": {k: v for k, v in (projection or {}).items()
+                                      if k not in ("root_before_projection",
+                                                   "root_after_projection")},
+                "applied_root_correction_mm": round(float(np.median(np.linalg.norm(
+                    projection["root_after_projection"] - projection["root_before_projection"],
+                    axis=1))) * 1000.0, 2) if projection else None,
+                "applied_root_correction_max_mm": round(float(np.max(np.linalg.norm(
+                    projection["root_after_projection"] - projection["root_before_projection"],
+                    axis=1))) * 1000.0, 2) if projection else None,
+                "_track": track,
+            }
+        rig["temporal_D2_alone_vs_D2_plus_root"] = temporal_block(
+            rig["D2_alone"].pop("_track"), rig["D2_plus_root"].pop("_track"))
+        entry[rig_label] = rig
+
+    entry["direction_lever_to_the_shoulder_landmark_mm"] = {
+        "legacy_anchor_canonical": direction_levers(src, None, legacy_anchor(points_y)),
+        "D2_canonical": direction_levers(src, None, None),
+        "D2_plus_root_canonical": direction_levers(src, None, hip_drop_removed),
+        "D2_plus_root_sized": direction_levers(src, skel_sz, hip_drop_removed),
+        "reading": "the shorter this is, the more a millimetre of landmark noise becomes a "
+                   "degree of bone noise. It is the constraint that discriminates.",
+    }
+
+    pred = np.load(rc.MA3D / f"verts_joints_body_id-{mamma_body_id:02d}.npz",
+                   allow_pickle=True)["pred_joints"].astype(np.float64)
+    pred = pred[np.isfinite(pred).all(axis=(1, 2))]
+    m_src = rc.adapt_mamma(pred)
+    m_points_y = rc.Y_UP_FROM_Z_UP(m_src)
+    m_skel, _ = sized_skeleton(DETAILED_HUMANOID, m_src)
+    arm_b: dict = {}
+    for rig_label, skel in (("canonical", None), ("sized_resolved", m_skel)):
+        for arm_label, helper, root_fix in (("D2_alone", None, False),
+                                            ("D2_plus_root", hip_drop_removed, True)):
+            _, fk, _ = solve_variant(m_src, skel, helper, root_fix)
+            arm_b[f"{rig_label}_{arm_label}"] = groups(
+                rc.score(fk, m_points_y, skel or DETAILED_HUMANOID))
+    arm_b["reference"] = REF_ARMB
+    entry["arm_B_mamma_joints_in"] = arm_b
+    return entry
+
+
 # ------------------------------------------------------------------ verdicts
 def verdicts(report) -> list:
     rows = []
@@ -894,6 +1134,19 @@ def main() -> int:
         report["scoreboard"] = None
         report["rebuild_missing"] = str(REBUILD)
 
+    report["root_placement_variant"] = {
+        "shipping": "NOTHING. Every swap here is instrument-side; src/ is untouched by it.",
+        "derivation": "root_translation = pelvis - rest[Hips] - R_hips . mid(rest[LeftUpperLeg], "
+                      "rest[RightUpperLeg]), from FK's UpperLegMid = root + rest[Hips] + "
+                      "R_hips . mid set equal to the captured hip midpoint. No constant: "
+                      "every term is the skeleton's own rest geometry.",
+        "pre_registered_prediction": ROOT_VARIANT_PREDICTION,
+        "projection_note": "project_generated_foot_contacts hardcodes DETAILED_HUMANOID, so "
+                           "it measures a SIZED solve's feet on CANONICAL rest lengths. "
+                           "Pre-existing, unchanged here, and it limits what the sized "
+                           "ground figures can be asked to mean.",
+        "subjects": {f"subject_{s:02d}": root_variant_block(s, mapping[s]) for s in (0, 1)},
+    }
     report["gate"] = verdicts(report)
     report["verdict"] = "PASS" if all(r["verdict"] == "PASS" for r in report["gate"]) else "FAIL"
     (OUT_DIR / "gate.json").write_text(json.dumps(report, indent=2, default=float))
