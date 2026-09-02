@@ -207,10 +207,15 @@ every runtime constant. **Already found: `THORAX_SMOOTHING_FRAMES`.**
 
 ---
 
-## 6. What starts now, if the go is given
+## 6. Where this stands (end of 2026-09-02) — state lives in `LADDER_STATUS.md`
 
-In parallel, each an Opus agent in a worktree, Fable reviewing: **I1, I2, I4, I6 (id
-resolution first), I8.** I3 and I5 follow when the first four have reports. Lane D
-starts with D1 only after I6 has a report and the forward-dot gate is written down.
-Lane H is the user's: the fixture and the releases. Nothing in this plan ships anything
-until D1; nothing in it fits a constant on a MAMMA-derived arm at any point.
+The go was given on 2026-09-02 and **lane I is complete**: I1, I2, I4, I6, I8, then I3, I5,
+then I7, each an Opus agent in a worktree with the ladder owner wiring its report and its
+chart. Every rung now carries a chart, ours beside MAMMA's, lower/higher-is-better in words.
+**D1 shipped the same day**: the facing defect was a left/right naming mirror at five sites,
+not a yaw (§2's D1 row carries the corrected gate); repaired by relabelling, delivery rebuilt.
+`THORAX_SMOOTHING_FRAMES` moved 15 → 9 on synthetic truth, the audit is clean, and the head
+gate's fixed 20° band is recorded as near-miscalibrated for the narrower frame (not moved).
+**Next is D2**, the clavicle origin, unblocked by I1 and D1; then D3–D6 in order. Lane H is
+the user's, and I7 handed it a candidate one-frame sync offset on D001. Nothing in this plan
+fits a constant on a MAMMA-derived arm at any point; the MAMMA arm reports and never selects.
