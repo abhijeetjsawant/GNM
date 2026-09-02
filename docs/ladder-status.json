@@ -137,11 +137,11 @@
           "title": "Fix the character facing the wrong way",
           "plain": "Every delivered character currently faces 180 degrees away from where the performer faced.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
-          "report": null,
-          "blocked_on": "the fix (three sites: rig rest X, bound mesh mirror, CANONICAL_HEAD_AXES) waits on the thorax-window decision, because provenance.py fails a build while that leak stands, and on Sol's review of the proposal"
+          "finished": "2026-09-02",
+          "report": "artifacts/compare/d1-fix/facing-fix-gate.json",
+          "blocked_on": null
         },
         {
           "id": "D2",
@@ -152,7 +152,7 @@
           "started": null,
           "finished": null,
           "report": null,
-          "blocked_on": "D1, I1"
+          "blocked_on": null
         },
         {
           "id": "D3",
@@ -404,6 +404,21 @@
       "date": "2026-09-02",
       "step": "D1",
       "text": "D1 fix built on its branch (relabel, not geometry: every torso and head joint turns exactly 180 deg about its own up axis, nothing else moves, I1 and rungs 7/9/11 identical to four decimals; the mirror lived at five sites, the head axes were a half-turn not a mirror). Sol reviewed: not merging yet -- three items first: render the hands before and after (a curl sign can flip with the frame and no gate sees a pose), regenerate the asset through Blender/MPFB so its request hash matches the corrected joint map, and one handedness check on a real SOMA motion export. Two gate bands failed for instrument reasons and are recorded as gate findings: the head cannot reach a forward-dot of 0.9 that MAMMA's own head does not reach (0.84), and I6's silhouette cannot see facing with the limbs held."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "Merged and the delivery rebuilt in place (pre-fix build kept under artifacts/compare/delivered-before-d1-2026-09-02). Relabel at five sites; every torso and head joint turned exactly 180 deg about its own up axis, triangulated positions byte-identical, rig byte-identical, I1 round trip 0.00 / 41.57 unchanged. Asset regenerated through pinned Blender/MPFB under the corrected joint map, bit-identical, installed as the build default (detailed-hands-fbd9784b) with a test pinning its request hash. Hands could not have curled backwards (the rest curl displaces nothing). SOMA lane nearer its target on every joint of six real clips. speech_motion, body_binding, unified_gltf: unit tests only."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D2",
+      "text": "unblocked: I1 and D1 done. The Hips 0.98 literal is already gone; what remains is the clavicle direction about the rig shoulder origin (0.72 * torso_up at ~:1565/1568). Gate: I1 canonical round trip on the arms drops from 36-47 mm toward the legs' 0.00; legs must hold 0.00; arm B drops in step."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "D1 shipped: the delivered character faces the right way. Rebuilt from the cached detections with the regenerated asset; the rig and every triangulated point are byte-identical to the previous build, only the rotations turned. The old build is kept beside it for the record. D2, the clavicle origin, is next and needs the go."
     }
   ]
 }

@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-02T17:26:30",
+ "rendered": "2026-09-02T18:06:17",
  "git": {
-  "sha": "3653f4f",
+  "sha": "8054006",
   "dirty": true
  },
  "rungs": [
@@ -27,7 +27,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.6024827472735121
+       "value": 0.5846448331552535
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -42,7 +42,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.4594671688370422
+       "value": 0.46596583169740696
       }
      ]
     },
@@ -55,7 +55,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.6643273377730663
+       "value": 0.6504391684863893
       },
       {
        "label": "MAMMA's mesh",
@@ -526,7 +526,7 @@
       {
        "label": "Ours, performer 0 left",
        "role": "ours",
-       "value": 6.576050169996952
+       "value": 6.5760522511803945
       },
       {
        "label": "MAMMA through our frames, 0 left",
@@ -541,7 +541,7 @@
       {
        "label": "Ours, performer 0 right",
        "role": "ours",
-       "value": 6.201379984732156
+       "value": 6.2013599972949525
       },
       {
        "label": "MAMMA through our frames, 0 right",
@@ -556,7 +556,7 @@
       {
        "label": "Ours, performer 1 left",
        "role": "ours",
-       "value": 9.474210075309452
+       "value": 9.474158207791225
       },
       {
        "label": "MAMMA through our frames, 1 left",
@@ -571,7 +571,7 @@
       {
        "label": "Ours, performer 1 right",
        "role": "ours",
-       "value": 8.445856334340785
+       "value": 8.445846812397312
       },
       {
        "label": "MAMMA through our frames, 1 right",
@@ -591,7 +591,7 @@
    "id": "delivered",
    "n": 11,
    "title": "Mesh and delivered skeleton -- the end-to-end rung, deliberately last",
-   "status": "measured; faces the wrong way (a naming mirror, located, fix pending)",
+   "status": "measured; faces the right way since 2026-09-02 (D1: the naming mirror relabelled at five sites)",
    "visuals": [
     {
      "title": "The delivered character against MAMMA's joints, end to end",
@@ -607,17 +607,17 @@
       {
        "label": "Rig sized to performer 0",
        "role": "alt",
-       "value": 136.5809980486936
+       "value": 136.58100360504903
       },
       {
        "label": "Delivered, one fixed body, 1",
        "role": "ours",
-       "value": 137.75777768784724
+       "value": 137.37544002667912
       },
       {
        "label": "Rig sized to performer 1",
        "role": "alt",
-       "value": 113.03823809049733
+       "value": 113.03824810858812
       }
      ]
     },
@@ -630,27 +630,27 @@
       {
        "label": "Delivered pelvis",
        "role": "ours",
-       "value": -0.9999999999999998
+       "value": 0.9999999999999998
       },
       {
        "label": "Delivered chest",
        "role": "ours",
-       "value": -0.9932358791321203
+       "value": 0.9932358791321203
       },
       {
        "label": "Delivered head",
        "role": "ours",
-       "value": -0.9155198834077263
+       "value": 0.9158258409660256
       },
       {
        "label": "The delivered mesh's nose",
        "role": "ours",
-       "value": -0.9468375407589025
+       "value": 0.8147692015692449
       },
       {
        "label": "Delivered feet (solved from the toes)",
        "role": "alt",
-       "value": 0.9387795534601501
+       "value": 0.944361446698597
       },
       {
        "label": "MAMMA's reading of the performers",
@@ -660,7 +660,7 @@
       {
        "label": "Our capture turned 180 degrees",
        "role": "control",
-       "value": -0.8087662097232308
+       "value": -0.8266665202490049
       }
      ]
     }

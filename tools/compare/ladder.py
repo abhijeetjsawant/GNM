@@ -563,10 +563,12 @@ RUNGS: list[dict[str, Any]] = [
         id="hands", n=8, title="Hands",
         mamma="Hand pose (45 + 45 axis-angle) inside the same SMPL-X fit, from the hand region of the 512 "
               "landmarks. Recovers fingers on this footage (BATTLE1_INCREMENT5_HAND_FIT_RESULT.md).",
-        ours="Delivered: a constant rest curl per finger joint, because independent triangulation of SOMA-77's "
-             "15 finger joints fails (226 % bone-length sd). Prototype: `hand_fit.py`, a constrained MHR "
-             "hand-chain fit -- 35.0 mm held-out reprojection, 43-88 mm fingertip agreement with MAMMA, "
-             "with an open thrashing defect (temporal term 1.9 % of the objective).",
+        ours="Delivered: a STRAIGHT hand. The 'rest curl' constant rotates each finger joint about its own "
+             "bone axis, so it displaces nothing (0.000000 mm, measured by D1 on 2026-09-02) -- a twist, "
+             "not a flexion; two standing defects are named there (the twist axis, and the two hands "
+             "rolling opposite ways) and left alone because changing either is a new pose with no gate. "
+             "Independent triangulation of SOMA-77's 15 finger joints fails (226 % bone-length sd). "
+             "Prototype: `hand_fit.py`, a constrained MHR hand-chain fit (I5 report on this rung).",
         interface="per frame: 15 finger joints per hand",
         supplied_by_mamma="reference only",
         instrument="`tools/hands/hand_fit_report.py` -> `artifacts/hands-lane/hand-fit-heldout.json` (I5, "
@@ -653,7 +655,11 @@ RUNGS: list[dict[str, Any]] = [
         title="Mesh and delivered skeleton -- the end-to-end rung, deliberately last",
         mamma="`get_smplx_forward` -> `pred_vertices` (150, 10475, 3) and `pred_joints` (150, 127, 3); then "
               "`ma_vis` overlays. Research-licensed; never ships.",
-        ours="Retarget onto the fixed rig, MPFB mesh, exported GLB/FBX. Turned round: D1 (2026-09-02) placed the "
+        ours="Retarget onto the fixed rig, MPFB mesh, exported GLB/FBX. FIXED 2026-09-02 by relabelling (rest X, joint "
+             "map, asset node names, alignment secondary, head axes, the SOMA compensating map removed): every "
+             "torso and head joint turned exactly 180 deg about its own up axis and nothing else moved; the "
+             "asset regenerated bit-identical under the corrected map with a matching request hash. Before "
+             "that it was turned round: D1 placed the "
              "facing defect as a left/right naming MIRROR in the rig at three sites (the rest skeleton's `Left` bones "
              "sit on the mesh's anatomical right; the bound mesh follows; `CANONICAL_HEAD_AXES` hardcodes the same "
              "handedness) -- pelvis, chest, head and the mesh's own nose point opposite the performer (forward-dot "
@@ -667,7 +673,7 @@ RUNGS: list[dict[str, Any]] = [
                   "rungs and only those two may sit on one axis",
         blind="everything the per-stage rungs are blind to, compounded; and it cannot attribute -- that is what "
               "the rungs above are for",
-        status="measured; faces the wrong way (a naming mirror, located, fix pending)", extract=x_delivered_all,
+        status="measured; faces the right way since 2026-09-02 (D1: the naming mirror relabelled at five sites)", extract=x_delivered_all,
         reports=["artifacts/compare/scoreboard-commercial-multiview-soma77.json", "artifacts/compare/facing-location.json"],
         both_directions="-",
     ),

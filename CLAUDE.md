@@ -57,6 +57,24 @@
   instruments, delivery), one part per step, the MAMMA arm reports and never selects a
   constant. `THORAX_SMOOTHING_FRAMES` was selected on the MAMMA oracle arm and is an open
   leak (I8) until re-selected from synthetic or owned data.
+- **A lane can be self-consistent and mirrored at once.** Until 2026-09-02 the rig's `Left`
+  bones sat on the mesh's anatomical right (born in `DEFAULT_MPFB_JOINT_MAP`, copied into the
+  asset and `DETAILED_HUMANOID`, and independently into `CANONICAL_HEAD_AXES`), and
+  `soma_motion._DELTA_MAPPING` compensated for it, so that lane shipped correct output from
+  two mirrored halves. Every joint-by-name score passed. What caught it was the handedness
+  triple product read two ways (from the feet and from the torso) on one rig: −1 and +1,
+  which no rotation can produce. The skeleton's own published contract (`right, +Y up,
+  +Z forward` ⇒ left = +X) was the shortest proof and is now a unit test.
+- **A sign that measures where bones ARE cannot see what they are DOING.** The triple product
+  read −1 on SOMA motion exports under the correct mapping, the swapped mapping and SOMA's
+  own joints alike, because a rotation retarget puts every bone on its own side whatever
+  drives it; only the distance to the joint each bone should follow discriminated (92 vs
+  540 mm). The companion to "a length invariant cannot score direction".
+- **Relabel, never reflect.** Fixing a left/right naming mirror by negating vertex X and
+  swapping weights is a reflection: winding reverses, normals invert, signed volume changes
+  sign, and no joint, forward-dot or silhouette gate can see it. Swap the names (rest X,
+  joint map, asset node names) and prove it with a signed-volume test. And a curl about a
+  finger's own bone axis displaces nothing: the delivered "rest curl" is inert.
 - **Every part carries a picture, and the picture says which way is good.** Each rung on the
   ladder page and each part on the progress page shows a bar chart -- ours beside MAMMA's, with
   an alternative of ours and a deliberately wrong answer where they exist -- labelled in plain

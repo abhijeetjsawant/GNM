@@ -49,7 +49,7 @@ from autoanim_gnm.unified_gltf import _composition_array_sha256, export_unified_
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "artifacts" / "audio-acting-shot"
 AUDIO_JOB = ROOT / "artifacts" / "production-next-audio" / "01kxw6h0d3x9zbzcpd47fsbk59"
-BODY_RUN = ROOT / ".cache" / "autoanim_gnm" / "body-provider" / "run" / "detailed-hands"
+BODY_RUN = ROOT / ".cache" / "autoanim_gnm" / "body-provider" / "run" / "detailed-hands-fbd9784b"  # regenerated under the corrected joint map, 2026-09-02
 BINDING = ROOT / "artifacts" / "n5-1-production-assembly"
 PRESENTER_PROFILE = "relaxed-standing-a-pose/v1"
 

@@ -64,7 +64,7 @@ from subject_map import mamma_index_for  # noqa: E402
 
 MA3D = ROOT / "artifacts/mamma/mamma-4cam-five-second-v2/output/ma_3d/pushing_and_lifting_from_ground"
 DELIVERY = ROOT / "artifacts/commercial-multiview-soma77"
-ASSET = ROOT / ".cache/autoanim_gnm/body-provider/run/detailed-hands/neutral-body.npz"
+ASSET = ROOT / ".cache/autoanim_gnm/body-provider/run/detailed-hands-fbd9784b/neutral-body.npz"  # regenerated under the corrected joint map, 2026-09-02
 PROBE = ROOT / "artifacts/compare/d1-facing/surface-probe.json"
 OUT = ROOT / "artifacts/compare/facing-location.json"
 

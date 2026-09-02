@@ -32,7 +32,7 @@ SOMA77_MODEL = ROOT / ".cache" / "autoanim_gnm" / "gem-x" / "inputs" / "onnx" / 
 WORKER_ROOT = ROOT / ".cache" / "autoanim_gnm" / "commercial-multiview"
 WORKER = WORKER_ROOT / "apple_vision_pose"
 MODULE_CACHE = ROOT / ".cache" / "clang-module-cache"
-DEFAULT_BODY_RUN = ROOT / ".cache" / "autoanim_gnm" / "body-provider" / "run" / "detailed-hands"
+DEFAULT_BODY_RUN = ROOT / ".cache" / "autoanim_gnm" / "body-provider" / "run" / "detailed-hands-fbd9784b"  # regenerated 2026-09-02 under the corrected joint map; the name carries its request hash
 
 
 def _run(command: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:

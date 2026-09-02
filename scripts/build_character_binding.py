@@ -19,7 +19,7 @@ from autoanim_gnm.gnm_adapter import GNMAdapter
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BODY_RUN = (
-    ROOT / ".cache" / "autoanim_gnm" / "body-provider" / "run" / "detailed-hands"
+    ROOT / ".cache" / "autoanim_gnm" / "body-provider" / "run" / "detailed-hands-fbd9784b"  # regenerated under the corrected joint map, 2026-09-02
 )
 DEFAULT_OUTPUT = ROOT / "artifacts" / "n5-1-production-assembly"
 

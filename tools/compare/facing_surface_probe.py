@@ -28,7 +28,7 @@ GLB_DIR = argv[1] if len(argv) > 1 else "artifacts/commercial-multiview-soma77"
 # `artifacts/compare/d1-fix/body-run/`, and the vertex-order guard below compares the
 # imported bind pose against it, so it must be the asset that build actually used.
 ASSET = argv[2] if len(argv) > 2 else (
-    ".cache/autoanim_gnm/body-provider/run/detailed-hands/neutral-body.npz")
+    ".cache/autoanim_gnm/body-provider/run/detailed-hands-fbd9784b/neutral-body.npz")  # regenerated 2026-09-02
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 FPS = int(json.load(open(f"{GLB_DIR}/subject-00.body-track.json"))["timebase"]["sample_rate_hz"])
