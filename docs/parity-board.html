@@ -334,15 +334,16 @@
         <div class="metric" style="color:var(--dark)">6 / 20<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">recovered</span></div>
       </div>
 
-      <div class="stage s-dark">
+      <div class="stage s-partial">
         <div class="idx">05</div>
         <div class="body">
-          <span class="chip c-dark">Unmeasured · both references banned</span>
+          <span class="chip c-partial">Measured on perfect 2D · dark on real footage</span>
           <h3>Fill &amp; temporal smoothing</h3>
           <p>Touches every joint and moves already-triangulated ones by <span class="num">5.6–7.9 mm</span> median, with a tail past <span class="num">0.9 m</span>. Those large moves are outlier repair, not damage — joints it moves furthest had 34–46× the raw temporal acceleration. It is the pipeline's de facto outlier filter.</p>
-          <p class="blind"><b>Blind to</b> — whether any move went toward truth. MAMMA's fitted mesh is itself 2.6–2.9× smoothed, and its triangulation is correlated with the 2D being smoothed. Both candidate references are banned for scoring this.</p>
+          <p><b>Measured on a perfect detector for the first time (ladder step I2, 2026-09-02).</b> MAMMA's own skeleton projected into the four cameras and run through the real pipeline comes back <span class="num">1.15 mm</span> median from what was projected, <span class="num">4.2 mm</span> p95. Raw triangulation on that input is exact to <span class="num">1e-8 mm</span>, so association and triangulation cost nothing on perfect 2D and <b>the whole floor is this stage</b>, largest where motion is fastest: wrists <span class="num">1.6</span>, ankles <span class="num">1.3&ndash;1.5</span>, root <span class="num">0.8</span>. Against the same reference our real capture sits at <span class="num">36&ndash;41 mm</span>, so <b>the reconstruction is about 3% of that gap and everything else is upstream of 2D.</b> With MAMMA-grade 2D noise injected the floor is <span class="num">4.6 mm</span>; a one-frame shift on one camera costs <span class="num">6.7 mm</span>, the same order, which is why sync is not a second-order problem. A frozen skeleton reconstructs with exactly zero reprojection error and lands <span class="num">695 mm</span> off, the cleanest demonstration yet that no reprojection figure is an accuracy figure.</p>
+          <p class="blind"><b>Blind to</b> — whether any move went toward truth. MAMMA's fitted mesh is itself 2.6–2.9× smoothed, and its triangulation is correlated with the 2D being smoothed. Both candidate references are banned for scoring this. The oracle above is blind to everything upstream of 2D, including joint-definition error, and runs on a take with no dropped views, so the sequence solve's actual job is never exercised.</p>
         </div>
-        <div class="metric" style="color:var(--dark)">±7 mm<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">displacement</span></div>
+        <div class="metric" style="color:var(--partial)">1.15 mm<br><span style="font-weight:400;font-size:0.74rem;color:var(--ink-faint)">floor on perfect 2D</span></div>
       </div>
 
       <div class="stage s-partial">

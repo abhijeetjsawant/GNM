@@ -7,11 +7,10 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I4. In flight: I2, I6, I8. Blocked: nothing.
+Done: I0, I1, I2, I4. In flight: I6, I8. Blocked: nothing.
 
 ## In flight
 
-- **I2** Perfect-2D oracle: run our whole pipeline on MAMMA's own skeleton — an Opus agent, since 2026-09-02
 - **I6** Surface check: our mesh outline against MAMMA's person masks — an Opus agent, since 2026-09-02
 - **I8** Provenance audit: no shipped constant chosen on MAMMA — an Opus agent, since 2026-09-02
 
@@ -29,12 +28,12 @@ Done: I0, I1, I4. In flight: I2, I6, I8. Blocked: nothing.
 
 ## Recent log
 
-- 2026-09-02 [I8] worktree ladder/I8, Opus agent. Rule for THORAX_SMOOTHING_FRAMES set by Fable: sweep the window on synthetic truth (tracked FK fixture, noise at our own detector's self-consistency amplitude), choose the p95 minimum with an interior optimum required; the MAMMA sweep is reported beside it and never selects; the agent proposes, the constant is changed only in lane D
-- 2026-09-02 [—] Ladder and plan committed and pushed (e8c88e9). Go given for lane I: I1, I2, I4, I6, I8 dispatched in parallel, one Opus agent per worktree.
 - 2026-09-02 [I1] Split the retarget. Sizing the rig to the performer recovers 95-125 mm on the arms, mostly shoulder span; the converter's own floor is 30-36 mm on the arms after sizing, 0.00 on the legs; the rest is input non-rigidity plus the joint-origin convention, which our capture cannot separate. The NaN adapter and the 'sized arm is a lower bound' premises were wrong; the Hips 0.98 literal is already gone.
 - 2026-09-02 [I1] I1 done: body proportions, mainly the shoulder span, are the bigger lever; the converter's own cost is 30-36 mm on the arms. D2's remaining target is the clavicle origin.
 - 2026-09-02 [I4] MAMMA's feet scored for the first time: 9-21 deg median spread about the take mean, 31-90 deg flexion range. Our delivered foot tracks it to 6-9.5 deg spread and beats every control on 46 of 48 pairs, but carries an 18-26 deg constant offset on every foot, almost all ab/adduction: toes point 17-24 deg inward. Oracle 2.8-4.6 deg, so the frames are not the cause. Toe articulation unscoreable on either side; inversion/eversion is a DoF no direction carries.
 - 2026-09-02 [I4] I4 done: MAMMA's feet measured. Ours track them but point inward by about twenty degrees on every foot -- a delivery defect a tracking gate cannot see.
+- 2026-09-02 [I2] Whole pipeline on MAMMA's own skeleton projected into the four cameras: 1.15 mm median floor, 4.2 p95. Raw triangulation is exact to 1e-8 mm, so the entire floor is the temporal stage. Our real capture sits at 36-41 mm on the same reference: reconstruction is ~3% of the gap, the rest is upstream of 2D. MAMMA-grade noise: 4.6 mm; one-frame camera shift: 6.7 mm; crossed pairing: 1243 mm; frozen skeleton: 695 mm with zero reprojection error.
+- 2026-09-02 [I2] I2 done: with a perfect detector our pipeline lands about one millimetre from the truth, all of it the smoothing stage. The reconstruction is not where the gap is; the detector and the joint definitions are.
 
 ## How to resume
 

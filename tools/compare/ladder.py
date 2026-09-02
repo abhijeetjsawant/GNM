@@ -192,6 +192,16 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_sequence_and_oracle(spec: dict) -> tuple[list, list]:
+    """Rung 5: the production run's exposure counts plus I2's perfect-2D oracle
+    (`tools/compare/extractors/i2_oracle.py`, wired by the registry owner)."""
+    figs, ctrls = x_sequence(spec)
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.i2_oracle import x_oracle_2d  # noqa: E402
+    f2, c2 = x_oracle_2d(spec)
+    return figs + f2, ctrls + c2
+
+
 def x_feet_bar(spec: dict) -> tuple[list, list]:
     """Rung 10: I4's extractor, `tools/compare/extractors/i4_feet.py`, wired by the registry owner."""
     sys.path.insert(0, str(ROOT / "tools/compare"))
@@ -371,7 +381,7 @@ RUNGS: list[dict[str, Any]] = [
                         "the fitter's 3D target, but only with 512-landmark input; not built.",
     ),
     dict(
-        id="temporal", n=5, regenerate="the production build writes run-report.json",
+        id="temporal", n=5, regenerate=".venv/bin/python tools/compare/oracle_2d.py   # ~3.5 min; run-report.json comes from the production build",
         title="Temporal solve and smoothing",
         mamma="No separate stage. All frames are optimised jointly, and runs 3 and 4 of the fit carry "
               "`angular_acc_loss` (0.003 / 0.005) and `pts3d_temp_loss` (0.03) -- verified in the retained "
@@ -379,14 +389,29 @@ RUNGS: list[dict[str, Any]] = [
         ours="`solve_sequence_positions` (limb-length constraint on single-ray slots) then fill and "
              "Savitzky-Golay. Touches every joint, 5.6-7.9 mm median, and is the de facto outlier filter.",
         interface="per frame per joint: a world point, now on every frame",
-        supplied_by_mamma="-",
-        instrument=None,
-        instrument_missing="none valid. MAMMA's mesh is itself smoothed and its `triangulated_3d_pts` are "
-                           "correlated with the 2D being smoothed, so both references are banned. Needs "
-                           "single-ray slots (~20 in 5,700 here) or the marker session.",
-        reference="-", blind="everything", status="dark", extract=x_sequence,
-        reports=["artifacts/commercial-multiview-soma77/run-report.json"],
-        both_directions="neither direction has a reference to score against",
+        supplied_by_mamma="in the I2 oracle: its `pred_joints`, projected through the rig into all four cameras "
+                          "as the 2D, so that association, triangulation and this stage run on a perfect detector",
+        instrument="`tools/compare/oracle_2d.py` -> `artifacts/compare/oracle-2d.json` (I2, 2026-09-02): the whole "
+                   "pipeline (`reconstruct_multiview`, wrapped, never re-implemented) on MAMMA's own skeleton "
+                   "projected into the four cameras. Raw triangulation recovers the projected joints to 1e-8 mm, "
+                   "so everything the oracle costs is THIS stage -- 1.15 mm median, largest on the wrists and ankles. "
+                   "A noise arm injects MAMMA's own 2D residual deciles i.i.d. over 5 seeds.",
+        instrument_missing="on REAL footage, still none valid: MAMMA's mesh is itself smoothed and its "
+                           "`triangulated_3d_pts` are correlated with the 2D being smoothed. The oracle measures "
+                           "the stage on a take with no dropped views, and its job is recovering joints a camera "
+                           "loses; I7's synthetic fixture with injected single-ray slots is what scores that.",
+        reference="MAMMA's pred_joints, projected and reconstructed -- exact by construction",
+        blind="everything upstream of 2D: detector, calibration, distortion, sync, soft tissue and, above all, "
+              "joint-definition error, which dominates every real-footage figure here. The noise arm is a lower "
+              "bound twice over (MAMMA's residual is regularised toward its own landmarks, and it is injected "
+              "i.i.d. while real detector error is correlated across joints, frames and cameras). No dropped "
+              "views, so the sequence solve's actual job is never exercised. Head and toe solves not attempted.",
+        status="measured on perfect 2D (1.15 mm, all of it this stage); dark on real footage",
+        extract=x_sequence_and_oracle,
+        reports=["artifacts/commercial-multiview-soma77/run-report.json", "artifacts/compare/oracle-2d.json"],
+        both_directions="MAMMA->ours: done (I2) -- the oracle arm for rungs 3-7: association and triangulation pass at "
+                        "0.00 on perfect 2D; a one-frame camera shift costs 6.7-6.8 mm, about what MAMMA-grade 2D "
+                        "noise costs (4.6 mm), and a crossed subject pairing 1,243 mm. Ours->MAMMA: no reference.",
     ),
     dict(
         id="shape", n=6, regenerate=".venv/bin/python tools/compare/fit_smplx_to_capture.py",

@@ -53,9 +53,9 @@
           "title": "Perfect-2D oracle: run our whole pipeline on MAMMA's own skeleton",
           "plain": "Shows the floor our pipeline imposes even with a perfect detector, so we can tell our errors from the detector's.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
+          "finished": "2026-09-02",
           "report": "artifacts/compare/oracle-2d.json",
           "blocked_on": null
         },
@@ -279,6 +279,16 @@
       "date": "2026-09-02",
       "step": "I4",
       "text": "I4 done: MAMMA's feet measured. Ours track them but point inward by about twenty degrees on every foot -- a delivery defect a tracking gate cannot see."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I2",
+      "text": "Whole pipeline on MAMMA's own skeleton projected into the four cameras: 1.15 mm median floor, 4.2 p95. Raw triangulation is exact to 1e-8 mm, so the entire floor is the temporal stage. Our real capture sits at 36-41 mm on the same reference: reconstruction is ~3% of the gap, the rest is upstream of 2D. MAMMA-grade noise: 4.6 mm; one-frame camera shift: 6.7 mm; crossed pairing: 1243 mm; frozen skeleton: 695 mm with zero reprojection error."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I2",
+      "text": "I2 done: with a perfect detector our pipeline lands about one millimetre from the truth, all of it the smoothing stage. The reconstruction is not where the gap is; the detector and the joint definitions are."
     }
   ]
 }
