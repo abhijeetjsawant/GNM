@@ -24,3 +24,8 @@ native/a2f-runner/.build/
 .claude/worktrees/
 # Codex consult thread id (tools/codex skill); local only
 .context/
+
+# worktree symlinks to the gitignored dirs (bare names: the trailing-slash rules above do not match a symlink)
+artifacts
+.cache
+.venv

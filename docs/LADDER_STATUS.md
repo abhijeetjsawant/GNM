@@ -7,16 +7,16 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I2, I4, I6, I8. In flight: nothing. Blocked: nothing.
+Done: I0, I1, I2, I4, I6, I8. In flight: I3, I5. Blocked: nothing.
 
 ## In flight
 
-- nothing in flight
+- **I3** Detector reports that actually discriminate — an Opus agent, since 2026-09-02
+- **I5** Hands: the held-out-camera test as a report — an Opus agent, since 2026-09-02
 
 ## Next up (unblocked, not started)
 
-- **I3** Detector reports that actually discriminate — an Opus agent
-- **I5** Hands: the held-out-camera test as a report — an Opus agent
+- none
 
 ## Blocked
 
@@ -25,16 +25,16 @@ Done: I0, I1, I2, I4, I6, I8. In flight: nothing. Blocked: nothing.
 ## Decisions waiting on the user
 
 - Lane H: decide the rig and book the marker session; performer releases covering ML training use.
-- Set THORAX_SMOOTHING_FRAMES from 15 to 9 in the shipped head solve (I8: interior optimum on synthetic truth, upper bound), then re-run the head gate with the MAMMA arm reporting only. One-line change plus a gate re-run; it is lane D and needs the go.
+- Thorax smoothing window (I8): the proposal is 9 frames, bracket 5-9, against the shipped 15. Be clear what the data supports: p95 alone does NOT separate 9 from 15 below 0.77x real thorax speed (0.47 of paired draws, +0.07 deg); the case rests on lag and attenuation (15 lags 1.8 frames and loses 32% of peak yaw rate) and on both fixture biases running toward wider windows, which makes 9 an upper bound. Decide whether to change it in the shipped head solve (lane D, one line plus a head-gate re-run with the MAMMA arm reporting only).
 
 ## Recent log
 
-- 2026-09-02 [I8] I8 done: the audit finds exactly one MAMMA-chosen constant, the thorax window. Re-chosen on synthetic truth it should be 9 frames, not 15. Changing it is a delivery step and waits on the go.
-- 2026-09-02 [I6] Surface measured against SAM2 masks: ours 0.52-0.63 IoU, oracle 0.71-0.88; recall falls twice as far as precision, so the delivered body is too small and misplaced. MAMMA's mean body beats ours on every cell, so pose/retarget error exceeds the shape term. Turning our mesh 180 deg makes it worse in 8 of 8 cells: D1's premise of a shipped yaw is not what the surface finds. camera_overlay.py never sets scene fps (24 vs 30): every overlay it rendered ran 25% fast.
 - 2026-09-02 [I6] I6 done: the first surface measurement. Our body is too small and misplaced rather than too big, and a plain 180-degree turn would make it worse, so the facing defect is not where the plan put it. The overlay script D1 relies on has a timebase bug.
 - 2026-09-02 [D1] premise reopened by I6
 - 2026-09-02 [I3] unblocked: I1, I2, I4, I6 have reports
 - 2026-09-02 [I5] unblocked: I1, I2, I4, I6 have reports
+- 2026-09-02 [I3] worktree ladder/I3, Opus agent
+- 2026-09-02 [I5] worktree ladder/I5, Opus agent
 
 ## How to resume
 

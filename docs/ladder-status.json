@@ -64,8 +64,8 @@
           "title": "Detector reports that actually discriminate",
           "plain": "Three separate detector figures with controls, replacing a headline number that compared two different things.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-02",
           "finished": null,
           "report": "artifacts/compare/detector-*.json",
           "blocked_on": null
@@ -86,8 +86,8 @@
           "title": "Hands: the held-out-camera test as a report",
           "plain": "The hand fit prototype has good numbers in a document only. Make it write a report with the right controls.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-02",
           "finished": null,
           "report": "artifacts/handfit-arrays/held-out.json",
           "blocked_on": null
@@ -203,7 +203,7 @@
   ],
   "decisions_for_user": [
     "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
-    "Set THORAX_SMOOTHING_FRAMES from 15 to 9 in the shipped head solve (I8: interior optimum on synthetic truth, upper bound), then re-run the head gate with the MAMMA arm reporting only. One-line change plus a gate re-run; it is lane D and needs the go."
+    "Thorax smoothing window (I8): the proposal is 9 frames, bracket 5-9, against the shipped 15. Be clear what the data supports: p95 alone does NOT separate 9 from 15 below 0.77x real thorax speed (0.47 of paired draws, +0.07 deg); the case rests on lag and attenuation (15 lags 1.8 frames and loses 32% of peak yaw rate) and on both fixture biases running toward wider windows, which makes 9 an upper bound. Decide whether to change it in the shipped head solve (lane D, one line plus a head-gate re-run with the MAMMA arm reporting only)."
   ],
   "log": [
     {
@@ -325,6 +325,16 @@
       "date": "2026-09-02",
       "step": "I5",
       "text": "unblocked: I1, I2, I4, I6 have reports"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I3",
+      "text": "worktree ladder/I3, Opus agent"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I5",
+      "text": "worktree ladder/I5, Opus agent"
     }
   ]
 }

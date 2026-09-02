@@ -328,8 +328,11 @@ RUNGS: list[dict[str, Any]] = [
         id="masks", n=1, title="Person masks and per-view identity",
         mamma="`ma_masks`: YOLO boxes + SAM2 tracklets per camera, a CLIP feature bank and an epipolar anchor "
               "to give the same person the same id across views. Emits masks per camera per frame.",
-        ours="None. SOMA-77 detects people top-down with its own boxes; identity is decided later, on "
-             "keypoints, by our cross-view association. We consume no masks.",
+        ours="No masks of our own: SOMA-77 detects people top-down with its own boxes and identity is decided "
+             "later, on keypoints, by our cross-view association. What is scored on this rung is the delivered "
+             "MESH -- posed per frame and rendered through the real rig -- as a silhouette against MAMMA's masks, "
+             "the one image-level, model-free reference on disk. The masks are the reference; our mesh is the "
+             "candidate; MAMMA's mesh through the same rasteriser is the oracle.",
         interface="per-camera per-frame person id + mask",
         supplied_by_mamma="ma_2d arrives pre-split by subject, so the masks' identity work is inside every "
                           "rung that consumes ma_2d",
