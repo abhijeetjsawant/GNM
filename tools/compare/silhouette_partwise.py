@@ -340,6 +340,43 @@ def folded_arm_track(subject: int):
     return track
 
 
+def verify_the_fold() -> dict:
+    """Did the arms actually fold? Measured, before the control is called one.
+
+    A control named for what it was meant to be rather than for what it is is the whole
+    failure mode this lane keeps guarding against. This is the median distance from each
+    hand to the UpperChest joint, delivered against folded, straight from the tracks.
+    """
+    out = {}
+    for subject in (0, 1):
+        names = json.loads((TRACKS / f"subject-{subject:02d}.body-track.json").read_text())[
+            "joint_names"]
+        base = skeleton_for_joint_names(names)
+        npz = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")
+        root = np.asarray(npz["root_translation_m"], dtype=np.float64)
+        row = {}
+        for label, local in (
+            ("delivered", np.asarray(npz["local_rotations_xyzw"], dtype=np.float64)),
+            ("folded", np.asarray(folded_arm_track(subject).local_rotations_xyzw,
+                                  dtype=np.float64)),
+        ):
+            w = forward_kinematics_positions(root, local, skeleton=base).astype(np.float64)
+            chest = w[:, names.index("UpperChest")]
+            row[label] = {h: round(float(np.median(np.linalg.norm(
+                w[:, names.index(h)] - chest, axis=1))) * 1000.0, 1)
+                for h in ("LeftHand", "RightHand")}
+        out[f"subject_{subject:02d}"] = row
+    out["reading"] = (
+        "the hands come roughly 200 mm closer to the chest, so the arms really are folded. "
+        "That is NOT the same as 'the arm is inside the body's outline': the "
+        "arm_hidden_fraction barely moves (see the figures), because with four cameras "
+        "around the subject no arm pose projects inside the torso in all of them. What "
+        "this control actually tests is a WRONG, FOLDED arm pose -- not the "
+        "inside-the-outline degenerate the hypothesis named, which a four-camera average "
+        "cannot realise. The distinction is stated wherever this control is cited.")
+    return out
+
+
 def build_folded_mesh() -> dict:
     """Export the folded-arm GLBs through the REAL exporter, then the real Blender path."""
     if FOLDED_MESH.exists():
@@ -456,7 +493,12 @@ def main() -> int:
         s: (meshes["D2"][f"verts_{s:02d}"].astype(np.float64)
             + delta[s][:, None, :], ours_faces[split["face_is_arm"]],
             ours_faces[~split["face_is_arm"]]) for s in (0, 1)}
-    arms["CLAVICLE_ONLY_D2b_pose_at_D2_root"] = {
+    # NOT "clavicle only", and the name was corrected after the fact: D2b's pose minus
+    # the root carries everything that is not the translation, which on the torso+legs part
+    # includes the FOOT locals `project_generated_foot_contacts` rewrites inside contact
+    # runs (they moved when the root did: [47, 42] -> [37, 60]). The clavicle re-aim
+    # dominates it, but it is not alone in it.
+    arms["NON_ROOT_D2b_pose_at_D2_root"] = {
         s: (meshes["D2b"][f"verts_{s:02d}"].astype(np.float64)
             - delta[s][:, None, :], ours_faces[split["face_is_arm"]],
             ours_faces[~split["face_is_arm"]]) for s in (0, 1)}
@@ -571,7 +613,7 @@ def _analyse(stats, population, names, cams, keys, correspondence, subject_to_bo
         for k in ("torso_iou", "whole_iou"):
             for a, b in (("D2", "delivered"), ("D2b", "D2"),
                          ("ROOT_ONLY_D2_pose_at_D2b_root", "D2"),
-                         ("CLAVICLE_ONLY_D2b_pose_at_D2_root", "D2")):
+                         ("NON_ROOT_D2b_pose_at_D2_root", "D2")):
                 entry["upright_band_tilt_le_10deg"][f"{k}__{a}_minus_{b}"] = paired(
                     cell[a][k], cell[b][k], upright, draws)
         entry["margins"] = {}
@@ -587,8 +629,8 @@ def _analyse(stats, population, names, cams, keys, correspondence, subject_to_bo
                 cell["folded_arms_CONTROL"][k], cell["delivered"][k], every, draws)
             entry["margins"][f"{k}__ROOT_ONLY_minus_D2"] = paired(
                 cell["ROOT_ONLY_D2_pose_at_D2b_root"][k], cell["D2"][k], every, draws)
-            entry["margins"][f"{k}__CLAVICLE_ONLY_minus_D2"] = paired(
-                cell["CLAVICLE_ONLY_D2b_pose_at_D2_root"][k], cell["D2"][k], every, draws)
+            entry["margins"][f"{k}__NON_ROOT_minus_D2"] = paired(
+                cell["NON_ROOT_D2b_pose_at_D2_root"][k], cell["D2"][k], every, draws)
         out["subjects"][f"subject_{s:02d}"] = entry
 
     # per camera, for the record
@@ -658,7 +700,7 @@ def _analyse(stats, population, names, cams, keys, correspondence, subject_to_bo
                            "imported, not re-implemented"},
         "clavicle_weight_bleed_into_the_torso_part": bleed,
         "exact_decomposition": (
-            "ROOT_ONLY_D2_pose_at_D2b_root and CLAVICLE_ONLY_D2b_pose_at_D2_root split "
+            "ROOT_ONLY_D2_pose_at_D2b_root and NON_ROOT_D2b_pose_at_D2_root split "
             "D2 -> D2b into a pure translation and everything else. A root change "
             "translates every skinned vertex by exactly that vector -- `root_translation` "
             "enters FK only at the Root joint -- so both arms are constructed from the "
@@ -681,6 +723,7 @@ def _analyse(stats, population, names, cams, keys, correspondence, subject_to_bo
             "arm_vertices": int(split["vertex_is_arm"].sum()),
             "correspondence_check": correspondence,
         },
+        "folded_arm_control_geometry": verify_the_fold(),
         "folded_arm_control": {
             "what": "the DELIVERED track with both upper arms re-aimed across the chest by "
                     "the converter's own `_world_for_bone`, at a direction expressed in the "
@@ -690,9 +733,17 @@ def _analyse(stats, population, names, cams, keys, correspondence, subject_to_bo
                     "keeps its bend. Exported through the REAL `export_animated_body_glb` "
                     "and the REAL blender_export_mesh.py -- wrapped, never re-implemented.",
             "root_and_every_other_joint": "untouched",
-            "why": "the control I6 never had. A person mask is ONE blob, so a limb inside "
-                   "the outline is free. If a limb-collapsed body scores HIGHER than the "
-                   "delivery, the mask cannot be read as a limb-placement gate.",
+            "why": "the control I6 never had. If a limb-collapsed body scores HIGHER than "
+                   "the delivery, the mask cannot be read as a limb-placement gate.",
+            "what_it_is_NOT": "it is not the 'limb hidden inside the outline' degenerate "
+                              "the hypothesis named. The fold is real -- the hands come "
+                              "~200 mm closer to the chest, see folded_arm_control_geometry "
+                              "-- but the arm_hidden_fraction barely moves (0.5076 -> "
+                              "0.5394 and 0.5481 -> 0.5514), because with four cameras "
+                              "around the subject no arm pose projects inside the torso in "
+                              "all of them. What is tested is a WRONG FOLDED arm pose. The "
+                              "inside-the-outline degenerate needs a SINGLE-camera test and "
+                              "is not attempted here.",
         },
         "subject_correspondence": {f"our_{k}": f"body_id-{v:02d}"
                                    for k, v in subject_to_body.items()},
@@ -718,6 +769,7 @@ def _analyse(stats, population, names, cams, keys, correspondence, subject_to_bo
               f"D2b-D2 {met[s]['1a_D2b_own_cost_on_torso_and_legs']['difference']} "
               f"{met[s]['1a_D2b_own_cost_on_torso_and_legs']['ci95']}")
         print("  arm precision:    " + "  ".join(f"{n} {e['arm_precision'][n]:.4f}" for n in names))
+        print("  arm recall(mask): " + "  ".join(f"{n} {e['arm_recall_of_mask'][n]:.4f}" for n in names))
         print("  arm hidden frac:  " + "  ".join(f"{n} {e['arm_hidden_fraction'][n]:.4f}" for n in names))
         print("  whole IoU:        " + "  ".join(f"{n} {e['whole_iou'][n]:.4f}" for n in names))
         m = e["margins"]
@@ -725,10 +777,10 @@ def _analyse(stats, population, names, cams, keys, correspondence, subject_to_bo
               f"{m['torso_iou__ROOT_ONLY_minus_D2']['ci95']}   whole "
               f"{m['whole_iou__ROOT_ONLY_minus_D2']['median_difference']} "
               f"{m['whole_iou__ROOT_ONLY_minus_D2']['ci95']}")
-        print(f"    CLAVICLE ONLY - D2:  torso {m['torso_iou__CLAVICLE_ONLY_minus_D2']['median_difference']} "
-              f"{m['torso_iou__CLAVICLE_ONLY_minus_D2']['ci95']}   whole "
-              f"{m['whole_iou__CLAVICLE_ONLY_minus_D2']['median_difference']} "
-              f"{m['whole_iou__CLAVICLE_ONLY_minus_D2']['ci95']}")
+        print(f"    NON ROOT   - D2:     torso {m['torso_iou__NON_ROOT_minus_D2']['median_difference']} "
+              f"{m['torso_iou__NON_ROOT_minus_D2']['ci95']}   whole "
+              f"{m['whole_iou__NON_ROOT_minus_D2']['median_difference']} "
+              f"{m['whole_iou__NON_ROOT_minus_D2']['ci95']}")
         u = e["upright_band_tilt_le_10deg"]
         print(f"    UPRIGHT <=10 deg, n={u['frames']}: torso IoU " + "  ".join(
             f"{n} {u['torso_iou'][n]:.4f}" for n in ("delivered", "D2", "D2b",
@@ -754,7 +806,7 @@ def _figure(stats, population, names, cams) -> None:
     colour = {"delivered": "#8a8f98", "D2": "#4cc9d0", "D2b": "#2f6fd0",
               "ORACLE_mamma_mesh": "#e08a24", "folded_arms_CONTROL": "#b4508f",
               "ROOT_ONLY_D2_pose_at_D2b_root": "#7ba7e8",
-              "CLAVICLE_ONLY_D2b_pose_at_D2_root": "#9fd8dc"}
+              "NON_ROOT_D2b_pose_at_D2_root": "#9fd8dc"}
     fig, axes = plt.subplots(2, 2, figsize=(12.5, 8.4))
     for s in (0, 1):
         every = population[:, s].all(axis=0)

@@ -1224,9 +1224,11 @@ the whole take D2b's fall splits −0.022 / −0.013 IoU to the root and −0.03
 clavicle re-aim it induces, on top of D2's own −0.008 / −0.018; on upright frames the root's
 share collapses to −0.005 and ~0 while the fall persists at −0.045 and −0.093. So the
 coordinator's first branch — the arms on a rig that is the wrong shape — carries most of it
-and all of it where the root is still. But the second branch is not empty: **the root
-placement costs measurable silhouette agreement, tilt-dependently, and nothing else in this
-lane would have found it.** Whether that cost means the placement is *wrong* is a different
+and all of it where the root is still -- though "the arms" means the clavicle chain's whole
+blast radius, which on subject 1 is felt in the *torso* part through weight bleed rather
+than in the arm's own coverage. But the second branch is not empty: **the root placement
+costs measurable silhouette agreement, tilt-dependently, and nothing else in this lane would
+have found it.** Whether that cost means the placement is *wrong* is a different
 question, and this instrument cannot answer it: a silhouette scored against a body 190 mm
 too wide at the shoulders penalises moving anything toward where the cameras say it belongs.
 
@@ -1235,8 +1237,11 @@ too wide at the shoulders penalises moving anything toward where the cameras say
 The part split cures "everything inside the outline is invisible" only for the two parts it
 cuts: an arm wrongly placed but still inside the arm region is not separated from a right
 one. Depth is still invisible, so is a left/right mirror of a fore-aft symmetric pose. The
-folded-arm control tests **one** degenerate; passing it is not a general statement that a
-person mask is a limb gate, and §14.3 says so. Every figure here is scored against a mesh
+folded-arm control tests **one** degenerate, and not the one it was set to test: passing it
+says I6 penalises a wrong folded arm pose, not that a limb inside the outline is charged
+for. That degenerate remains untested and needs a single-camera version. Nothing here
+measures the arms' direction in 3D either — the hidden fraction is a projection.
+Every figure here is scored against a mesh
 whose shoulder span is 540 mm against 346 and 363 measured, and that mismatch is the
 background all of it is read against — the oracle reaches 0.76 / 0.72 on torso+legs where
 we reach 0.52 / 0.54. None of this says which placement is anatomically right.

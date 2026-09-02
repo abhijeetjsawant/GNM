@@ -2124,16 +2124,24 @@ def d2b_verdicts(report) -> list:
                 "the interval must contain 0 -- those vertices carry no clavicle-chain "
                 "weight and D2 moves no root, so this arm can only be identical",
                 None, same["difference"], same["ci95"], same["met"], REF_SILHOUETTE,
-                "a failure here indicts the SPLIT, not the pipeline.")
+                "IT FAILED, AND THE PREMISE IS WHAT WAS WRONG. Dominant-weight labelling "
+                "says no ARM joint is a vertex's largest influence, not that it has none, "
+                "and linear blend skinning is a blend: 8.4 % of torso vertex-frames move "
+                "under a clavicle-only change. An earlier version of this note said a "
+                "failure here would indict the SPLIT. It does not -- the displacement "
+                "check below shows the split labels the right vertices -- and the note is "
+                "corrected rather than left standing.")
             own = outcome["1a_D2b_own_cost_on_torso_and_legs"]
             row(f"PARTWISE. D2b's OWN silhouette cost, torso+legs only, {s}",
-                "material == the interval clears -0.003 IoU. Between D2 and D2b these "
-                "vertices move by exactly the root shift and nothing else",
+                "material == the interval clears -0.003 IoU. Reported; the ISOLATION it "
+                "was pre-registered to provide is the PARTWISE (EXACT) rows below",
                 None, own["difference"], own["ci95"], not own["material"],
                 REF_SILHOUETTE,
-                "THE ISOLATED FIGURE, and the one that says whether the root placement has "
-                "a silhouette cost of its own that no joint instrument can see. PASS here "
-                "means it does not.")
+                "SUPERSEDED AS AN ISOLATION, and the note is corrected rather than left "
+                "standing: this arm is contaminated by the same weight bleed the row above "
+                "measures, because D2 -> D2b re-aims the clavicle as well as moving the "
+                "root. Read it as a part-wise figure, not as the root's own cost; "
+                "ROOT_ONLY minus D2 is that.")
             arm = outcome["1b_arm_precision_falls"]
             row(f"PARTWISE. arms-only precision, {s}",
                 "reported: arm pixels inside the person mask, with the oracle as ceiling",
@@ -2149,6 +2157,7 @@ def d2b_verdicts(report) -> list:
                 f"ORACLE {hid['ORACLE']}. Pre-registered to fall delivered -> D2, and it "
                 f"{'did' if hid['met'] else 'did NOT'}.")
             fold = outcome["2_folded_arms_score_higher"]
+            geo = _g(spw, "folded_arm_control_geometry", s, default={})
             row(f"I6 CONTROL. a body with both arms FOLDED ACROSS THE CHEST must not "
                 f"score higher than the delivery, {s}",
                 "whole-person IoU and precision must NOT rise",
@@ -2160,9 +2169,18 @@ def d2b_verdicts(report) -> list:
                 f"{fold['whole_precision']['ci95']}, recall "
                 f"{fold['whole_recall']['median_difference']} "
                 f"{fold['whole_recall']['ci95']}. NO GATE A CONSTANT CAN PASS, asked of I6 "
-                "itself: a person mask is ONE blob, so a limb inside the outline is free. "
-                "If a limb-collapsed body wins, the mask cannot be read as a "
-                "limb-placement gate and every arm figure scored through it inherits that.")
+                "itself, AND THE CLAIM IS NARROWER THAN THE HYPOTHESIS THAT SET IT. The "
+                "fold is real -- the hands come from "
+                f"{_g(geo, 'delivered', 'LeftHand')} / {_g(geo, 'delivered', 'RightHand')} mm "
+                f"of the UpperChest to "
+                f"{_g(geo, 'folded', 'LeftHand')} / {_g(geo, 'folded', 'RightHand')} mm "
+                "-- but it does NOT put the arm inside the outline: the hidden fraction "
+                "barely moves, because with four cameras around the subject no arm pose "
+                "projects inside the torso in all of them. What PASSES here is that I6 "
+                "penalises a WRONG FOLDED ARM POSE. The 'a limb inside the outline is "
+                "free' degenerate is untested and needs a SINGLE-camera version. I6 is "
+                "not shown to be a limb-PLACEMENT gate: precision alone spans zero on "
+                "subject 0.")
         corr = _g(spw, "part_split", "correspondence_check", default={})
         worst = max((v["displacement_separation"]["torso_vertex_displacement_median_mm"]
                      for v in corr.values()), default=None)
@@ -2201,7 +2219,7 @@ def d2b_verdicts(report) -> list:
             if not m:
                 continue
             r = m["whole_iou__ROOT_ONLY_minus_D2"]
-            c = m["whole_iou__CLAVICLE_ONLY_minus_D2"]
+            c = m["whole_iou__NON_ROOT_minus_D2"]
             row(f"PARTWISE (EXACT). the ROOT's own whole-person silhouette cost, {s}",
                 "the interval must contain 0 for the root to be free of cost",
                 None, r["median_difference"], r["ci95"],
@@ -2213,13 +2231,19 @@ def d2b_verdicts(report) -> list:
                 "moved by the per-frame root delta -- same pose, same mesh, same pixels "
                 "except the translation. FAIL here means the root placement has a "
                 "silhouette cost of its own that no joint instrument in this lane can see.")
-            row(f"PARTWISE (EXACT). the clavicle re-aim D2b induces, at D2's root, {s}",
+            row(f"PARTWISE (EXACT). everything about D2b that is NOT the root, at D2's "
+                f"root, {s}",
                 "reported beside the root's, on the same axis; the two are near-additive",
                 None, c["median_difference"], c["ci95"], True, REF_SILHOUETTE,
-                f"root {r['median_difference']} + clavicle {c['median_difference']} against "
+                f"root {r['median_difference']} + non-root {c['median_difference']} against "
                 f"a measured D2 -> D2b whole-person change of "
                 f"{round(_g(e, 'whole_iou', 'D2b', default=0.0) - _g(e, 'whole_iou', 'D2', default=0.0), 5)}. "
-                "The two terms are separable because one of them is a rigid translation.")
+                "The two terms are separable because one of them is a rigid translation. "
+                "NOT 'clavicle only', and the label was corrected: D2b minus the root "
+                "carries the clavicle re-aim AND the foot locals that "
+                "`project_generated_foot_contacts` rewrites inside contact runs, which "
+                "moved when the root did ([47, 42] -> [37, 60]). The clavicle dominates it "
+                "and is not alone in it.")
             u = e.get("upright_band_tilt_le_10deg") or {}
             ru = u.get("torso_iou__ROOT_ONLY_D2_pose_at_D2b_root_minus_D2") or {}
             row(f"PARTWISE (EXACT). the root's own cost on UPRIGHT frames only "
