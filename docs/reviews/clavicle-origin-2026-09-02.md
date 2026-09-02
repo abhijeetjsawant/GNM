@@ -1109,3 +1109,134 @@ left/right mirror of a fore-aft symmetric pose, and cannot see anything inside t
 and our mesh covers only about two thirds of the mask on *every* arm, so a 1–10 cm change is
 read against a large standing shape mismatch. Eight camera-subject cells is a reading, not a
 test. The arm/root separation is not made; §13.4 names the build that would make it.
+
+---
+
+## 14. Which part of the body is the fall in? The part-wise cut, and the control I6 never had
+
+Section 13 established that the silhouette's fall is present at full size on frames where
+the whole rig has moved 10 mm and the delivered hands have moved 144–188 mm, and named the
+build that would separate the two. This pass separates them a different way — by splitting
+the mesh instead of the pipeline — and adds the control I6 has never carried.
+
+`tools/compare/silhouette_partwise.py`, **instrument only**; `silhouette.py`'s outputs are
+untouched and its rasteriser, scorer, mask store and posed-mesh caches are imported.
+Regenerate: `PYTHONPATH=$PWD/src .venv/bin/python tools/compare/silhouette_partwise.py`
+(per-frame scores cached per arm, so a re-cut is free). Folded into `gate.json` as
+`d2b_root_placement.silhouette_partwise`; figure at `silhouette-partwise.png`. The
+folded-arm control build lives in `artifacts/compare/d2-clavicle/folded-arms/` and was
+exported through the **real** `export_animated_body_glb` and the **real**
+`blender_export_mesh.py`.
+
+**The split.** Dominant skin weight from the body asset the delivery was built from:
+ARMS = the clavicle chain and below (Shoulder, UpperArm, LowerArm, Hand, every finger),
+4364 of 13380 vertices and 8724 of 26756 faces; TORSO+LEGS = everything else, head
+included. A face goes wholly to the part owning two or three of its corners, so the two
+rasters partition the surface. The oracle is split the same way on SMPL-X weights, with
+the collars included so both meshes are cut at the same anatomical place.
+
+**Is the split labelling the right vertices?** The asset's weights label *asset* vertices
+while the raster uses *Blender-exported* ones. Equal counts are only suggestive, so the
+check is an anatomy-free one: under `delivered → D2`, where **the root moves 0.00 mm** and
+only the clavicle chain changes, the arm set's median vertex displacement is **70.7 and
+131.1 mm** while the torso set's is **exactly 0.0 mm**, with only 8.4 % of torso
+vertex-frames moving at all. A scrambled vertex order would make the two sets random halves
+of one mesh with identical distributions. (A weaker second check — agreement with a
+nearest-FK-joint labelling — reads 0.83 / 0.89 against a shuffled-label chance level of
+0.52 / 0.54. It does not reach 1.0 because nearest-*joint* and nearest-*weight* disagree at
+the shoulder cap and the armpit. An earlier version of the gate row demanded ≥ 0.90 of that
+second check; **that band was mine, invented without asking what the criterion does at the
+shoulder, and it was replaced by the control-derived one. The substitution is recorded
+rather than hidden.**)
+
+### 14.1 The pre-registered predictions, and whether each was met
+
+| | prediction | outcome |
+|---|---|---|
+| **1a** | torso+legs IoU unchanged `delivered → D2` | **NOT MET.** −0.0038 [−0.0128, −0.0009] and −0.0141 [−0.0154, −0.0031]. The premise was false: dominant-weight labelling says no *arm* joint is a vertex's largest influence, not that it has none. 8.4 % of torso vertex-frames move under a clavicle-only change. |
+| **1a** | D2 → D2b on torso+legs is D2b's own cost | **MET AS A FIGURE, SUPERSEDED AS AN ISOLATION.** −0.0307 [−0.0505, −0.0194] and −0.0185 [−0.0348, −0.0100] — material. But that arm also carries the further clavicle re-aim through the same weight bleed, so §14.2 isolates the root exactly instead. |
+| **1b** | arms-only precision falls `delivered → D2 → D2b` | **NOT MET, and refuted in direction on the first step.** It *rises* delivered → D2: 0.8175 → **0.8514** and 0.8086 → **0.8508**. D2b then lowers it to 0.7492 and 0.8263 — still above delivered on subject 1. Oracle ceiling 0.9285 / 0.8959. |
+| **1c** | the arm-hidden-inside-the-body fraction falls `delivered → D2` | **NOT MET, and refuted in direction on both subjects.** It *rises*: 0.5076 → 0.5225 → 0.5730 and 0.5481 → 0.6030 → 0.6586. Oracle 0.4547 / 0.5936. |
+| **2** | the folded-arm body scores HIGHER | **NOT MET — and this is the reassuring one.** Whole IoU −0.0384 [−0.0640, −0.0217] and −0.0420 [−0.0672, −0.0334]; recall −0.0436 and −0.0430. A limb-collapsed body scores **lower**. |
+
+**The reading behind 1b and 1c is refuted in its direction, and the correction matters.**
+The hypothesis was that D2 pulls the arms *out* onto a rig 190 mm too wide, losing
+precision. Measured, D2 does the opposite: it tucks the arms *in* — the hidden fraction
+rises and arm precision rises with it, because an arm inside the person is inside the mask.
+What falls is **recall**: the real performers' arms are out where our rig's are no longer,
+so the outline stops covering them. Arm precision up and whole-person recall down is one
+event, not two.
+
+### 14.2 The root's own silhouette cost, isolated exactly
+
+`root_translation` enters forward kinematics only at the Root joint, so changing it
+translates every skinned vertex by exactly that vector. Two arms therefore cost no render
+to construct and split `D2 → D2b` exactly:
+
+* **ROOT_ONLY** — D2's own rendered mesh moved by the per-frame root delta. Same pose, same
+  mesh, same pixels but the translation.
+* **CLAVICLE_ONLY** — D2b's mesh moved back. Same root as D2, D2b's arms.
+
+| | ROOT_ONLY − D2 (whole person) | CLAVICLE_ONLY − D2 (whole person) | sum | measured D2 → D2b |
+|---|---|---|---|---|
+| subject 0 | **−0.0216** [−0.0332, −0.0041] | **−0.0379** [−0.0582, −0.0200] | −0.0595 | −0.0606 |
+| subject 1 | **−0.0134** [−0.0457, −0.0013] | **−0.0225** [−0.0342, −0.0144] | −0.0359 | −0.0321 |
+
+Torso+legs only: ROOT_ONLY −0.0230 and −0.0145; CLAVICLE_ONLY −0.0099 and −0.0046.
+
+**Say it plainly: the root placement has a silhouette cost of its own, and no joint
+instrument in this lane can see it.** About 0.022 and 0.013 IoU whole-person, both
+intervals clear of zero, on a mesh that differs from its comparator by a rigid translation
+and nothing else. It is roughly a third of D2b's own fall; the clavicle re-aim that D2b
+induces is the other two thirds, and the two terms are near-additive.
+
+**And it is tilt-dependent, which reconciles this pass with §13.** On the upright band
+(tilt ≤ 10°, where the root moves 10–13 mm) the root's own cost on torso+legs is
+**−0.0048** [−0.0075, −0.0048] on subject 0 and **−0.0011** [−0.0045, +0.0039] on subject 1
+— the second spanning zero. §13 found the *whole-person* fall at full size on exactly those
+frames (−0.0445 and −0.0928). Both are true: where the root barely moves it barely costs,
+and the fall that remains there is the arms.
+
+### 14.3 The control I6 never had
+
+Both arms folded across the chest, built from the **delivered** track by re-aiming only the
+two UpperArm locals with the converter's own `_world_for_bone`; root and every other joint
+untouched.
+
+| | whole IoU | whole precision | whole recall |
+|---|---|---|---|
+| subject 0, folded − delivered | **−0.0384** [−0.0640, −0.0217] | −0.0181 [−0.0316, +0.0207] | −0.0436 [−0.0610, −0.0300] |
+| subject 1, folded − delivered | **−0.0420** [−0.0672, −0.0334] | −0.0308 [−0.0616, −0.0059] | −0.0430 [−0.0625, −0.0352] |
+
+**The degenerate loses, so I6's whole-person figure is not passed by a limb-collapsed
+body.** The prediction that it would go up is refuted, and the mechanism is recall: the
+performers' arms are outside the torso in the mask, so hiding ours forfeits their pixels.
+This is the "no gate a constant can pass" question asked of I6 itself, and I6 survives it —
+narrowly, on one degenerate, on one take. It does not make a person mask a limb-*placement*
+gate: precision alone barely moves on subject 0 (interval spans zero), so a mask still
+cannot tell a well-aimed arm from a badly-aimed one *inside* the outline. What it can see is
+an arm that stops covering the mask's arm.
+
+### 14.4 Which branch the data put us on
+
+**Both branches, with the arms about twice the root, and the root's share is real.** Over
+the whole take D2b's fall splits −0.022 / −0.013 IoU to the root and −0.038 / −0.023 to the
+clavicle re-aim it induces, on top of D2's own −0.008 / −0.018; on upright frames the root's
+share collapses to −0.005 and ~0 while the fall persists at −0.045 and −0.093. So the
+coordinator's first branch — the arms on a rig that is the wrong shape — carries most of it
+and all of it where the root is still. But the second branch is not empty: **the root
+placement costs measurable silhouette agreement, tilt-dependently, and nothing else in this
+lane would have found it.** Whether that cost means the placement is *wrong* is a different
+question, and this instrument cannot answer it: a silhouette scored against a body 190 mm
+too wide at the shoulders penalises moving anything toward where the cameras say it belongs.
+
+### 14.5 What this pass is blind to
+
+The part split cures "everything inside the outline is invisible" only for the two parts it
+cuts: an arm wrongly placed but still inside the arm region is not separated from a right
+one. Depth is still invisible, so is a left/right mirror of a fore-aft symmetric pose. The
+folded-arm control tests **one** degenerate; passing it is not a general statement that a
+person mask is a limb gate, and §14.3 says so. Every figure here is scored against a mesh
+whose shoulder span is 540 mm against 346 and 363 measured, and that mismatch is the
+background all of it is read against — the oracle reaches 0.76 / 0.72 on torso+legs where
+we reach 0.52 / 0.54. None of this says which placement is anatomically right.

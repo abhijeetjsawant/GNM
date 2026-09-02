@@ -1720,6 +1720,28 @@ def _delivered_shift() -> dict:
 
 
 SILHOUETTE_VS_TILT = OUT_DIR / "silhouette-vs-tilt.json"
+SILHOUETTE_PARTWISE = OUT_DIR / "silhouette-partwise.json"
+
+
+def silhouette_partwise_block() -> dict:
+    """The part-wise cut, folded in rather than recomputed.
+
+    `tools/compare/silhouette_partwise.py` writes it. It splits the mesh by dominant skin
+    weight and scores ARMS and TORSO+LEGS separately, which is the only way this lane has
+    to isolate D2b's OWN silhouette cost: the torso+legs vertices carry no clavicle-chain
+    weight, so between D2 and D2b they move by exactly the root shift and nothing else.
+    It also carries the control I6 never had -- a body with both arms folded across the
+    chest, scored against the same person masks.
+    """
+    if not SILHOUETTE_PARTWISE.exists():
+        return {"available": False,
+                "why_absent": f"{SILHOUETTE_PARTWISE} not written yet",
+                "regenerate": "PYTHONPATH=$PWD/src .venv/bin/python "
+                              "tools/compare/silhouette_partwise.py"}
+    report = json.loads(SILHOUETTE_PARTWISE.read_text())
+    report["available"] = True
+    report["figure"] = "artifacts/compare/d2-clavicle/silhouette-partwise.png"
+    return report
 
 
 def silhouette_vs_tilt_block() -> dict:
@@ -2091,6 +2113,126 @@ def d2b_verdicts(report) -> list:
             "quoted as one. A shift along a camera's viewing ray is depth and a silhouette "
             "cannot see it; the per-camera ray angles are in `per_camera_ray`.")
 
+    spw = d2b.get("silhouette_partwise") or {}
+    if spw.get("available"):
+        for s in ("subject_00", "subject_01"):
+            outcome = _g(spw, "pre_registered_outcomes", s, default={})
+            if not outcome:
+                continue
+            same = outcome["1a_torso_unchanged_delivered_to_D2"]
+            row(f"PARTWISE. torso+legs-only IoU is UNCHANGED delivered -> D2, {s}",
+                "the interval must contain 0 -- those vertices carry no clavicle-chain "
+                "weight and D2 moves no root, so this arm can only be identical",
+                None, same["difference"], same["ci95"], same["met"], REF_SILHOUETTE,
+                "a failure here indicts the SPLIT, not the pipeline.")
+            own = outcome["1a_D2b_own_cost_on_torso_and_legs"]
+            row(f"PARTWISE. D2b's OWN silhouette cost, torso+legs only, {s}",
+                "material == the interval clears -0.003 IoU. Between D2 and D2b these "
+                "vertices move by exactly the root shift and nothing else",
+                None, own["difference"], own["ci95"], not own["material"],
+                REF_SILHOUETTE,
+                "THE ISOLATED FIGURE, and the one that says whether the root placement has "
+                "a silhouette cost of its own that no joint instrument can see. PASS here "
+                "means it does not.")
+            arm = outcome["1b_arm_precision_falls"]
+            row(f"PARTWISE. arms-only precision, {s}",
+                "reported: arm pixels inside the person mask, with the oracle as ceiling",
+                arm["delivered"], arm["D2b"], None, True, REF_SILHOUETTE,
+                f"delivered {arm['delivered']} -> D2 {arm['D2']} -> D2b {arm['D2b']}; "
+                f"ORACLE ceiling {arm['ORACLE_ceiling']}. Pre-registered to fall, and it "
+                f"{'did' if arm['met'] else 'did NOT fall monotonically'}.")
+            hid = outcome["1c_hidden_fraction_falls_delivered_to_D2"]
+            row(f"PARTWISE. arm pixels hidden inside the body's own torso raster, {s}",
+                "reported: the fraction a person mask cannot charge for",
+                hid["delivered"], hid["D2b"], None, True, REF_SILHOUETTE,
+                f"delivered {hid['delivered']} -> D2 {hid['D2']} -> D2b {hid['D2b']}; "
+                f"ORACLE {hid['ORACLE']}. Pre-registered to fall delivered -> D2, and it "
+                f"{'did' if hid['met'] else 'did NOT'}.")
+            fold = outcome["2_folded_arms_score_higher"]
+            row(f"I6 CONTROL. a body with both arms FOLDED ACROSS THE CHEST must not "
+                f"score higher than the delivery, {s}",
+                "whole-person IoU and precision must NOT rise",
+                None, fold["whole_iou"]["median_difference"],
+                fold["whole_iou"]["ci95"], not fold["met"], REF_SILHOUETTE,
+                f"IoU {fold['whole_iou']['median_difference']} "
+                f"{fold['whole_iou']['ci95']}, precision "
+                f"{fold['whole_precision']['median_difference']} "
+                f"{fold['whole_precision']['ci95']}, recall "
+                f"{fold['whole_recall']['median_difference']} "
+                f"{fold['whole_recall']['ci95']}. NO GATE A CONSTANT CAN PASS, asked of I6 "
+                "itself: a person mask is ONE blob, so a limb inside the outline is free. "
+                "If a limb-collapsed body wins, the mask cannot be read as a "
+                "limb-placement gate and every arm figure scored through it inherits that.")
+        corr = _g(spw, "part_split", "correspondence_check", default={})
+        worst = max((v["displacement_separation"]["torso_vertex_displacement_median_mm"]
+                     for v in corr.values()), default=None)
+        row("PARTWISE. the split labels the vertices it thinks it does",
+            "under a CLAVICLE-ONLY change (delivered -> D2, where the root moves 0.00 mm) "
+            "the torso+legs set's median vertex displacement must be ~0 while the arm "
+            "set's is large",
+            None, worst, None, worst is not None and worst < 0.01,
+            "the delivered mesh against the body asset it was built from",
+            "the asset's weights label ASSET vertices; the raster uses BLENDER-exported "
+            "ones, and equal counts (13380 / 26756) are only suggestive. This is the "
+            "check, and it needs no anatomy: a scrambled vertex order would make the two "
+            "labelled sets random halves of one mesh with identical displacement "
+            "distributions. Measured: arm "
+            + " / ".join(str(v["displacement_separation"]["arm_vertex_displacement_median_mm"])
+                         for v in corr.values())
+            + " mm against torso "
+            + " / ".join(str(v["displacement_separation"]["torso_vertex_displacement_median_mm"])
+                         for v in corr.values())
+            + " mm. A SECOND, weaker check -- agreement with a nearest-FK-joint labelling -- "
+              "reads "
+            + " / ".join(str(v["nearest_fk_joint"]["agreement_with_the_nearest_fk_joint"])
+                         for v in corr.values())
+            + " against a shuffled-label chance level of "
+            + " / ".join(str(v["nearest_fk_joint"]["chance_level_same_labels_shuffled"])
+                         for v in corr.values())
+            + ". It does not reach 1.0 because nearest-JOINT and nearest-WEIGHT disagree "
+              "at the shoulder cap and the armpit. AN EARLIER VERSION OF THIS ROW DEMANDED "
+              ">= 0.90 AGAINST THAT SECOND CHECK; that band was invented without asking "
+              "what the criterion does at the shoulder, and it was replaced by the "
+              "control-derived one above. The substitution is recorded rather than hidden.")
+
+        for s in ("subject_00", "subject_01"):
+            e = _g(spw, "subjects", s, default={})
+            m = e.get("margins") or {}
+            if not m:
+                continue
+            r = m["whole_iou__ROOT_ONLY_minus_D2"]
+            c = m["whole_iou__CLAVICLE_ONLY_minus_D2"]
+            row(f"PARTWISE (EXACT). the ROOT's own whole-person silhouette cost, {s}",
+                "the interval must contain 0 for the root to be free of cost",
+                None, r["median_difference"], r["ci95"],
+                r["ci95"] is not None and r["ci95"][0] <= 0.0 <= r["ci95"][1],
+                REF_SILHOUETTE,
+                "AN EXACT ISOLATION, not a part-wise proxy: `root_translation` enters "
+                "forward kinematics only at the Root joint, so changing it translates every "
+                "skinned vertex by exactly that vector. This arm is D2's OWN rendered mesh "
+                "moved by the per-frame root delta -- same pose, same mesh, same pixels "
+                "except the translation. FAIL here means the root placement has a "
+                "silhouette cost of its own that no joint instrument in this lane can see.")
+            row(f"PARTWISE (EXACT). the clavicle re-aim D2b induces, at D2's root, {s}",
+                "reported beside the root's, on the same axis; the two are near-additive",
+                None, c["median_difference"], c["ci95"], True, REF_SILHOUETTE,
+                f"root {r['median_difference']} + clavicle {c['median_difference']} against "
+                f"a measured D2 -> D2b whole-person change of "
+                f"{round(_g(e, 'whole_iou', 'D2b', default=0.0) - _g(e, 'whole_iou', 'D2', default=0.0), 5)}. "
+                "The two terms are separable because one of them is a rigid translation.")
+            u = e.get("upright_band_tilt_le_10deg") or {}
+            ru = u.get("torso_iou__ROOT_ONLY_D2_pose_at_D2b_root_minus_D2") or {}
+            row(f"PARTWISE (EXACT). the root's own cost on UPRIGHT frames only "
+                f"(tilt <= 10 deg), {s}",
+                "the interval must contain 0", None, ru.get("median_difference"),
+                ru.get("ci95"),
+                ru.get("ci95") is not None and ru["ci95"][0] <= 0.0 <= ru["ci95"][1],
+                REF_SILHOUETTE,
+                f"{u.get('frames')} frames, where the root moves 10-13 mm. Section 13 found "
+                "the whole-person fall at FULL SIZE on these frames; if the root were "
+                "carrying it, this row would be large. It is the cross-check between the "
+                "two passes.")
+
     reg = report.get("d2_regression_check", {})
     if reg.get("ok") is not None:
         row("META. extending this gate did not move any D2 figure",
@@ -2353,6 +2495,7 @@ def main() -> int:
         d2b["bit_identity"] = d2b_bit_identity()
     d2b["silhouette"] = silhouette_block()
     d2b["silhouette_vs_tilt"] = silhouette_vs_tilt_block()
+    d2b["silhouette_partwise"] = silhouette_partwise_block()
     report["d2b_root_placement"] = d2b
     report["d2b_gate"] = d2b_verdicts(report)
     report["d2b_verdict"] = ("PASS" if all(r["verdict"] == "PASS" for r in report["d2b_gate"])
