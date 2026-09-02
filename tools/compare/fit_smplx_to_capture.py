@@ -116,7 +116,12 @@ def main() -> None:
         print(f"{'MEAN ABSOLUTE ERROR':34s} {'':9s} {np.mean(errs_smplx):11.1f} {np.mean(errs_rig):9.1f}")
         report[f"subject_{s:02d}"] = {"betas": betas.round(4).tolist(), "limbs": rows,
                                       "mean_abs_error_mm": {"smplx": round(float(np.mean(errs_smplx)), 1),
-                                                            "our_rig": round(float(np.mean(errs_rig)), 1)}}
+                                                            "our_rig": round(float(np.mean(errs_rig)), 1)},
+                                      # the control: a 0.1 mm fit once put the head 624 mm BELOW the pelvis
+                                      "head_above_pelvis_mm": info["head_above_pelvis_mm"],
+                                      "anatomically_plausible": info["anatomically_plausible"],
+                                      "limb_rms_mm": round(float(info["limb_rms_mm"]), 1),
+                                      "beta_norm": round(float(info["beta_norm"]), 3)}
     out = ROOT / "artifacts/compare"
     out.mkdir(parents=True, exist_ok=True)
     (out / "smplx-shape-fit.json").write_text(json.dumps(report, indent=2))

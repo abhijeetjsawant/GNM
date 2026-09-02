@@ -869,6 +869,15 @@ measure A and all B, C and D are new, then we'd not know where the problem is."*
 That is the discipline this lane runs on and `tools/swap-harness/README.md`
 credits it correctly.
 
+> **2026-09-02 — the ladder is now a system, not a table.** `docs/SUBSTITUTION_LADDER.md`
+> is its plan of record: MAMMA divided as its own code divides it (12 stages, each with
+> its on-disk interface), ours beside each, one instrument per rung, both substitution
+> directions stated, and a replacement order. `tools/compare/ladder.py` aggregates only
+> JSON reports, keeps `docs/ladder-history.jsonl`, and renders `docs/substitution-ladder.html`.
+> The table below is kept as the record of 2026-08-30; **the ladder page supersedes it** and
+> now also carries rungs 6 (shape) and 7 (pose) from 2026-09-01, which this table predates.
+> `swap_true.py` and `association_swap.py` write reports as of today, so rows 1–3 are regenerable.
+
 **The ladder has pinned the front of the pipeline and nothing after triangulation.**
 Three states, and the third is the one that matters — some darkness is a day of
 work, some is a missing instrument, and confusing the two invites an

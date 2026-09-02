@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/docs/LADDER_STATUS.md\"; [ -f \"$f\" ] && cat \"$f\" || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

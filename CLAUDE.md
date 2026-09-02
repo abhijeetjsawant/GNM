@@ -24,12 +24,39 @@
   placement error and is a timebase error.
 
 ## Body capture lane
+- **RESUME PROTOCOL — read `docs/LADDER_STATUS.md` first in any body-lane session.** It is
+  generated from `docs/ladder-status.json` (the one source of truth for step state) and a
+  SessionStart hook in `.claude/settings.json` prints it. Never hand-edit either generated
+  view; move state only through `tools/compare/status.py` (`set`, `log`, `decide`, `render`).
+  The two plan documents stay hand-edited: `docs/LADDER_EXECUTION_PLAN.md` (what gets built,
+  in what order, gated by what) and `docs/SUBSTITUTION_LADDER.md` (what is measured and how).
+  **End of every step, in this order:** `status.py set <ID> done --report <path> --note "..."`
+  (every `set`/`log`/`decide` rewrites both views; `render` is only for hand-edited JSON)
+  → `.venv/bin/python tools/compare/ladder.py` → republish the three
+  pages to their existing URLs (ladder, board, and the progress page for the non-technical
+  reader) → commit the step's files together. Worktree agents branch from the last commit,
+  so uncommitted tooling is invisible to them. Pages: ladder
+  <https://claude.ai/code/artifact/56361ab8-b5a0-456d-9171-4d6a09d6c132>, board
+  <https://claude.ai/code/artifact/cf83ef29-a4b7-4afd-9031-0918e8eb6f35>, progress
+  <https://claude.ai/code/artifact/abd3a70c-4c51-4251-8b2f-344f095998c6>.
 - **Head, feet and hands: `docs/HEAD_FEET_HANDS_PLAN.md`.** All three are *input*
   problems, not solver problems — the adapter maps 17 of SOMA-77's 77 joints and drops
   every finger, toe and `HeadEnd`. Read it before touching any of those three regions.
 - **Start at `docs/BODY_LANE_PLAN.md`.** It is the plan of record: what is measured,
   what has been withdrawn, what is open, and the build sequence with its bands. Read
   sections 0–2 before doing anything in this lane.
+- **Measuring against MAMMA goes through the substitution ladder: `docs/SUBSTITUTION_LADDER.md`.**
+  One part at a time, MAMMA's retained output supplying the rest, one instrument per rung
+  with its blindness beside it. `tools/compare/ladder.py` reads only JSON reports under
+  `artifacts/`, appends `docs/ladder-history.jsonl` when a figure changes, and renders
+  `docs/substitution-ladder.html`, published at
+  <https://claude.ai/code/artifact/56361ab8-b5a0-456d-9171-4d6a09d6c132> (republish with that
+  `url`). Run it after any instrument writes a report; a number
+  that lives only in a document is *instrument missing*, not a measurement.
+  **Execution order and gates: `docs/LADDER_EXECUTION_PLAN.md`** — three lanes (hardware,
+  instruments, delivery), one part per step, the MAMMA arm reports and never selects a
+  constant. `THORAX_SMOOTHING_FRAMES` was selected on the MAMMA oracle arm and is an open
+  leak (I8) until re-selected from synthetic or owned data.
 - **Keep the parity board current: `docs/parity-board.html`**, published at
   <https://claude.ai/code/artifact/cf83ef29-a4b7-4afd-9031-0918e8eb6f35>. It is the
   one-page view of where each pipeline stage stands — measured and holding,

@@ -13,7 +13,8 @@ Also un-confounds the two channels the first pass credited together: it fed MAMM
 `visibilities` as the confidence, so 7.3 mm was its positions PLUS its visibility
 gating through our solver.
 """
-import pickle, sys, numpy as np
+import json, pickle, sys, numpy as np
+from pathlib import Path
 sys.path.insert(0,"src")
 from autoanim_gnm import commercial_multiview as cm
 B="artifacts/mamma/mamma-4cam-five-second-v2/output/%s/pushing_and_lifting_from_ground"
@@ -26,6 +27,9 @@ V=np.stack([np.load(f"{B%'ma_2d'}/{c}.npz")["visibilities"] for c in CAMS])
 FRAMES=range(0,150,5)
 print(f"\n{'confidence source':>26} {'subject':>8} {'n/512':>8} {'true-correspondence err':>25}")
 print("-"*72)
+REPORT={"note":"agreement with an instrument, not accuracy",
+        "rung":"MAMMA 2D + MAMMA calibration -> OUR triangulate_point, scored against MAMMA's exact 512 landmarks (verts_512 @ pred_vertices)",
+        "frames":list(FRAMES),"arms":{}}
 for label, use_vis in (("MAMMA visibility", True), ("uniform (positions only)", False)):
     meds=[]
     for subj in (0,1):
@@ -47,4 +51,11 @@ for label, use_vis in (("MAMMA visibility", True), ("uniform (positions only)", 
         e=np.asarray(err)*1000; meds.append(np.median(e))
         print(f"{label:>26} {subj:>8} {np.mean(got):>6.0f} "
               f"{np.median(e):>17.1f} mm  p90 {np.percentile(e,90):.1f}")
+        REPORT["arms"].setdefault(label,{})[f"subject_{subj:02d}"]={
+            "landmarks_triangulated_of_512":float(np.mean(got)),
+            "median_mm":float(np.median(e)),"p90_mm":float(np.percentile(e,90))}
     print(f"{'':>26} {'MEAN':>8} {'':>8} {np.mean(meds):>17.1f} mm")
+    REPORT["arms"][label]["mean_of_subject_medians_mm"]=float(np.mean(meds))
+out=Path("artifacts/compare"); out.mkdir(parents=True,exist_ok=True)
+(out/"swap-2d-into-our-triangulation.json").write_text(json.dumps(REPORT,indent=2))
+print(f"wrote {out/'swap-2d-into-our-triangulation.json'}")

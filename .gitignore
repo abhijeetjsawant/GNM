@@ -18,3 +18,9 @@ native/a2f-runner/.build/
 
 # Local secrets. Never commit.
 .env
+
+# Claude Code: personal overrides and worktrees stay local; .claude/settings.json is shared
+.claude/settings.local.json
+.claude/worktrees/
+# Codex consult thread id (tools/codex skill); local only
+.context/

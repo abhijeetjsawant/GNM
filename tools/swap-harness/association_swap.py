@@ -26,6 +26,7 @@ only the system interpreter has torch here.
 
     python3 tools/swap-harness/association_swap.py
 """
+import json
 import sys
 from pathlib import Path
 import numpy as np
@@ -192,6 +193,27 @@ print(f"    in contact  (n={_mc.size:4d}): min {_mc.min():+.1f}  p05 {np.percent
 print(f"    apart       (n={_mf.size:4d}): min {_mf.min():+.1f}  p05 {np.percentile(_mf,5):+.1f}  "
       f"median {np.median(_mf):+.1f}")
 
+REPORT = {
+    "note": "agreement with truth-grade subject labels from MAMMA's ma_2d; MAMMA is an instrument, never shipped",
+    "rung": "MAMMA 2D + MAMMA calibration -> OUR associate_frame_graph, labels stripped and shuffled, no temporal history",
+    "frames": int(frames), "landmarks_scored": int(len(SUBSET)),
+    "degenerate_check": {
+        "centroid_separation_mm": {"min": float(separation.min()), "p05": float(np.percentile(separation, 5)),
+                                   "median": float(np.median(separation))},
+        "closest_surface_mm": {"min": float(surface.min()), "p05": float(np.percentile(surface, 5)),
+                               "median": float(np.median(surface))},
+        "contact_frames_within_50mm": int(CONTACT.sum()),
+    },
+    "epipolar_margin_px_symmetric_native": {
+        "all": {"n": int(m.size), "min": float(m.min()), "p05": float(np.percentile(m, 5)),
+                "median": float(np.median(m)), "wrong_pairing_cheaper": int((m < 0).sum())},
+        "in_contact": {"n": int(_mc.size), "min": float(_mc.min()), "p05": float(np.percentile(_mc, 5)),
+                       "median": float(np.median(_mc))},
+        "apart": {"n": int(_mf.size), "min": float(_mf.min()), "p05": float(np.percentile(_mf, 5)),
+                  "median": float(np.median(_mf))},
+    },
+    "arms": {},
+}
 print("\n--- association ---")
 for label, (uv, oc, off) in (
         ("uniform conf", (False, None, 0)),
@@ -202,5 +224,12 @@ for label, (uv, oc, off) in (
         sw, u, d = run(use_visibility=uv, offset_cam=oc, offset=off)
         print(f"  {label:>16}: switches {sw:3d} / {frames*2} slot-frames   "
               f"unassigned camera-slots {u:4d}   decided {d}")
+        REPORT["arms"][label.strip()] = {"switches": int(sw), "slot_frames": int(frames * 2),
+                                         "unassigned_camera_slots": int(u), "decided": int(d)}
     except Exception as exc:
         print(f"  {label:>16}: ABORTED -- {type(exc).__name__}: {exc}")
+        REPORT["arms"][label.strip()] = {"aborted": f"{type(exc).__name__}: {exc}"}
+_out = ROOT / "artifacts/compare"
+_out.mkdir(parents=True, exist_ok=True)
+(_out / "association-swap.json").write_text(json.dumps(REPORT, indent=2))
+print(f"wrote {_out / 'association-swap.json'}")
