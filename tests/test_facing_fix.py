@@ -355,3 +355,121 @@ def test_the_geometry_route_turns_the_mesh_inside_out() -> None:
     mirrored = vertices * (-1.0, 1.0, 1.0)
     assert original * signed_volume(mirrored) < 0.0
     assert np.isclose(signed_volume(mirrored), -original, rtol=1e-9)
+
+
+# ------------------------------------------------- site 7: the finger rest curl, a POSE
+# `FINGER_REST_CURL_DEG` is a pose, not a measurement, and its side sign moved with the
+# skeleton in the D1 (fix) repair. No gate in this lane can see a pose -- these three tests
+# are what stands behind that sign, beside the renders in
+# `artifacts/compare/d1-fix/hand-s{0,1}-{Left,Right}-{BEFORE,AFTER}.jpg`.
+
+def _finger_joints():
+    from autoanim_gnm.body import DETAILED_HUMANOID
+
+    parts = ("Thumb", "Index", "Middle", "Ring", "Little")
+    return [j for j in DETAILED_HUMANOID.joints if any(p in j.name for p in parts)]
+
+
+def test_the_finger_rest_curl_displaces_no_joint_at_all() -> None:
+    """MEASURED, and it is the answer to "do the hands now curl backwards": they cannot,
+    because the curl moves no joint in either direction.
+
+    `_finger_rest_local` rotates each finger joint about its LOCAL X, and every finger
+    segment's rest offset is `(length, 0, 0)` -- along that same X. A rotation about an
+    axis does not move a vector lying on it, so the constant is a TWIST of each finger
+    about its own long bone, not a flexion, and the fingertips do not move by a micron.
+
+    The comment in `commercial_multiview.py` calls X "the flexion axis for every finger
+    joint in this skeleton" and that is wrong: the proximal offsets spread along local Z
+    (index +0.030 m, little -0.038 m), so Z is the axis across the knuckles and flexion is
+    a rotation about it. That is a PRE-EXISTING defect, older than the handedness repair
+    and not fixed by it, and changing the axis would be a new pose needing its own gate --
+    so it is asserted here rather than corrected, to keep it on the record.
+    """
+    from autoanim_gnm.body import DETAILED_HUMANOID, forward_kinematics_positions
+    from autoanim_gnm.commercial_multiview import _finger_rest_local
+
+    count = len(DETAILED_HUMANOID.joints)
+    identity = np.zeros((1, count, 4))
+    identity[..., 3] = 1.0
+    curled = identity.copy()
+    for index, joint in enumerate(DETAILED_HUMANOID.joints):
+        curled[0, index] = _finger_rest_local(joint.name)
+
+    root = np.zeros((1, 3))
+    straight = forward_kinematics_positions(root, identity, skeleton=DETAILED_HUMANOID)[0]
+    posed = forward_kinematics_positions(root, curled, skeleton=DETAILED_HUMANOID)[0]
+    assert np.abs(posed - straight).max() == 0.0
+
+    # ...and the reason, stated as geometry rather than as prose
+    for joint in _finger_joints():
+        offset = np.asarray(joint.rest_translation_m, dtype=np.float64)
+        parent = DETAILED_HUMANOID.joints[joint.parent].name
+        if any(p in parent for p in ("Thumb", "Index", "Middle", "Ring", "Little")):
+            assert offset[1] == 0.0 and offset[2] == 0.0, joint.name
+
+
+@pytest.mark.parametrize("side_sign", [(+1.0), (-1.0)])
+def test_the_finger_curl_sign_follows_the_bone_and_not_its_name(side_sign: float) -> None:
+    """Why the sign had to flip with the skeleton, and the proof that doing so left every
+    physical hand exactly as it was.
+
+    The curl's sign must track the direction the bone itself points, not the string in its
+    name. Before the repair the joint named `LeftIndexProximal` sat at x = -0.082 and
+    curled with sign -1; after it, the joint named `RightIndexProximal` sits at x = -0.082
+    and curls with sign -1. Same bone, same roll -- the relabel moved the name and the sign
+    together, so no physical finger changed. Had the sign stayed with the NAME, every
+    finger on both hands would have reversed its roll and nothing in this lane would have
+    reported it.
+    """
+    from autoanim_gnm.commercial_multiview import _finger_rest_local
+
+    checked = 0
+    for joint in _finger_joints():
+        x = joint.rest_translation_m[0]
+        if abs(x) < 1e-9 or np.sign(x) != side_sign:
+            continue
+        # xyzw; the x component of a rotation about X carries the angle's sign
+        assert np.sign(_finger_rest_local(joint.name)[0]) == np.sign(x), joint.name
+        checked += 1
+    assert checked >= 10
+
+
+def test_the_two_hands_still_roll_in_opposite_directions_a_standing_defect() -> None:
+    """A PRE-EXISTING defect, asserted so that it stays visible and cannot be quietly
+    changed without a gate. It is not introduced by the handedness repair and is not fixed
+    by it: the same statement held before, with the two signs merely exchanged.
+
+    The two hands are exact mirror images in x -- the rest offsets satisfy it to machine
+    precision. A pose that is mirror-symmetric must therefore satisfy
+    `M R_left M = R_right` with `M = diag(-1, 1, 1)`. For a rotation about X that reduces
+    to `R_left = R_right`, because conjugating a rotation about the mirror's own normal
+    leaves it unchanged. The code uses OPPOSITE signs on the two hands, so the two hands
+    roll their flesh in opposite physical directions.
+
+    It is invisible in every gate this lane owns: the curl displaces no joint (above), and
+    a few degrees of roll about a finger's own axis moves the skin by under 2 mm, which no
+    silhouette at 960x540 can resolve. If this test ever fails, someone has made the hands
+    symmetric -- check the renders, then invert this assertion rather than deleting it.
+    """
+    from scipy.spatial.transform import Rotation
+
+    from autoanim_gnm.body import DETAILED_HUMANOID
+    from autoanim_gnm.commercial_multiview import _finger_rest_local
+
+    mirror = np.diag([-1.0, 1.0, 1.0])
+    names = list(DETAILED_HUMANOID.names)
+    offsets_mirror, rotations_mirror = [], []
+    for joint in _finger_joints():
+        if not joint.name.startswith("Left"):
+            continue
+        twin = "Right" + joint.name.removeprefix("Left")
+        left = np.asarray(joint.rest_translation_m, dtype=np.float64)
+        right = np.asarray(
+            DETAILED_HUMANOID.joints[names.index(twin)].rest_translation_m, dtype=np.float64)
+        offsets_mirror.append(np.allclose(mirror @ left, right, atol=1e-12))
+        rotations_mirror.append(np.allclose(
+            mirror @ Rotation.from_quat(_finger_rest_local(joint.name)).as_matrix() @ mirror,
+            Rotation.from_quat(_finger_rest_local(twin)).as_matrix(), atol=1e-12))
+    assert offsets_mirror and all(offsets_mirror), "the two hands' GEOMETRY does mirror"
+    assert not any(rotations_mirror), "the two hands' rest CURL does not, and did not before"

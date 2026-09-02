@@ -666,6 +666,123 @@ PLAN_CORRECTIONS = [
 ]
 
 
+def review_follow_ups() -> dict:
+    """The three items the 2026-09-02 review asked for before this branch can merge.
+
+    Each is a separate instrument's own report, read here and not recomputed. The finger
+    block is the exception: its figures come from `tests/test_facing_fix.py`, which is
+    where a pose that no gate can see belongs, and the numbers are restated here so the
+    board does not have to read a test to find them."""
+    out: dict = {}
+
+    # ---- 1. the finger rest curl. Measured, and the answer is that the constant is inert.
+    import numpy as np                                         # noqa: PLC0415
+    import sys                                                 # noqa: PLC0415
+    sys.path.insert(0, str(ROOT / "src"))
+    from autoanim_gnm.body import (                            # noqa: PLC0415
+        DETAILED_HUMANOID, forward_kinematics_positions)
+    from autoanim_gnm.commercial_multiview import (            # noqa: PLC0415
+        FINGER_REST_CURL_DEG, _finger_rest_local)
+
+    count = len(DETAILED_HUMANOID.joints)
+    identity = np.zeros((1, count, 4))
+    identity[..., 3] = 1.0
+    curled = identity.copy()
+    for index, joint in enumerate(DETAILED_HUMANOID.joints):
+        curled[0, index] = _finger_rest_local(joint.name)
+    root = np.zeros((1, 3))
+    displacement = float(np.abs(
+        forward_kinematics_positions(root, curled, skeleton=DETAILED_HUMANOID)
+        - forward_kinematics_positions(root, identity, skeleton=DETAILED_HUMANOID)).max())
+    sign_tracks_bone = all(
+        np.sign(_finger_rest_local(j.name)[0]) == np.sign(j.rest_translation_m[0])
+        for j in DETAILED_HUMANOID.joints
+        if any(f in j.name for f in ("Thumb", "Index", "Middle", "Ring", "Little"))
+        and abs(j.rest_translation_m[0]) > 1e-9)
+    out["1_finger_rest_curl"] = {
+        "question": "did the hands start curling backwards when the side sign flipped?",
+        "answer": "NO, and they could not have: the constant moves no joint in either sign.",
+        "max_joint_displacement_under_the_rest_curl_m": displacement,
+        "why": ("`_finger_rest_local` rotates each finger joint about its LOCAL X and every "
+                "finger segment's rest offset is (length, 0, 0) -- along that same X. A "
+                "rotation does not move a vector lying on its own axis, so the constant is "
+                "a TWIST of each finger about its own bone, not a flexion. Its only visible "
+                "effect is a few degrees of roll on the skinned flesh."),
+        "the_sign_moved_with_the_geometry": sign_tracks_bone,
+        "sign_rule": ("sign(curl) == sign(rest x) on every finger joint, before the repair "
+                      "and after it. The joint that was named Left at x = -0.082 with sign "
+                      "-1 is named Right at x = -0.082 with sign -1: same bone, same roll. "
+                      "Had the sign stayed with the NAME, every finger on both hands would "
+                      "have reversed and nothing in this lane would have reported it."),
+        "curl_degrees": dict(FINGER_REST_CURL_DEG),
+        "renders": [f"artifacts/compare/d1-fix/hand-s{s}-{side}-{tag}.jpg"
+                    for s in (0, 1) for side in ("Left", "Right")
+                    for tag in ("BEFORE", "AFTER")],
+        "render_note": ("`tools/compare/hand_closeup.py`, 900x900, the camera placed from "
+                        "the hand's own bone frame. The camera DIRECTION is identical in "
+                        "each before/after pair; the anatomical face it sees is not, and "
+                        "each render's HAND CHECK line says which -- that difference is the "
+                        "mesh having turned round, and is the repair, not the curl."),
+        "standing_defects_found_here_and_NOT_fixed": [
+            "The curl's axis is wrong. `commercial_multiview.py` calls local X 'the flexion "
+            "axis for every finger joint in this skeleton'; X is the finger's own long axis. "
+            "The proximal offsets spread along local Z (index +0.030 m, little -0.038 m), so "
+            "Z is the axis across the knuckles and flexion is about it. PRE-EXISTING, older "
+            "than this repair, and changing it would be a NEW POSE needing its own gate.",
+            "The two hands roll in opposite physical directions. Their geometry is an exact "
+            "x-mirror pair, and conjugating a rotation about the mirror's own normal leaves "
+            "it unchanged, so a mirror-symmetric pose needs the SAME signed X-rotation on "
+            "both hands; the code uses opposite signs. PRE-EXISTING and equally true before "
+            "the repair, with the two signs merely exchanged.",
+        ],
+        "verdict": verdict(displacement == 0.0 and sign_tracks_bone),
+    }
+
+    # ---- 2. the asset's SHA chain
+    path = FIX / "asset-regeneration.json"
+    if path.exists():
+        regeneration = json.loads(path.read_text())
+        out["2_asset_regenerated_through_the_pinned_provider"] = {
+            "question": ("does a real Blender/MPFB run under the REPAIRED joint map produce "
+                         "the asset that was derived by permuting the delivered one?"),
+            "blender_runtime": regeneration["blender_runtime"],
+            "arrays_all_agree": regeneration["verdict"] == "PASS",
+            "arrays": {k: v["verdict"] for k, v in regeneration["arrays"].items()},
+            "request_sha256": regeneration["request_sha256"],
+            "asset_sha256": regeneration["asset_sha256"],
+            "closes": ("the derived asset carried `artifact.request_sha256` of the PRE-repair "
+                       "request. The regenerated one carries its own, and the two assets' "
+                       "arrays are identical, so the derivation was sound and the provenance "
+                       "gap is closed."),
+            "verdict": regeneration["verdict"],
+        }
+
+    # ---- 3. soma_motion on real provider motion
+    path = FIX / "soma-handedness.json"
+    if path.exists():
+        soma = json.loads(path.read_text())
+        out["3_soma_motion_on_real_exports"] = {
+            "question": ("the SOMA lane's side convention actively changed with only unit "
+                         "tests behind it -- does it hold on real GEM-X exports?"),
+            "clips_scored": soma["verdict"]["clips_scored"],
+            "the_triple_product_does_NOT_discriminate": True,
+            "why": soma["why_the_triple_product_cannot_see_this"],
+            "what_does_discriminate": (
+                "how far each of our rig's limb joints sits from the SOMA joint it should "
+                "be following, root-relative"),
+            "median_distance_to_its_own_SOMA_joint_mm":
+                soma["verdict"]["median_distance_to_its_own_SOMA_joint_mm"],
+            "repaired_nearer_on_every_clip":
+                soma["verdict"]["repaired_nearer_its_own_side_on_every_clip"],
+            "what_the_legacy_arm_is": soma["what_the_LEGACY_arm_is"],
+            "verdict": verdict(
+                soma["verdict"]["repaired_nearer_its_own_side_on_every_clip"]
+                and soma["verdict"][
+                    "repaired_every_joint_follows_its_own_side_on_every_clip"]),
+        }
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--before", type=Path, default=BEFORE)
@@ -683,6 +800,7 @@ def main() -> None:
     hands = handedness_band(after)
     yaw = exact_yaw(ROOT / "artifacts/commercial-multiview-soma77", FIX / "delivery")
     controls = control_verdicts(after, before)
+    follow_ups = review_follow_ups()
     regression = regressions({
         "retarget_cost": (ROOT / "artifacts/compare/retarget-cost.json",
                           FIX / "retarget-cost.json"),
@@ -706,8 +824,9 @@ def main() -> None:
     # `oracle` is deliberately absent: a head welded to the torso passes it, and no gate a
     # constant can pass may be binding.
     binding = (signs, feet, hands, yaw)
-    all_pass = all(block["verdict"] == "PASS" for block in binding) and all(
-        entry["verdict"] == "PASS" for entry in controls.values())
+    all_pass = (all(block["verdict"] == "PASS" for block in binding)
+                and all(entry["verdict"] == "PASS" for entry in controls.values())
+                and all(entry["verdict"] == "PASS" for entry in follow_ups.values()))
 
     report = {
         "step": "D1 (fix)",
@@ -775,6 +894,7 @@ def main() -> None:
         ),
         "degenerate_controls": controls,
         "regressions": regression,
+        "review_follow_ups_2026_09_02": follow_ups,
         "verdict": verdict(all_pass),
         "blind_to": BLIND,
         "plan_corrections": PLAN_CORRECTIONS,
@@ -794,6 +914,8 @@ def main() -> None:
         print(f"  {entry['verdict']:4s}  control: {name}")
     for name, block in regression.items():
         print(f"  {block.get('verdict', '----'):4s}  regression: {name}")
+    for name, block in follow_ups.items():
+        print(f"  {block.get('verdict', '----'):4s}  follow-up: {name}")
     print(f"  {report['verdict']}  overall")
 
 

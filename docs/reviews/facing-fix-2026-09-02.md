@@ -370,7 +370,118 @@ New here, and belonging to this gate rather than to D1:
   claim in either direction.
 * One take, two performers, 150 correlated frames. Nothing generalises past this fixture.
 
-## 10. Sequencing
+## 10. Review follow-ups, 2026-09-02
+
+Three items the review asked for before this branch can merge. All three are in
+`facing-fix-gate.json` under `review_follow_ups_2026_09_02`.
+
+### 10.1 The finger curl — the constant is inert, and the sign moved with the geometry
+
+**The hands do not curl backwards, and they could not have.** Measured: the rest curl's
+maximum joint displacement is **0.000000 mm**, in either sign. `_finger_rest_local` rotates
+each finger joint about its **local X**, and every finger segment's rest offset is
+`(length, 0, 0)` — along that same X. A rotation does not move a vector lying on its own
+axis, so the constant is a **twist of each finger about its own bone**, not a flexion. Its
+only visible effect is a few degrees of roll on the skinned flesh, under 2 mm of skin
+travel.
+
+**The sign was right to flip**, and the rule states why without appealing to intent:
+`sign(curl) == sign(rest x)` on every finger joint, **before the repair and after it**. The
+joint named `LeftIndexProximal` at x = −0.082 curled with sign −1; after the relabel the
+joint at x = −0.082 is named `RightIndexProximal` and curls with sign −1. **Same bone, same
+roll — no physical finger changed.** Had the sign stayed with the *name*, every finger on
+both hands would have reversed and nothing in this lane would have reported it. Three tests
+in `tests/test_facing_fix.py`.
+
+**Renders**, four hands × before/after, `tools/compare/hand_closeup.py` at 900×900 with the
+camera placed from the hand's own bone frame:
+`artifacts/compare/d1-fix/hand-s{0,1}-{Left,Right}-{BEFORE,AFTER}.jpg`. The camera
+*direction* is identical within each pair; the anatomical face it sees is not, and each
+render's `HAND CHECK` line says which — that difference is the mesh having turned round.
+All eight read as ordinary relaxed hands: fingers straight, no hyperextension, thumb where
+a thumb goes.
+
+**Two standing defects found here and deliberately NOT fixed**, both pre-existing and
+neither introduced by this repair:
+
+1. **The curl's axis is wrong.** The comment calls local X *"the flexion axis for every
+   finger joint in this skeleton"*; X is the finger's own long axis. The proximal offsets
+   spread along local **Z** (index +0.030 m, little −0.038 m), so Z is the axis across the
+   knuckles and flexion is about it. Changing it would be a **new pose**, not a convention
+   change, and needs its own gate.
+2. **The two hands roll in opposite physical directions.** Their geometry is an exact
+   x-mirror pair (verified to machine precision), and conjugating a rotation about the
+   mirror's own normal leaves it unchanged, so a mirror-symmetric pose requires the *same*
+   signed X-rotation on both hands. The code uses opposite signs. Equally true before the
+   repair, with the two signs merely exchanged.
+
+### 10.2 The asset's SHA chain — closed by a real provider run
+
+Regenerated through the pinned **Blender 4.5.11 LTS** (codesign verified, Gatekeeper
+notarised) and **MPFB 2.0.16** under the repaired `DEFAULT_MPFB_JOINT_MAP`, into
+`artifacts/compare/d1-fix/body-run-regenerated/`. The existing
+`.cache/.../run/detailed-hands` was not touched.
+
+| array | comparison | result |
+|---|---|---|
+| `vertices_m`, `triangles`, `joint_indices`, `joint_weights`, `joint_names`, `parents`, `neck_seam_vertex_indices` | exact equality | **identical** |
+| `local_rest_matrices`, `inverse_bind_matrices`, `gnm_head_socket_matrix` | max absolute difference | **0.0** |
+
+**Every array is bit-identical to the derived asset**, so the permutation derivation was
+sound and its only defect was provenance. `request_sha256` moves from
+`fbed121a…` (delivered, `LeftUpperArm → upperarm01.R`) to
+**`fbd9784b…`** (regenerated, `LeftUpperArm → upperarm01.L`), and the new manifest binds to
+its own request. The npz digests differ (`27498e69…` delivered, `518e1052…` derived,
+**`257f2472…`** regenerated) because `np.savez` writes its own container; the arrays are
+what must agree, and they do.
+
+### 10.3 `soma_motion` on real exports — and the triple product cannot see it
+
+Six real GEM-X/Kimodo exports on disk, so this is **not** unit-test-only:
+`autoanim_dialogue/amy-cuddy-dialogue-body`, `autoanim_squat/research-squat-640`,
+`autoanim_will_acting/will-stephen-acting-body`, `autoanim_real/autoanim_fixture`,
+`cpu_smoke/autoanim_fixture`, `autoanim_csg_dialogue/csg-dialogue-upper-body`.
+`tools/compare/soma_handedness.py`.
+
+**The handedness triple product reads −1 on SOMA's own joints, −1 on our rig under the
+repaired mapping and −1 under the swapped one, on all six clips. It does not
+discriminate.** That is the main finding of this item, and the reason is structural:
+`soma_motion` is a *rotation* retarget, so our rig's joint positions come from **our** rest
+skeleton posed by SOMA-derived rotations, and the bone named `LeftUpperArm` sits on the
+rig's left whatever mapping drives it. A swapped mapping leaves every bone on its own side
+and puts the **other arm's motion** on it — and a sign that measures where the bones *are*
+cannot see which motion they are *doing*. Same class as *"a length invariant cannot score
+direction"*.
+
+What discriminates is **distance**: how far each of our rig's limb joints sits from the
+SOMA joint it should be following, root-relative.
+
+| clip | repaired | with the compensation left in |
+|---|---:|---:|
+| amy-cuddy-dialogue-body | **91.9 mm** | 541.7 mm |
+| research-squat-640 | **92.9 mm** | 573.8 mm |
+| will-stephen-acting-body | **111.8 mm** | 445.1 mm |
+| autoanim_real/autoanim_fixture | **125.4 mm** | 426.0 mm |
+| cpu_smoke/autoanim_fixture | **126.2 mm** | 389.5 mm |
+| csg-dialogue-upper-body | **95.4 mm** | 540.4 mm |
+
+Repaired is nearer its own side on **every joint of every clip**; the legacy arm is 4–5×
+worse and on 5 of 6 clips some joint is nearer the *opposite* side outright. The residual
+91–126 mm is the canonical-bone-length proportion mismatch I1 measures, not a retarget
+error.
+
+Two things stated precisely. **The legacy arm is not the code as it shipped**: it is the
+repaired skeleton with `soma_motion`'s compensating swap *left in* — exactly the half-done
+change this check exists to catch. The lane as it shipped was self-consistent: bones named
+Left sat at rig −X carrying the mesh's anatomical *right* flesh, and the mapping sent them
+SOMA's Right rotations, so the performer's right arm drove the mesh's right arm. Both
+halves were mirrored and the product was correct; change one and it is not. And the
+"which side is nearer" test is the **weaker** of the two: on `cpu_smoke/autoanim_fixture`
+the legacy arm is still nominally nearer its own side on every joint while being 970 mm
+from it, because on a clip whose two arms move alike both pairings are equally bad. Read
+the distance, not the winner.
+
+## 11. Sequencing
 
 **Not merged, and not mergeable yet.** `tools/compare/provenance.py` gates the delivery on
 the `THORAX_SMOOTHING_FRAMES` leak, and this branch still carries the pre-decision value
