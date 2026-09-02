@@ -1719,6 +1719,27 @@ def _delivered_shift() -> dict:
     return out
 
 
+SILHOUETTE_VS_TILT = OUT_DIR / "silhouette-vs-tilt.json"
+
+
+def silhouette_vs_tilt_block() -> dict:
+    """The follow-up measurement, folded in rather than recomputed.
+
+    `tools/compare/silhouette_vs_tilt.py` writes it; this gate does not own it and does
+    not re-derive it. It answers the one question section 12.6 left open -- whether the
+    silhouette's fall tracks trunk tilt -- and it is instrument-only.
+    """
+    if not SILHOUETTE_VS_TILT.exists():
+        return {"available": False,
+                "why_absent": f"{SILHOUETTE_VS_TILT} not written yet",
+                "regenerate": "PYTHONPATH=$PWD/src .venv/bin/python "
+                              "tools/compare/silhouette_vs_tilt.py"}
+    report = json.loads(SILHOUETTE_VS_TILT.read_text())
+    report["available"] = True
+    report["figure"] = "artifacts/compare/d2-clavicle/silhouette-vs-tilt.png"
+    return report
+
+
 def silhouette_block() -> dict:
     """I6 on the D2b rebuild against the committed I6 report. SEPARATE REFERENCE.
 
@@ -2009,6 +2030,67 @@ def d2b_verdicts(report) -> list:
             f"{_g(sil, 'oracle_and_control_must_be_unchanged', 'max_abs_oracle_iou_difference')}"
             f"), so the two runs are comparable and the fall is real. "
             + sil.get("note", ""))
+    svt = d2b.get("silhouette_vs_tilt") or {}
+    if svt.get("available"):
+        for s in ("subject_00", "subject_01"):
+            terc = _g(svt, "terciles", s, "rows", default={})
+            if not terc:
+                continue
+            up = _g(terc, "upright", "D2b_minus_delivered", default={})
+            bent = _g(terc, "most_bent", "D2b_minus_delivered", default={})
+            ci = up.get("ci95") or [None, None]
+            row(f"MECHANISM. on UPRIGHT frames D2b's IoU equals the delivered build's, {s}",
+                "the 95 % interval of the paired difference must contain 0",
+                _g(terc, "upright", "delivered_iou"), up.get("median_iou_difference"),
+                ci, ci[0] is not None and ci[0] <= 0.0 <= ci[1], REF_SILHOUETTE,
+                f"tilt {_g(terc, 'upright', 'tilt_range_deg')} deg over "
+                f"{_g(terc, 'upright', 'frames')} frames. PRE-REGISTERED before the "
+                "instrument ran. This row and the next are the two halves of the "
+                "coordinator's hypothesis; together they say whether the fall is the "
+                "trunk-axis offset or the mesh's shape.")
+            strict = _g(svt, "strict_upright_band_the_hypothesis_names", s, default={})
+            sd = strict.get("D2b_minus_delivered") or {}
+            sci = sd.get("ci95") or [None, None]
+            row(f"MECHANISM. the same, at the threshold the hypothesis NAMES "
+                f"(trunk tilt <= 10 deg), {s}",
+                "the 95 % interval of the paired difference must contain 0",
+                strict.get("delivered_iou"), sd.get("median_iou_difference"), sci,
+                sci[0] is not None and sci[0] <= 0.0 <= sci[1], REF_SILHOUETTE,
+                f"{strict.get('frames')} frames. On this band the whole rig moved "
+                f"{_g(strict, 'shift_D2b_minus_delivered_mm', 'norm_median')} mm while the "
+                f"delivered hands moved "
+                f"{_g(strict, 'joint_displacements_mm', 'LeftHand', 'D2b_minus_delivered_median_mm')} / "
+                f"{_g(strict, 'joint_displacements_mm', 'RightHand', 'D2b_minus_delivered_median_mm')} mm: "
+                "the clavicle chain is re-aimed by both D2 and D2b. A fall of this size "
+                "against a 10 mm body displacement is not the root placement.")
+            row(f"MECHANISM. the fall GROWS with trunk tilt, {s}",
+                "most-bent tercile must be worse than the upright tercile",
+                up.get("median_iou_difference"), bent.get("median_iou_difference"),
+                bent.get("ci95"),
+                (bent.get("median_iou_difference") is not None
+                 and up.get("median_iou_difference") is not None
+                 and bent["median_iou_difference"] < up["median_iou_difference"]),
+                REF_SILHOUETTE,
+                f"the ORACLE's own tilt dependence over the same terciles is "
+                f"{_g(terc, 'most_bent', 'ORACLE_minus_its_own_upright_tercile')} IoU -- "
+                "it reads none of our track, so whatever it does with tilt is the masks' "
+                "and the rasteriser's and must be subtracted from any reading of ours.")
+        row("MECHANISM. overall verdict on the pre-registered hypothesis",
+            "TILT-DEPENDENT => the trunk-axis offset and the missing pelvis frame; "
+            "FLAT IN TILT => the mesh's shape (D5/D6)", None, None, None, True,
+            REF_SILHOUETTE,
+            f"{svt.get('verdict')}. {svt.get('verdict_reading', '')} "
+            f"{svt.get('what_actually_moved', '')}")
+        lvf = _g(svt, "lateral_shift_vs_iou_fall", default={})
+        row("MECHANISM. does the fall track the silhouette-VISIBLE part of the shift?",
+            "a NEGATIVE rank correlation over the eight camera-subject cells would mean "
+            "the silhouette is pricing the displacement it can actually see",
+            None, lvf.get("spearman"), None, True, REF_SILHOUETTE,
+            f"Pearson {lvf.get('pearson')}, Spearman {lvf.get('spearman')} -- the WRONG "
+            "SIGN for that mechanism. Eight cells is a reading, not a test, and it is "
+            "quoted as one. A shift along a camera's viewing ray is depth and a silhouette "
+            "cannot see it; the per-camera ray angles are in `per_camera_ray`.")
+
     reg = report.get("d2_regression_check", {})
     if reg.get("ok") is not None:
         row("META. extending this gate did not move any D2 figure",
@@ -2270,6 +2352,7 @@ def main() -> int:
             (REBUILD / "subject-00.body-track.npz").exists():
         d2b["bit_identity"] = d2b_bit_identity()
     d2b["silhouette"] = silhouette_block()
+    d2b["silhouette_vs_tilt"] = silhouette_vs_tilt_block()
     report["d2b_root_placement"] = d2b
     report["d2b_gate"] = d2b_verdicts(report)
     report["d2b_verdict"] = ("PASS" if all(r["verdict"] == "PASS" for r in report["d2b_gate"])

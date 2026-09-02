@@ -939,3 +939,144 @@ step makes. Either the point the detector calls a hip is not the point the rig c
 or the stock character is simply the wrong shape by enough that moving it correctly can
 still look worse. This report does not know which, says so, and leaves the number in plain
 sight rather than in a footnote.
+
+---
+
+## 13. Does the silhouette's fall track trunk tilt? One measurement pass
+
+Section 12.6 left two readings open and claimed no mechanism. The coordinator set a
+hypothesis and a decision rule, both recorded verbatim in
+`artifacts/compare/d2-clavicle/silhouette-vs-tilt.json` **before the instrument ran**:
+
+> the rig has no pelvis frame separate from the torso (Hips, Spine, Chest, UpperChest all
+> take `torso_up`), so `R_hips · (0, 0.08, 0)` has a horizontal component of
+> 80·sin(trunk tilt) … **PREDICTION: on upright frames (tilt under ~10°) D2b's IoU equals
+> the delivered build's; the fall grows with tilt.** If it does, the mechanism is the
+> offset applied along the trunk axis and the underlying defect is the missing pelvis
+> frame (converter work, its own step). If the fall is flat in tilt, it is the mesh's
+> shape (D5/D6) and D2b's silhouette cost is a price to weigh, not a defect.
+
+`tools/compare/silhouette_vs_tilt.py` — **instrument only**, imports `silhouette.py` and
+reuses its rasteriser, scorer, mask store and posed-mesh caches, so the three builds and
+the oracle go through one pixel path; `silhouette.py`'s own outputs are untouched.
+Regenerate with
+`PYTHONPATH=$PWD/src .venv/bin/python tools/compare/silhouette_vs_tilt.py`
+(per-frame scores are cached in `silhouette-vs-tilt-per-frame.npz`, so a re-cut is free).
+Folded into `gate.json` as `d2b_root_placement.silhouette_vs_tilt`; figure at
+`artifacts/compare/d2-clavicle/silhouette-vs-tilt.png`.
+
+The three builds share byte-identical triangulated positions (asserted), so trunk tilt is
+one variable across all of them, and the id resolution is read from the retained
+silhouette reports and cross-checked between them rather than re-derived.
+
+### 13.1 The tercile table
+
+Trunk tilt = angle of (neck − hip midpoint) from capture +Z. IoU is the mean over the four
+cameras of that frame's IoU, on frames every camera scored — one denominator for all arms.
+Bootstrap: block 15, 2000 draws, blocks drawn over the whole 150-frame axis and the
+statistic taken over the drawn frames in the tercile, both arms on the same draws.
+
+**Subject 0** (tercile edges 14.68° / 26.84°)
+
+| tercile | tilt range | n | delivered IoU | D2 IoU | D2b IoU | D2b − delivered [95 % CI] | oracle vs its own upright | rig moved, horiz / vert |
+|---|---|---|---|---|---|---|---|---|
+| upright | 6.5–14.5° | 50 | 0.6056 | 0.6087 | 0.5566 | **−0.0490** [−0.0700, −0.0418] | +0.0000 | 12.1 / +6.3 mm |
+| middle | 14.8–26.8° | 50 | 0.5508 | 0.5530 | 0.4712 | **−0.0796** [−0.0865, −0.0462] | −0.0400 | 27.4 / +2.3 mm |
+| most bent | 27.0–65.3° | 50 | 0.5369 | 0.5035 | 0.4219 | **−0.1151** [−0.1212, −0.0564] | −0.0403 | 67.4 / −28.9 mm |
+
+**Subject 1** (tercile edges 17.35° / 53.06°)
+
+| tercile | tilt range | n | delivered IoU | D2 IoU | D2b IoU | D2b − delivered [95 % CI] | oracle vs its own upright | rig moved, horiz / vert |
+|---|---|---|---|---|---|---|---|---|
+| upright | 0.5–17.2° | 50 | 0.6241 | 0.5992 | 0.5610 | **−0.0631** [−0.0977, −0.0186] | +0.0000 | 5.8 / +8.0 mm |
+| middle | 17.5–52.4° | 50 | 0.5730 | 0.5445 | 0.5233 | **−0.0497** [−0.1028, −0.0206] | −0.0480 | 43.0 / −4.6 mm |
+| most bent | 54.5–90.8° | 50 | 0.5715 | 0.5833 | 0.5051 | **−0.0664** [−0.0954, −0.0190] | −0.0953 | 79.2 / −60.5 mm |
+
+**At the threshold the hypothesis names, tilt ≤ 10°:**
+
+| | n | delivered IoU | D2b IoU | D2b − delivered [95 % CI] | rig moved (norm) | hands moved |
+|---|---|---|---|---|---|---|
+| subject 0 | 31 | 0.6148 | 0.5703 | **−0.0445** [−0.0508, −0.0312] | 12.67 mm | 144 / 175 mm |
+| subject 1 | 35 | 0.6596 | 0.5668 | **−0.0928** [−0.0991, −0.0516] | 9.64 mm | 183 / 188 mm |
+
+### 13.2 The prediction is refuted, and by its own discriminating clause
+
+**On upright frames D2b's IoU does not equal the delivered build's.** At tilt ≤ 10°, where
+the trunk-axis offset's horizontal component is about 14 mm and the whole rig has in fact
+moved **9.6–12.7 mm**, D2b is already 0.045 and 0.093 IoU below the delivered build, both
+intervals clear of zero. On subject 1 that is **the largest fall anywhere on the take** —
+larger than in the most-bent tercile, where the rig moves 99 mm.
+
+The second clause, "the fall grows with tilt", holds on subject 0 (−0.049 → −0.080 →
+−0.115, monotone) and does not on subject 1 (−0.063 → −0.050 → −0.066, a change of 0.003
+IoU that sits inside the width of its own interval). And the oracle — MAMMA's own mesh,
+which reads none of our track — itself loses 0.040 and 0.095 IoU in the most-bent tercile
+against its own upright one, so **bent frames are intrinsically harder for any mesh in this
+instrument** and part of subject 0's gradient belongs to the instrument, not to us. The
+gate's mechanical label is `PARTLY TILT-DEPENDENT`; the magnitudes above are what it means.
+
+### 13.3 What the shift is, and what the fall is not
+
+The geometry the coordinator derived is confirmed exactly. The unit shift vector's dot
+product with the unit horizontal component of `torso_up` is **+0.932 (p5 0.838)** on
+subject 0 and **+0.904 (p5 0.435)** on subject 1: the offset does go along the trunk's
+lean, because on this rig the hips' up axis *is* the trunk axis. Its magnitude tracks
+80·sin(tilt) — 27.87 and 43.16 mm median against 27.4 and 43.0 mm predicted.
+
+But the fall is not that shift, and three measurements say so.
+
+1. **The fall is at full size where the shift is smallest.** 10 mm of body displacement
+   costs 0.045 and 0.093 IoU; 74 and 99 mm costs 0.115 and 0.066. On subject 1 the ranking
+   is inverted outright.
+2. **It does not track the silhouette-visible part of the shift.** A shift along a
+   camera's viewing ray is depth and a silhouette cannot see it; the lateral part is what
+   it can. Across the eight camera-subject cells the ray angle runs 28.8°–76.4° and the
+   lateral component 9.3–36.5 mm, and its rank correlation with the IoU fall is
+   **Spearman +0.38, Pearson +0.31** — the *wrong sign* for that mechanism. Eight cells is
+   a reading, not a test, and is quoted as one. (B001/subject 0 has the smallest lateral
+   shift, 9.3 mm, and the largest fall, −0.104; B001/subject 1 has the largest lateral
+   shift, 36.5 mm, and one of the smallest falls, −0.044.)
+3. **Something much larger than the root moved.** On the tilt ≤ 10° band the rig's Hips,
+   head and feet moved 9.6–12.7 mm — and the delivered **hands moved 144–188 mm**, because
+   D2 re-aims the clavicle chain and D2b amplifies it by moving the origin that aim is
+   taken from. An arm is a large part of an outline.
+
+### 13.4 The arms-only arm, measured rather than inferred
+
+`delivered → D2` moves the **Hips by 0.00 mm** — D2 changes no root — and on subject 1's
+tilt ≤ 10° band it moves the hands 108 and 127 mm and costs **0.0387 IoU, interval
+[−0.0436, −0.0147], clear of zero.** So a clavicle re-aim of this size costs silhouette
+agreement *on its own*, with the body held still. On subject 0 the same arm moves the hands
+only 45 and 66 mm and costs +0.002 IoU, interval spanning zero.
+
+**What is not isolated** is how much of D2b's further 0.054 IoU is its extra 74–88 mm of
+hand travel and how much its 9.6 mm of body shift. A fourth build — the root fix carrying
+the **pre-D2 clavicle anchor** — separates them exactly, and is the obvious next
+instrument. It was not run: this pass was capped at one.
+
+### 13.5 Which mechanism the data support
+
+**Neither of the two on offer, and the honest answer is a third.** It is not the
+trunk-axis root offset: the fall is at full size on the frames where that offset is ~10 mm,
+it does not track the part of the shift a silhouette can see, and on one subject it does
+not grow with tilt at all. It is not simply "the mesh's shape" either — shape is the
+*background level* (every arm sits at 0.52–0.66 IoU against the oracle's 0.71–0.88, and
+that gap is D5/D6), but shape does not change between two builds of the same mesh, and
+what moved between them is measured. **The fall travels with the arms**, and the one arm
+that isolates them — a root-identical, clavicle-only change — costs IoU on its own with
+its interval clear of zero.
+
+That does not vindicate the root placement. It says the silhouette is not the instrument
+that indicts it, and that D2's own clavicle re-aim carries a pixel cost nobody had measured
+until now. The missing pelvis frame remains a real modelling gap — the rig genuinely has no
+pelvis-versus-thorax separation, and the offset genuinely rides the trunk axis at +0.93 —
+but on this fixture it is not what the silhouette is pricing.
+
+### 13.6 What this pass is blind to
+
+It says **whether** the fall tracks tilt, never **which** placement is anatomically right;
+no instrument in this lane does that yet. A silhouette cannot see depth, cannot see a
+left/right mirror of a fore-aft symmetric pose, and cannot see anything inside the outline —
+and our mesh covers only about two thirds of the mask on *every* arm, so a 1–10 cm change is
+read against a large standing shape mismatch. Eight camera-subject cells is a reading, not a
+test. The arm/root separation is not made; §13.4 names the build that would make it.
