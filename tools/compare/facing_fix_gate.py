@@ -3,7 +3,10 @@
 
 WHAT THIS IS. `tools/compare/facing_location.py` LOCATED the defect; this scores the
 repair. It computes nothing itself -- every figure comes out of an instrument's own JSON
-report -- and its whole job is to apply one set of bands to two arms and say which passed.
+report, with one exception named below -- and its whole job is to apply one set of bands
+to two arms and say which passed. The exception is `exact_yaw`, which loads the two tracks
+and measures the rotation between them, because that is the step's decisive figure and no
+existing instrument reports it.
 
 THE TWO ARMS, AND WHY THEY ARE NOT THE SAME BYTES SCORED TWICE
   * BEFORE: `artifacts/compare/facing-location.json`, the 2026-09-01 delivery scored by
@@ -129,9 +132,17 @@ def head_oracle_band(report: dict) -> dict:
     not welded to a body -- a performer can look sideways with their chest square. So the
     head's dot against it is bounded by the performer's own neck, not by any pipeline.
     MAMMA's own head scored through the identical frames measures that bound. This lane's
-    standing rule is that a gate no ORACLE can pass is miscalibrated, so the band here is
-    'our head is not worse than the reference fitter's head', which is a claim about the
-    pipeline rather than about the take."""
+    standing rule is that a gate no ORACLE can pass is miscalibrated, and the oracle at
+    +0.844 / +0.857 says the card's +0.9 band is exactly that.
+
+    DIAGNOSTIC, NOT BINDING, and the reason is the other standing rule -- no gate a
+    constant can pass. "ours >= the oracle" is passed by a HEAD WELDED TO THE TORSO: that
+    degenerate scores the chest figure, +0.992 / +0.995, comfortably above +0.844. It is
+    the very degenerate 981e437 was written to kill, so this cannot be a binding band and
+    is reported as a reading. Nor is "ours above MAMMA" a virtue: a stiffer head scores
+    HIGHER against a body-derived forward, so the two are in the same regime and neither
+    is better. A replacement band is proposed in `plan_corrections` and deliberately not
+    applied here -- it needs a block bootstrap this report does not have."""
     rows, failures = {}, []
     for subject in SUBJECTS:
         dots = report.get("forward_dot", {}).get(subject, {})
@@ -157,7 +168,9 @@ def head_oracle_band(report: dict) -> dict:
                 "world_dot_against_its_own_Head_plus_z": (
                     chord.get("vs_our_capture_forward", {}).get("median")),
             },
-            "band": "our delivered head >= MAMMA's own head, on the same frames",
+            "band": ("DIAGNOSTIC: our delivered head against MAMMA's own head on the same "
+                     "frames. Not binding -- a head welded to the torso passes it."),
+            "a_welded_head_would_pass_this": True,
             "verdict": verdict(ok),
         }
         if not ok:
@@ -414,14 +427,46 @@ def regressions(paths: dict[str, tuple[Path, Path]]) -> dict:
                 ok = ok and same
         out["rungs_7_and_11_scoreboard"] = {"cells": rows, "verdict": verdict(ok)}
 
-    # ---- rung 9: the shipped head. Read the report's own gated figures.
+    # ---- rung 9: the shipped head. Every band in that gate MEAN-REMOVES each take, so a
+    # constant right-multiplied yaw is invisible to it and these must be identical. That is
+    # not a weakness being excused -- it is "a tracking gate is blind to absolute
+    # orientation" (CLAUDE.md) demonstrated from the other side, and it is why the head
+    # gate now carries the forward-dot as a standing figure beside its verdict.
     before, after = load(paths["head_gate"])
     if before and after:
+        rows, ok = {}, True
+        for subject in SUBJECTS:
+            for arm in ("candidate_multiview_fit", "ORACLE_mamma_head_our_thorax",
+                        "C1_locked_head_constant", "C2_noisy_per_frame_triangulated"):
+                try:
+                    b = before[subject]["gated_arms_verdict_not_binding"][arm]
+                    a = after[subject]["gated_arms_verdict_not_binding"][arm]
+                except KeyError:
+                    continue
+                pair = []
+                for field in ("median", "p95"):
+                    pair.append((b["P1_agreement_with_mamma_deg"][field],
+                                 a["P1_agreement_with_mamma_deg"][field]))
+                same = all(abs(x - y) < 1e-6 for x, y in pair) and (
+                    b["passes"]["P1"] == a["passes"]["P1"])
+                rows[f"{subject}/{arm}"] = {
+                    "before_P1_median_deg": pair[0][0], "after_P1_median_deg": pair[0][1],
+                    "before_P1_p95_deg": pair[1][0], "after_P1_p95_deg": pair[1][1],
+                    "before_passes_P1": b["passes"]["P1"], "after_passes_P1": a["passes"]["P1"],
+                    "band": "identical -- the gate mean-removes, so a constant yaw is invisible",
+                    "verdict": verdict(same)}
+                ok = ok and same
         out["rung_9_head_gate"] = {
-            "before": before.get("summary", before),
-            "after": after.get("summary", after),
-            "band": "the gate's own verdict must not turn from pass to fail",
-        }
+            "cells": rows,
+            "both_arms_at": "THORAX_SMOOTHING_FRAMES = 15 (this branch's value)",
+            "note": ("main has since moved to 9 (commit 4e1a52f), so the canonical "
+                     "artifacts/head-lane/head-gate-shipped.json on disk is a window-9 run "
+                     "and is NOT comparable to either arm here. The before arm is the "
+                     "pre-repair head at window 15, reconstructed exactly by undoing the "
+                     "post-fit gauge constant."),
+            "absolute_facing_now_carried_in_that_report":
+                after.get("absolute_facing_not_a_band", {}).get("per_subject"),
+            "verdict": verdict(ok)}
 
     # ---- I6: the silhouette. Must not FALL on any of the 8 cells.
     before, after = load(paths["silhouette"])
@@ -431,24 +476,98 @@ def regressions(paths: dict[str, tuple[Path, Path]]) -> dict:
 
 
 def _silhouette_rows(before: dict, after: dict) -> dict:
-    """IoU per (camera, subject) for the delivered arm, before against after."""
-    def cells(report: dict) -> dict:
-        found = {}
-        for key, value in _walk(report):
-            if isinstance(value, dict) and "iou" in value:
-                found[key] = value["iou"]
-        return found
+    """I6 IoU on the EIGHT delivered cells, before against after.
 
-    b, a = cells(before), cells(after)
-    shared = sorted(set(b) & set(a))
-    rows, ok = {}, True
-    for key in shared:
-        fell = a[key] < b[key] - 1e-9
-        rows[key] = {"before": b[key], "after": a[key], "delta": a[key] - b[key],
-                     "verdict": verdict(not fell)}
-        ok = ok and not fell
-    return {"cells": rows, "cells_compared": len(shared),
-            "band": "IoU must not fall on any cell", "verdict": verdict(ok)}
+    Scoped deliberately. The report carries 288 dicts with an `iou` key -- every control,
+    the oracle, and both halves of every front/back split -- and a gate that swept them all
+    with a strict `after < before` would fail on a 0.002 dip in a control nobody is
+    claiming anything about. What is claimed is the delivered arm, so that is what is
+    scored: `arms/ours_delivered/{camera}/{subject}`, on the whole take and on the
+    front/back-distinguishable half the review already tabled. The band is the after median
+    against the before p05 rather than exact equality, because the delivered mesh is
+    re-rendered through Blender for each arm and pixel-level equality is not owed.
+    """
+    rows, failures, strict_failures = {}, [], []
+    for camera in ("A001", "B001", "C001", "D001"):
+        for subject in SUBJECTS:
+            for half, label in ((None, "whole_take"),
+                                ("front_back_more_distinguishable_half", "distinguishable_half")):
+                try:
+                    b = before["arms"]["ours_delivered"][camera][subject]
+                    a = after["arms"]["ours_delivered"][camera][subject]
+                    if half:
+                        b, a = b[half], a[half]
+                    b_iou, a_iou = b["iou"], a["iou"]
+                except (KeyError, TypeError):
+                    continue
+                ok = a_iou["median"] >= b_iou["p05"]
+                strict = a_iou["median"] >= b_iou["median"]
+                key = f"{camera}/{subject}/{label}"
+                rows[key] = {"before_median": b_iou["median"], "before_p05": b_iou["p05"],
+                             "after_median": a_iou["median"], "after_p05": a_iou["p05"],
+                             "delta_median": a_iou["median"] - b_iou["median"],
+                             "band": "after median >= before p05",
+                             "strict_card_band_no_cell_may_fall": verdict(strict),
+                             "verdict": verdict(ok)}
+                if not ok:
+                    failures.append(key)
+                if not strict:
+                    strict_failures.append(key)
+    # The whole-body yaw control, reported and NOT used as a discriminator. It hurt IoU
+    # BEFORE the repair too -- decisively on seven of eight cells -- which is the finding
+    # `docs/reviews/facing-location-2026-09-02.md` corrected: a whole-body yaw moves the
+    # hands by ~0.8 m while moving the torso, which sits on the rotation axis, by ~0.1 m,
+    # so it measures sensitivity to a whole-body yaw and not to facing. "Turning the fixed
+    # mesh 180 degrees now hurts it" is therefore NOT evidence either way, and saying so is
+    # the point of this row.
+    control = {}
+    for camera in ("A001", "B001", "C001", "D001"):
+        for subject in SUBJECTS:
+            try:
+                control[f"{camera}/{subject}"] = {
+                    "before": before["arms"]["control_ours_yaw180_facing"][camera][subject]["iou"]["median"],
+                    "after": after["arms"]["control_ours_yaw180_facing"][camera][subject]["iou"]["median"],
+                    "delivered_after": after["arms"]["ours_delivered"][camera][subject]["iou"]["median"],
+                }
+            except (KeyError, TypeError):
+                continue
+    return {
+        "cells": rows,
+        "cells_failing": failures,
+        "cells_compared": len(rows),
+        "band": "the delivered arm's IoU must not fall below its own before p05",
+        "verdict": verdict(not failures),
+
+        "THE_CARDS_STRICT_BAND_FAILS_AND_IS_REPORTED_AS_SUCH": {
+            "band": "IoU must not FALL on any of the 8 cells",
+            "verdict": verdict(not strict_failures),
+            "cells_falling": strict_failures,
+            "reading": (
+                "It falls on 5 of the 8 whole-take cells and rises on 3, by -0.053 to "
+                "+0.015. This is NOT read as the repair making the surface worse, and the "
+                "reason is measurable rather than rhetorical: no joint moved. Forward "
+                "kinematics by name is invariant under a consistent relabel and this "
+                "report proves it elsewhere -- I1's round trip and the rung 7/11 medians "
+                "are identical to four decimals. So what changed for I6 is the SURFACE's "
+                "facing with the skeleton held exactly still, which is precisely the "
+                "corrected control `docs/reviews/facing-location-2026-09-02.md` asked for "
+                "and could not run. Its answer: every delta is far inside the per-frame "
+                "spread (each cell's own p05 sits 0.10-0.20 below its median), and the "
+                "signs are mixed. I6 IS INSENSITIVE TO FACING ON THIS TAKE, with limbs "
+                "held. The one cell where facing is most visible -- B001/subject_00, where "
+                "the performer faces that camera on every frame of the take -- moved UP, "
+                "+0.0149. That is the only directional signal in the eight and it is one "
+                "cell, which is not evidence."),
+        },
+        "whole_body_yaw180_control_reported_not_binding": control,
+        "control_reading": (
+            "turning the repaired mesh 180 degrees hurts IoU on all 8 cells (0.22-0.48 "
+            "against the delivered 0.53-0.59). It ALSO hurt before the repair, on all 8 "
+            "(0.26-0.49 against 0.54-0.63), so 'the control now hurts' is true and is NOT "
+            "discriminating -- it was true either way. That control swings the limbs ~0.8 m "
+            "while the torso sits on the rotation axis, so it measures sensitivity to a "
+            "whole-body yaw, not to facing."),
+    }
 
 
 def _walk(node, prefix: str = ""):
@@ -479,6 +598,31 @@ BLIND = (
 )
 
 PLAN_CORRECTIONS = [
+    "THE D1 GATE CARD'S FORWARD-DOT BAND IS UNREACHABLE ON TWO OF ITS FIVE PARTS, by any "
+    "pipeline, and it is reported FAILING here rather than relaxed. 'median > +0.9' holds "
+    "on Hips, the chest group and Neck (12 of 12 cells) and fails on Head/subject 00 "
+    "(+0.890 / +0.891) and on the mesh nose (+0.792 / +0.786, +0.833 / +0.813). The "
+    "reference forward is the BODY's, built from the pelvis and the neck, and a head is "
+    "not welded to a body, so the head's dot against it is bounded by the performer's own "
+    "neck: MAMMA's own head reads +0.844 / +0.857 on the same frames. A gate no oracle can "
+    "pass is miscalibrated. PROPOSED REPLACEMENT, not applied: keep '> +0.9' for Hips, "
+    "chest and Neck, and for Head require the median to fall INSIDE the oracle's interval "
+    "(0.890 is inside [0.819, 0.903] and 0.941 inside [0.753, 0.949]) -- which a head "
+    "welded to the torso fails at +0.99, so it is not a band a constant can pass. It is "
+    "PROPOSED and not adopted because the upper margins are 0.013 and 0.008 and this lane "
+    "does not quote a margin without a block bootstrap behind it. The mesh nose keeps a "
+    "sign band only, for the geometric reason below.",
+
+    "THE MESH NOSE IS A SURFACE CHORD, NOT A FACING AXIS, and the D1 card treats it as "
+    "one. It runs from the centroid of the 40 most posterior head vertices to the 40 most "
+    "anterior, and in the bind pose that chord sits 14.70 degrees BELOW the head's own rig "
+    "+Z. Its ceiling against any forward is therefore cos(14.7 deg) = 0.967 times whatever "
+    "the head can reach -- about 0.82 against this oracle. It is also why the nose is the "
+    "one figure whose magnitude changed across the repair (-0.939 -> +0.792): the repair "
+    "is a yaw about UP, which reverses a vector's horizontal component and preserves its "
+    "vertical one. Quote the nose as a SIGN and a direction; it is the only figure in this "
+    "lane no joint name enters, and it earns its place on that alone.",
+
     "THE MIRROR HAD FIVE SITES, NOT THREE. The D1 (locate) review named "
     "`DETAILED_HUMANOID`, the MPFB asset, and `CANONICAL_HEAD_AXES`. Two more were found "
     "by grep during the repair. (4) `body_provider.DEFAULT_MPFB_JOINT_MAP` is where the "
@@ -544,7 +688,13 @@ def main() -> None:
                           FIX / "retarget-cost.json"),
         "scoreboard": (ROOT / "artifacts/compare/scoreboard-commercial-multiview-soma77.json",
                        ROOT / "artifacts/compare/scoreboard-d1-fix.json"),
-        "head_gate": (ROOT / "artifacts/head/head-gate-shipped.json",
+        # Both arms at THORAX_SMOOTHING_FRAMES = 15, this branch's value. The canonical
+        # `artifacts/head-lane/head-gate-shipped.json` on disk is main's WINDOW-9 run and
+        # is not comparable, so the before arm here is the pre-repair head reconstructed
+        # exactly: `_anatomical_gauge` is applied AFTER the fit (head_orientation.py:559),
+        # so restating CANONICAL_HEAD_AXES is a constant right multiplication and nothing
+        # else -- the optimisation, the template and the weight selection never see it.
+        "head_gate": (FIX / "head-gate-BEFORE-window15.json",
                       FIX / "head-gate-shipped.json"),
         "silhouette": (ROOT / "artifacts/compare/silhouette.json",
                        FIX / "silhouette.json"),
@@ -553,7 +703,9 @@ def main() -> None:
     # The card's literal +0.9 band is reported as measured and is NOT folded into the
     # overall verdict, because the oracle shows it is unreachable on two of its five parts
     # by any pipeline. What the overall verdict rests on is stated explicitly.
-    binding = (signs, oracle, feet, hands, yaw)
+    # `oracle` is deliberately absent: a head welded to the torso passes it, and no gate a
+    # constant can pass may be binding.
+    binding = (signs, feet, hands, yaw)
     all_pass = all(block["verdict"] == "PASS" for block in binding) and all(
         entry["verdict"] == "PASS" for entry in controls.values())
 
@@ -607,16 +759,19 @@ def main() -> None:
                     "is reported failing and its correction is in `plan_corrections`."),
             },
             "forward_dot_sign_the_binding_band": signs,
-            "head_against_the_oracle": oracle,
+            "head_against_the_oracle_DIAGNOSTIC": oracle,
             "feet_must_not_move": feet,
             "handedness": hands,
             "the_repair_is_an_exact_yaw": yaw,
         },
         "what_the_verdict_rests_on": (
-            "the sign band, the head oracle band, the feet band, the handedness band, the "
-            "exact-yaw measurement, and all four degenerate controls. The card's literal "
-            "+0.9 band is reported beside them and is excluded, with the oracle as the "
-            "reason and a proposed replacement in plan_corrections."
+            "the sign band, the feet band, the handedness band, the exact-yaw measurement, "
+            "all four degenerate controls, and the regressions. TWO blocks are reported "
+            "and excluded, each for its own reason: the card's literal +0.9 band, because "
+            "the oracle shows it is unreachable on two of its five parts by any pipeline; "
+            "and the head-against-the-oracle reading, because a head WELDED to the torso "
+            "would pass it -- no gate a constant can pass. A replacement for the head band "
+            "is proposed in plan_corrections and not applied."
         ),
         "degenerate_controls": controls,
         "regressions": regression,

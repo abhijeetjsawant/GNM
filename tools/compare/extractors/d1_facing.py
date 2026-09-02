@@ -30,11 +30,12 @@ import sys
 ROOT = Path(__file__).resolve().parents[3]
 REPORT = "artifacts/compare/facing-location.json"
 # D1 (fix). The AFTER arm is the SAME instrument pointed at a rebuild under
-# `artifacts/compare/d1-fix/`; `FIX_GATE` is the bands applied to both arms. When the
-# after report is absent this extractor behaves exactly as it did at D1 (locate), so the
-# ladder page is correct at either step and never mixes the two on one bar.
+# `artifacts/compare/d1-fix/`; the bands applied to both arms live in
+# `artifacts/compare/d1-fix/facing-fix-gate.json` and are NOT read here -- every value on
+# this rung is a direction cosine in [-1, +1] and a gate verdict is not. When the after
+# report is absent this extractor behaves exactly as it did at D1 (locate), so the ladder
+# page is correct at either step and never mixes the two on one bar.
 AFTER_REPORT = "artifacts/compare/d1-fix/facing-after.json"
-FIX_GATE = "artifacts/compare/d1-fix/facing-fix-gate.json"
 
 sys.path.insert(0, str(ROOT / "tools" / "compare"))
 try:  # pragma: no cover - exercised by whichever import path is available
@@ -196,7 +197,6 @@ def _after_figures() -> tuple[list, list]:
     after = _load(AFTER_REPORT)
     if after is None:
         return [], []
-    gate = _load(FIX_GATE) or {}
     dots = after.get("forward_dot", {})
     triples = after.get("triple_product", {}).get("arms", {})
     figs: list[dict] = []
@@ -275,14 +275,11 @@ def _after_figures() -> tuple[list, list]:
         ctrls.append(fig(f"{label} [handedness sign]", control_sign(name), "sign",
                          REF_CAPTURE_AFTER, COUNT, key=f"{name}_hand_after"))
 
-    if gate:
-        ctrls.append(fig("the PRE-REPAIR delivery put through the identical band function "
-                         "-- if this ever passes, the gate is broken. Reported as the "
-                         "number of (subject, part, reference) cells that fail",
-                         float(gate["degenerate_controls"]["the_pre_repair_build"]
-                               ["forward_dot_cells_failing"]),
-                         "failing cells", "the D1 (fix) gate's own bands", COUNT,
-                         key="pre_repair_cells_failing"))
+    # The pre-repair build's own bars ARE the before figures above, so the gate's
+    # "20 of 20 cells fail" is not added here as a figure: every value on this rung is a
+    # direction cosine in [-1, +1] (the module docstring, and `tests/test_facing_location.py`
+    # asserts it), and a count of failing cells is a different axis. It lives in
+    # `artifacts/compare/d1-fix/facing-fix-gate.json` where it belongs.
     return figs, ctrls
 
 
@@ -312,5 +309,48 @@ PROPOSED_VISUALS = {
                    dict(label="MAMMA's reading of the performers", role="mamma", key="oracle_forward"),
                    dict(label="Our capture turned 180 degrees (the wrong answer)", role="control",
                         key="CONTROL_yaw180_about_the_subjects_own_up_fwd")]),
+
+        # ---- D1 (fix). Added only when the rebuild exists; `resolve` drops bars whose key
+        # is missing, so on a checkout without `artifacts/compare/d1-fix/` this chart does
+        # not appear and the page is exactly the D1 (locate) page.
+        #
+        # ONE chart, the same axis, the same reference sentence -- because the finding is a
+        # BEFORE and an AFTER of one quantity and the reader has to see them side by side.
+        # The DELIVERED build keeps the `ours` role: the repair is on a branch and is not
+        # what anyone has received, so the blue bars must stay the backwards ones until the
+        # registry owner merges. The repaired build is `alt`, which is what it is -- an
+        # alternative that exists and has not shipped.
+        dict(title="The same four parts, before the repair and after it",
+             plain="Every one of these bars is the same measurement as the chart above: "
+                   "which way a part of the character points, against the direction the "
+                   "footage says the performer faces. The blue bars are what is delivered "
+                   "today and they point backwards. The aqua bars are the same parts after "
+                   "the left/right naming repair on branch ladder/D1-fix, which has NOT "
+                   "been merged. The head does not reach +1 and is not supposed to -- the "
+                   "reference is which way the BODY faces, and a person can turn their head; "
+                   "the orange bar is the reference fitter's own head measured the same way, "
+                   "and it is the ceiling. The hatched bar is the repaired character turned "
+                   "180 degrees, which is what a wrong answer looks like on this axis.",
+             better="higher",
+             bars=[dict(label="Pelvis, delivered today", role="ours",
+                        key="fwd_delivered_torso_Hips_capture"),
+                   dict(label="Pelvis, repaired (not merged)", role="alt",
+                        key="fwd_delivered_torso_Hips_capture_after"),
+                   dict(label="Chest, delivered today", role="ours",
+                        key="fwd_delivered_torso_Chest_capture"),
+                   dict(label="Chest, repaired (not merged)", role="alt",
+                        key="fwd_delivered_torso_Chest_capture_after"),
+                   dict(label="Head, delivered today", role="ours",
+                        key="fwd_delivered_Head_capture"),
+                   dict(label="Head, repaired (not merged)", role="alt",
+                        key="fwd_delivered_Head_capture_after"),
+                   dict(label="The mesh's own nose, delivered today", role="ours",
+                        key="fwd_delivered_MESH_nose_capture"),
+                   dict(label="The mesh's own nose, repaired (not merged)", role="alt",
+                        key="fwd_delivered_MESH_nose_capture_after"),
+                   dict(label="MAMMA's own head, the ceiling for the head bars",
+                        role="mamma", key="oracle_forward"),
+                   dict(label="The repaired character turned 180 degrees (the wrong answer)",
+                        role="control", key="DELIVERED_CONTROL_yaw180_fwd_after")]),
     ],
 }

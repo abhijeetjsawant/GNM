@@ -5,7 +5,14 @@
 `tools/compare/facing_fix_gate.py` (report
 `artifacts/compare/d1-fix/facing-fix-gate.json`), and the four regression instruments run
 unchanged. Companion to `docs/reviews/facing-location-2026-09-02.md`, which located the
-defect and proposed a fix that this step **did not take** — see §3.
+defect and proposed a fix that this step **did not take** — see §1.
+
+**One band failed and was not relaxed.** The card's `median > +0.9` forward-dot holds on
+the pelvis, chest and neck and fails on the head and the mesh nose; the oracle shows it is
+unreachable there by any pipeline, so it is reported failing with a replacement *proposed*
+and not applied. The card's I6 band ("IoU must not fall on any cell") also fails, on 5 of
+8, and §6 shows why that is a finding about I6 rather than about the repair. Neither is
+buried: they are §5 and §6.
 
 ## 1. The route shipped, and the route rejected
 
@@ -145,6 +152,14 @@ intervals, on both references (`feet_must_not_move`: PASS).
 One rig had two answers; now it has one, and it is the one every real human on this
 fixture reads.
 
+**And the mesh's own skin says *yaw*, not *reflection*.** The two readings have to be taken
+together: the mesh's nose against the performer's forward went −0.939 → **+0.792**, and the
+mesh's +X side against the performer's *left* went −0.976 → **+0.978**. Both reversed is a
+180° turn of a self-consistent human. Only one reversed would have been a reflection — which
+is the failure mode the rejected geometry route would have produced, and this pair is the
+measurement that rules it out on the route actually shipped. The `Head` and `Chest` joints'
+own +X read the same way (−0.938 → +0.938, −0.974 → +0.974).
+
 ### The degenerates — every one behaves as required
 
 | control | forward-dot | handedness | verdict |
@@ -153,7 +168,7 @@ fixture reads.
 | **180° yaw** of the repaired torso | −0.992 / −0.995 → **FAIL** | −1 → PASS | PASS |
 | **90° yaw** | +0.073 / +0.030 → **FAIL** | −1 → PASS | PASS |
 | **sagittal mirror** | +0.992 / +0.995 → PASS | **+1 → FAIL** | PASS |
-| **the pre-repair build**, identical bands | **FAIL** (10 of 20 cells) | arms disagree → **FAIL** | PASS |
+| **the pre-repair build**, identical bands | **FAIL** (20 of 20 cells) | arms disagree → **FAIL** | PASS |
 
 The mirror control is the reason the handedness band exists: it faces exactly where it
 faced, so no forward-dot and no silhouette can reject it. The 180° control is the reason
@@ -183,14 +198,26 @@ from its `smplx_pose` chain, through the identical frames:
 | subject 00 | **+0.844** [+0.819, +0.903] | +0.890 [+0.867, +0.914] |
 | subject 01 | **+0.857** [+0.753, +0.949] | +0.941 [+0.882, +0.982] |
 
-The reference fitter's own head does not reach +0.9 either, and ours is **above** it on
-both subjects. This lane's standing rule is that *a gate no oracle can pass is
-miscalibrated*, so the band was left exactly as written, reported failing, and replaced in
-the binding set by two bands that are claims about the pipeline rather than about the
-take: **sign** (median > 0 and bootstrap lower bound > 0 on every part — PASS on all 22
-cells) and **head against the oracle** (ours ≥ MAMMA's — PASS on both subjects).
+The reference fitter's own head does not reach +0.9 either. This lane's standing rule is
+that *a gate no oracle can pass is miscalibrated*, so the band was left exactly as written
+and reported failing.
 
-## 6. Why the mesh nose does not come back at the magnitude it left with
+**And "ours ≥ the oracle" is not put in its place, because a constant would pass it.** A
+head welded to the torso scores the *chest* figure, +0.992 / +0.995, comfortably above
++0.844 — and that welded head is the exact degenerate 981e437 was written to kill. *No gate
+a constant can pass*: the oracle comparison is reported as a **diagnostic** and is not
+binding. Nor is "ours above MAMMA" a virtue to claim: a **stiffer** head scores *higher*
+against a body-derived forward, so the two are in the same regime and neither is better.
+
+What is binding instead: the **sign** band (median > 0 and bootstrap lower bound > 0 on
+every part, subject and reference — PASS on all 22 cells), the feet band, the handedness
+band, the exact-yaw measurement, the four controls and the regressions. A replacement head
+band is *proposed and not applied*: require the median to fall **inside the oracle's
+interval** (0.890 ∈ [0.819, 0.903]; 0.941 ∈ [0.753, 0.949]), which the welded head fails at
++0.99. It is proposed rather than adopted because the upper margins are 0.013 and 0.008 and
+this lane does not quote a margin without a block bootstrap behind it.
+
+### Why the mesh nose does not come back at the magnitude it left with
 
 It is the only figure whose |value| changed (−0.939 → +0.792), and it is arithmetic, not a
 residual.
@@ -209,6 +236,70 @@ after. Measured +0.792.
 The mesh nose remains the one figure in this lane that **no joint name enters**, and it is
 the one that answers I6 in I6's own currency. It is quoted here as a sign and a direction,
 not against a +0.9 band it was never able to reach.
+
+## 6. The regressions
+
+### Rung 9, the shipped head: exactly invariant
+
+| arm | before, P1 median / p95 (deg) | after |
+|---|---:|---:|
+| subject 00 candidate | 5.1207 / 17.8260 — **PASS** | **5.1207 / 17.8260 — PASS** |
+| subject 00 oracle | 4.2635 / 13.9700 | 4.2635 / 13.9700 |
+| subject 01 candidate | 6.3637 / 20.5794 — FAIL on p95 | **6.3637 / 20.5794 — FAIL** |
+| subject 01 oracle | 4.6288 / 15.1900 | 4.6288 / 15.1900 |
+
+Identical to four decimals on every arm and every control. That is the prediction, not a
+surprise: the head gate **mean-removes each take**, so a constant right-multiplied yaw is
+invisible to it. It is *"a tracking gate is blind to absolute orientation"* (CLAUDE.md)
+demonstrated from the other side — the gate cannot tell a head pointing forwards from the
+same head pointing backwards. Subject 01's p95 failure (20.58 against a band of 20.0) is
+identical in both arms and is not caused by the repair.
+
+**Both arms are at `THORAX_SMOOTHING_FRAMES = 15`, this branch's value.** The canonical
+`artifacts/head-lane/head-gate-shipped.json` on disk is `main`'s **window-9** run (5.52 /
+7.19 gated medians) and is not comparable to either. The before arm here is the pre-repair
+head at window 15, reconstructed exactly rather than re-solved: `_anatomical_gauge` is
+applied **after** the fit (`head_orientation.py:559`), so restating `CANONICAL_HEAD_AXES` is
+a constant right multiplication by `diag(-1, -1, +1)` in capture coordinates and nothing
+else — the optimisation, the template and the weight selection never see it. The shared
+head-lane files were restored to `main`'s window-9 output after the run.
+
+**The head gate now carries the forward-dot as a standing figure** — `absolute_facing_not_a_band`
+in its own report, with the oracle beside it. Every band in that file mean-removes, so
+until now its verdict could be read without any statement about which way the head points.
+
+### I6, the silhouette: the strict band fails, and that is a finding about I6
+
+The card asks that IoU **not fall on any of the 8 cells**. It falls on 5 and rises on 3, by
+−0.053 to +0.015:
+
+| cell | before | after | Δ |
+|---|---:|---:|---:|
+| A001 / 00 | 0.6275 | 0.5882 | −0.039 |
+| A001 / 01 | 0.6225 | 0.6014 | −0.021 |
+| **B001 / 00** | 0.5733 | **0.5882** | **+0.015** |
+| B001 / 01 | 0.5907 | 0.5773 | −0.013 |
+| C001 / 00 | 0.6143 | 0.5612 | −0.053 |
+| C001 / 01 | 0.6192 | 0.6214 | +0.002 |
+| D001 / 00 | 0.5442 | 0.5453 | +0.001 |
+| D001 / 01 | 0.5167 | 0.5258 | +0.009 |
+
+**This is not read as the repair making the surface worse, and the reason is measurable.
+No joint moved** — §3 proves it to four decimals — so what changed is the *surface's*
+facing with the skeleton held exactly still. **That is precisely the corrected control the
+locate review asked for and could not run** (*"yaw only the vertices whose dominant weight
+is a torso bone, about the torso vertical, and rescore"*). Its answer: every delta is far
+inside the per-frame spread — each cell's own p05 sits 0.10–0.20 below its median — and the
+signs are mixed. **I6 is insensitive to facing on this take with the limbs held.** The one
+cell where facing is most visible, B001/subject 00, where the performer faces that camera
+on every frame, moved *up*; that is one cell and is not evidence.
+
+The band actually applied is *after median ≥ before p05*, which passes on all 16 cells
+(8 whole-take, 8 distinguishable-half). The strict card band is reported FAILING beside it.
+
+Turning the repaired mesh 180° hurts IoU on all 8 cells (0.22–0.48 against the delivered
+0.53–0.59). **It also hurt before the repair, on all 8** (0.26–0.49 against 0.54–0.63), so
+"the control now hurts" is true and *not discriminating* — it was true either way.
 
 ## 7. Blast radius
 
@@ -269,6 +360,14 @@ New here, and belonging to this gate rather than to D1:
   not a measurement, and only a render shows whether it curls the right way.
 * **The two retarget boundaries have no capture fixture on this footage.** `soma_motion`
   and `speech_motion` are asserted by unit test and by nothing measured.
+* **Only the capture lane got an overlay.** The task asked for a before/after camera
+  overlay on each lane of the blast list. `speech_motion`, `soma_motion`, `body_binding`
+  and `unified_gltf`'s skin matrices are covered by **unit tests only** — they have no
+  fixture on this footage to render. `soma_motion` in particular now depends on an
+  assertion, not a picture, and it is the lane whose side convention actively changed.
+* **I6 has still not been shown to see facing on this take.** §6 makes that a measurement
+  rather than a caveat, but it means the surface arm contributes nothing to the facing
+  claim in either direction.
 * One take, two performers, 150 correlated frames. Nothing generalises past this fixture.
 
 ## 10. Sequencing

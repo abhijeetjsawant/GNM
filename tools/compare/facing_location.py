@@ -387,6 +387,29 @@ def main() -> None:
     mapping = mamma_index_for(ours)
     probe = json.loads(args.probe.read_text()) if args.probe.exists() else None
 
+    # THE FOOTGUN THIS GUARD EXISTS FOR. Every by-name figure below comes from FORWARD
+    # KINEMATICS: `triple()`'s `across` is a difference of FK positions. Run this script's
+    # repaired skeleton against the PRE-repair rotations -- which is what happens if it is
+    # pointed at the delivery from the D1 (fix) branch, or run after the merge and before
+    # the delivery is rebuilt -- and the handedness sign inverts for a reason that has
+    # nothing to do with the delivery, silently, into `artifacts/compare/facing-location.json`,
+    # which is the BEFORE arm the fix gate scores and which `tests/test_facing_location.py`
+    # reads. So refuse rather than score. The same hazard applies to every by-name tool in
+    # this lane until the delivery is rebuilt; this one guards the file it would corrupt.
+    convention = rest_convention(asset_path)
+    asset_sign = convention["asset_mpfb_neutral_body"]["handedness_triple_product_sign"]
+    code_sign = convention["code_DETAILED_HUMANOID"]["handedness_triple_product_sign"]
+    if asset_sign != code_sign:
+        raise SystemExit(
+            f"REFUSING TO SCORE: the code skeleton (handedness {code_sign:+.0f}) and the "
+            f"asset at {label_path(asset_path)} (handedness {asset_sign:+.0f}) disagree "
+            "about which side is left. Forward kinematics would put the rig's bones on the "
+            "wrong side of the body and every by-name figure here would be wrong in a way "
+            "no band could detect. Rebuild the delivery against an asset that matches the "
+            "code, or point --asset at the one it was built from. "
+            "docs/reviews/facing-fix-2026-09-02.md"
+        )
+
     report: dict = {
         "step": args.label,
         "title": "where the facing defect lives -- the rig's handedness, the delivered "
@@ -395,7 +418,7 @@ def main() -> None:
         "frames": int(len(ours[0])),
         "subject_correspondence": {f"our_{k}": f"body_id-{v:02d}" for k, v in mapping.items()},
         "sha_chain": sha_chain(delivery, asset_path),
-        "rest_convention": rest_convention(asset_path),
+        "rest_convention": convention,
         "basis_assertion": {},
         "triple_product": {"definition": triple.__doc__, "arms": {}},
         "forward_dot": {},

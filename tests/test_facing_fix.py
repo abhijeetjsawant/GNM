@@ -5,7 +5,7 @@ are deliberately artefact-free -- no capture, no reference, no GLB -- so that th
 be developed without a rebuild and so that a regression is caught by `pytest` rather than
 by a 20-minute instrument run.
 
-The four sites, one test each:
+The sites, one test each:
 
   1. `body.CANONICAL_HUMANOID` / `DETAILED_HUMANOID` -- the rest skeleton's own declared
      contract. `HumanoidSkeleton.as_dict()` says `handedness: right, up_axis: +Y,
@@ -19,7 +19,8 @@ The four sites, one test each:
   4. `head_orientation.CANONICAL_HEAD_AXES` -- the head reaches the same wrong answer by
      its own route and no skeleton or mesh change touches it.
 
-Plus the asset derivation (5) and the rejected geometry route (6).
+Plus a fifth site found by grep during the repair (`soma_motion`, which COMPENSATED for
+the mirror), the asset derivation, and the rejected geometry route.
 """
 
 from __future__ import annotations
