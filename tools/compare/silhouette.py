@@ -735,20 +735,31 @@ def main() -> None:
         "median": float(np.median(drops_all)),
         "min": float(np.min(drops_all)), "max": float(np.max(drops_all))}
     # D1's question asked of the pixels: is the DELIVERED mesh facing the right way?
-    turned_better = []
+    # With a moving-block bootstrap on each cell: this is the load-bearing margin in the
+    # whole report and a median on 150 frames of lag-1 0.97 data is not a robust pass.
+    facing_rng = np.random.default_rng(SEED + 1)
+    turned_better, per_cell, decisive = [], {}, 0
     for c, cam in enumerate(cams):
         for s in (0, 1):
             ok = population[c, s]
-            turned_better.append(
-                float(np.median(stats["control_ours_yaw180_facing"][c, s][ok, 2])
-                      - np.median(stats["ours_delivered"][c, s][ok, 2])))
+            boot = moving_block_bootstrap(stats["control_ours_yaw180_facing"][c, s][ok, 2],
+                                          stats["ours_delivered"][c, s][ok, 2], facing_rng)
+            turned_better.append(boot["median_difference"])
+            per_cell[f"{cam}_subject_{s:02d}"] = boot
+            if boot["ci95_of_the_median_difference"][1] < 0.0:
+                decisive += 1
+    cells = len(turned_better)
     facing["delivered_mesh_turned_180_minus_delivered_mesh_iou"] = {
-        "per_cell": turned_better,
+        "per_cell": per_cell,
         "median": float(np.median(turned_better)),
         "max": float(np.max(turned_better)),
-        "verdict": ("the delivered facing beats its own 180-degree turn on every camera "
-                    "and both subjects" if max(turned_better) < 0 else
-                    "AT LEAST ONE CELL PREFERS THE TURNED MESH -- read the per-cell list"),
+        "cells_where_the_upper_ci_bound_is_below_zero": f"{decisive} of {cells}",
+        "verdict": (f"the delivered facing beats its own 180-degree turn in all {cells} "
+                    "camera x subject cells, every one of them with the upper bound of a "
+                    "moving-block 95 % interval below zero"
+                    if decisive == cells and max(turned_better) < 0 else
+                    f"only {decisive} of {cells} cells are decisive at 95 % -- read the "
+                    "per-cell intervals before quoting this"),
         "reading": "if the delivery shipped a 180-degree facing error, turning it round "
                    "would IMPROVE agreement with the footage. One of the two orientations "
                    "has to lose, and the instrument has the sensitivity to tell them apart "
@@ -866,12 +877,52 @@ def main() -> None:
             "in the venv, so this instrument uses those.",
             "The mask tracklet ids are the PNG suffixes 01 and 02, not 0 and 1; the "
             "anchor_report.json in the same directory indexes them from 0.",
+            d1_tension(facing, front_back, cams),
         ],
     }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=2))
     print(f"\nWROTE {args.out}")
     summarise(report, cams)
+
+
+def d1_tension(facing: dict, front_back: dict, cams: tuple[str, ...]) -> str:
+    """The one place this instrument disagrees with the plan, stated as tension.
+
+    Every number in the sentence is computed, so it cannot go stale behind a rerun.
+    """
+    turned = facing["delivered_mesh_turned_180_minus_delivered_mesh_iou"]
+    per_cell = turned["per_cell"]
+    sensitivity = facing["oracle_minus_yaw180_iou_on_distinguishable_frames"]
+    weakest = sorted(per_cell, key=lambda k: per_cell[k]["median_difference"])[-2:]
+    self_iou = {f"{cam}_subject_{s:02d}":
+                front_back["per_camera"][cam][f"subject_{s:02d}"]["yaw180_self_iou_median"]
+                for cam in cams for s in (0, 1)}
+    least_visible = sorted(self_iou, key=self_iou.get)[-2:]
+    agrees = set(weakest) == set(least_visible)
+    return (
+        "TENSION WITH D1's GATE CARD, not a verdict. LADDER_EXECUTION_PLAN's D1 row assumes "
+        "the delivery ships a 180-degree facing yaw out of _frame_alignment. This instrument "
+        "has demonstrated sensitivity to exactly that error -- turning MAMMA's own mesh round "
+        f"costs it {sensitivity['min']:.2f}-{sensitivity['max']:.2f} IoU on the "
+        "front/back-distinguishable half -- and finds no such error in the delivered GLB: "
+        f"turning OUR mesh round lowers its median IoU in all {len(per_cell)} camera x "
+        "subject cells, decisively (upper bound of a moving-block 95 % interval below zero) "
+        f"in {turned['cells_where_the_upper_ci_bound_is_below_zero']}. The weakest cells are "
+        + ", ".join(f"{k} ({per_cell[k]['median_difference']:+.2f})" for k in weakest)
+        + (", and those are the instrument agreeing with itself rather than wobbling: they "
+           "are also the two cells with the HIGHEST yaw-180 self-IoU ("
+           + ", ".join(f"{k} {self_iou[k]:.2f}" for k in least_visible)
+           + "), i.e. the two views in which front and back look most alike. "
+           if agrees else
+           ", which are NOT the cells where front and back look most alike ("
+           + ", ".join(f"{k} {self_iou[k]:.2f}" for k in least_visible)
+           + ") -- worth a second look before quoting the margin. ")
+        + "Three readings survive and this instrument cannot choose between them: the yaw is "
+        "internal and already compensated before export; the 2026-08-30 flip-check diagnosis "
+        "located it wrongly; or the defect is a left/right MIRROR, which a silhouette is "
+        "structurally blind to on a fore-aft symmetric pose. D1 should re-confirm where the "
+        "defect lives before changing code.")
 
 
 HALF_RES = WORK / "silhouette-1920x1080-A001.json"
