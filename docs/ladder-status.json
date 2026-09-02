@@ -119,9 +119,9 @@
           "title": "Provenance audit: no shipped constant chosen on MAMMA",
           "plain": "One constant in the shipped head solve was picked using MAMMA. It must be re-chosen from our own data before the next build.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
+          "finished": "2026-09-02",
           "report": "artifacts/compare/provenance.json",
           "blocked_on": null
         }
@@ -202,7 +202,8 @@
     }
   ],
   "decisions_for_user": [
-    "Lane H: decide the rig and book the marker session; performer releases covering ML training use."
+    "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
+    "Set THORAX_SMOOTHING_FRAMES from 15 to 9 in the shipped head solve (I8: interior optimum on synthetic truth, upper bound), then re-run the head gate with the MAMMA arm reporting only. One-line change plus a gate re-run; it is lane D and needs the go."
   ],
   "log": [
     {
@@ -289,6 +290,16 @@
       "date": "2026-09-02",
       "step": "I2",
       "text": "I2 done: with a perfect detector our pipeline lands about one millimetre from the truth, all of it the smoothing stage. The reconstruction is not where the gap is; the detector and the joint definitions are."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I8",
+      "text": "Manifest: 89 items over 55 delivery functions -- 1 leak (THORAX_SMOOTHING_FRAMES), 2 declared (camera-rig.json is ma_cap; example footage), 17 unknown origin (none MAMMA-derived), 69 clean; provenance.py exits 1 while a leak stands. Sweep on synthetic truth with own-detector noise: interior optimum at 9 frames (bracket 5-9) at every stride reaching real thorax speed; upper bound, so 15 is unsupported. MAMMA arm reports only: shape agrees, level does not."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I8",
+      "text": "I8 done: the audit finds exactly one MAMMA-chosen constant, the thorax window. Re-chosen on synthetic truth it should be 9 frames, not 15. Changing it is a delivery step and waits on the go."
     }
   ]
 }

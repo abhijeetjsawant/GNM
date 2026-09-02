@@ -7,12 +7,11 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I2, I4. In flight: I6, I8. Blocked: nothing.
+Done: I0, I1, I2, I4, I8. In flight: I6. Blocked: nothing.
 
 ## In flight
 
 - **I6** Surface check: our mesh outline against MAMMA's person masks — an Opus agent, since 2026-09-02
-- **I8** Provenance audit: no shipped constant chosen on MAMMA — an Opus agent, since 2026-09-02
 
 ## Next up (unblocked, not started)
 
@@ -25,15 +24,16 @@ Done: I0, I1, I2, I4. In flight: I6, I8. Blocked: nothing.
 ## Decisions waiting on the user
 
 - Lane H: decide the rig and book the marker session; performer releases covering ML training use.
+- Set THORAX_SMOOTHING_FRAMES from 15 to 9 in the shipped head solve (I8: interior optimum on synthetic truth, upper bound), then re-run the head gate with the MAMMA arm reporting only. One-line change plus a gate re-run; it is lane D and needs the go.
 
 ## Recent log
 
-- 2026-09-02 [I1] Split the retarget. Sizing the rig to the performer recovers 95-125 mm on the arms, mostly shoulder span; the converter's own floor is 30-36 mm on the arms after sizing, 0.00 on the legs; the rest is input non-rigidity plus the joint-origin convention, which our capture cannot separate. The NaN adapter and the 'sized arm is a lower bound' premises were wrong; the Hips 0.98 literal is already gone.
-- 2026-09-02 [I1] I1 done: body proportions, mainly the shoulder span, are the bigger lever; the converter's own cost is 30-36 mm on the arms. D2's remaining target is the clavicle origin.
 - 2026-09-02 [I4] MAMMA's feet scored for the first time: 9-21 deg median spread about the take mean, 31-90 deg flexion range. Our delivered foot tracks it to 6-9.5 deg spread and beats every control on 46 of 48 pairs, but carries an 18-26 deg constant offset on every foot, almost all ab/adduction: toes point 17-24 deg inward. Oracle 2.8-4.6 deg, so the frames are not the cause. Toe articulation unscoreable on either side; inversion/eversion is a DoF no direction carries.
 - 2026-09-02 [I4] I4 done: MAMMA's feet measured. Ours track them but point inward by about twenty degrees on every foot -- a delivery defect a tracking gate cannot see.
 - 2026-09-02 [I2] Whole pipeline on MAMMA's own skeleton projected into the four cameras: 1.15 mm median floor, 4.2 p95. Raw triangulation is exact to 1e-8 mm, so the entire floor is the temporal stage. Our real capture sits at 36-41 mm on the same reference: reconstruction is ~3% of the gap, the rest is upstream of 2D. MAMMA-grade noise: 4.6 mm; one-frame camera shift: 6.7 mm; crossed pairing: 1243 mm; frozen skeleton: 695 mm with zero reprojection error.
 - 2026-09-02 [I2] I2 done: with a perfect detector our pipeline lands about one millimetre from the truth, all of it the smoothing stage. The reconstruction is not where the gap is; the detector and the joint definitions are.
+- 2026-09-02 [I8] Manifest: 89 items over 55 delivery functions -- 1 leak (THORAX_SMOOTHING_FRAMES), 2 declared (camera-rig.json is ma_cap; example footage), 17 unknown origin (none MAMMA-derived), 69 clean; provenance.py exits 1 while a leak stands. Sweep on synthetic truth with own-detector noise: interior optimum at 9 frames (bracket 5-9) at every stride reaching real thorax speed; upper bound, so 15 is unsupported. MAMMA arm reports only: shape agrees, level does not.
+- 2026-09-02 [I8] I8 done: the audit finds exactly one MAMMA-chosen constant, the thorax window. Re-chosen on synthetic truth it should be 9 frames, not 15. Changing it is a delivery step and waits on the go.
 
 ## How to resume
 

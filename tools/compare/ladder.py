@@ -192,6 +192,17 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_head_and_provenance(spec: dict) -> tuple[list, list]:
+    """Rung 9: the shipped head gate plus I8's provenance manifest and thorax-window sweep
+    (`tools/compare/extractors/i8_provenance.py`, wired by the registry owner). The sweep is
+    referenced to synthetic truth; the gate to MAMMA. Different references, separate figs."""
+    figs, ctrls = x_head(spec)
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.i8_provenance import x_provenance  # noqa: E402
+    f2, c2 = x_provenance(spec)
+    return figs + f2, ctrls + c2
+
+
 def x_sequence_and_oracle(spec: dict) -> tuple[list, list]:
     """Rung 5: the production run's exposure counts plus I2's perfect-2D oracle
     (`tools/compare/extractors/i2_oracle.py`, wired by the registry owner)."""
@@ -485,7 +496,7 @@ RUNGS: list[dict[str, Any]] = [
                         "hands; not built.",
     ),
     dict(
-        id="head", n=9, regenerate=".venv/bin/python tools/head/gate_the_shipped_head.py",
+        id="head", n=9, regenerate=".venv/bin/python tools/head/gate_the_shipped_head.py && .venv/bin/python tools/compare/provenance.py; .venv/bin/python tools/head/thorax_window_sweep.py",
         title="Head orientation",
         mamma="A locked-head SMPL-X: jaw and eyes zero, head orientation is the body pose's neck/head joints "
               "driven by the 512 landmarks' head region.",
@@ -497,9 +508,16 @@ RUNGS: list[dict[str, Any]] = [
         reference="MAMMA's head orientation expressed in our thorax frame",
         blind="absolute orientation (a tracking gate mean-removes each take); accuracy (parity only); the "
               "jitter band, which the solver regularises directly",
-        status="measured, one performer misses P1 p95 by 1.18 deg", extract=x_head,
-        reports=["artifacts/head-lane/head-gate-shipped.json"],
-        both_directions="MAMMA->ours: done (oracle arm). Ours->MAMMA: not meaningful; its head is locked.",
+        status="measured, one performer misses P1 p95 by 1.18 deg; its thorax window is the one MAMMA-chosen "
+               "shipped constant (I8), re-selected at 9 on synthetic truth, change pending",
+        extract=x_head_and_provenance,
+        reports=["artifacts/head-lane/head-gate-shipped.json", "artifacts/compare/provenance.json",
+                 "artifacts/compare/thorax-window-sweep.json"],
+        both_directions="MAMMA->ours: done (oracle arm). Ours->MAMMA: not meaningful; its head is locked. "
+                        "Provenance (I8, 2026-09-02): 89 delivery constants audited, 1 leak "
+                        "(`THORAX_SMOOTHING_FRAMES`, chosen on the MAMMA oracle arm), 2 declared (the camera rig "
+                        "IS `ma_cap`; the example footage), 17 of unknown origin, none MAMMA-derived. "
+                        "`provenance.py` exits non-zero while a leak stands.",
     ),
     dict(
         id="feet", n=10, regenerate=".venv/bin/python tools/feet/mamma_feet_bar.py",
