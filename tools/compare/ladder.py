@@ -195,6 +195,13 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_hands_report(spec: dict) -> tuple[list, list]:
+    """Rung 8: I5's extractor, `tools/compare/extractors/i5_hands.py`, wired by the registry owner."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.i5_hands import x_hands  # noqa: E402
+    return x_hands(spec)
+
+
 def x_detector_all(spec: dict) -> tuple[list, list]:
     """Rung 2: the production run's self-consistency figure plus I3's three discriminating reports
     (`tools/compare/extractors/i3_detector.py`, wired by the registry owner)."""
@@ -531,15 +538,26 @@ RUNGS: list[dict[str, Any]] = [
              "with an open thrashing defect (temporal term 1.9 % of the objective).",
         interface="per frame: 15 finger joints per hand",
         supplied_by_mamma="reference only",
-        instrument=None,
-        instrument_missing="the hand fit prints and writes arrays (`artifacts/handfit-arrays/`) but no report. "
-                           "Its held-out-camera protocol is the right instrument; give it JSON output and register it.",
-        reference="held-out camera (protocol); MAMMA fingertips (agreement)",
-        blind="contact precision (an open hand and a fist differ by 60-80 mm, so grasp state clears the noise "
-              "and touch does not)",
-        status="prototype, figures in a document only", extract=None, reports=[],
-        both_directions="MAMMA->ours: its hand landmarks into our chain fit -- would price the detector for "
-                        "hands; not built.",
+        instrument="`tools/hands/hand_fit_report.py` -> `artifacts/hands-lane/hand-fit-heldout.json` (I5, "
+                   "2026-09-02): wraps `fit_hand_sequence`, fits on three cameras, scores reprojection on the "
+                   "fourth, rotates; weights and priors are selected by the held-out camera and nothing else. "
+                   "Wrist-local fingertip amplitude / jitter / roughness and the thrash figure beside it; MAMMA's "
+                   "fingertips as an agreement figure on its own string. Regenerate: "
+                   "`.venv/bin/python tools/hands/hand_fit_report.py` (hours; the cache is resumable).",
+        reference="the held-out camera (protocol; nothing on disk is truth); MAMMA fingertips (agreement only)",
+        blind="depth along the held-out ray; accuracy (MAMMA's own hand through this protocol scores 42 mm, "
+              "ABOVE ours, because the floor is SOMA-77's pixel error plus a 26-73 mm MHR-to-SMPL-X hand "
+              "convention gap -- so the gate discriminates degenerate motion, not accuracy); a one-frame lag "
+              "(caught 6 of 16); observations the cross-view gate removed in the held-out view; contact "
+              "precision (an open hand and a fist differ by 60-80 mm, so grasp state clears the noise and touch "
+              "does not); one take. Jitter rejects NO control and prefers three of them: a prior-dominated "
+              "solver drifts at constant velocity with jitter better than MAMMA's, and only the held-out camera "
+              "catches it. The prior-dominated arm's held-out folds are absent (54 min per cell; stopped).",
+        status="measured: 36.5 mm held-out, degenerate hands rejected; the shipped hand is under-smoothed",
+        extract=x_hands_report, reports=["artifacts/hands-lane/hand-fit-heldout.json"],
+        both_directions="MAMMA->ours: done as the oracle arm (its hand joints on the MHR chain's slots, scored "
+                        "against the same held-out observations). Its hand landmarks INTO our chain fit, to "
+                        "price the detector for hands, is still not built.",
     ),
     dict(
         id="head", n=9, regenerate=".venv/bin/python tools/head/gate_the_shipped_head.py && .venv/bin/python tools/compare/provenance.py; .venv/bin/python tools/head/thorax_window_sweep.py",
@@ -715,6 +733,46 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Fixed rig, performer 1", role="ours", key="canonical_arms_subject_01"),
                    dict(label="Rig sized to performer 1", role="alt", key="sized_arms_subject_01"),
                    dict(label="Converter floor, performer 1", role="control", key="converter_floor_arms_subject_01")]),
+    ],
+    "hands": [
+        dict(title="The hand fit scored on a camera it never saw, per hand",
+             plain="No truth on disk: each hand is fitted on three cameras and scored on the fourth, then rotated. "
+                   "MAMMA's own hand through the same protocol sits above ours because of a skeleton convention gap, "
+                   "so this chart proves the gate rejects a frozen hand; it does not rank us against MAMMA.",
+             better="lower",
+             bars=[dict(label="Ours, performer 0 left", role="ours", key="heldout_subj0-l"),
+                   dict(label="MAMMA's hand, same protocol, 0 left", role="mamma",
+                        keys=[f"oracle_subj0-l_{c}" for c in ("A001", "B001", "C001", "D001")]),
+                   dict(label="A frozen hand, 0 left", role="control",
+                        keys=[f"CONTROL_frozen_medoid_pose_subj0-l_{c}" for c in ("A001", "B001", "C001", "D001")]),
+                   dict(label="Ours, performer 0 right", role="ours", key="heldout_subj0-r"),
+                   dict(label="MAMMA's hand, same protocol, 0 right", role="mamma",
+                        keys=[f"oracle_subj0-r_{c}" for c in ("A001", "B001", "C001", "D001")]),
+                   dict(label="A frozen hand, 0 right", role="control",
+                        keys=[f"CONTROL_frozen_medoid_pose_subj0-r_{c}" for c in ("A001", "B001", "C001", "D001")]),
+                   dict(label="Ours, performer 1 left", role="ours", key="heldout_subj1-l"),
+                   dict(label="MAMMA's hand, same protocol, 1 left", role="mamma",
+                        keys=[f"oracle_subj1-l_{c}" for c in ("A001", "B001", "C001", "D001")]),
+                   dict(label="A frozen hand, 1 left", role="control",
+                        keys=[f"CONTROL_frozen_medoid_pose_subj1-l_{c}" for c in ("A001", "B001", "C001", "D001")]),
+                   dict(label="Ours, performer 1 right", role="ours", key="heldout_subj1-r"),
+                   dict(label="MAMMA's hand, same protocol, 1 right", role="mamma",
+                        keys=[f"oracle_subj1-r_{c}" for c in ("A001", "B001", "C001", "D001")]),
+                   dict(label="A frozen hand, 1 right", role="control",
+                        keys=[f"CONTROL_frozen_medoid_pose_subj1-r_{c}" for c in ("A001", "B001", "C001", "D001")])]),
+        dict(title="Fingertip jitter: how much the fingers shake frame to frame",
+             plain="The thrash figure. Beside each hand is the part of the shake that is the whole wrist moving "
+                   "rather than the fingers, which is a floor under it. MAMMA's fingertips shake about 0.2 mm "
+                   "on this scale and sit on a different skeleton, so they are not drawn.",
+             better="lower",
+             bars=[dict(label="Ours, performer 0 left", role="ours", key="jitter_subj0-l"),
+                   dict(label="Wrist alone, 0 left", role="alt", key="jitter_translation_only_subj0-l"),
+                   dict(label="Ours, performer 0 right", role="ours", key="jitter_subj0-r"),
+                   dict(label="Wrist alone, 0 right", role="alt", key="jitter_translation_only_subj0-r"),
+                   dict(label="Ours, performer 1 left", role="ours", key="jitter_subj1-l"),
+                   dict(label="Wrist alone, 1 left", role="alt", key="jitter_translation_only_subj1-l"),
+                   dict(label="Ours, performer 1 right", role="ours", key="jitter_subj1-r"),
+                   dict(label="Wrist alone, 1 right", role="alt", key="jitter_translation_only_subj1-r")]),
     ],
     "head": [
         dict(title="How closely the head follows MAMMA's, relative to the chest",

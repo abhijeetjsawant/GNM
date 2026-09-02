@@ -7,11 +7,11 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I2, I3, I4, I6, I8. In flight: I5. Blocked: nothing.
+Done: I0, I1, I2, I3, I4, I5, I6, I8. In flight: nothing. Blocked: nothing.
 
 ## In flight
 
-- **I5** Hands: the held-out-camera test as a report — an Opus agent, since 2026-09-02
+- nothing in flight
 
 ## Next up (unblocked, not started)
 
@@ -28,12 +28,12 @@ Done: I0, I1, I2, I3, I4, I6, I8. In flight: I5. Blocked: nothing.
 
 ## Recent log
 
-- 2026-09-02 [I3] unblocked: I1, I2, I4, I6 have reports
-- 2026-09-02 [I5] unblocked: I1, I2, I4, I6 have reports
 - 2026-09-02 [I3] worktree ladder/I3, Opus agent
 - 2026-09-02 [I5] worktree ladder/I5, Opus agent
 - 2026-09-02 [I3] Three reports with controls on three references. Self-agreement 2.77 px one-sided at 1280; vs MAMMA joints 43.3 mm raw, 37.8 held-out offsets, 35.7 ceiling; 6.1 px 2D residual. Decision rule (written first) sends the lane to the pseudo-label campaign: 82.5% of detector cost survives any per-view shift. The offset is one global vector, not four; the 18.6 px bias claim was ~3x too big; 2.2x retired as two denominators.
 - 2026-09-02 [I3] I3 done: the detector's error is mostly per-joint, not a per-camera offset, so the next detector step is training on our own labels. Two old headline figures were retired.
+- 2026-09-02 [I5] Held-out camera protocol is a report: 36.5 mm at the subject, mean over 16 hand x fold cells (27-54 per hand). Frozen hands rejected 16/16; a prior-dominated solver drifts at constant velocity with jitter BETTER than MAMMA and is rejected only by the held-out camera; a lag of one frame is caught 6/16; zero-phase low-pass beats the shipped default 14/16 -- the shipped hand is under-smoothed. MAMMA's hand through the same protocol scores 42 mm, above ours: the floor is SOMA-77 pixel error plus a 26-73 mm MHR-to-SMPL-X convention gap, so the gate discriminates degenerate motion, not accuracy. Prior-dominated arm's held-out folds unfinished (54 min/cell).
+- 2026-09-02 [I5] I5 done: the hands gate exists and rejects frozen and drifting hands, but only the held-out camera can; smoothness bands reject nothing. It also says the shipped hand is under-smoothed and that MAMMA's hand is not a floor here. Lane I complete except I7.
 
 ## How to resume
 

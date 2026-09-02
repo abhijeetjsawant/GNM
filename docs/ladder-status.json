@@ -86,10 +86,10 @@
           "title": "Hands: the held-out-camera test as a report",
           "plain": "The hand fit prototype has good numbers in a document only. Make it write a report with the right controls.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
-          "report": "artifacts/handfit-arrays/held-out.json",
+          "finished": "2026-09-02",
+          "report": "artifacts/hands-lane/hand-fit-heldout.json",
           "blocked_on": null
         },
         {
@@ -345,6 +345,16 @@
       "date": "2026-09-02",
       "step": "I3",
       "text": "I3 done: the detector's error is mostly per-joint, not a per-camera offset, so the next detector step is training on our own labels. Two old headline figures were retired."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I5",
+      "text": "Held-out camera protocol is a report: 36.5 mm at the subject, mean over 16 hand x fold cells (27-54 per hand). Frozen hands rejected 16/16; a prior-dominated solver drifts at constant velocity with jitter BETTER than MAMMA and is rejected only by the held-out camera; a lag of one frame is caught 6/16; zero-phase low-pass beats the shipped default 14/16 -- the shipped hand is under-smoothed. MAMMA's hand through the same protocol scores 42 mm, above ours: the floor is SOMA-77 pixel error plus a 26-73 mm MHR-to-SMPL-X convention gap, so the gate discriminates degenerate motion, not accuracy. Prior-dominated arm's held-out folds unfinished (54 min/cell)."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I5",
+      "text": "I5 done: the hands gate exists and rejects frozen and drifting hands, but only the held-out camera can; smoothness bands reject nothing. It also says the shipped hand is under-smoothed and that MAMMA's hand is not a floor here. Lane I complete except I7."
     }
   ]
 }

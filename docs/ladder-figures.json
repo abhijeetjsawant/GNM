@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-02T13:04:50",
+ "rendered": "2026-09-02T15:37:26",
  "git": {
-  "sha": "2818281",
+  "sha": "500c82d",
   "dirty": true
  },
  "rungs": [
@@ -327,8 +327,125 @@
    "id": "hands",
    "n": 8,
    "title": "Hands",
-   "status": "prototype, figures in a document only",
-   "visuals": []
+   "status": "measured: 36.5 mm held-out, degenerate hands rejected; the shipped hand is under-smoothed",
+   "visuals": [
+    {
+     "title": "The hand fit scored on a camera it never saw, per hand",
+     "plain": "No truth on disk: each hand is fitted on three cameras and scored on the fourth, then rotated. MAMMA's own hand through the same protocol sits above ours because of a skeleton convention gap, so this chart proves the gate rejects a frozen hand; it does not rank us against MAMMA.",
+     "better": "lower",
+     "unit": "mm at the subject",
+     "bars": [
+      {
+       "label": "Ours, performer 0 left",
+       "role": "ours",
+       "value": 31.6
+      },
+      {
+       "label": "MAMMA's hand, same protocol, 0 left",
+       "role": "mamma",
+       "value": 38.6
+      },
+      {
+       "label": "A frozen hand, 0 left",
+       "role": "control",
+       "value": 50.25
+      },
+      {
+       "label": "Ours, performer 0 right",
+       "role": "ours",
+       "value": 27.1
+      },
+      {
+       "label": "MAMMA's hand, same protocol, 0 right",
+       "role": "mamma",
+       "value": 43.5
+      },
+      {
+       "label": "A frozen hand, 0 right",
+       "role": "control",
+       "value": 43.95
+      },
+      {
+       "label": "Ours, performer 1 left",
+       "role": "ours",
+       "value": 53.9
+      },
+      {
+       "label": "MAMMA's hand, same protocol, 1 left",
+       "role": "mamma",
+       "value": 40.8
+      },
+      {
+       "label": "A frozen hand, 1 left",
+       "role": "control",
+       "value": 78.15
+      },
+      {
+       "label": "Ours, performer 1 right",
+       "role": "ours",
+       "value": 33.4
+      },
+      {
+       "label": "MAMMA's hand, same protocol, 1 right",
+       "role": "mamma",
+       "value": 43.400000000000006
+      },
+      {
+       "label": "A frozen hand, 1 right",
+       "role": "control",
+       "value": 66.55
+      }
+     ]
+    },
+    {
+     "title": "Fingertip jitter: how much the fingers shake frame to frame",
+     "plain": "The thrash figure. Beside each hand is the part of the shake that is the whole wrist moving rather than the fingers, which is a floor under it. MAMMA's fingertips shake about 0.2 mm on this scale and sit on a different skeleton, so they are not drawn.",
+     "better": "lower",
+     "unit": "mm median second difference",
+     "bars": [
+      {
+       "label": "Ours, performer 0 left",
+       "role": "ours",
+       "value": 12.316
+      },
+      {
+       "label": "Wrist alone, 0 left",
+       "role": "alt",
+       "value": 12.842
+      },
+      {
+       "label": "Ours, performer 0 right",
+       "role": "ours",
+       "value": 11.963
+      },
+      {
+       "label": "Wrist alone, 0 right",
+       "role": "alt",
+       "value": 11.393
+      },
+      {
+       "label": "Ours, performer 1 left",
+       "role": "ours",
+       "value": 14.243
+      },
+      {
+       "label": "Wrist alone, 1 left",
+       "role": "alt",
+       "value": 11.806
+      },
+      {
+       "label": "Ours, performer 1 right",
+       "role": "ours",
+       "value": 14.875
+      },
+      {
+       "label": "Wrist alone, 1 right",
+       "role": "alt",
+       "value": 15.676
+      }
+     ]
+    }
+   ]
   },
   {
    "id": "head",
