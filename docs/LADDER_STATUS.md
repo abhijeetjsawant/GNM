@@ -7,11 +7,10 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I2, I4, I6, I8. In flight: I3, I5. Blocked: nothing.
+Done: I0, I1, I2, I3, I4, I6, I8. In flight: I5. Blocked: nothing.
 
 ## In flight
 
-- **I3** Detector reports that actually discriminate — an Opus agent, since 2026-09-02
 - **I5** Hands: the held-out-camera test as a report — an Opus agent, since 2026-09-02
 
 ## Next up (unblocked, not started)
@@ -29,12 +28,12 @@ Done: I0, I1, I2, I4, I6, I8. In flight: I3, I5. Blocked: nothing.
 
 ## Recent log
 
-- 2026-09-02 [I6] I6 done: the first surface measurement. Our body is too small and misplaced rather than too big, and a plain 180-degree turn would make it worse, so the facing defect is not where the plan put it. The overlay script D1 relies on has a timebase bug.
-- 2026-09-02 [D1] premise reopened by I6
 - 2026-09-02 [I3] unblocked: I1, I2, I4, I6 have reports
 - 2026-09-02 [I5] unblocked: I1, I2, I4, I6 have reports
 - 2026-09-02 [I3] worktree ladder/I3, Opus agent
 - 2026-09-02 [I5] worktree ladder/I5, Opus agent
+- 2026-09-02 [I3] Three reports with controls on three references. Self-agreement 2.77 px one-sided at 1280; vs MAMMA joints 43.3 mm raw, 37.8 held-out offsets, 35.7 ceiling; 6.1 px 2D residual. Decision rule (written first) sends the lane to the pseudo-label campaign: 82.5% of detector cost survives any per-view shift. The offset is one global vector, not four; the 18.6 px bias claim was ~3x too big; 2.2x retired as two denominators.
+- 2026-09-02 [I3] I3 done: the detector's error is mostly per-joint, not a per-camera offset, so the next detector step is training on our own labels. Two old headline figures were retired.
 
 ## How to resume
 

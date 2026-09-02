@@ -192,6 +192,16 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_detector_all(spec: dict) -> tuple[list, list]:
+    """Rung 2: the production run's self-consistency figure plus I3's three discriminating reports
+    (`tools/compare/extractors/i3_detector.py`, wired by the registry owner)."""
+    figs, ctrls = x_detector(spec)
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.i3_detector import x_detector_reports  # noqa: E402
+    f2, c2 = x_detector_reports(spec)
+    return figs + f2, ctrls + c2
+
+
 def x_silhouette(spec: dict) -> tuple[list, list]:
     """Rung 1: I6's extractor, `tools/compare/extractors/i6_silhouette.py`, wired by the registry owner."""
     sys.path.insert(0, str(ROOT / "tools/compare"))
@@ -357,7 +367,7 @@ RUNGS: list[dict[str, Any]] = [
                         "finds, and D1 must re-locate the defect before fixing it. Ours->MAMMA: nothing to feed.",
     ),
     dict(
-        id="detector", n=2, regenerate="python -m autoanim_gnm ... (the production build writes run-report.json; see docs/BODY_LANE_PLAN.md)",
+        id="detector", n=2, regenerate="python3 tools/swap-harness/sam3d_ladder.py && python3 tools/swap-harness/common_mode.py && python3 tools/swap-harness/mamma_residuals.py   # SYSTEM python3; run-report.json comes from the production build",
         title="2D landmarks",
         mamma="`ma_2d`: MammaNet, 512 dense surface landmarks per person with a log-sigma channel, a "
               "visibility channel and contact / floor-contact channels, at native 3840x2160, per subject.",
@@ -365,16 +375,25 @@ RUNGS: list[dict[str, Any]] = [
              "joints, 5 head landmarks and the toe joints. Confidence in [0.895, 0.992] whether or not occluded.",
         interface="per camera, per frame, per subject: (landmark, x, y, confidence)",
         supplied_by_mamma="calibration; subject labels (pre-split)",
-        instrument="`artifacts/commercial-multiview-soma77/run-report.json` (reprojection through our own solve) "
-                   "-- a self-consistency figure only",
-        instrument_missing="the cross-detector figures that discriminate (bulk ratio 2.2x, ~18.6 px coherent "
-                           "bias) live in `tools/swap-harness/mamma_residuals.py` and `sam3d_ladder.py`, which "
-                           "print and write no report. Give them JSON output and register them here.",
-        reference="our own triangulation",
-        blind="coherent per-camera bias -- passes through triangulation untouched; the tail; anything MAMMA's "
-              "2D does differently, because this rung has no MAMMA arm on disk yet",
-        status="measured, no discriminating instrument on disk", extract=x_detector,
-        reports=["artifacts/commercial-multiview-soma77/run-report.json"],
+        instrument="three reports, three references, never one axis (I3, 2026-09-02): `sam3d_ladder.py` -> "
+                   "`detector-self-agreement.json` (reference-free cross-view epipolar, symmetric halved); "
+                   "`common_mode.py` -> `detector-common-mode.json` (per-camera static 2D offsets fitted on one "
+                   "half of the frames, scored on the other, in mm after raw re-triangulation); `mamma_residuals.py` "
+                   "-> `detector-vs-mamma.json` (2D residual against MAMMA's projected joints, in px, labelled as "
+                   "disagreement with a fitter). The decision rule lives in `i3_decision.py`, written before the "
+                   "first figure. `run-report.json`'s reprojection stays as the self-consistency figure it is.",
+        reference="reference-free (report 1); MAMMA pred_joints projected through our rig, in mm (report 2) and in px "
+                  "(report 3) -- three references, three axes",
+        blind="report 1 is within-frame geometry: our own 3D reprojected passes it, so it is a diagnostic, not a "
+              "gate; blind to a landmark consistently on the wrong body part and to depth. Report 2 cannot tell a "
+              "detector crop convention from a calibration error -- both are a coherent per-view shift, and rung 0 "
+              "is not owned. Report 3 charges MAMMA's fit error and the rig calibration to us in full. The old "
+              "'2.2x' compared our 2D vs raw triangulation with MAMMA's 2D vs a fit that consumed those landmarks: "
+              "two denominators, retired.",
+        status="measured with controls; the coherent bias is ~11 px at 3840, not 18.6, and the verdict is the pseudo-label campaign",
+        extract=x_detector_all,
+        reports=["artifacts/commercial-multiview-soma77/run-report.json", "artifacts/compare/detector-self-agreement.json",
+                 "artifacts/compare/detector-common-mode.json", "artifacts/compare/detector-vs-mamma.json"],
         both_directions="MAMMA->ours: done, see the triangulation rung. Ours->MAMMA: OPEN. MAMMA's fitter consumes "
                         "its own 512 landmarks; `use_sparse_body_ldmks` selects a subset of THOSE (`self.body_idx`), "
                         "not arbitrary joints. Feeding our 17 joints needs a mapping onto SMPL-X joint targets "
