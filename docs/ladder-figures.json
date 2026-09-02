@@ -1,0 +1,492 @@
+{
+ "rendered": "2026-09-02T13:04:50",
+ "git": {
+  "sha": "2818281",
+  "dirty": true
+ },
+ "rungs": [
+  {
+   "id": "calibration",
+   "n": 0,
+   "title": "Capture, calibration, sync, undistortion",
+   "status": "not owned",
+   "visuals": []
+  },
+  {
+   "id": "masks",
+   "n": 1,
+   "title": "Person masks and per-view identity",
+   "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
+   "visuals": [
+    {
+     "title": "How much our body outline overlaps the person in the frame",
+     "plain": "Each camera's own person mask is the reference. MAMMA's mesh through the same renderer is the best this measurement can reach; a flat rectangle over the person is the wrong answer that must lose.",
+     "better": "higher",
+     "unit": "IoU median",
+     "bars": [
+      {
+       "label": "Ours, median over 4 cameras",
+       "role": "ours",
+       "value": 0.6024827472735121
+      },
+      {
+       "label": "MAMMA's mesh, same renderer",
+       "role": "mamma",
+       "value": 0.8414490501171145
+      },
+      {
+       "label": "MAMMA's pose on an average body",
+       "role": "alt",
+       "value": 0.7615549358776743
+      },
+      {
+       "label": "A flat rectangle over the person",
+       "role": "control",
+       "value": 0.4594671688370422
+      }
+     ]
+    },
+    {
+     "title": "How much of the person our outline covers (recall)",
+     "plain": "Ours falls twice as far below MAMMA on recall as on precision: the delivered body is too small and misplaced rather than too big.",
+     "better": "higher",
+     "unit": "fraction",
+     "bars": [
+      {
+       "label": "Ours",
+       "role": "ours",
+       "value": 0.6643273377730663
+      },
+      {
+       "label": "MAMMA's mesh",
+       "role": "mamma",
+       "value": 0.8911154421933783
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "detector",
+   "n": 2,
+   "title": "2D landmarks",
+   "status": "measured with controls; the coherent bias is ~11 px at 3840, not 18.6, and the verdict is the pseudo-label campaign",
+   "visuals": [
+    {
+     "title": "Detector error after triangulation, and how much a coordinate fix could remove",
+     "plain": "MAMMA's fitted joints are the reference, at zero. The first bar is our detector as it is; the second is after the best honest per-camera shift; the third is the ceiling no shift can beat. Most of the error is per-joint, which is why the next step is training, not offsets.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ours, no correction",
+       "role": "ours",
+       "value": 43.307
+      },
+      {
+       "label": "Ours, offsets fitted on other frames",
+       "role": "alt",
+       "value": 37.809
+      },
+      {
+       "label": "Ours, best possible shift (ceiling)",
+       "role": "alt",
+       "value": 35.725
+      }
+     ]
+    },
+    {
+     "title": "How well the four cameras agree with each other about our detector's points",
+     "plain": "No reference at all: the detector against itself across views. Pairing the wrong people across cameras must score far worse, and it does.",
+     "better": "lower",
+     "unit": "px at 1280 (x3 for native 3840)",
+     "bars": [
+      {
+       "label": "Ours",
+       "role": "ours",
+       "value": 2.768
+      },
+      {
+       "label": "Wrong people paired across cameras",
+       "role": "control",
+       "value": 93.797
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "association",
+   "n": 3,
+   "title": "Cross-view association / re-ID",
+   "status": "measured",
+   "visuals": [
+    {
+     "title": "Times the two performers were confused for each other",
+     "plain": "MAMMA's subject labels are the reference. Zero is the target, and it must still hold when one camera runs a frame early or late.",
+     "better": "lower",
+     "unit": "of 300 slot-frames",
+     "bars": [
+      {
+       "label": "Ours",
+       "role": "ours",
+       "value": 0.0
+      },
+      {
+       "label": "Ours, one camera a frame early",
+       "role": "alt",
+       "value": 0.0
+      },
+      {
+       "label": "Ours, one camera a frame late",
+       "role": "alt",
+       "value": 0.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "triangulation",
+   "n": 4,
+   "title": "Triangulation",
+   "status": "measured, at the instrument's floor",
+   "visuals": [
+    {
+     "title": "Our triangulation given MAMMA's own 2D points",
+     "plain": "MAMMA's exact landmarks are the reference. About 10 mm is the floor the reference itself imposes, so these bars say our geometry reaches it.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ours, performer 0",
+       "role": "ours",
+       "value": 11.11322716928001
+      },
+      {
+       "label": "Ours, performer 1",
+       "role": "ours",
+       "value": 9.210200116050034
+      },
+      {
+       "label": "Ours, MAMMA visibility, fewer points",
+       "role": "alt",
+       "value": 9.662082383940836
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "temporal",
+   "n": 5,
+   "title": "Temporal solve and smoothing",
+   "status": "measured on perfect 2D (1.15 mm, all of it this stage); dark on real footage",
+   "visuals": [
+    {
+     "title": "Our whole pipeline on a perfect detector: how far from the truth it lands",
+     "plain": "MAMMA's skeleton projected into the cameras is the exact truth here. The floor is about one millimetre and all of it is the smoothing stage; a rig one frame out of sync costs six times that.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ours, performer 0",
+       "role": "ours",
+       "value": 0.981
+      },
+      {
+       "label": "Ours, performer 1",
+       "role": "ours",
+       "value": 1.377
+      },
+      {
+       "label": "Ours with MAMMA-grade 2D noise added",
+       "role": "alt",
+       "value": 4.627
+      },
+      {
+       "label": "One camera shifted a frame",
+       "role": "control",
+       "value": 6.68
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "shape",
+   "n": 6,
+   "title": "Body shape per performer",
+   "status": "measured (instrument), absent (delivery)",
+   "visuals": [
+    {
+     "title": "How far each body's limb lengths are from the performer's own",
+     "plain": "Limb lengths measured from our own capture are the reference. A body fitted to the performer should sit well below our one-size rig.",
+     "better": "lower",
+     "unit": "mm",
+     "bars": [
+      {
+       "label": "Our fixed rig, performer 0",
+       "role": "ours",
+       "value": 39.5
+      },
+      {
+       "label": "Fitted body (instrument), performer 0",
+       "role": "alt",
+       "value": 19.3
+      },
+      {
+       "label": "Our fixed rig, performer 1",
+       "role": "ours",
+       "value": 39.1
+      },
+      {
+       "label": "Fitted body (instrument), performer 1",
+       "role": "alt",
+       "value": 14.1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "pose",
+   "n": 7,
+   "title": "Pose recovery",
+   "status": "measured; converter split by I1 (2026-09-02)",
+   "visuals": [
+    {
+     "title": "Distance from MAMMA's joints, 15 body joints",
+     "plain": "MAMMA's joints are the reference, at zero. Our raw capture, and the same capture driving a parametric body, on identical frames.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Our capture, performer 0",
+       "role": "ours",
+       "value": 36.11694619758818
+      },
+      {
+       "label": "Capture driving a fitted body, 0",
+       "role": "alt",
+       "value": 27.7
+      },
+      {
+       "label": "Our capture, performer 1",
+       "role": "ours",
+       "value": 41.29665970596726
+      },
+      {
+       "label": "Capture driving a fitted body, 1",
+       "role": "alt",
+       "value": 40.1
+      }
+     ]
+    },
+    {
+     "title": "What the retarget costs on the arms, and how much sizing the rig recovers",
+     "plain": "Our own capture is the reference. The last bar per performer is the converter's own floor, a round trip on a body built to the rig's proportions; nothing above it is proportions.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Fixed rig, performer 0",
+       "role": "ours",
+       "value": 181.33
+      },
+      {
+       "label": "Rig sized to performer 0",
+       "role": "alt",
+       "value": 85.08
+      },
+      {
+       "label": "Converter floor, performer 0",
+       "role": "control",
+       "value": 30.31
+      },
+      {
+       "label": "Fixed rig, performer 1",
+       "role": "ours",
+       "value": 217.5
+      },
+      {
+       "label": "Rig sized to performer 1",
+       "role": "alt",
+       "value": 91.64
+      },
+      {
+       "label": "Converter floor, performer 1",
+       "role": "control",
+       "value": 35.53
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "hands",
+   "n": 8,
+   "title": "Hands",
+   "status": "prototype, figures in a document only",
+   "visuals": []
+  },
+  {
+   "id": "head",
+   "n": 9,
+   "title": "Head orientation",
+   "status": "measured, one performer misses P1 p95 by 1.18 deg; its thorax window is the one MAMMA-chosen shipped constant (I8), re-selected at 9 on synthetic truth, change pending",
+   "visuals": [
+    {
+     "title": "How closely the head follows MAMMA's, relative to the chest",
+     "plain": "MAMMA's head in our chest frame is the reference. MAMMA's own head through our frames is the floor; a head that never moves is the wrong answer that must lose.",
+     "better": "lower",
+     "unit": "deg median",
+     "bars": [
+      {
+       "label": "Ours, performer 0",
+       "role": "ours",
+       "value": 6.391261102226377
+      },
+      {
+       "label": "MAMMA through our frames, 0",
+       "role": "mamma",
+       "value": 3.618589769707424
+      },
+      {
+       "label": "A head that never moves, 0",
+       "role": "control",
+       "value": 15.421264821716928
+      },
+      {
+       "label": "Ours, performer 1",
+       "role": "ours",
+       "value": 8.249401996536818
+      },
+      {
+       "label": "MAMMA through our frames, 1",
+       "role": "mamma",
+       "value": 3.869243656214892
+      },
+      {
+       "label": "A head that never moves, 1",
+       "role": "control",
+       "value": 16.170521898183676
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "feet",
+   "n": 10,
+   "title": "Feet, toes and ground contact",
+   "status": "measured against MAMMA; a constant 17-24 deg inward toe offset on every foot",
+   "visuals": [
+    {
+     "title": "How closely each foot follows MAMMA's, once the constant offset is removed",
+     "plain": "MAMMA's foot direction in the shin frame is the reference. Its own foot through our frames is the floor; a foot welded to the shin is the wrong answer that must lose. The constant offset is reported separately: our toes point about twenty degrees inward.",
+     "better": "lower",
+     "unit": "deg median",
+     "bars": [
+      {
+       "label": "Ours, performer 0 left",
+       "role": "ours",
+       "value": 6.576050169996952
+      },
+      {
+       "label": "MAMMA through our frames, 0 left",
+       "role": "mamma",
+       "value": 3.5755832993378602
+      },
+      {
+       "label": "Welded foot, 0 left",
+       "role": "control",
+       "value": 9.005124938628864
+      },
+      {
+       "label": "Ours, performer 0 right",
+       "role": "ours",
+       "value": 6.201379984732156
+      },
+      {
+       "label": "MAMMA through our frames, 0 right",
+       "role": "mamma",
+       "value": 2.836519346418843
+      },
+      {
+       "label": "Welded foot, 0 right",
+       "role": "control",
+       "value": 12.789819422320809
+      },
+      {
+       "label": "Ours, performer 1 left",
+       "role": "ours",
+       "value": 9.474210075309452
+      },
+      {
+       "label": "MAMMA through our frames, 1 left",
+       "role": "mamma",
+       "value": 4.118169921515968
+      },
+      {
+       "label": "Welded foot, 1 left",
+       "role": "control",
+       "value": 20.7033130053452
+      },
+      {
+       "label": "Ours, performer 1 right",
+       "role": "ours",
+       "value": 8.445856334340785
+      },
+      {
+       "label": "MAMMA through our frames, 1 right",
+       "role": "mamma",
+       "value": 3.475592300359057
+      },
+      {
+       "label": "Welded foot, 1 right",
+       "role": "control",
+       "value": 17.101348355280248
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "delivered",
+   "n": 11,
+   "title": "Mesh and delivered skeleton -- the end-to-end rung, deliberately last",
+   "status": "measured",
+   "visuals": [
+    {
+     "title": "The delivered character against MAMMA's joints, end to end",
+     "plain": "MAMMA's joints are the reference, at zero, the same reference as the pose rung. The gap between the fixed rig and the sized rig is the body; the rest is everything above compounded.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Delivered, one fixed body, 0",
+       "role": "ours",
+       "value": 151.58444559520817
+      },
+      {
+       "label": "Rig sized to performer 0",
+       "role": "alt",
+       "value": 136.5809980486936
+      },
+      {
+       "label": "Delivered, one fixed body, 1",
+       "role": "ours",
+       "value": 137.75777768784724
+      },
+      {
+       "label": "Rig sized to performer 1",
+       "role": "alt",
+       "value": 113.03823809049733
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

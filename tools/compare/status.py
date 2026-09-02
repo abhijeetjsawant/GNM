@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import html
+import sys
 import json
 from pathlib import Path
 
@@ -30,6 +31,9 @@ ROOT = Path(__file__).resolve().parents[2]
 STATUS = ROOT / "docs/ladder-status.json"
 MD = ROOT / "docs/LADDER_STATUS.md"
 PAGE = ROOT / "docs/progress.html"
+FIGURES = ROOT / "docs/ladder-figures.json"   # written by ladder.py: the charts, resolved
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from visuals import VIS_CSS, chart_svg  # noqa: E402
 STATES = ("planned", "in_progress", "blocked", "done", "retired")
 PLAIN_STATE = {"planned": "not started", "in_progress": "in progress", "blocked": "blocked",
                "done": "done", "retired": "retired"}
@@ -190,6 +194,8 @@ h2{font-size:1.15rem;margin:2rem 0 .6rem;letter-spacing:-.01em}
 .log time{color:var(--faint);font-variant-numeric:tabular-nums;font-size:.9rem}
 footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule);color:var(--faint);font-size:.85rem}
 footer a{color:var(--accent)}
+.part{margin:0 0 1.3rem}.part h3{font-size:1rem;margin:0 0 .1rem}.part h3 .n{font-size:.72rem;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;margin-right:.4rem}
+.part .st{font-size:.82rem;color:var(--muted);margin:0 0 .5rem}
 @media (max-width:34rem){.step{grid-template-columns:1fr}.step .p,.step .m{grid-column:1}}
 """
 
@@ -225,18 +231,42 @@ def render_html(d: dict) -> str:
                 f'<div class="m">{e(" · ".join(meta))}</div></div>')
         lanes.append(f'<section class="lane"><h2>{e(lane["title"])}</h2><p class="plain">{e(lane["plain"])}</p>'
                      + "".join(rows) + "</section>")
+    board = ""
+    if FIGURES.exists():
+        try:
+            fig = json.loads(FIGURES.read_text())
+        except Exception:
+            fig = None
+        if fig:
+            parts = []
+            for r in fig["rungs"]:
+                if not r.get("visuals"):
+                    continue
+                cards = "".join(chart_svg(c) for c in r["visuals"])
+                parts.append(f'<div class="part"><h3><span class="n">part {r["n"]:02d}</span> {e(r["title"])}</h3>'
+                             f'<p class="st">{e(r["status"])}</p><div class="viz-grid">{cards}</div></div>')
+            if parts:
+                board = ('<h2>How we compare with MAMMA, part by part</h2>'
+                         '<p class="plain">One chart per comparison. Blue is ours, orange is MAMMA, the benchmark we '
+                         'measure against; green is an alternative of ours; a hatched bar is a deliberately wrong '
+                         'answer that must lose, there to prove the measurement can fail. Every chart says whether '
+                         'lower or higher is better. Bars on one chart share a reference; bars on different charts '
+                         'never do, so do not compare across charts. Nothing here is accuracy: MAMMA is an estimate '
+                         'too, and only the marker session can turn agreement into accuracy. '
+                         f'Figures rendered {e(fig["rendered"])}.</p>' + "".join(parts))
     log = "".join(
         f'<li><time>{e(x["date"])}</time><span>{e(x["text"])}</span></li>' for x in reversed(d["log"][-12:]))
     links = f'<a href="{URLS["ladder"]}">the measurement ladder</a> and <a href="{URLS["board"]}">the parity board</a>'
     return f'''<meta charset="utf-8">
 <title>Body Capture Progress</title>
-<style>{CSS}</style>
+<style>{CSS}{VIS_CSS}</style>
 <div class="wrap">
 <h1>Body Capture Progress</h1>
 <p class="lede">{e(d["goal"])}</p>
 <p class="stamp">Updated {e(d["updated"])}. Three lanes: our own hardware, the measuring tools, and the changes to what we ship. Each step is either done, in progress, blocked, or not started.</p>
 <div class="summary">{tiles}</div>
 {ask}
+{board}
 {"".join(lanes)}
 <h2>What changed recently</h2>
 <ul class="log">{log}</ul>

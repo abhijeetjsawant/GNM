@@ -57,6 +57,18 @@
   instruments, delivery), one part per step, the MAMMA arm reports and never selects a
   constant. `THORAX_SMOOTHING_FRAMES` was selected on the MAMMA oracle arm and is an open
   leak (I8) until re-selected from synthetic or owned data.
+- **Every part carries a picture, and the picture says which way is good.** Each rung on the
+  ladder page and each part on the progress page shows a bar chart -- ours beside MAMMA's, with
+  an alternative of ours and a deliberately wrong answer where they exist -- labelled in plain
+  words *lower is better* or *higher is better*, with one sentence naming the reference. The
+  charts are declared in `VISUALS` in `tools/compare/ladder.py` (fig keys, roles ours / mamma /
+  alt / control), resolved from the reports on every run, written to `docs/ladder-figures.json`,
+  and rendered by `tools/compare/visuals.py` on both pages, so the non-technical page can never
+  disagree with the technical one. Bars on one chart share a unit and a reference; bars on
+  different charts never do. **When an instrument adds or changes a figure, add or update its
+  comparison in `VISUALS` in the same pass** -- the ladder prints `NO VISUAL` for a rung with
+  figures and no chart. Roles use the validated palette in `visuals.py` (blue ours, orange MAMMA,
+  aqua alternative, hatched control); do not repaint them.
 - **Keep the parity board current: `docs/parity-board.html`**, published at
   <https://claude.ai/code/artifact/cf83ef29-a4b7-4afd-9031-0918e8eb6f35>. It is the
   one-page view of where each pipeline stage stands — measured and holding,

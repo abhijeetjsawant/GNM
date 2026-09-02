@@ -186,7 +186,12 @@ markers exist.
    controls and oracles go in the second list.
 3. Fill the registry row: MAMMA's stage, ours, the interface crossed, what MAMMA
    supplied in the rung, the blindness, and both substitution directions.
-4. Run the ladder. Check the console for `NO CONTROL ARM`. Commit the report's
+4. Declare the rung's picture in `VISUALS` (`tools/compare/ladder.py`): one comparison per
+   question, ours beside MAMMA's, an alternative of ours and a must-lose control where they
+   exist, `better="lower"` or `"higher"`, and a one-sentence `plain` naming the reference for a
+   non-technical reader. Bars name fig keys; bars on one chart share a unit and a reference.
+5. Run the ladder. Check the console for `NO CONTROL ARM` and `NO VISUAL`. The charts land on
+   the ladder page and, through `docs/ladder-figures.json`, on the progress page. Commit the report's
    generator, the page and the history line together.
-5. Update the parity board card for that stage in the same pass and republish it to
+6. Update the parity board card for that stage in the same pass and republish it to
    its existing URL (CLAUDE.md).

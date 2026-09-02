@@ -163,8 +163,9 @@ frozen and reported (lane I) → change → ladder rerun → history line → bo
   a script that writes a JSON report plus an extractor stub, never a registry edit;
   lane D steps additionally land tests and a rerun of the delivery build.
 - **Every step ends the same way:** report JSON under `artifacts/` → extractor →
-  `ladder.py` rerun (history line only if a headline changed) → board card → commit
-  together. Console must not print `NO CONTROL ARM` for the step's rung.
+  `ladder.py` rerun (history line only if a headline changed) → the rung's chart in `VISUALS`
+  (ours beside MAMMA's, lower/higher is better in words) → board card → commit together.
+  Console must not print `NO CONTROL ARM` or `NO VISUAL` for the step's rung.
 - **Selectors.** Any constant, weight, threshold or prior is selected by a held-out
   camera, the vs-our-own-capture control, synthetic truth or anatomy. The MAMMA arm
   **reports; it never selects.** MAMMA-derived outputs (I1-B, I2, offset tables) live

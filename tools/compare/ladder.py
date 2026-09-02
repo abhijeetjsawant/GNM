@@ -40,6 +40,9 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from visuals import VIS_CSS, charts_band  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 ART = ROOT / "artifacts"
 CMP = ART / "compare"
@@ -612,6 +615,172 @@ RUNGS: list[dict[str, Any]] = [
 ]
 
 
+# ---------------------------------------------------------------------------- visuals
+# One bar chart per comparison, ours beside MAMMA's, with "lower/higher is better" in words.
+# Every bar names a fig key from the rung's extractor; a missing key drops the bar, a chart with
+# no bars is not drawn, and the rung is flagged on the console. Bars on one chart share a unit
+# and a reference -- that is the same-axis rule, enforced by construction. `keys=[...]` takes
+# the median of several figures (per-camera IoUs into one bar). Roles: ours / mamma / alt / control.
+# The resolved charts are written to docs/ladder-figures.json, which the progress page renders
+# for the non-technical reader, so both pages always show the same numbers.
+FIGURES = ROOT / "docs/ladder-figures.json"
+VISUALS: dict[str, list[dict]] = {
+    "masks": [
+        dict(title="How much our body outline overlaps the person in the frame",
+             plain="Each camera's own person mask is the reference. MAMMA's mesh through the same renderer is the "
+                   "best this measurement can reach; a flat rectangle over the person is the wrong answer that must lose.",
+             better="higher",
+             bars=[dict(label="Ours, median over 4 cameras", role="ours",
+                        keys=[f"ours_iou_{c}_{s}" for c in ("A001", "B001", "C001", "D001") for s in ("00", "01")]),
+                   dict(label="MAMMA's mesh, same renderer", role="mamma", key="oracle_iou"),
+                   dict(label="MAMMA's pose on an average body", role="alt", key="control_mean_body_iou"),
+                   dict(label="A flat rectangle over the person", role="control", key="control_billboard_iou")]),
+        dict(title="How much of the person our outline covers (recall)",
+             plain="Ours falls twice as far below MAMMA on recall as on precision: the delivered body is too small "
+                   "and misplaced rather than too big.",
+             better="higher",
+             bars=[dict(label="Ours", role="ours", key="ours_recall"),
+                   dict(label="MAMMA's mesh", role="mamma", key="oracle_recall")]),
+    ],
+    "detector": [
+        dict(title="Detector error after triangulation, and how much a coordinate fix could remove",
+             plain="MAMMA's fitted joints are the reference, at zero. The first bar is our detector as it is; the "
+                   "second is after the best honest per-camera shift; the third is the ceiling no shift can beat. "
+                   "Most of the error is per-joint, which is why the next step is training, not offsets.",
+             better="lower",
+             bars=[dict(label="Ours, no correction", role="ours", key="cm_base"),
+                   dict(label="Ours, offsets fitted on other frames", role="alt", key="cm_heldout"),
+                   dict(label="Ours, best possible shift (ceiling)", role="alt", key="cm_ceiling")]),
+        dict(title="How well the four cameras agree with each other about our detector's points",
+             plain="No reference at all: the detector against itself across views. Pairing the wrong people "
+                   "across cameras must score far worse, and it does.",
+             better="lower",
+             bars=[dict(label="Ours", role="ours", key="self_agreement_p50"),
+                   dict(label="Wrong people paired across cameras", role="control", key="self_shuffled")]),
+    ],
+    "association": [
+        dict(title="Times the two performers were confused for each other",
+             plain="MAMMA's subject labels are the reference. Zero is the target, and it must still hold when one "
+                   "camera runs a frame early or late.",
+             better="lower",
+             bars=[dict(label="Ours", role="ours", key="switches"),
+                   dict(label="Ours, one camera a frame early", role="alt", key="switches_p1"),
+                   dict(label="Ours, one camera a frame late", role="alt", key="switches_m1")]),
+    ],
+    "triangulation": [
+        dict(title="Our triangulation given MAMMA's own 2D points",
+             plain="MAMMA's exact landmarks are the reference. About 10 mm is the floor the reference itself "
+                   "imposes, so these bars say our geometry reaches it.",
+             better="lower",
+             bars=[dict(label="Ours, performer 0", role="ours", key="uniform_s0"),
+                   dict(label="Ours, performer 1", role="ours", key="uniform_s1"),
+                   dict(label="Ours, MAMMA visibility, fewer points", role="alt", key="vis_s0")]),
+    ],
+    "temporal": [
+        dict(title="Our whole pipeline on a perfect detector: how far from the truth it lands",
+             plain="MAMMA's skeleton projected into the cameras is the exact truth here. The floor is about one "
+                   "millimetre and all of it is the smoothing stage; a rig one frame out of sync costs six times that.",
+             better="lower",
+             bars=[dict(label="Ours, performer 0", role="ours", key="floor_abs_our_subject_00"),
+                   dict(label="Ours, performer 1", role="ours", key="floor_abs_our_subject_01"),
+                   dict(label="Ours with MAMMA-grade 2D noise added", role="alt", key="noise_abs"),
+                   dict(label="One camera shifted a frame", role="control", key="time_shift_+1")]),
+    ],
+    "shape": [
+        dict(title="How far each body's limb lengths are from the performer's own",
+             plain="Limb lengths measured from our own capture are the reference. A body fitted to the performer "
+                   "should sit well below our one-size rig.",
+             better="lower",
+             bars=[dict(label="Our fixed rig, performer 0", role="ours", key="rig_subject_00"),
+                   dict(label="Fitted body (instrument), performer 0", role="alt", key="smplx_subject_00"),
+                   dict(label="Our fixed rig, performer 1", role="ours", key="rig_subject_01"),
+                   dict(label="Fitted body (instrument), performer 1", role="alt", key="smplx_subject_01")]),
+    ],
+    "pose": [
+        dict(title="Distance from MAMMA's joints, 15 body joints",
+             plain="MAMMA's joints are the reference, at zero. Our raw capture, and the same capture driving a "
+                   "parametric body, on identical frames.",
+             better="lower",
+             bars=[dict(label="Our capture, performer 0", role="ours", key="capture_subject_00"),
+                   dict(label="Capture driving a fitted body, 0", role="alt", key="smplx_subject_00"),
+                   dict(label="Our capture, performer 1", role="ours", key="capture_subject_01"),
+                   dict(label="Capture driving a fitted body, 1", role="alt", key="smplx_subject_01")]),
+        dict(title="What the retarget costs on the arms, and how much sizing the rig recovers",
+             plain="Our own capture is the reference. The last bar per performer is the converter's own floor, a "
+                   "round trip on a body built to the rig's proportions; nothing above it is proportions.",
+             better="lower",
+             bars=[dict(label="Fixed rig, performer 0", role="ours", key="canonical_arms_subject_00"),
+                   dict(label="Rig sized to performer 0", role="alt", key="sized_arms_subject_00"),
+                   dict(label="Converter floor, performer 0", role="control", key="converter_floor_arms_subject_00"),
+                   dict(label="Fixed rig, performer 1", role="ours", key="canonical_arms_subject_01"),
+                   dict(label="Rig sized to performer 1", role="alt", key="sized_arms_subject_01"),
+                   dict(label="Converter floor, performer 1", role="control", key="converter_floor_arms_subject_01")]),
+    ],
+    "head": [
+        dict(title="How closely the head follows MAMMA's, relative to the chest",
+             plain="MAMMA's head in our chest frame is the reference. MAMMA's own head through our frames is the "
+                   "floor; a head that never moves is the wrong answer that must lose.",
+             better="lower",
+             bars=[dict(label="Ours, performer 0", role="ours", key="head_subject_00"),
+                   dict(label="MAMMA through our frames, 0", role="mamma", key="oracle_subject_00"),
+                   dict(label="A head that never moves, 0", role="control", key="constant_subject_00"),
+                   dict(label="Ours, performer 1", role="ours", key="head_subject_01"),
+                   dict(label="MAMMA through our frames, 1", role="mamma", key="oracle_subject_01"),
+                   dict(label="A head that never moves, 1", role="control", key="constant_subject_01")]),
+    ],
+    "feet": [
+        dict(title="How closely each foot follows MAMMA's, once the constant offset is removed",
+             plain="MAMMA's foot direction in the shin frame is the reference. Its own foot through our frames is the "
+                   "floor; a foot welded to the shin is the wrong answer that must lose. The constant offset is "
+                   "reported separately: our toes point about twenty degrees inward.",
+             better="lower",
+             bars=[dict(label="Ours, performer 0 left", role="ours", key="ours_delivered_subject_00_L"),
+                   dict(label="MAMMA through our frames, 0 left", role="mamma", key="oracle_subject_00_L"),
+                   dict(label="Welded foot, 0 left", role="control", key="CONTROL_welded_to_shin_zero_articulation_subject_00_L"),
+                   dict(label="Ours, performer 0 right", role="ours", key="ours_delivered_subject_00_R"),
+                   dict(label="MAMMA through our frames, 0 right", role="mamma", key="oracle_subject_00_R"),
+                   dict(label="Welded foot, 0 right", role="control", key="CONTROL_welded_to_shin_zero_articulation_subject_00_R"),
+                   dict(label="Ours, performer 1 left", role="ours", key="ours_delivered_subject_01_L"),
+                   dict(label="MAMMA through our frames, 1 left", role="mamma", key="oracle_subject_01_L"),
+                   dict(label="Welded foot, 1 left", role="control", key="CONTROL_welded_to_shin_zero_articulation_subject_01_L"),
+                   dict(label="Ours, performer 1 right", role="ours", key="ours_delivered_subject_01_R"),
+                   dict(label="MAMMA through our frames, 1 right", role="mamma", key="oracle_subject_01_R"),
+                   dict(label="Welded foot, 1 right", role="control", key="CONTROL_welded_to_shin_zero_articulation_subject_01_R")]),
+    ],
+    "delivered": [
+        dict(title="The delivered character against MAMMA's joints, end to end",
+             plain="MAMMA's joints are the reference, at zero, the same reference as the pose rung. The gap between "
+                   "the fixed rig and the sized rig is the body; the rest is everything above compounded.",
+             better="lower",
+             bars=[dict(label="Delivered, one fixed body, 0", role="ours", key="canon_subject_00"),
+                   dict(label="Rig sized to performer 0", role="alt", key="sized_subject_00"),
+                   dict(label="Delivered, one fixed body, 1", role="ours", key="canon_subject_01"),
+                   dict(label="Rig sized to performer 1", role="alt", key="sized_subject_01")]),
+    ],
+}
+
+
+def resolve_visuals(r: dict) -> list[dict]:
+    """Turn a rung's chart specs into charts with values, from its own figures and controls."""
+    by_key = {f["key"]: f for f in r["figures"] + r["controls"] if f["value"] is not None}
+    out = []
+    for spec in VISUALS.get(r["id"], []):
+        bars, unit = [], None
+        for b in spec["bars"]:
+            keys = b.get("keys") or [b["key"]]
+            vals = [float(by_key[k]["value"]) for k in keys if k in by_key]
+            if not vals:
+                continue
+            vals.sort()
+            v = vals[len(vals) // 2] if len(vals) % 2 else 0.5 * (vals[len(vals) // 2 - 1] + vals[len(vals) // 2])
+            unit = unit or by_key[[k for k in keys if k in by_key][0]]["unit"]
+            bars.append({"label": b["label"], "role": b["role"], "value": v})
+        if bars:
+            out.append({"title": spec["title"], "plain": spec["plain"], "better": spec["better"],
+                        "unit": unit or "", "bars": bars})
+    return out
+
+
 # ---------------------------------------------------------------------------- history
 def git_state() -> dict:
     try:
@@ -755,6 +924,7 @@ def render(rungs: list[dict], state: dict, prev: dict | None, now: str) -> str:
 <div class="col m"><p class="who">MAMMA</p><p>{_md(r["mamma"])}</p></div>
 <div class="col o"><p class="who">Ours</p><p>{_md(r["ours"])}</p></div>
 </div>
+{charts_band(r.get("visuals", []), "In one look — ours beside MAMMA's, and which way is good")}
 <div class="band"><span class="k">Interface crossed</span>{_md(r["interface"])}
 &nbsp;·&nbsp; <span class="k" style="display:inline">Supplied by MAMMA in this rung</span> {_md(r["supplied_by_mamma"])}</div>'''
         if r.get("instrument"):
@@ -788,7 +958,7 @@ def render(rungs: list[dict], state: dict, prev: dict | None, now: str) -> str:
                  if prev else "no earlier distinct state in the history — deltas appear after the first change")
     return f'''<meta charset="utf-8">
 <title>Substitution Ladder</title>
-<style>{CSS}</style>
+<style>{CSS}{VIS_CSS}</style>
 <div class="wrap">
 <p class="eyebrow">Body lane · MAMMA as the benchmark · one part at a time</p>
 <h1>The Substitution Ladder</h1>
@@ -823,6 +993,7 @@ def main() -> None:
         r["provenance"] = [_stamp(p) for p in spec.get("reports", [])]
         if spec["extract"] and not figs and spec.get("reports"):
             r["status"] = "report missing"
+        r["visuals"] = resolve_visuals(r)
         rungs.append(r)
 
     head = headline(rungs)
@@ -844,7 +1015,14 @@ def main() -> None:
     out["rungs"] = [{k: v for k, v in r.items() if k != "extract"} for r in rungs]
     (CMP / "ladder.json").write_text(json.dumps(out, indent=2, default=str))
     PAGE.write_text(render(rungs, state, prev, now))
-    print(f"wrote {CMP / 'ladder.json'} and {PAGE.relative_to(ROOT)}")
+    FIGURES.write_text(json.dumps({
+        "rendered": now, "git": state,
+        "rungs": [{"id": r["id"], "n": r["n"], "title": r["title"], "status": r["status"], "visuals": r["visuals"]}
+                  for r in rungs]}, indent=1))
+    print(f"wrote {CMP / 'ladder.json'}, {PAGE.relative_to(ROOT)} and {FIGURES.relative_to(ROOT)}")
+    for r in rungs:
+        if r["figures"] and not r["visuals"]:
+            print(f"  NO VISUAL for rung {r['id']}: add a comparison to VISUALS (ours beside MAMMA's, lower/higher is better)")
 
     # console summary
     print(f"\n{'rung':<14}{'status':<44}figures")
