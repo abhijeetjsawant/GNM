@@ -75,9 +75,9 @@
           "title": "Score MAMMA's feet, then ours against them",
           "plain": "We have never measured the bar for feet. Until we do, nothing about feet can be claimed either way.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
+          "finished": "2026-09-02",
           "report": "artifacts/feet-lane/mamma-feet-bar.json",
           "blocked_on": null
         },
@@ -269,6 +269,16 @@
       "date": "2026-09-02",
       "step": "I1",
       "text": "I1 done: body proportions, mainly the shoulder span, are the bigger lever; the converter's own cost is 30-36 mm on the arms. D2's remaining target is the clavicle origin."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I4",
+      "text": "MAMMA's feet scored for the first time: 9-21 deg median spread about the take mean, 31-90 deg flexion range. Our delivered foot tracks it to 6-9.5 deg spread and beats every control on 46 of 48 pairs, but carries an 18-26 deg constant offset on every foot, almost all ab/adduction: toes point 17-24 deg inward. Oracle 2.8-4.6 deg, so the frames are not the cause. Toe articulation unscoreable on either side; inversion/eversion is a DoF no direction carries."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I4",
+      "text": "I4 done: MAMMA's feet measured. Ours track them but point inward by about twenty degrees on every foot -- a delivery defect a tracking gate cannot see."
     }
   ]
 }

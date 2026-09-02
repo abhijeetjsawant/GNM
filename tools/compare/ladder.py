@@ -192,6 +192,13 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_feet_bar(spec: dict) -> tuple[list, list]:
+    """Rung 10: I4's extractor, `tools/compare/extractors/i4_feet.py`, wired by the registry owner."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.i4_feet import x_feet_bar as _x  # noqa: E402
+    return _x(spec)
+
+
 def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     """Rung 7 carries two instruments: the scoreboard / SMPL-X arms and I1's retarget split.
 
@@ -470,7 +477,7 @@ RUNGS: list[dict[str, Any]] = [
         both_directions="MAMMA->ours: done (oracle arm). Ours->MAMMA: not meaningful; its head is locked.",
     ),
     dict(
-        id="feet", n=10, regenerate=".venv/bin/python tools/feet/delivered_foot_is_fiction.py",
+        id="feet", n=10, regenerate=".venv/bin/python tools/feet/mamma_feet_bar.py",
         title="Feet, toes and ground contact",
         mamma="`ma_2d` emits contact and floor-contact probabilities per landmark; `ma_3d` carries them as "
               "`smplx_contact` / `smplx_floor_contact` and run 4 adds an intersection loss. Foot orientation "
@@ -479,18 +486,24 @@ RUNGS: list[dict[str, Any]] = [
              "`commercial_multiview.py` ~1588); before that it was welded to the torso frame. `ToeEnd` fails "
              "(12-145 % length) and is not used, so the `Toes` channel rides the foot. Contact flags off by design.",
         interface="per frame: ankle + toe rotations, contact state",
-        supplied_by_mamma="nothing yet -- MAMMA's own feet have NOT been scored on this footage",
-        instrument="`tools/feet/` -> `artifacts/feet-lane/delivered-foot.json` (both sides ours)",
-        instrument_missing="MAMMA's feet as the bar: score its ankle/toe joints on this footage first "
-                           "(HEAD_FEET_HANDS_PLAN.md §7). Until then no claim exists in either direction.",
-        reference="our own triangulated ball-of-foot direction",
-        blind="accuracy entirely: both sides of the comparison are ours; ground contact. And since f6a4973 the "
-              "reference direction is the same triangulated `ToeBase` the delivered foot is solved FROM, so this "
-              "instrument now scores the solver against its own input -- a tautology, not a pass. The MAMMA bar "
-              "is what remains.",
-        status="measured against ourselves only", extract=x_feet,
-        reports=["artifacts/feet-lane/delivered-foot.json"],
-        both_directions="MAMMA->ours: its ankle/toe joints as the reference -- the missing bar. Not built.",
+        supplied_by_mamma="the reference only: its ankle (7/8) -> foot (10/11) direction in OUR shin frame; its own "
+                          "foot through our frames is the oracle arm",
+        instrument="`tools/feet/mamma_feet_bar.py` -> `artifacts/feet-lane/mamma-feet-bar.json` (I4, 2026-09-02). "
+                   "Shin frame: origin ankle, knee->ankle, anterior from the cross with the pelvic axis. Offset and "
+                   "spread reported separately; block bootstrap on identical draws, P(candidate beats control) per "
+                   "foot. The earlier `delivered-foot.json` scored the solver against its own input and is retired.",
+        reference="MAMMA's pred_joints foot direction in our shin frame -- parity, never truth",
+        blind="accuracy entirely (both sides are estimates); inversion/eversion, which is roll about the foot's "
+              "long axis and no ankle->foot DIRECTION carries it; toe articulation (SMPL-X's chain ends at the "
+              "ball joint and our `Toes` channel is the identity); absolute orientation beyond the 90 deg gate; "
+              "hip rotation leaking into ab/adduction through the pelvic reference (the oracle bounds it, it does "
+              "not remove it); ground contact -- MAMMA's contact channel saturates near 0.25-0.35 planted or not, "
+              "so no agreement figure exists and no threshold was chosen.",
+        status="measured against MAMMA; a constant 17-24 deg inward toe offset on every foot", extract=x_feet_bar,
+        reports=["artifacts/feet-lane/mamma-feet-bar.json"],
+        both_directions="MAMMA->ours: done (I4) -- its foot direction is the bar and its foot through our shin "
+                        "frames is the oracle (2.8-4.6 deg spread, so the frame definitions cost little). "
+                        "Ours->MAMMA: not meaningful; its feet come out of a whole-body fit.",
     ),
     dict(
         id="delivered", n=11, regenerate=".venv/bin/python tools/compare/mamma_scoreboard.py",
