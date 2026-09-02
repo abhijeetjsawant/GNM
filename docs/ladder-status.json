@@ -380,6 +380,11 @@
       "date": "2026-09-02",
       "step": "D1",
       "text": "D1 located: the delivered character IS turned round -- pelvis, chest, head and the mesh's own nose all point opposite the performer (forward-dot -0.92 to -1.00), the feet point the right way because they are solved separately. It is a left/right naming mirror in the rig, in three places, not a yaw. The overlay script that the original diagnosis used had a timebase bug, now fixed, and the original diagnosis stands. The fix waits on the thorax decision."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "Sol reviewed the facing fix proposal: build it on a branch, try renaming the Left/Right bones before mirroring any geometry, and rerun I1, rungs 7 and 11, the head gate and I6 as regression gates. It merges only after the thorax decision and a second review."
     }
   ]
 }
