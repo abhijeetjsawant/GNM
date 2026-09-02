@@ -148,8 +148,8 @@
           "title": "Fix the converter: shoulder origin and hip height",
           "plain": "Two known defects in the maths that turns points into a skeleton, worth 36 to 47 mm on the arms.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-02",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -202,7 +202,8 @@
     }
   ],
   "decisions_for_user": [
-    "Lane H: decide the rig and book the marker session; performer releases covering ML training use."
+    "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
+    "D2: the clavicle fix is built and gated on ladder/D2 and failed two must-bands for reasons outside the clavicle (root placement, and a pivot only 60-170 mm from its landmark). Choose: merge as-is (arms land better, clavicle jitters more, oracle reads 67/79 until the root is fixed); re-scope as D2 + root placement (round trip ~0.5 mm; delivery and jitter being measured); or hold D2 until the per-performer skeleton (D3/D5) puts the pivot and clavicle length where the performer's are."
   ],
   "log": [
     {
@@ -439,6 +440,16 @@
       "date": "2026-09-02",
       "step": "H",
       "text": "Sync candidate for lane H: the held-out-camera lag test reads +0.9 frames on D001 and about zero on the other three; moving D001 by one frame collapses every fold to within 0.17 frames. One measurement, to be confirmed on the owned rig, never corrected on this one."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D2",
+      "text": "worktree ladder/D2: the clavicle direction measured from the rig's own shoulder origin (FK of the frame's torso), legs untouched by construction; Sol reviewed the plan 2026-09-02"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D2",
+      "text": "D2 built and gated on ladder/D2 (not merged): the clavicle aimed from the rig's own shoulder origin; delivered arms land 181->124 and 218->90 mm on our capture and 200->131, 220->90 on MAMMA's joints, but the canonical round trip reads 67/79 mm, all of it the root placement (Hips on the hip-landmark midpoint, hip joints 80 mm below; 0.5/0.1 mm with the drop removed), and the clavicle chain jitters: frames over the human peak rate 32->48 and 11->49, steps to 160 deg. The pivot sits 60-170 mm from its landmark against 400 before, so landmark wander becomes angle. Two must-bands failed; Sol reviewed; no merge."
     }
   ]
 }
