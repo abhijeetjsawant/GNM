@@ -413,11 +413,15 @@ def real_run_seen_mask() -> np.ndarray:
     return (np.isfinite(assigned[..., :2]).all(axis=-1)) & (assigned[..., 2] >= 0.25)
 
 
-def describe_real_pattern(seen: np.ndarray) -> dict:
-    """What the reference footage's occlusion actually is. A plan correction lives here."""
+def miss_run_lengths(seen: np.ndarray) -> np.ndarray:
+    """How long, in frames, a camera loses a joint for. The burstiness of real occlusion.
+
+    Used twice: to describe the reference footage, and as the run-length distribution
+    the frame-correlated noise arm draws from, so "temporally correlated" means the
+    correlation THIS footage has rather than one invented for the occasion.
+    """
     emitted = [cm.JOINT_INDEX[n] for n in cm.JOINT_NAMES if n not in ("left_ear", "right_ear")]
     restricted = seen[:, :, :, emitted]
-    support = restricted.sum(axis=2)
     runs: list[int] = []
     for subject in range(restricted.shape[0]):
         for camera in range(restricted.shape[2]):
@@ -431,7 +435,15 @@ def describe_real_pattern(seen: np.ndarray) -> dict:
                         length = 0
                 if length:
                     runs.append(length)
-    runs_array = np.asarray(runs) if runs else np.zeros(0)
+    return np.asarray(runs) if runs else np.zeros(0)
+
+
+def describe_real_pattern(seen: np.ndarray) -> dict:
+    """What the reference footage's occlusion actually is. A plan correction lives here."""
+    emitted = [cm.JOINT_INDEX[n] for n in cm.JOINT_NAMES if n not in ("left_ear", "right_ear")]
+    restricted = seen[:, :, :, emitted]
+    support = restricted.sum(axis=2)
+    runs_array = miss_run_lengths(seen)
     seen_rate = float(restricted.mean())
     independent = (1 - seen_rate) ** 4 + 4 * seen_rate * (1 - seen_rate) ** 3
     correlations = {}
@@ -1146,6 +1158,195 @@ def held_out_camera_lag(sweep: int = LAG_SWEEP, shift_camera: int | None = None,
     }
 
 
+# --------------------------------------------- the thorax window, 9 against 15 (for I8)
+#
+# `THORAX_SMOOTHING_FRAMES` moved 15 -> 9 on the strength of I8's synthetic sweep, which
+# found the thorax frame's p95 error about equal at the two windows (3.86 vs 3.91 deg,
+# seed sd 0.55). On real footage the head gate's oracle floor moved a great deal more --
+# 10.5 -> 17.0 and 13.1 -> 17.6 deg p95 on the two performers. Something the synthetic
+# sweep does not contain is worth 4-7 deg of p95 on real data, and there are two candidate
+# explanations: our real 2D error is heavy-tailed and FRAME-CORRELATED in a way white noise
+# is not, or MAMMA's own frame is over-smoothed and 15 merely matched it.
+#
+# This probe sizes the first. It is a COMPLEMENT to I8's sweep, not a repeat: that one
+# injects i.i.d. per-view noise straight into `triangulate_point`, one joint at a time,
+# with no association, no sequence solve and no missing views. This one injects into the
+# 2D observation records and runs the WHOLE pipeline, and it can do the two things I8's
+# cannot -- drop views in the correlated bursts the real run has, and hold a noise
+# displacement across a run of frames, which is what "frame-correlated" means and is
+# precisely the error a temporal smoother cannot remove.
+#
+# THE COMPARISON IS OF SHAPE, NOT OF NUMBER. This measures the thorax frame against EXACT
+# TRUTH, in degrees. The gate figures above measure MAMMA's head expressed in our thorax
+# frame, in degrees. Both are degrees and they are not the same quantity, they do not share
+# a reference and they must never share an axis. The only question asked here is whether
+# any noise model produces a 9-vs-15 p95 gap of the ORDER the gate saw.
+
+THORAX_WINDOWS = (0, 9, 15)
+
+
+def _thorax_noise(cameras, truth19: np.ndarray, names: tuple[str, ...], model: str,
+                  runs: np.ndarray, seed: int) -> tuple[dict, dict]:
+    """2D displacements for the six joints `_thorax_frames` reads.
+
+    `sweep.THORAX_JOINTS` and `sweep.heavy_tail_magnitude` are I8's own, imported rather
+    than copied, so the two instruments share one definition of the amplitude and of the
+    tail. `white` is I8's Gaussian arm; `heavy_tail` is I8's tail arm; `heavy_tail_frame_
+    correlated` is the arm I8 does not have -- the same draw held constant across a run of
+    frames whose length comes from the reference footage's own occlusion runs.
+    """
+    import thorax_window_sweep as sweep  # noqa: E402  -- I8's definitions, not a copy
+
+    rng = np.random.default_rng(9_000 + seed)
+    joints = [cm.JOINT_INDEX[n] for n in sweep.THORAX_JOINTS if n in names]
+    sigma = sweep.NOISE_SIGMA_PX
+    frames = truth19.shape[1]
+    displacement: dict = {}
+    magnitudes: list[float] = []
+    pool = runs[runs > 0] if runs.size else np.asarray([1])
+
+    def draw() -> np.ndarray:
+        if model == "white":
+            return rng.normal(0.0, sigma, size=2)
+        angle = rng.uniform(0.0, 2.0 * np.pi)
+        magnitude = sweep.heavy_tail_magnitude(rng, sigma)
+        return magnitude * np.asarray([np.cos(angle), np.sin(angle)])
+
+    for subject in range(truth19.shape[0]):
+        for camera in range(len(cameras)):
+            for joint in joints:
+                frame = 0
+                while frame < frames:
+                    offset = draw()
+                    held = 1 if model != "heavy_tail_frame_correlated" else int(
+                        pool[rng.integers(0, pool.size)])
+                    for step in range(held):
+                        if frame + step >= frames:
+                            break
+                        displacement[(subject, frame + step, camera, joint)] = (
+                            float(offset[0]), float(offset[1]))
+                    magnitudes.append(float(np.linalg.norm(offset)))
+                    frame += max(held, 1)
+    return displacement, {
+        "model": model,
+        "sigma_px1280": sigma,
+        "sigma_provenance": "tools/head/thorax_window_sweep.py NOISE_SIGMA_PX, itself two "
+                            "independent readings of OUR OWN detector (run-report "
+                            "reprojection and SOMA-77 cross-view epipolar) that agree at "
+                            "3.13 and 3.26 px. Never MAMMA's residual.",
+        "joints_noised": [n for n in sweep.THORAX_JOINTS if n in names],
+        "observations_displaced": len(displacement),
+        "displacement_median_px1280": round(float(np.median(magnitudes)), 3),
+        "displacement_p99_px1280": round(float(np.percentile(magnitudes, 99)), 3),
+        "hold_length_frames": ("1 (i.i.d. in time)" if model != "heavy_tail_frame_correlated"
+                               else "drawn from the reference footage's own miss-run lengths, "
+                                    f"median {float(np.median(pool)):.0f} frames"),
+    }
+
+
+def thorax_window_probe(source_key: str, cameras, records: list[list[dict]],
+                        truth19: np.ndarray, names: tuple[str, ...], seen: np.ndarray,
+                        seeds: int = 3) -> dict:
+    """p95 of the thorax frame against exact truth, at window 9 and at window 15."""
+    import thorax_window_sweep as sweep  # noqa: E402
+
+    frames = truth19.shape[1]
+    subjects = truth19.shape[0]
+    runs = miss_run_lengths(seen)
+    truth_frames = [sweep._thorax_frames(truth19[s], smoothing_frames=0)
+                    for s in range(subjects)]
+
+    def score(positions: np.ndarray, mapping: dict[int, int]) -> dict:
+        out: dict[str, dict] = {}
+        for window in THORAX_WINDOWS:
+            pooled = []
+            for ours, theirs in mapping.items():
+                candidate = sweep._thorax_frames(positions[ours], smoothing_frames=window)
+                pooled.append(sweep.geodesic_deg(candidate, truth_frames[theirs]))
+            values = np.concatenate(pooled)
+            values = values[np.isfinite(values)]
+            out[str(window)] = {"median_deg": round(float(np.median(values)), 4),
+                                "p95_deg": round(float(np.percentile(values, 95)), 4)}
+        return out
+
+    arms: dict[str, dict] = {}
+    replayed = replayed_keep(seen, frames, names, offset=0)
+    unrunnable = mask_is_runnable(replayed, names)
+
+    plans = [
+        ("white_iid", "white", False, seeds),
+        ("heavy_tail_iid", "heavy_tail", False, seeds),
+        ("heavy_tail_frame_correlated", "heavy_tail_frame_correlated", False, seeds),
+        ("replayed_real_outage_only", None, True, 1),
+        ("replayed_real_outage_plus_heavy_tail_frame_correlated",
+         "heavy_tail_frame_correlated", True, seeds),
+    ]
+    for label, model, masked, draws in plans:
+        if masked and unrunnable:
+            arms[label] = {"ran": False, "reason": "the replayed mask starves these joints "
+                                                   "for the whole take", "joints": unrunnable}
+            continue
+        per_seed, injection = [], None
+        for seed in range(draws):
+            working = apply_keep_mask(records, replayed) if masked else records
+            if model is not None:
+                displacement, injection = _thorax_noise(cameras, truth19, names, model,
+                                                        runs, seed)
+                working = apply_displacements(working, displacement)
+            positions, _raw, _d, _log, _s = run_pipeline(cameras, working)
+            per_seed.append(score(positions, pair_subjects(positions, truth19)))
+        entry: dict = {"ran": True, "seeds": draws, "per_seed": per_seed}
+        if injection:
+            entry["injection"] = injection
+        for window in THORAX_WINDOWS:
+            for statistic in ("median_deg", "p95_deg"):
+                values = [s[str(window)][statistic] for s in per_seed]
+                entry.setdefault(f"window_{window}", {})[statistic] = round(
+                    float(np.mean(values)), 4)
+                entry[f"window_{window}"][f"{statistic}_seed_sd"] = (
+                    round(float(np.std(values, ddof=1)), 4) if len(values) > 1 else 0.0)
+        entry["p95_gap_9_minus_15_deg"] = round(
+            entry["window_9"]["p95_deg"] - entry["window_15"]["p95_deg"], 4)
+        arms[label] = entry
+        print(f"    [{source_key}] {label}: p95 {entry['window_9']['p95_deg']} deg at 9, "
+              f"{entry['window_15']['p95_deg']} at 15, gap "
+              f"{entry['p95_gap_9_minus_15_deg']:+.2f} deg")
+
+    gaps = {name: arm["p95_gap_9_minus_15_deg"] for name, arm in arms.items() if arm.get("ran")}
+    target = 4.5, 6.5
+    reproduces = [name for name, gap in gaps.items() if target[0] <= gap <= target[1]]
+    return {
+        "question": "THORAX_SMOOTHING_FRAMES moved 15 -> 9 on a synthetic sweep that found "
+                    "the two windows about equal (3.86 vs 3.91 deg p95, seed sd 0.55). On "
+                    "real footage the head gate's oracle floor moved 10.5 -> 17.0 and "
+                    "13.1 -> 17.6 deg p95. Which noise model, if any, reproduces a gap of "
+                    "that order?",
+        "what_is_measured_here": "the thorax frame built by `_thorax_frames` from OUR "
+                                 "pipeline's smoothed positions, against the same function's "
+                                 "frame built unsmoothed from EXACT TRUTH. Geodesic degrees.",
+        "not_the_same_quantity_as_the_gate": (
+            "The gate's figures are MAMMA's head expressed in our thorax frame; these are our "
+            "thorax frame against exact truth. Both are degrees; they share no reference and "
+            "MUST NOT share an axis. Only the ORDER of the 9-vs-15 gap is being compared, and "
+            "only to ask which noise model contains whatever real footage has."),
+        "how_this_differs_from_I8s_sweep": (
+            "I8 injects i.i.d. per-view noise straight into `triangulate_point`, one joint at "
+            "a time, with no association, no sequence solve and no missing views. This runs "
+            "the whole pipeline on displaced 2D RECORDS, so it can drop views in the "
+            "correlated bursts the real run has and hold a displacement across a run of "
+            "frames. Frame-correlated error is exactly what a temporal smoother cannot "
+            "remove, and it is the one thing an i.i.d. draw cannot express."),
+        "windows": list(THORAX_WINDOWS),
+        "gate_gap_to_match_deg_p95": [4.5, 6.5],
+        "p95_gap_9_minus_15_by_arm_deg": gaps,
+        "arms_reproducing_a_gap_of_that_order": reproduces,
+        "arms": arms,
+        "selects_nothing": "REPORT ONLY. Nothing here selects THORAX_SMOOTHING_FRAMES; the "
+                           "arm that could (fk_synthetic, MAMMA-free) is reported beside the "
+                           "arm that may not (mamma_pred_joints), and the decision is I8's.",
+    }
+
+
 def sync_probe(baseline: dict) -> dict:
     """Is one fold's non-zero minimum a lag, or is that camera a frame out of sync?
 
@@ -1475,6 +1676,11 @@ def run_source(source_key: str, source_array: np.ndarray, truth19: np.ndarray,
         "peak_attenuation": peak_attenuation(frozen_clean, frozen_truth19,
                                              frozen_clean_map, names)}
     out["smoothing_5b"] = smoothing
+
+    # ---- the thorax window, asked for by I8 after 15 -> 9 landed -----------------
+    print("  thorax window 9 vs 15")
+    out["thorax_window_probe"] = thorax_window_probe(
+        source_key, cameras, records, truth19, names, seen)
     return out
 
 
@@ -1587,6 +1793,7 @@ def main() -> int:
             "different speeds, different takes. Two charts, never two bars."),
         "real_run_occlusion_pattern": pattern,
         "noise_source": spike_source,
+        "thorax_window_9_vs_15": thorax_verdict(sources),
         "sources": sources,
         "held_out_camera_lag": held_out,
         "statistics": {
@@ -1710,6 +1917,58 @@ def main() -> int:
     args.out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"\nwrote {args.out}")
     return verdict(report)
+
+
+def thorax_verdict(sources: dict) -> dict:
+    """One place that answers I8's question, both sources side by side, never averaged."""
+    by_source = {}
+    for key, source in sources.items():
+        probe = source.get("thorax_window_probe")
+        if probe:
+            by_source[key] = {
+                "may_select": source["may_select_a_shipped_constant"],
+                "frames": source["frames"],
+                "p95_gap_9_minus_15_deg": probe["p95_gap_9_minus_15_by_arm_deg"],
+                "arms_reproducing_a_gap_of_that_order":
+                    probe["arms_reproducing_a_gap_of_that_order"],
+            }
+    free = by_source.get("fk_synthetic", {})
+    gaps = free.get("p95_gap_9_minus_15_deg", {})
+    reproduces = free.get("arms_reproducing_a_gap_of_that_order", [])
+    if reproduces:
+        answer = (f"On the MAMMA-free arm, {', '.join(reproduces)} reproduces a 9-vs-15 p95 gap "
+                  "in the 4.5-6.5 deg band the head gate saw. That supports the first reading: "
+                  "our real 2D error contains something white noise does not, and this "
+                  "instrument says what -- see which arm it is, because the arms differ only "
+                  "in tail shape, in whether the displacement persists across frames, and in "
+                  "whether views go missing together.")
+    elif gaps:
+        widest = max(gaps, key=lambda name: gaps[name])
+        answer = (
+            f"NO noise model here reproduces a 4.5-6.5 deg gap; the widest is {widest} at "
+            f"{gaps[widest]:+.2f} deg. Two readings survive and this instrument cannot "
+            "separate them. Either the real gap is not a property of our frame at all -- "
+            "which would point at the second candidate, that MAMMA's own head is "
+            "over-smoothed and a 15-frame window merely matched it, and that is a statement "
+            "about the REFERENCE and not about our smoother -- or real footage carries a "
+            "term none of these arms has: calibration error, distortion, sync error, "
+            "soft-tissue artefact, or joint-definition error, every one of which is absent "
+            "from a projected trajectory by construction. What can be said positively is "
+            "that heavy tails, frame-correlated error and correlated view loss, at OUR "
+            "detector's own measured amplitude, are NOT individually enough to explain it.")
+    else:
+        answer = "the probe did not run on the MAMMA-free arm"
+    return {
+        "asked_by": "I8, after THORAX_SMOOTHING_FRAMES moved 15 -> 9",
+        "answer": answer,
+        "reference_warning": (
+            "These degrees are our thorax frame against EXACT TRUTH. The gate's 10.5/17.0 and "
+            "13.1/17.6 are MAMMA's head expressed in our thorax frame. Different quantity, "
+            "different reference, never one axis. Only the ORDER of the gap is compared."),
+        "selects_nothing": "REPORT ONLY. The MAMMA-derived arm is present for realism of "
+                           "motion and reports; it may not select a window.",
+        "by_source": by_source,
+    }
 
 
 def verdict(report: dict) -> int:
