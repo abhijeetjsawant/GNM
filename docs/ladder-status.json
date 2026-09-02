@@ -68,7 +68,7 @@
           "started": null,
           "finished": null,
           "report": "artifacts/compare/detector-*.json",
-          "blocked_on": "I1, I2, I4, I6 first"
+          "blocked_on": null
         },
         {
           "id": "I4",
@@ -90,18 +90,18 @@
           "started": null,
           "finished": null,
           "report": "artifacts/handfit-arrays/held-out.json",
-          "blocked_on": "I1, I2, I4, I6 first"
+          "blocked_on": null
         },
         {
           "id": "I6",
           "title": "Surface check: our mesh outline against MAMMA's person masks",
           "plain": "The first measurement of the body's surface rather than its joints. Also the gate the facing fix needs.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-02",
-          "finished": null,
+          "finished": "2026-09-02",
           "report": "artifacts/compare/silhouette.json",
-          "blocked_on": "identity resolution across three id spaces first"
+          "blocked_on": null
         },
         {
           "id": "I7",
@@ -141,7 +141,7 @@
           "started": null,
           "finished": null,
           "report": null,
-          "blocked_on": "I6"
+          "blocked_on": "I6 finds no shipped 180 deg yaw: turning our mesh around makes it worse on every camera. Re-locate the defect first (export-side compensation, a mislocated 2026-08-30 diagnosis, or a left/right mirror a silhouette cannot see). And fix camera_overlay.py's missing scene.render.fps before its flip check is trusted."
         },
         {
           "id": "D2",
@@ -300,6 +300,31 @@
       "date": "2026-09-02",
       "step": "I8",
       "text": "I8 done: the audit finds exactly one MAMMA-chosen constant, the thorax window. Re-chosen on synthetic truth it should be 9 frames, not 15. Changing it is a delivery step and waits on the go."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I6",
+      "text": "Surface measured against SAM2 masks: ours 0.52-0.63 IoU, oracle 0.71-0.88; recall falls twice as far as precision, so the delivered body is too small and misplaced. MAMMA's mean body beats ours on every cell, so pose/retarget error exceeds the shape term. Turning our mesh 180 deg makes it worse in 8 of 8 cells: D1's premise of a shipped yaw is not what the surface finds. camera_overlay.py never sets scene fps (24 vs 30): every overlay it rendered ran 25% fast."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I6",
+      "text": "I6 done: the first surface measurement. Our body is too small and misplaced rather than too big, and a plain 180-degree turn would make it worse, so the facing defect is not where the plan put it. The overlay script D1 relies on has a timebase bug."
+    },
+    {
+      "date": "2026-09-02",
+      "step": "D1",
+      "text": "premise reopened by I6"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I3",
+      "text": "unblocked: I1, I2, I4, I6 have reports"
+    },
+    {
+      "date": "2026-09-02",
+      "step": "I5",
+      "text": "unblocked: I1, I2, I4, I6 have reports"
     }
   ]
 }

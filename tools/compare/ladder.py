@@ -192,6 +192,13 @@ def x_pose(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+def x_silhouette(spec: dict) -> tuple[list, list]:
+    """Rung 1: I6's extractor, `tools/compare/extractors/i6_silhouette.py`, wired by the registry owner."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    from extractors.i6_silhouette import x_silhouette as _x  # noqa: E402
+    return _x(spec)
+
+
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
     """Rung 9: the shipped head gate plus I8's provenance manifest and thorax-window sweep
     (`tools/compare/extractors/i8_provenance.py`, wired by the registry owner). The sweep is
@@ -326,11 +333,25 @@ RUNGS: list[dict[str, Any]] = [
         interface="per-camera per-frame person id + mask",
         supplied_by_mamma="ma_2d arrives pre-split by subject, so the masks' identity work is inside every "
                           "rung that consumes ma_2d",
-        instrument=None,
-        instrument_missing="mask IoU per view against `ma_masks`, and per-view id stability -- buildable from "
-                           "retained files, deliberately not started: nothing of ours consumes masks.",
-        reference="-", blind="-", status="not built, deliberately", extract=None, reports=[],
-        both_directions="MAMMA->ours: implicit (pre-split ma_2d). Ours->MAMMA: nothing to feed it.",
+        instrument="`tools/compare/silhouette.py` -> `artifacts/compare/silhouette.json` (I6, 2026-09-02): our "
+                   "delivered mesh, posed per frame, rasterised one `fillConvexPoly` per triangle at 960x540 "
+                   "through the real rig, scored as precision / recall / IoU against MAMMA's SAM2 masks -- the one "
+                   "reference on disk that is NOT model-mediated. MAMMA's own mesh through the identical rasteriser "
+                   "is the oracle; the three id spaces (SAM2 tracklet, `body_id`, our subject) are resolved by "
+                   "joint containment and pelvis agreement, never by IoU.",
+        reference="MAMMA's SAM2 person masks (image evidence, model-free); `pred_vertices` for the agreement figure only",
+        blind="depth; left/right mirroring of a fore-aft symmetric pose; everything inside the outline (a "
+              "self-occluded limb is free); cannot separate shape error from pose error; both meshes are nude and "
+              "the masks segment a clothed person, so recall never reaches 1 and the oracle measures that ceiling.",
+        status="measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
+        extract=x_silhouette, reports=["artifacts/compare/silhouette.json"],
+        both_directions="MAMMA->ours: done (I6) -- its masks are the reference and its mesh the oracle. Its MEAN body "
+                        "in its own pose scores 0.69-0.82, below the oracle by the shape term and ABOVE ours on "
+                        "every cell: our pose/retarget error is larger than the shape error a mean body carries "
+                        "(a D4/D6 fact). Turning the oracle 180 deg costs 0.35-0.62 IoU on front/back-distinct "
+                        "frames, so the surface sees facing; turning OUR mesh 180 deg makes it WORSE in 8 of 8 "
+                        "cells (decisively in 7) -- D1's premise of a shipped 180 deg yaw is not what the surface "
+                        "finds, and D1 must re-locate the defect before fixing it. Ours->MAMMA: nothing to feed.",
     ),
     dict(
         id="detector", n=2, regenerate="python -m autoanim_gnm ... (the production build writes run-report.json; see docs/BODY_LANE_PLAN.md)",
