@@ -692,7 +692,9 @@ the differing set is the clavicle chain, the two hands **and the two feet**, and
 asserts that corrected set on disk while asserting the plan's set on the pre-projection
 track. The consequence the plan drew from theorem 3 survives with one correction: the
 facing instrument reads the Hips, chest, Neck and Head rotations and the mesh nose, and not
-one of those is a foot. Measured rather than asserted — `facing-d2b.json` against the
+one of those is a foot. The plan's own inference — "rotations identical means the facing
+forward-dots cannot move" — was nonetheless one joint too broad: the delivered **feet**
+forward-dot is a facing figure, and it moves. Measured rather than asserted — `facing-d2b.json` against the
 committed `facing-location.json`: **every forward-dot median and every handedness figure is
 identical to five decimals**, including the mesh nose, except
 `delivered_feet vs_our_capture_forward` on subject 0 (0.96980 → 0.97071), which is the
@@ -818,9 +820,11 @@ difference 0.0000), so the two runs are comparable and the fall is real.
 
 What moved: the delivered rig's every joint translates by the **same** median displacement,
 27.87 mm on subject 0 and 43.16 mm on subject 1, of which the vertical part is +2.53 and
-−4.59 mm. It is an almost purely **horizontal** rigid shift, and it equals the horizontal
-hip offset D2b removes (26.20 and 42.95 mm). So the silhouette is pricing exactly the change
-this step makes, and it prices it as worse.
+−4.59 mm. It is an almost purely **horizontal** rigid shift, and it agrees to within 2 mm
+with the horizontal hip offset D2b removes (26.20 and 42.95 mm) — not identically, because
+the rig moves by `−R_hips·(0, 0.08, 0)` per frame *plus* the change in the projection's
+hoist, and the offset is the horizontal part of the first term alone. So the silhouette is
+pricing this step's own correction, and it prices it as worse.
 
 **Two readings, and this instrument cannot separate them.**
 
@@ -840,7 +844,9 @@ this step makes, and it prices it as worse.
 **No mechanism is claimed here.** What would discriminate is a per-frame IoU series
 correlated with pelvis tilt — `silhouette.py` retains only medians and p05, so it was not
 available — or a direct measurement of where the delivered mesh's own hip surface sits
-relative to its `UpperLeg` joint. Neither was done. The honest statement is that the step's
+relative to its `UpperLeg` joint. Neither was done, and neither is a gap in D2b: nothing in
+this step's plan asked for a mechanism, and building the instrument that would supply one is
+D5's or the owner's call. The honest statement is that the step's
 internal derivation is exact, its absolute placement against **our own** captured hips is
 now zero horizontally, and the one instrument that reads photographs disagrees.
 
