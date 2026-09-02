@@ -1421,6 +1421,46 @@ def _world_for_bone(parent_world: np.ndarray, rest_child_offset: np.ndarray, tar
     return output / np.linalg.norm(output)
 
 
+def _joint_origin(
+    world: np.ndarray,
+    frame: int,
+    root_translation: np.ndarray,
+    rest: dict[str, np.ndarray],
+    joint_name: str,
+) -> np.ndarray:
+    """Where ``joint_name``'s origin actually is on ``frame``, from the rotations set so far.
+
+    This is :func:`autoanim_gnm.body.forward_kinematics_positions`'s recursion, walked for
+    one joint instead of all of them, and it must stay EXACTLY that:
+    ``positions[root] = roots + rest[root]`` and
+    ``positions[child] = positions[parent] + _rotate_vector(world[parent], rest[child])``.
+    A converter that measures a direction from a different origin than the one the rotation
+    turns about is the D2 defect itself, in miniature.
+
+    `rest` is the caller's own dict, so a patched or per-performer-sized skeleton is
+    honoured; `DETAILED_HUMANOID` is looked up as a module global at call time, because the
+    swap harness rebinds `commercial_multiview.DETAILED_HUMANOID` to run the converter on a
+    sized rig. This function is deliberately module level and called by bare name so an
+    instrument can substitute it and run the controls through the identical code path.
+    """
+
+    skeleton = DETAILED_HUMANOID
+    chain: list[int] = []
+    index = skeleton.index(joint_name)
+    while index != -1:
+        chain.append(index)
+        index = skeleton.joints[index].parent
+    chain.reverse()
+    position = np.asarray(root_translation[frame], dtype=np.float64) + rest[
+        skeleton.joints[chain[0]].name
+    ]
+    for parent, child in zip(chain, chain[1:]):
+        position = position + _rotate_vector(
+            world[frame, parent], rest[skeleton.joints[child].name]
+        )
+    return position
+
+
 def _set_world(
     local: np.ndarray,
     world: np.ndarray,
@@ -1560,20 +1600,60 @@ def positions_to_body_track(
         for name in ("LeftEye", "RightEye"):
             _set_world(local, world, frame, name, head_world)
 
-        # NOTE: measuring these directions from the joint's own forward-kinematic
+        # NOTE, and it has two halves that came apart on 2026-09-02.
+        #
+        # THE LEGS. Measuring their directions from the joint's own forward-kinematic
         # origin instead of from the captured landmarks was tried on 2026-08-30 and
         # REVERTED -- it is correct in principle and fails in practice, because no
-        # rig joint origin coincides with its captured landmark. `root_translation`
+        # rig LEG joint origin coincides with its captured landmark. `root_translation`
         # places Hips *at* the captured pelvis while the upper legs hang 80 mm below
         # and 90 mm to each side of it, so a leg direction measured from the rig's
         # own hip origin starts 80 mm off. The canonical round trip went 0.00 mm ->
-        # 46-67 mm on the legs. Fix the root/hip placement convention first; see the
-        # retarget entry in docs/BODY_LANE_PLAN.md.
+        # 46-67 mm on the legs. That reasoning STANDS: the legs below are still
+        # measured landmark-to-landmark (knee - hip, ankle - knee). Fix the root/hip
+        # placement convention first; see the retarget entry in docs/BODY_LANE_PLAN.md.
+        #
+        # THE CLAVICLES. Done, D2, 2026-09-02, and NOT because they escape the root
+        # placement above -- they do not. The clavicle's origin hangs off the same
+        # misplaced Hips as the legs do. What is different is that measuring the
+        # direction from that origin is right ANYWAY, because it is the point
+        # `_world_for_bone` turns the bone about: wherever the root puts the rig, the
+        # bone pivots there, and a direction measured from anywhere else asks the
+        # rotation to do something it cannot. Get the origin right and the root fix,
+        # when it comes, carries the clavicle with it and needs no further change here.
+        # What was here instead was a synthetic anchor on the torso axis,
+        # `pelvis + 0.72 * torso_up` -- 418 mm up the canonical rig -- while
+        # `_world_for_bone` turned the bone about the rig's OWN Shoulder origin at
+        # Hips + 0.12 + 0.16 + 0.15 + (+-0.11, 0.10, 0): 530 mm up and 110 mm out.
+        # Two different origins for one direction. The delivered clavicle came out
+        # 14.9 / 19.1 degrees off and the arm root landed 36-47 mm from the requested
+        # shoulder EVEN ON A BODY WITH CANONICAL PROPORTIONS, which the canonical
+        # round-trip oracle measures directly. The 0.72 was a fitted-looking number
+        # nothing fitted (tools/compare/provenance.py) and it LEAVES with this change;
+        # nothing replaces it. `_joint_origin` is the rig's own geometry and no
+        # reference, MAMMA's least of all, enters it.
+        #
+        # ONE CONSEQUENCE, MEASURED AND OPEN. The old anchor was expressed in the
+        # LANDMARK frame (`pelvis + ...`), so it was immune to the root-placement
+        # offset above; this one is in the RIG frame, so it inherits it. The canonical
+        # round-trip oracle therefore READS WORSE after this change, 41.57/47.05 ->
+        # 67.25/79.32 mm, and every millimetre of that is root placement, not the
+        # clavicle: `landmarks_from_fk` feeds the rig's UpperLeg origins back as hip
+        # landmarks (anatomically right) and the converter puts `Hips` on them (80 mm
+        # wrong), so the re-solve sees the rig 80 mm lower against the same landmarks.
+        # Take the rig's own hip drop out of this origin and the round trip reads
+        # 0.51/0.08 mm. On the delivery path, where the solve runs once, the arms
+        # improve 181.33 -> 124.39 and 217.50 -> 89.56 mm.
+        # docs/reviews/clavicle-origin-2026-09-02.md.
+        left_shoulder_origin = _joint_origin(
+            world, frame, root_translation, rest, "LeftShoulder")
+        right_shoulder_origin = _joint_origin(
+            world, frame, root_translation, rest, "RightShoulder")
         chains = (
-            ("LeftShoulder", "LeftUpperArm", at("left_shoulder") - (pelvis + 0.72 * torso_up)),
+            ("LeftShoulder", "LeftUpperArm", at("left_shoulder") - left_shoulder_origin),
             ("LeftUpperArm", "LeftLowerArm", at("left_elbow") - at("left_shoulder")),
             ("LeftLowerArm", "LeftHand", at("left_wrist") - at("left_elbow")),
-            ("RightShoulder", "RightUpperArm", at("right_shoulder") - (pelvis + 0.72 * torso_up)),
+            ("RightShoulder", "RightUpperArm", at("right_shoulder") - right_shoulder_origin),
             ("RightUpperArm", "RightLowerArm", at("right_elbow") - at("right_shoulder")),
             ("RightLowerArm", "RightHand", at("right_wrist") - at("right_elbow")),
             ("LeftUpperLeg", "LeftLowerLeg", at("left_knee") - at("left_hip")),
