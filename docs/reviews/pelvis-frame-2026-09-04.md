@@ -243,3 +243,221 @@ selects, and nothing MAMMA-derived enters `src/`, a constant or the delivery.
   the silhouette's standing blindnesses.
 * **Generalisation.** One take, two performers, 150 correlated frames, and five synthetic
   clips from one motion source.
+
+---
+
+## 1. What shipped
+
+`positions_to_body_track` gained `spine_world_z_up_m` (`[frame, 3]`, SOMA-77's `Spine1`
+triangulated under the pipeline's own association) and `pelvis_report_out`.
+`_pelvis_world_frames` — module level and called by bare name, exactly as `_joint_origin`
+and `_leg_root_offset` are, so an instrument substitutes it and runs every control through
+the identical construction — turns those points into `Hips`' world rotation by a Kabsch fit
+of `SOMA77_REST_PELVIS_TEMPLATE_M` onto the observed {root, `Spine1`, `LeftLeg`,
+`RightLeg`}. `_spine_world_for_subject` triangulates the landmark exactly as
+`_toe_world_for_subject` does the ball of the foot; `reconstruct_multiview` gained
+`spine_landmarks_by_camera` and two diagnostics tuples (`spine_triangulation`,
+`pelvis_frame`); the build script gained `_spine_landmarks` on SOMA-77 index 1.
+
+**Exactly one line inside the converter's frame loop branches**, and it is guarded by
+`if pelvis_world is not None`. `Spine`, `Chest` and `UpperChest` still take `torso_world`,
+so `Spine`'s local becomes pelvis⁻¹·thorax through `_set_world`; the root formula is
+untouched, so `_leg_root_offset`'s `R_hips · mid` now rides the **pelvis** instead of the
+lean. Four constants are registered in `tools/compare/provenance.py` and the audit runs
+**CLEAN** (96 entries, no leak).
+
+## 2. The mechanism, in one sentence
+
+`Spine1`, `LeftLeg` and `RightLeg` are all **direct children of `Hips`** in SOMASKEL77, so
+`posed[child] − posed[Hips] = R_hips · (rest[child] − rest[Hips])` exactly; a Kabsch fit of
+the three rest offsets onto the three observed ones inverts that identity, and the pelvis
+rotation falls out with a residual of **4.2e-8 m** on noiseless input. `Spine2` is a child
+of `Spine1`, so anything measured to it carries lumbar flexion (14.5 / 20.9° median / p95
+on the squat clip) and is a *lumbar* direction, not a pelvis one.
+
+## 3. The gate — `artifacts/compare/d7-pelvis-frame/gate.json`
+
+| band | result | verdict |
+|---|---|---|
+| **B1 CLEAN SYNTHETIC.** every rigid candidate vs the posed `Hips` rotation, five clips, band ≤ 0.01° median / ≤ 0.05° max | **0.0000° on every clip, every candidate** | **PASS** |
+| **B1 degenerate.** thorax-as-pelvis (today's code), band ≥ 20° on the squat's bent frames | 26.97° | PASS (fails as required) |
+| **B1 degenerate.** world-vertical, band ≥ 20° | **5.25°** | **REFUTED** — §5 |
+| **B1 lumbar.** best lumbar arm, band ≥ 5° | 12.22° | PASS |
+| **B2a NOISY SYNTHETIC, the selector.** winner below thorax **and** world-vertical **and** the best lumbar | C 9.96 vs thorax 27.61 ✓, lumbar 14.24 ✓, **world-vertical 7.32 ✗** | **FAIL** |
+| **B2b the window.** interior optimum + lag + attenuation, over-smoothed must fail on the fast clip | the protocol could not be executed; selection is 0 by the pre-registered fallback | reported |
+| **B3 RIGIDITY on the real take** (sd_mm, the pre-registered reading rule) | root→Spine1 5.09 / 8.44 mm, mid(hips)→Spine1 6.61 / 11.10 mm, against body controls 9.39–26.62 / 10.24–47.73 mm | **TRUSTED** |
+| **B4 ROUND TRIP canonical.** legs 0.00, torso 0.00, arms 0.55 / 0.08 | exactly that | PASS (and **blind to D7**, §0.5) |
+| **B5 EXACT-RECOVERY ORACLE.** band ≤ 0.01° | **2.1e-6°** worst | **PASS** |
+| **B5 must-fail.** the same posed body with no spine landmark, floor 10° | 34.38° | PASS (fails as required) |
+| **B6 D3 CLOSURE** on the rebuilt GLB, read from its own bytes, band 1e-4 m | 4.8e-7 / 5.2e-7 m | **PASS** |
+| **B8 REBUILD hygiene.** 8 observation files byte-identical; triangulation byte-identical | all true | **PASS** |
+| **LEGACY BIT-IDENTITY.** the whole real `reconstruct_multiview` with no spine feed vs the pre-D7 delivery | rotations, root and contacts byte-identical on both subjects | **PASS** |
+| **B7 SILHOUETTE.** the pre-registered clauses | **NOT MEASURED**, §6 | verdict withheld |
+
+**Overall: FAIL, on B2a, and the failure is the finding.**
+
+## 4. The reported figures
+
+| figure | subject 0 | subject 1 |
+|---|---|---|
+| `Hips` **joint's** horizontal offset from the captured hip midpoint, bent tercile, before → after | **65.1 → 25.3 mm** [CI 11.8, 27.3] | 79.2 → 79.7 mm |
+| … correlation with trunk tilt, before → after | +0.979 → +0.876 | +0.977 → +0.856 |
+| lowest joint (the hoist proxy), before → after | −0.1308 → −0.0971 m | −0.8253 → −0.8329 m |
+| foot contacts, before → after | [33, 49] → [36, 49] | [2, 20] → [6, 20] |
+| `Hips` frames over 800 °/s | 0 → 0 | 0 → 0 |
+| `Hips` median angular rate | 63.4 → 67.5 °/s | 84.0 → 96.6 °/s |
+| silhouette IoU, whole person, 8 cells | +0.035, −0.024, +0.030, −0.003 | −0.008, +0.007, +0.006, −0.007 |
+| MAMMA's own pelvis-vs-spine3 separation, beside ours | 8.85° / ours 18.92° | 9.49° / ours 15.82° |
+
+**The two performers behave differently and the instruments agree about it.** Subject 0's
+`Hips` joint moved 40 mm closer to its own captured hips on bent frames and its silhouette
+rose on three cameras of four; subject 1's offset did not move and neither did its
+silhouette. On subject 1 the measured pelvis really is tilted away from the trunk, so
+correcting the frame does not bring the joint back to the hip midpoint — which is what a
+pelvis frame is *for*, and the offset is reported and not banded precisely because "smaller"
+is not the same as "right".
+
+**MAMMA reports and selected nothing.** Both fitters now carry a pelvis that is not welded
+to the thorax (ours read 0.000° by construction before D7). The two numbers are on different
+chains and different conventions and are not comparable beyond that sign.
+
+## 5. The pre-registered expectations, and whether each was met
+
+| | expectation (§0) | outcome |
+|---|---|---|
+| B1 clean | every rigid candidate ≤ 0.01° median, ≤ 0.05° max on five clips | **MET**, 0.0000° everywhere |
+| B1 degenerate, thorax | ≥ 20° on the squat's bent frames | **MET**, 26.97° |
+| B1 degenerate, world-vertical | ≥ 20° on the squat's bent frames | **REFUTED**, **5.25°**. The true pelvis on all five clips sits **1.1–12.7°** from world vertical, so on this motion source a frozen upright pelvis is already a good approximation. Nobody had measured that before the band was written. |
+| B1 lumbar | ≥ 5° | **MET**, 12.22° |
+| B2a selector | the winner below all three controls | **REFUTED on one of three.** C beats thorax by 17.6° and the best lumbar by 4.3°, and **loses to world-vertical by 2.6°.** |
+| B2a prediction | A's median ≈ 2.5× B's (the lever ratio) | **MET**, 26.88 / 11.90 = 2.26× |
+| B2a prediction | C ≥ B | **MET**, 9.96 vs 11.90 |
+| B2b window | an interior optimum with lag ≤ 1 frame and attenuation ≥ 0.9 | **NOT EXECUTABLE.** At this noise the lag estimator reads −2.4 to −8.1 frames and the attenuation 1.2–7.3 (*amplification*) at **every** window, window 0 included — both instruments are unusable here. The pre-registered fallback selects **0**. The p95 does improve monotonically to the widest window (33.2 → 17.2°) and that is reported, not selected on. |
+| B3 rigidity | candidates' sd_mm ≤ the worst body control's | **MET**, 0.16–0.33× the worst control. And the reading rule earned its keep: on sd % `root→Spine1` reads **16.4 %** on subject 1, at the very top of the control range, where on sd_mm it is 8.44 against 47.73. |
+| B4 round trip | 0.55 / 0.08, legs and torso 0.00 | **MET exactly** — and trivially, as pre-registered |
+| B5 oracle | ≤ 0.01° | **MET**, 2.1e-6° |
+| B5 must-fail | ≥ 10° | **MET**, 34.38° |
+| B6 closure | ≤ 1e-4 m, prediction 5e-7 or smaller | **MET**, 4.8e-7 / 5.2e-7 m |
+| B8 hygiene | byte-identical observations and triangulation | **MET** |
+| §0.6 hoist | moves by no more than the `Hips`-joint shift, a few mm | **REFUTED in size on subject 0**: the lowest joint rose 33.7 mm, more than "a few". The `Hips` joint itself moved ~40 mm on bent frames, so the prediction's *bound* holds; its "a few mm" gloss does not. Subject 1: 7.5 mm. |
+| §0.6 offset must move | it must move | **MET on subject 0** (65.1 → 25.3 mm), **not met on subject 1** (79.2 → 79.7) — and §4 says why that is the expected behaviour of a genuinely tilted pelvis, not a null result |
+| B7 silhouette | torso+legs rises on the bent tercile; arms within CI; upright tercile within CI; MAMMA oracle bit-identical | **the first three NOT MEASURED** (§6); the oracle **is bit-identical in all 8 cells**, which is the proof that reusing the mask caches changed nothing |
+
+## 6. What was not run, and why
+
+* **The part-wise and tercile silhouette cuts.** `silhouette.py` writes summaries, not
+  per-frame arrays, and `silhouette_partwise.py` / `silhouette_vs_tilt.py` have their
+  `BUILDS` hard-coded to the D2 paths. What was measured is the whole-person before/after
+  by camera and subject, on the same masks, the same rasteriser and the same mask cache,
+  with MAMMA's mesh oracle bit-identical between the runs. **Four of eight cells rose and
+  four fell, every change ≤ 0.035 IoU**, so at whole-person resolution the photographs
+  neither confirm nor deny D7. A whole-person band invented now would be a band chosen
+  after seeing the numbers, so none is: the verdict is withheld rather than manufactured.
+* **The block-bootstrap CIs on the silhouette difference**, for the same reason.
+* **The rigid-translation over-attribution arm.** It would be an upper bound and not an
+  isolation — D7 leaves the leg roots on the captured hips, so translating D3's mesh moves
+  legs D7 does not.
+* **Facing and rung 11 as separate reruns.** `facing_location.py` and `mamma_scoreboard.py`
+  were not re-run on the D7 delivery; the handedness- and facing-sensitive quantity D7
+  touches is `Hips`, and its offset and rate are reported in §4 instead. This is a gap.
+
+## 7. The instrument findings, recorded because they change how the numbers read
+
+**The pre-registered noise model is 1.7–2.9× harsher than the real detector, and the
+instrument says so itself.** The noisy arm produces **18.85 mm** of `mid(hips)→Spine1`
+length spread; `d7_pelvis_rigidity.py` measures **6.61** and **11.10 mm** on the real take
+with the real detector. The calibration figure is in the report beside every angular number
+because *when a fit is short, suspect the instrument*. A sigma sweep — **explicitly
+post-hoc, and labelled as such in the report**, because it was added after the band had
+already failed — reads:
+
+| σ (px) | synthetic mid(hips)→Spine1 sd | C (ships) | B | world-vertical | thorax |
+|---:|---:|---:|---:|---:|---:|
+| 3.20 (pre-registered) | 18.85 mm | 9.96° | 11.90° | **7.32°** | 27.61° |
+| 2.40 | 12.74 mm | 7.90° | 10.36° | **7.01°** | 27.09° |
+| 1.60 | 10.36 mm | 7.43° | 8.81° | **7.11°** | 27.73° |
+| 1.12 | 6.93 mm | **5.39°** | 6.70° | 6.54° | 27.09° |
+| 0.80 | 4.95 mm | **3.74°** | 5.17° | 6.09° | 27.05° |
+
+The real take's own bracket is 6.61–11.10 mm, i.e. between the ×0.35 and ×0.5 rows: **at
+subject 0's noise the pelvis frame wins, at subject 1's it is level with a constant.**
+That is a reading, not a verdict, and **the pre-registered verdict stands as it fell.**
+
+**The plan card is wrong about where the rest lives**, §0.2. The shipped rest-pitch is a
+convention with a measured 1.75–4.42° spread, registered as third-party provenance with its
+cost stated (a residual δ moves the root by `|mid|·sin δ`, about 80 mm of lever).
+
+## 8. Tests
+
+`tests/test_pelvis_frame.py`, **14 tests, all passing**, and every one asserts it imported
+this worktree's package. They cover: a clean synthetic body round-trips the pelvis frame
+through the real converter (the exact-recovery oracle); the no-spine and world-vertical
+degenerates fail it; a legacy call never reaches the pelvis code at all and is byte-equal;
+the legacy `Hips` channel is still the trunk-line construction bit for bit; a gap is
+interpolated with no per-frame definition switch; too few resolved frames fall the **whole**
+subject back with a reason and a byte-equal legacy track; wrong-shaped input and an unknown
+source are rejected; the report is carried out for the diagnostics; the diagnostics
+serialise the new fields and a legacy run carries empty ones; all three candidates run
+through the one code path; and the window is a knob that moves the answer.
+
+Across `test_body.py`, `test_body_export.py`, `test_body_binding.py`,
+`test_performer_skeleton_schema.py`, `test_d3_export_closure.py`, `test_pelvis_frame.py`,
+`test_root_placement.py`, `test_soma_motion.py` and `test_commercial_multiview.py`:
+**93 pass, 1 fails**, and the failure is D3's known one —
+`test_body_export.py::test_export_animated_body_glb_is_one_skin_one_timeline_and_hash_bound`
+asserts the pre-D3 exporter's root translation `(0, 0.8, 0)` and has failed since D3 shipped
+(D3 review §6). It is unrelated to D7 and, like D3, is reported rather than fixed.
+
+No existing test was edited (the user has uncommitted edits in `tests/`).
+
+## 9. What this is blind to
+
+Everything in §0.8 stands, and the run added three more:
+
+* **The silhouette's pre-registered clauses.** §6. The one band the candidate cannot
+  optimise was measured only at whole-person resolution, where it is silent.
+* **The window.** No usable lag or attenuation instrument exists at this noise, so "0" is a
+  refusal to smooth rather than a demonstration that smoothing does not pay. The p95 says
+  it might.
+* **Generalisation of the world-vertical result.** Five clips from one motion source, all
+  with a near-upright pelvis. A take with real pelvic tilt would separate the candidate from
+  the constant, and this fixture cannot.
+
+## 10. What needs a decision
+
+**D7 is built, measured, and it fails its own pre-registered band. It should not be merged
+on the strength of this gate.** The three things that would settle it, in order of cost:
+
+1. **A motion source with real pelvic tilt.** The world-vertical control wins because these
+   five clips barely tilt the pelvis. That is a fixture property, and lane H's owned capture
+   is where it gets fixed.
+2. **A lag/attenuation instrument that works at this noise**, so the window can be selected
+   rather than refused.
+3. **The part-wise silhouette on the D3 and D7 rebuilds**, which needs `silhouette.py` to
+   emit per-frame arrays or `silhouette_partwise.py` to take its builds as arguments.
+
+## 11. In plain language
+
+The character's hips and chest used to be locked together. Wherever the chest leaned, the
+hips leaned with it — so when a performer bent over, the code put the character's pelvis
+somewhere it had never been, and the whole figure shifted sideways by up to eight
+centimetres. This step gives the pelvis its own answer, read from a point on the lower spine
+that the detector already finds and nobody was using.
+
+The plumbing works, and it is proved rather than asserted: pose an imaginary body with its
+pelvis deliberately turned away from its chest, feed it in, and the pelvis comes back out to
+two millionths of a degree. Read the delivered file straight off disk and its joints match
+the code's own arithmetic to under a thousandth of a millimetre. Turn the new input off and
+the file that comes out is byte-for-byte the old one. On one of the two performers the hip
+joint moved four centimetres closer to where the cameras say the hips are, and the outline
+check rose on three cameras of four.
+
+But the honest headline is a failure, and it was written down as a test before anyone looked.
+The test said: a measured pelvis must beat a deliberately dumb answer — a pelvis frozen
+bolt upright, never turning at all. It does not. It beats the old code by a wide margin, but
+against the dumb answer it loses by two and a half degrees. The reason turns out to be the
+practice footage: in every clip available, the performers' pelvises barely tip away from
+upright, so "always upright" is already nearly right there. On footage with real hip tilt
+that would not hold — but we do not have that footage, and a step does not get to pass its
+own test by explaining the test away. So the work is written up, the failure is recorded,
+and whether it ships is not this step's call to make.
