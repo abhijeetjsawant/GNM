@@ -203,8 +203,8 @@
           "title": "A pelvis frame of its own (the trunk no longer one rigid block)",
           "plain": "Hips, Spine, Chest and UpperChest currently share one frame built from the hip and shoulder landmarks, so on a bent performer the whole trunk rides the lean. SOMA-77 carries an unmapped pelvis root and two lower-spine joints; give the pelvis its own frame from them, gated on the round trip, the ground hoist and the silhouette. Handed off by D2b and D3; may run before D4 if the user prefers.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-04",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -214,8 +214,7 @@
   ],
   "decisions_for_user": [
     "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
-    "After D3, what runs next: D4 (momentum on the MHR mean body; pymomentum must be installed first, per tools/fitter/README.md) or D7 (the pelvis frame, a converter step with no new dependency). D3 handed the shoulder construction, the thigh vertical and the spine ratios to D5.",
-    "D3's recorded miss: the exact-skeleton oracle's arm band (0.5 mm) fails by 0.19 mm on one of six synthetic bodies (D2's clavicle residual on a longer lever); accept it as a standing fail or re-derive the band from the lever in D5. And tests/test_body_export.py:145 (your uncommitted file) asserts the old exporter's root; expect the track root without the asset's 0.8 offset."
+    "D3's recorded miss: the exact-skeleton oracle's arm band (0.5 mm) fails by 0.19 mm on one of six synthetic bodies (D2's clavicle residual on a longer lever). Recommendation (2026-09-04): keep it as a standing fail; D5 re-derives the band from the fitted lever. And tests/test_body_export.py:145 (your uncommitted file) asserts the old exporter's root; expect the track root without the asset's 0.8 offset."
   ],
   "log": [
     {
@@ -512,6 +511,16 @@
       "date": "2026-09-04",
       "step": "D4",
       "text": "D3 done, so D4 is unblocked on the ladder; it still needs pymomentum installed (a throwaway venv per tools/fitter/README.md: uv venv /tmp/momenv --python 3.12; uv pip install pymomentum-cpu; MHR assets from the MHR release, never the SOMA redistribution) -- installed in neither python on this machine on 2026-09-03."
+    },
+    {
+      "date": "2026-09-04",
+      "step": "D7",
+      "text": "2026-09-04: the brief left the D4-or-D7 choice as '[choose one]'; taken as delegated and D7 chosen first, reversible: SOMA-77's pelvis root is already mapped as 'root' (only Spine1/Spine2 are unmapped), no new dependency, it closes a measured cost (the root's silhouette share, -0.022/-0.013 IoU, tilt-dependent), and D4's card needs restating after D3. pymomentum installed in /tmp/momenv and the MHR assets copied to .cache/mhr/assets, so D4 is unblocked next. Effect size measured on the fixture's own clips before the card: the rigid pelvis (root->Spine1) departs from the trunk line by 26/33 deg median/p95 on the squat clip's bent frames, correlation +0.93 with tilt. Sol reviewed the card: clean arm per candidate, partwise silhouette (the translation trick over-attributes here), length stability not self-agreement, no per-frame frame switching, the tilt-correlation figure restated on the Hips joint."
+    },
+    {
+      "date": "2026-09-04",
+      "step": "D7",
+      "text": "worktree ladder/D7; card in LADDER_EXECUTION_PLAN section 2; Sol reviewed the plan 2026-09-04"
     }
   ]
 }

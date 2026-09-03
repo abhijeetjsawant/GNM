@@ -15,6 +15,9 @@ curl -sL -o assets.zip \
   https://github.com/facebookresearch/MHR/releases/download/v1.0.1/assets.zip
 ```
 
+A copy of the extracted release assets lives under `.cache/mhr/assets/` (gitignored; copied
+2026-09-04) and `/tmp/momenv` had `pymomentum-cpu` importing on the same day.
+
 **Consume MHR from its own release, never via the SOMA third-party redistribution** —
 that copy also carries a 28-dimension scale PCA which is under the **SAM licence, not
 Apache**. Do not lift it; fit the 68 raw scale channels with our own regulariser.
