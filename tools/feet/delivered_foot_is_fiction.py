@@ -36,7 +36,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "head"))
-from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names  # noqa: E402
+from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names, skeleton_for_track_dict  # noqa: E402
 from triangulate_soma import triangulate  # noqa: E402
 
 SOMA = {"LeftFoot": 69, "LeftToeBase": 70, "RightFoot": 74, "RightToeBase": 75}
@@ -56,10 +56,11 @@ def main() -> None:
         track = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")
         q = track["local_rotations_xyzw"]
         root = track["root_translation_m"]
-        names = json.loads(
+        track_doc = json.loads(
             (TRACKS / f"subject-{subject:02d}.body-track.json").read_text()
-        )["joint_names"]
-        skeleton = skeleton_for_joint_names(names)
+        )
+        names = track_doc["joint_names"]
+        skeleton = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
         world = forward_kinematics_positions(root, q, skeleton=skeleton)
         pos = positions[subject]
         block = {}

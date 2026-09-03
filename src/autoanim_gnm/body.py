@@ -429,6 +429,27 @@ def skeleton_for_track(track: BodyTrack) -> HumanoidSkeleton:
     return base.with_rest_translations(rest)
 
 
+def skeleton_for_track_dict(value: Any) -> HumanoidSkeleton:
+    """The skeleton of a SERIALISED track (``subject-XX.body-track.json`` as a dict).
+
+    D3.  For instruments that read the delivery from disk and never build a
+    :class:`BodyTrack`: resolves the joint order from ``joint_names`` and the rest from
+    ``rest_translations_m`` when the file carries one, and the canonical rest when it
+    does not (legacy files).  Same identity rule as :func:`skeleton_for_track`.
+    """
+
+    if not isinstance(value, dict) or "joint_names" not in value:
+        raise BodyValidationError("Serialized body track must carry joint_names")
+    base = skeleton_for_joint_names(tuple(value["joint_names"]))
+    rest_value = value.get("rest_translations_m")
+    if rest_value is None:
+        return base
+    rest = np.asarray(rest_value, dtype=np.float64)
+    if np.array_equal(rest, base.rest_translations_m):
+        return base
+    return base.with_rest_translations(rest)
+
+
 def validate_skeleton(skeleton: HumanoidSkeleton = CANONICAL_HUMANOID) -> None:
     if skeleton.schema_version not in {
         SKELETON_SCHEMA_VERSION,

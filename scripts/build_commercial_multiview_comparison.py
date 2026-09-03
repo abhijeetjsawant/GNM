@@ -306,6 +306,13 @@ def main() -> int:
         help="soma77 runs Apple Vision first for person boxes, then SOMA-77 for keypoints",
     )
     parser.add_argument("--body-run", type=Path, default=DEFAULT_BODY_RUN)
+    parser.add_argument(
+        "--rest-skeleton",
+        choices=("performer", "canonical"),
+        default="performer",
+        help="D3: the rest skeleton the tracks are built on. 'canonical' is an instrument "
+             "arm (the gate's bit-identity check), never the delivery.",
+    )
     arguments = parser.parse_args()
     if arguments.end_frame - arguments.start_frame < 2:
         raise ValueError("Comparison requires at least two frames")
@@ -379,6 +386,7 @@ def main() -> int:
         toe_landmarks_by_camera=toe_landmarks if solvable else None,
         subject_count=arguments.subject_count,
         sample_rate_hz=30,
+        rest_skeleton=arguments.rest_skeleton,
     )
     body_manifest = (arguments.body_run / "neutral-body.json").resolve(strict=True)
     body_asset = (arguments.body_run / "neutral-body.npz").resolve(strict=True)

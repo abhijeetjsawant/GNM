@@ -157,7 +157,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools" / "head"))
-from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names  # noqa: E402
+from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names, skeleton_for_track_dict  # noqa: E402
 from autoanim_gnm.commercial_multiview import JOINT_INDEX  # noqa: E402
 from subject_map import mamma_index_for  # noqa: E402
 from triangulate_soma import triangulate  # noqa: E402
@@ -683,11 +683,11 @@ def main() -> None:
         m_joints = np.load(MA3D / f"verts_joints_body_id-{mid:02d}.npz",
                            allow_pickle=True)["pred_joints"].astype(np.float64)
         track = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")
-        names = json.loads((TRACKS / f"subject-{subject:02d}.body-track.json").read_text())[
-            "joint_names"]
+        track_doc = json.loads((TRACKS / f"subject-{subject:02d}.body-track.json").read_text())
+        names = track_doc["joint_names"]
         world_rig = forward_kinematics_positions(
             track["root_translation_m"], track["local_rotations_xyzw"],
-            skeleton=skeleton_for_joint_names(names))
+            skeleton=skeleton_for_track_dict(track_doc))   # D3: the track's own rest
         basis_scores = assert_rig_basis(
             world_rig, names, track["raw_triangulated_world_positions_z_up_m"])
         world = rig_to_z_up(world_rig)

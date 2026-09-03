@@ -22,7 +22,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names  # noqa: E402
+from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names, skeleton_for_track_dict  # noqa: E402
 from autoanim_gnm.commercial_multiview import (  # noqa: E402
     JOINT_INDEX, JOINT_NAMES, load_camera_rig,
 )
@@ -71,8 +71,9 @@ def project(camera, pts_z_up: np.ndarray) -> np.ndarray:
 def main() -> None:
     rig = {c.name: c for c in load_camera_rig(TRACKS / "camera-rig.json")}
     camera = rig["A001"].scaled(W, H)
-    names = json.loads((TRACKS / "subject-00.body-track.json").read_text())["joint_names"]
-    skeleton = skeleton_for_joint_names(names)
+    track_doc = json.loads((TRACKS / "subject-00.body-track.json").read_text())
+    names = track_doc["joint_names"]
+    skeleton = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
     rig_bones = [[j.parent, i] for i, j in enumerate(skeleton.joints) if j.parent >= 0]
 
     subjects = []

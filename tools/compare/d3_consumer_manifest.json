@@ -1,0 +1,43 @@
+{
+  "rule": "every hit of `skeleton_for_joint_names|DETAILED_HUMANOID` in src, scripts and tools (tests excluded), binned by what it does with a track",
+  "bins": {
+    "a": "delivery path: MUST read the track's own skeleton (skeleton_for_track / skeleton_for_track_dict / the explicit `skeleton=` argument)",
+    "b": "canonical by construction: builds or consumes tracks that carry no per-performer rest (generated motion, asset-only consumers, the SMPL-X mocap exporter with its own contract); unchanged, the reason stated",
+    "c": "instruments reading the delivery: now read the delivered rest from the track file",
+    "d": "frozen historical gates: untouched, they hold their own skeleton by design"
+  },
+  "a": {
+    "src/autoanim_gnm/body.py": "BodyTrack carries rest_translations_m (float64, new schema pair 1.2/1.3, legacy loads canonical); __post_init__/validate_body_track/as_dict/from_dict resolve through skeleton_for_track; skeleton_for_track_dict for disk readers",
+    "src/autoanim_gnm/commercial_multiview.py": "positions_to_body_track(skeleton=...) reads `rest` from the skeleton it is given and stamps it on the track; reconstruct_multiview builds performer_skeleton per subject (rest_skeleton='performer'; 'canonical' is the gate's instrument arm)",
+    "src/autoanim_gnm/body_projection.py:1117": "project_generated_foot_contacts runs FK on skeleton_for_track(track)",
+    "src/autoanim_gnm/body_export.py": "node translations = the track's rest in the asset's aligned parent rest frames; root from the track's rest; vertices/weights/inverse-bind unchanged; rest written into the mapping npz",
+    "src/autoanim_gnm/unified_gltf.py": "_skin_matrices and the unified export resolve skeleton_for_track(track)",
+    "src/autoanim_gnm/body_binding.py:461": "asset-only socket; optional skeleton parameter defaulting to the asset's own rest (canonical by construction until a caller passes one)",
+    "src/autoanim_gnm/performer_skeleton.py": "NEW: the delivered rest source (sized_skeleton moved into src, torso-drop derivation folded in); tools/head/sized_skeleton.py re-exports it",
+    "scripts/build_commercial_multiview_comparison.py": "writes rest_translations_m into subject-XX.body-track.npz; --rest-skeleton {performer,canonical}",
+    "scripts/verify_commercial_multiview_artifact.py:152": "FK on the track's own rest"
+  },
+  "b": {
+    "src/autoanim_gnm/speech_motion.py, speech_motion_candidates.py": "generated speech tracks are built with joint_names=DETAILED_HUMANOID.names and no rest: canonical by construction",
+    "src/autoanim_gnm/soma_motion.py:804": "SOMA motion retarget onto the canonical rig; no performer rest exists in that lane",
+    "src/autoanim_gnm/body_provider.py:496/591/835, nvidia_body_provider.py": "asset generation and manifest validation: the ASSET's skeleton contract, not a track",
+    "src/autoanim_gnm/body_projection.py:356 constrain_arms_to_video_keypoints, :752 constrain_hands_to_video_keypoints": "callers: scripts/build_video_acting_shot.py only (the video acting lane, canonical generated tracks)",
+    "scripts/build_audio_acting_shot.py, build_video_acting_shot.py": "generated acting shots on the canonical rig",
+    "scripts/blender_body_worker.py:227": "asset generation (the MPFB body), canonical",
+    "scripts/export_mocap_rigify_humanoid.py": "the SMPL-X mocap -> Rigify exporter; reads its own SKELETON.json contract, never a BodyTrack"
+  },
+  "c": {
+    "tools/compare/mamma_scoreboard.py": "arms renamed: `sized` is the DELIVERED body on the rest the track carries (skeleton_for_track_dict); `canon` is a replay on the canonical rig; arm definitions written into the report",
+    "tools/compare/facing_location.py:381": "skeleton_for_track_dict",
+    "tools/compare/silhouette_partwise.py (4 sites), silhouette_vs_tilt.py:128": "skeleton_for_track_dict",
+    "tools/feet/delivered_foot_is_fiction.py:62, tools/feet/mamma_feet_bar.py:690": "skeleton_for_track_dict",
+    "tools/head/export_overlay_scene.py:75, export_rig_scene.py:43": "skeleton_for_track_dict",
+    "tools/head/sized_skeleton.py": "re-exports performer_skeleton (instrument and delivery cannot diverge)",
+    "tools/swap-harness/retarget_cost.py": "passes the skeleton explicitly to the converter beside the module rebind",
+    "tools/compare/silhouette.py": "reads the delivered GLB through Blender, so it scores whatever the exporter wrote: no edit needed, and it is the instrument that moved 8 of 8 cells"
+  },
+  "d": {
+    "tools/compare/d2_clavicle_gate.py, d2c_clavicle_temporal_gate.py, d2_jitter_sheet.py, facing_fix_gate.py, extractors/d1_facing.py": "frozen: they reproduce committed D1/D2 reports on the canonical rig and must keep doing so",
+    "tools/head/our_head_bar.py": "reads DETAILED_HUMANOID for NAMES and PARENTS only (chain walking), never a rest offset"
+  }
+}

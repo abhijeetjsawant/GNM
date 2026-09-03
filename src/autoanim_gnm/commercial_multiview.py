@@ -2201,6 +2201,11 @@ def reconstruct_multiview(
     # is why this is now reachable. Default unchanged.
     minimum_confidence: float = 0.25,
     weight_before_loss: bool = False,
+    # D3. Which rest skeleton the tracks are built on. "performer" (the delivery) sizes
+    # the rig to THIS performer's own triangulated limb lengths; "canonical" is the
+    # instrument arm that proves the plumbing is byte-stable under the canonical rest
+    # (the D3 gate's bit-identity check against the pre-D3 delivery). No other value.
+    rest_skeleton: str = "performer",
     # Cycle-consistent graph matching by default: measured identical to the
     # exhaustive search on every frame of the reference fixture, ~2x faster
     # there, and the only tractable option beyond two subjects -- the exhaustive
@@ -2451,7 +2456,12 @@ def reconstruct_multiview(
         # rest from the npz gets bit-identical bone lengths. The skeleton is passed in,
         # stamped on the track, and carried from here through forward kinematics,
         # validation, the ground projection, the exporter and every socket.
-        performer, _sizing = performer_skeleton(DETAILED_HUMANOID, positions)
+        if rest_skeleton == "performer":
+            performer, _sizing = performer_skeleton(DETAILED_HUMANOID, positions)
+        elif rest_skeleton == "canonical":
+            performer = DETAILED_HUMANOID
+        else:
+            raise CommercialMultiviewError("rest_skeleton must be 'performer' or 'canonical'")
         track = positions_to_body_track(
             positions,
             sample_rate_hz=sample_rate_hz,

@@ -197,12 +197,27 @@ def scaled_skeleton(src_z_up, torso=True):
 
 # --------------------------------------------------------------------------- the stage
 def solve(src_z_up, skeleton=None):
-    """Run the REAL converter. Returns the BodyTrack it produced."""
+    """Run the REAL converter. Returns the BodyTrack it produced.
+
+    D3, 2026-09-03. The skeleton is now passed EXPLICITLY, which is the supported way
+    since `positions_to_body_track` takes one; the module rebind is kept beside it
+    because `_joint_origin` and `_set_world` still read `cm.DETAILED_HUMANOID` for joint
+    names and parents, and because an instrument that substitutes those functions relies
+    on the rebind being in force.
+
+    TWO CONSEQUENCES FOR THE SIZED ARM, both reported and neither chased. The returned
+    track now CARRIES the skeleton it was solved on, so (a) `project_generated_foot_contacts`
+    inside the converter hoists on the sized rest instead of the canonical one -- before
+    D3 the rebind never reached it, because `body_projection` reads `DETAILED_HUMANOID`
+    from its own namespace -- and (b) the sized track can no longer be validated against
+    the canonical body, which is the point.
+    """
     skel = skeleton or DETAILED_HUMANOID
     saved = cm.DETAILED_HUMANOID
     cm.DETAILED_HUMANOID = skel                    # the retarget reads it from its own namespace
     try:
-        return cm.positions_to_body_track(src_z_up, sample_rate_hz=30, provenance_sha256=SHA)
+        return cm.positions_to_body_track(
+            src_z_up, sample_rate_hz=30, provenance_sha256=SHA, skeleton=skel)
     finally:
         cm.DETAILED_HUMANOID = saved
 

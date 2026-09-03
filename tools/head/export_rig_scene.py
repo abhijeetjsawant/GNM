@@ -16,7 +16,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names  # noqa: E402
+from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names, skeleton_for_track_dict  # noqa: E402
 
 TRACKS = Path("artifacts/commercial-multiview-soma77")
 OUT = Path("artifacts/head-lane/rig-scene.json")
@@ -39,8 +39,9 @@ def region_for(name: str) -> str:
 
 
 def main() -> None:
-    names = json.loads((TRACKS / "subject-00.body-track.json").read_text())["joint_names"]
-    skeleton = skeleton_for_joint_names(names)
+    track_doc = json.loads((TRACKS / "subject-00.body-track.json").read_text())
+    names = track_doc["joint_names"]
+    skeleton = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
     bones = [
         [joint.parent, index]
         for index, joint in enumerate(skeleton.joints)

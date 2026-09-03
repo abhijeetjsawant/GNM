@@ -55,6 +55,7 @@ from autoanim_gnm import commercial_multiview as cm  # noqa: E402
 from autoanim_gnm.body import (  # noqa: E402
     forward_kinematics_positions,
     skeleton_for_joint_names,
+    skeleton_for_track_dict,
 )
 from autoanim_gnm.body_export import export_animated_body_glb  # noqa: E402
 from autoanim_gnm.commercial_multiview import load_camera_rig  # noqa: E402
@@ -157,9 +158,9 @@ def hips_capture(tracks: Path, subject: int) -> np.ndarray:
     position is the root plus a CONSTANT and its frame-to-frame difference between two
     builds is exactly the root's.
     """
-    names = json.loads((tracks / f"subject-{subject:02d}.body-track.json").read_text())[
-        "joint_names"]
-    base = skeleton_for_joint_names(names)
+    track_doc = json.loads((tracks / f"subject-{subject:02d}.body-track.json").read_text())
+    names = track_doc["joint_names"]
+    base = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
     npz = np.load(tracks / f"subject-{subject:02d}.body-track.npz")
     world = forward_kinematics_positions(
         np.asarray(npz["root_translation_m"], dtype=np.float64),
@@ -240,9 +241,9 @@ def nearest_joint_agreement(split: dict, verts: np.ndarray, tracks: Path,
     order did not survive the Blender round trip, the two would disagree wildly. It is a
     check on the correspondence, not a second opinion on anatomy.
     """
-    names = json.loads((tracks / f"subject-{subject:02d}.body-track.json").read_text())[
-        "joint_names"]
-    base = skeleton_for_joint_names(names)
+    track_doc = json.loads((tracks / f"subject-{subject:02d}.body-track.json").read_text())
+    names = track_doc["joint_names"]
+    base = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
     npz = np.load(tracks / f"subject-{subject:02d}.body-track.npz")
     world = forward_kinematics_positions(
         np.asarray(npz["root_translation_m"], dtype=np.float64),
@@ -289,9 +290,9 @@ def folded_arm_track(subject: int):
     hand keep their local rotations, so the whole arm swings rigidly and the elbow keeps
     whatever bend it had -- a folded arm, not a straightened one.
     """
-    names = json.loads((TRACKS / f"subject-{subject:02d}.body-track.json").read_text())[
-        "joint_names"]
-    skeleton = skeleton_for_joint_names(names)
+    track_doc = json.loads((TRACKS / f"subject-{subject:02d}.body-track.json").read_text())
+    names = track_doc["joint_names"]
+    skeleton = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
     npz = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")
     local = np.asarray(npz["local_rotations_xyzw"], dtype=np.float64).copy()
     rest = {j.name: np.asarray(j.rest_translation_m, dtype=np.float64)
@@ -349,9 +350,9 @@ def verify_the_fold() -> dict:
     """
     out = {}
     for subject in (0, 1):
-        names = json.loads((TRACKS / f"subject-{subject:02d}.body-track.json").read_text())[
-            "joint_names"]
-        base = skeleton_for_joint_names(names)
+        track_doc = json.loads((TRACKS / f"subject-{subject:02d}.body-track.json").read_text())
+        names = track_doc["joint_names"]
+        base = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
         npz = np.load(TRACKS / f"subject-{subject:02d}.body-track.npz")
         root = np.asarray(npz["root_translation_m"], dtype=np.float64)
         row = {}
