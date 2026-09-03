@@ -21,7 +21,14 @@ from typing import Any
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from .body import BodyTrack, HumanoidSkeleton, skeleton_for_joint_names, validate_body_track
+from .body import (
+    BodyTrack,
+    HumanoidSkeleton,
+    _rotate_vector,
+    skeleton_for_joint_names,
+    skeleton_for_track,
+    validate_body_track,
+)
 from .body_provider import load_and_validate_body_asset, sha256_file
 from .serialization import write_npz
 
@@ -357,7 +364,34 @@ def _compose_rest_and_delta(
     parents: np.ndarray,
     *,
     world_bind_alignment_xyzw: np.ndarray | None = None,
+    rest_translations_m: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Compose a track's world rotations onto the asset's rest frames.
+
+    ``rest_translations_m`` is the TRACK's rest skeleton, ``[joint, 3]`` in the rig's own
+    frame.  When it is given, the node translations returned are that skeleton's bone
+    offsets **expressed in each parent's aligned asset rest frame**, so that the exported
+    glTF's forward kinematics reproduces
+    :func:`autoanim_gnm.body.forward_kinematics_positions` on the same track exactly.
+
+    D3, and this is the whole of the two-skeleton defect it closes.  The animated world
+    rotation this function builds is
+    ``animated_world[j] = track_world[j] * alignment[j] * rest_world[j]``, and a glTF
+    reader places a child at ``pos[p] + animated_world[p] * t_local[j]``.  Forward
+    kinematics wants ``pos[p] + track_world[p] * rest_track[j]``.  Setting
+
+        t_local[j] = inv(alignment[p] * rest_world[p]) * rest_track[j]
+
+    makes the two identical for every joint and every frame, by construction, with no
+    tolerance and no fit.  Until today ``t_local`` was the ASSET's own rest offset, so
+    the exported GLB carried the provider's A-posed, 170 mm-half-span body while every
+    instrument scored the code skeleton's T-posed, 270 mm one: measured at 81-195 mm per
+    joint on the delivered build.
+
+    ``None`` keeps the previous behaviour exactly -- the asset's own rest offsets, in
+    float32 -- for callers that have no track skeleton in hand.
+    """
+
     rest = np.asarray(local_rest_matrices, dtype=np.float64)
     delta = np.asarray(local_delta_xyzw, dtype=np.float64)
     hierarchy = np.asarray(parents, dtype=np.int64)
@@ -408,6 +442,25 @@ def _compose_rest_and_delta(
                 _quaternion_inverse(animated_world[:, parent]),
                 animated_world[:, joint_index],
             )
+    if rest_translations_m is not None:
+        track_rest = np.asarray(rest_translations_m, dtype=np.float64)
+        if track_rest.shape != (joint_count, 3) or not np.isfinite(track_rest).all():
+            raise ValueError("Track rest translations must be a finite [joints, 3] array")
+        placed = np.zeros((joint_count, 3), dtype=np.float64)
+        for joint_index, parent in enumerate(hierarchy.tolist()):
+            if parent == -1:
+                # The root's rest offset is zero by contract; its world placement is the
+                # animated root translation the caller adds, never the asset's own root
+                # rest, which is a different body's.
+                placed[joint_index] = track_rest[joint_index]
+            else:
+                parent_frame = _quaternion_multiply(
+                    alignment[parent], rest_world[parent]
+                )
+                placed[joint_index] = _rotate_vector(
+                    _quaternion_inverse(parent_frame), track_rest[joint_index]
+                )
+        translations = placed
     animated_local /= np.linalg.norm(animated_local, axis=2, keepdims=True)
     for frame in range(1, len(animated_local)):
         flip = (
@@ -433,7 +486,8 @@ def export_animated_body_glb(
 ) -> AnimatedBodyGLBExport:
     """Export an MPFB body animated by one validated canonical body track."""
 
-    target_skeleton = skeleton_for_joint_names(track.joint_names)
+    # D3: the TRACK's skeleton, not merely the skeleton its joint NAMES resolve to.
+    target_skeleton = skeleton_for_track(track)
     validate_body_track(track, skeleton=target_skeleton)
     manifest = load_and_validate_body_asset(
         body_manifest_path,
@@ -459,7 +513,11 @@ def export_animated_body_glb(
         world_bind_alignment_xyzw=_canonical_arm_bind_alignment(
             local_rest, parents, skeleton=target_skeleton
         ),
+        rest_translations_m=track.rest_translations_m,
     )
+    # `rest_translations[0]` is the TRACK root's rest offset, which is zero by contract,
+    # so the animated root node carries the track's root translation and nothing else.
+    # It used to be the ASSET's Root rest, a different body's offset added to our root.
     root_translation = (
         rest_translations[0][None, :] + track.root_translation_m
     ).astype(np.float32)
@@ -646,6 +704,9 @@ def export_animated_body_glb(
         timestamps_seconds=timestamps,
         root_translation_m=track.root_translation_m,
         local_rotations_xyzw=track.local_rotations_xyzw,
+        # D3: the rest the track was solved on, so an npz-only consumer cannot silently
+        # run forward kinematics on the canonical body.
+        rest_translations_m=track.rest_translations_m,
         body_asset_sha256=np.asarray(body_asset_sha256),
         body_track_sha256=np.asarray(body_track_sha256),
     )

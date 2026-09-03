@@ -13,6 +13,7 @@ from .body import (
     BodyTrack,
     _quaternion_multiply,
     forward_kinematics_positions,
+    skeleton_for_track,
 )
 
 
@@ -355,6 +356,13 @@ def constrain_arms_to_video_keypoints(
 
     if track.joint_names != DETAILED_HUMANOID.names:
         raise ValueError("Visual arm constraints require AutoAnim-55")
+    # D3. Canonical-by-construction today -- the only caller,
+    # `scripts/build_video_acting_shot.py`, feeds a GEM-X track from
+    # `project_soma_to_detailed_body_track`, which is built on `DETAILED_HUMANOID`. The
+    # track's own skeleton is read anyway so that a sized track arriving here later
+    # cannot silently be re-bodied on canonical bone lengths; for a canonical track it
+    # IS `DETAILED_HUMANOID`, by identity.
+    skeleton = skeleton_for_track(track)
     observed = np.asarray(observed_keypoints_xyc, dtype=np.float64)
     frame_count = len(track.ticks)
     if observed.shape != (frame_count, 77, 3):
@@ -381,7 +389,7 @@ def constrain_arms_to_video_keypoints(
         provider_rest = np.broadcast_to(
             np.eye(4, dtype=np.float64), (joint_count, 4, 4)
         ).copy()
-        for joint, spec in enumerate(DETAILED_HUMANOID.joints):
+        for joint, spec in enumerate(skeleton.joints):
             provider_rest[joint, :3, 3] = spec.rest_translation_m
         provider_hierarchy = np.asarray(
             [joint.parent for joint in DETAILED_HUMANOID.joints], dtype=np.int64
@@ -402,7 +410,7 @@ def constrain_arms_to_video_keypoints(
         provider_alignment = _canonical_arm_bind_alignment(
             provider_rest,
             provider_hierarchy,
-            skeleton=DETAILED_HUMANOID,
+            skeleton=skeleton,
         )
 
     # SOMA and the MPFB provider use opposite anatomical labels at the retarget
@@ -751,6 +759,8 @@ def constrain_hands_to_video_keypoints(
 
     if track.joint_names != DETAILED_HUMANOID.names:
         raise ValueError("Visual hand constraints require AutoAnim-55")
+    # D3, same classification and same reason as the arm constraint above.
+    skeleton = skeleton_for_track(track)
     observed = np.asarray(observed_keypoints_xyc, dtype=np.float64)
     frame_count = len(track.ticks)
     if observed.shape != (frame_count, 77, 3) or not np.isfinite(observed).all():
@@ -772,7 +782,7 @@ def constrain_hands_to_video_keypoints(
     from .body_export import _canonical_arm_bind_alignment
 
     alignment = _canonical_arm_bind_alignment(
-        provider_rest, hierarchy, skeleton=DETAILED_HUMANOID
+        provider_rest, hierarchy, skeleton=skeleton
     )
     base_world = _provider_base_world(provider_rest, hierarchy, alignment)
     rotations = np.array(track.local_rotations_xyzw, dtype=np.float64, copy=True)
@@ -1126,19 +1136,24 @@ def project_generated_foot_contacts(
 
     if track.joint_names != DETAILED_HUMANOID.names:
         raise ValueError("Generated contact projection requires AutoAnim-55")
+    # D3. The joint NAMES fix the joint set; the track's own rest fixes the body. A
+    # ground projection run on canonical bone lengths hoists a differently-proportioned
+    # rig by the wrong amount and anchors its contacts to feet that are not where they
+    # are. On a sized rig the hoist MOVES, and that is reported, not suppressed.
+    skeleton = skeleton_for_track(track)
     rotations = np.array(track.local_rotations_xyzw, dtype=np.float64, copy=True)
     roots = np.array(track.root_translation_m, dtype=np.float64, copy=True)
     positions = forward_kinematics_positions(
-        roots, rotations, skeleton=DETAILED_HUMANOID
+        roots, rotations, skeleton=skeleton
     ).astype(np.float64)
     foot_indices = (
         (
-            DETAILED_HUMANOID.index("LeftFoot"),
-            DETAILED_HUMANOID.index("LeftToes"),
+            skeleton.index("LeftFoot"),
+            skeleton.index("LeftToes"),
         ),
         (
-            DETAILED_HUMANOID.index("RightFoot"),
-            DETAILED_HUMANOID.index("RightToes"),
+            skeleton.index("RightFoot"),
+            skeleton.index("RightToes"),
         ),
     )
     dt = np.diff(track.ticks).astype(np.float64) / track.ticks_per_second
@@ -1169,7 +1184,7 @@ def project_generated_foot_contacts(
     correction = np.zeros_like(roots)
     world = _world_rotations(rotations)
     for side, (foot_index, _) in enumerate(foot_indices):
-        parent = DETAILED_HUMANOID.joints[foot_index].parent
+        parent = skeleton.joints[foot_index].parent
         for start, end in _runs(chosen[:, side], minimum_contact_frames):
             target_world = world[start, foot_index].copy()
             candidate_rotations = rotations[start:end].copy()
@@ -1183,7 +1198,7 @@ def project_generated_foot_contacts(
                     candidate_local[offset] *= -1.0
             candidate_rotations[:, foot_index] = candidate_local
             candidate_positions = forward_kinematics_positions(
-                roots[start:end], candidate_rotations, skeleton=DETAILED_HUMANOID
+                roots[start:end], candidate_rotations, skeleton=skeleton
             ).astype(np.float64)
             anchor = candidate_positions[0, foot_index]
             run_correction = anchor - candidate_positions[:, foot_index]
@@ -1200,7 +1215,7 @@ def project_generated_foot_contacts(
 
     roots += correction
     projected_positions = forward_kinematics_positions(
-        roots, rotations, skeleton=DETAILED_HUMANOID
+        roots, rotations, skeleton=skeleton
     ).astype(np.float64)
     all_feet = np.concatenate(
         [projected_positions[:, indices, 1] for indices in foot_indices], axis=1
@@ -1209,7 +1224,7 @@ def project_generated_foot_contacts(
     if penetration_before:
         roots[:, 1] += penetration_before
     final_positions = forward_kinematics_positions(
-        roots, rotations, skeleton=DETAILED_HUMANOID
+        roots, rotations, skeleton=skeleton
     ).astype(np.float64)
     final_feet = np.concatenate(
         [final_positions[:, indices, 1] for indices in foot_indices], axis=1

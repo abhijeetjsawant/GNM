@@ -26,10 +26,12 @@ from .acting import TICKS_PER_SECOND
 from .body import (
     DETAILED_HUMANOID,
     BodyTrack,
+    HumanoidSkeleton,
     _quaternion_multiply,
     _rotate_vector,
 )
 from .body_projection import project_generated_foot_contacts
+from .performer_skeleton import performer_skeleton
 
 
 SCHEMA_VERSION = "autoanim.commercial-multiview/1.0"
@@ -1608,8 +1610,21 @@ def positions_to_body_track(
     provenance_sha256: str,
     head_world_rotations: np.ndarray | None = None,
     toe_world_z_up_m: np.ndarray | None = None,
+    skeleton: HumanoidSkeleton | None = None,
 ) -> BodyTrack:
     """Convert triangulated positions into a rig track.
+
+    ``skeleton`` is the rest skeleton the track is solved ON, and the track carries it
+    out again (``BodyTrack.rest_translations_m``) so that forward kinematics, validation,
+    ground projection, the exporter, the sockets and every instrument rebuild the SAME
+    body.  D3: before this, the converter read one skeleton and the exporter wrote a
+    different one, and the delivered GLB's joints sat 81-195 mm from forward kinematics
+    of the same track.
+
+    ``None`` resolves to the module global ``DETAILED_HUMANOID`` **at call time**, not at
+    import time, because `tools/swap-harness/retarget_cost.py` rebinds
+    ``commercial_multiview.DETAILED_HUMANOID`` to run the converter on a sized rig and
+    that must keep working.  A caller with a skeleton in hand should pass it explicitly.
 
     ``head_world_rotations`` is ``[frame, 3, 3]`` in the SAME world as the positions --
     capture Z-up metres -- from
@@ -1630,6 +1645,8 @@ def positions_to_body_track(
     step, not something to guess here.
     """
     source = np.asarray(positions_world_z_up_m, dtype=np.float64)
+    # The module global is read HERE, at call time -- see the docstring.
+    skeleton = DETAILED_HUMANOID if skeleton is None else skeleton
     if (
         source.ndim != 3
         or source.shape[1:] != (len(JOINT_NAMES), 3)
@@ -1645,7 +1662,7 @@ def positions_to_body_track(
     points = source[..., (0, 2, 1)].copy()
     points[..., 2] *= -1.0
     frames = len(points)
-    joints = len(DETAILED_HUMANOID.joints)
+    joints = len(skeleton.joints)
     local = np.zeros((frames, joints, 4), dtype=np.float64)
     world = np.zeros_like(local)
     local[..., 3] = 1.0
@@ -1656,7 +1673,7 @@ def positions_to_body_track(
     # recomputed so the two passes cannot drift apart by a rounding.
     torso_world_by_frame = np.zeros((frames, 4), dtype=np.float64)
 
-    rest = {joint.name: np.asarray(joint.rest_translation_m, dtype=np.float64) for joint in DETAILED_HUMANOID.joints}
+    rest = {joint.name: np.asarray(joint.rest_translation_m, dtype=np.float64) for joint in skeleton.joints}
     head_rotations = None
     # The ball-of-foot positions, converted through the identical change of basis as
     # `points` above. `[frame, 2, 3]` -- left then right -- in the capture's Z-up world.
@@ -1804,8 +1821,8 @@ def positions_to_body_track(
             ("LeftShoulder", "LeftUpperArm", at("left_shoulder") - left_shoulder_origin),
             ("RightShoulder", "RightUpperArm", at("right_shoulder") - right_shoulder_origin),
         ):
-            joint_index = DETAILED_HUMANOID.index(joint_name)
-            parent_index = DETAILED_HUMANOID.joints[joint_index].parent
+            joint_index = skeleton.index(joint_name)
+            parent_index = skeleton.joints[joint_index].parent
             target_world = _world_for_bone(
                 world[frame, parent_index], rest[child_name], direction
             )
@@ -1817,8 +1834,8 @@ def positions_to_body_track(
     # rejected frame's local rotation and the world derived from it are rewritten.
     ceiling_deg_per_frame = CLAVICLE_MAXIMUM_FRAME_TRAVEL_DEG_PER_S / float(sample_rate_hz)
     for clavicle in ("LeftShoulder", "RightShoulder"):
-        clavicle_index = DETAILED_HUMANOID.index(clavicle)
-        parent_index = DETAILED_HUMANOID.joints[clavicle_index].parent
+        clavicle_index = skeleton.index(clavicle)
+        parent_index = skeleton.joints[clavicle_index].parent
         replaced, accepted = _reachable_clavicle_sequence(
             local[:, clavicle_index], world[:, parent_index], ceiling_deg_per_frame
         )
@@ -1844,16 +1861,16 @@ def positions_to_body_track(
             ("RightUpperLeg", "RightLowerLeg", at("right_knee") - at("right_hip")),
             ("RightLowerLeg", "RightFoot", at("right_ankle") - at("right_knee")),
         ):
-            joint_index = DETAILED_HUMANOID.index(joint_name)
-            parent_index = DETAILED_HUMANOID.joints[joint_index].parent
+            joint_index = skeleton.index(joint_name)
+            parent_index = skeleton.joints[joint_index].parent
             target_world = _world_for_bone(
                 world[frame, parent_index], rest[child_name], direction
             )
             _set_world(local, world, frame, joint_name, target_world)
 
         for hand in ("LeftHand", "RightHand"):
-            hand_index = DETAILED_HUMANOID.index(hand)
-            parent = DETAILED_HUMANOID.joints[hand_index].parent
+            hand_index = skeleton.index(hand)
+            parent = skeleton.joints[hand_index].parent
             _set_world(local, world, frame, hand, world[frame, parent])
         # FEET. This line used to read `_set_world(..., foot, torso_world)`: the foot was
         # given the TORSO's orientation, so it turned whenever the chest turned and carried
@@ -1890,10 +1907,10 @@ def positions_to_body_track(
                     )
             _set_world(local, world, frame, foot, foot_world)
         for toe in ("LeftToes", "RightToes"):
-            toe_index = DETAILED_HUMANOID.index(toe)
-            parent = DETAILED_HUMANOID.joints[toe_index].parent
+            toe_index = skeleton.index(toe)
+            parent = skeleton.joints[toe_index].parent
             _set_world(local, world, frame, toe, world[frame, parent])
-        for index, joint in enumerate(DETAILED_HUMANOID.joints):
+        for index, joint in enumerate(skeleton.joints):
             if joint.name.startswith(("LeftThumb", "LeftIndex", "LeftMiddle", "LeftRing", "LeftLittle", "RightThumb", "RightIndex", "RightMiddle", "RightRing", "RightLittle")):
                 parent = joint.parent
                 # A relaxed rest curl instead of the identity. Both are uncaptured poses;
@@ -1916,7 +1933,7 @@ def positions_to_body_track(
         duration_ticks=int(ticks[-1]),
         ticks_per_second=TICKS_PER_SECOND,
         sample_rate_hz=sample_rate_hz,
-        joint_names=DETAILED_HUMANOID.names,
+        joint_names=skeleton.names,
         ticks=ticks,
         root_translation_m=root_translation.astype(np.float32),
         local_rotations_xyzw=local.astype(np.float32),
@@ -1927,6 +1944,10 @@ def positions_to_body_track(
         gaze_strength=np.zeros(frames, dtype=np.float32),
         gnm_eye_rotations_xyzw=eyes,
         source_plan_sha256=provenance_sha256,
+        # D3. The track carries the rest it was solved on. Everything downstream --
+        # forward kinematics, validation, the ground projection below, the exporter, the
+        # sockets and every instrument -- rebuilds THIS body and not the canonical one.
+        rest_translations_m=skeleton.rest_translations_m,
     )
     # Calibrated capture contains noisier frame-to-frame ankle estimates than
     # a generated track, so use an observation-appropriate contact envelope.
@@ -2424,6 +2445,13 @@ def reconstruct_multiview(
             pixel_scale=pixel_scale,
         )
         toe_reports.append(toe_report)
+        # D3. ONE rest skeleton per performer, built from THIS performer's own
+        # triangulated capture -- the same `positions` array the converter is handed and
+        # the same array the build writes to disk, so an instrument that re-derives the
+        # rest from the npz gets bit-identical bone lengths. The skeleton is passed in,
+        # stamped on the track, and carried from here through forward kinematics,
+        # validation, the ground projection, the exporter and every socket.
+        performer, _sizing = performer_skeleton(DETAILED_HUMANOID, positions)
         track = positions_to_body_track(
             positions,
             sample_rate_hz=sample_rate_hz,
@@ -2432,6 +2460,7 @@ def reconstruct_multiview(
             ).hexdigest(),
             head_world_rotations=head_rotations,
             toe_world_z_up_m=toe_world,
+            skeleton=performer,
         )
         tracks.append(track)
         contacts.append(

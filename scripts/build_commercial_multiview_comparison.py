@@ -391,6 +391,11 @@ def main() -> int:
             root_translation_m=track.root_translation_m,
             local_rotations_xyzw=track.local_rotations_xyzw,
             foot_contacts=track.foot_contacts,
+            # D3: the per-performer rest this track was solved on. An npz-only
+            # instrument that ran forward kinematics on `DETAILED_HUMANOID` would
+            # rebuild a different body from the same rotations; with this on disk it
+            # cannot do so silently.
+            rest_translations_m=track.rest_translations_m,
             triangulated_world_positions_z_up_m=world_positions[subject],
             # Pre-interpolation triangulation, NaNs intact. The smoothed array
             # above cannot measure raw reconstruction noise.

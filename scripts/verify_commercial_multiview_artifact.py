@@ -136,6 +136,15 @@ def verify(output: Path) -> dict[str, Any]:
             rotations = archive["local_rotations_xyzw"]
             contacts = archive["foot_contacts"]
             world = archive["triangulated_world_positions_z_up_m"]
+            # D3: the per-performer rest the track was solved on. Verification must
+            # rebuild THIS body, not the canonical one -- a retarget error scored on
+            # the wrong bone lengths is not the delivery's error. Absent on a
+            # pre-D3 artifact, which meant canonical.
+            rest = (
+                archive["rest_translations_m"]
+                if "rest_translations_m" in archive.files
+                else None
+            )
         _require(ticks.shape == (frame_count,), f"Subject {subject} tick count differs")
         _require(roots.shape == (frame_count, 3), f"Subject {subject} root shape differs")
         _require(rotations.shape == (frame_count, 55, 4), f"Subject {subject} rotation shape differs")
@@ -146,17 +155,22 @@ def verify(output: Path) -> dict[str, Any]:
         norms = np.linalg.norm(rotations, axis=2)
         _require(np.allclose(norms, 1.0, atol=2e-5), f"Subject {subject} quaternions are not normalized")
         _require(int(np.count_nonzero(contacts)) > 0, f"Subject {subject} has no reconstructed contacts")
+        skeleton = (
+            DETAILED_HUMANOID
+            if rest is None
+            else DETAILED_HUMANOID.with_rest_translations(rest)
+        )
         rig_positions = forward_kinematics_positions(
             roots,
             rotations,
-            skeleton=DETAILED_HUMANOID,
+            skeleton=skeleton,
         )
         target_positions = world[..., (0, 2, 1)].copy()
         target_positions[..., 2] *= -1.0
         subject_errors_m = np.concatenate(
             tuple(
                 np.linalg.norm(
-                    rig_positions[:, DETAILED_HUMANOID.index(rig_joint)]
+                    rig_positions[:, skeleton.index(rig_joint)]
                     - target_positions[:, JOINT_INDEX[source_joint]],
                     axis=1,
                 )
