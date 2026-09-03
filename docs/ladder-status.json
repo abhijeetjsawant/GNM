@@ -1,6 +1,6 @@
 {
   "_about": "Source of truth for where the body lane stands. Edit ONLY through tools/compare/status.py (set / log / render). render writes docs/LADDER_STATUS.md and docs/progress.html from this file. Plan of record: docs/LADDER_EXECUTION_PLAN.md; what is measured and how: docs/SUBSTITUTION_LADDER.md.",
-  "updated": "2026-09-03",
+  "updated": "2026-09-04",
   "goal": "An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.",
   "lanes": [
     {
@@ -174,7 +174,7 @@
           "started": null,
           "finished": null,
           "report": null,
-          "blocked_on": "D3"
+          "blocked_on": null
         },
         {
           "id": "D5",
@@ -197,12 +197,25 @@
           "finished": null,
           "report": null,
           "blocked_on": "D5, I6"
+        },
+        {
+          "id": "D7",
+          "title": "A pelvis frame of its own (the trunk no longer one rigid block)",
+          "plain": "Hips, Spine, Chest and UpperChest currently share one frame built from the hip and shoulder landmarks, so on a bent performer the whole trunk rides the lean. SOMA-77 carries an unmapped pelvis root and two lower-spine joints; give the pelvis its own frame from them, gated on the round trip, the ground hoist and the silhouette. Handed off by D2b and D3; may run before D4 if the user prefers.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": null
         }
       ]
     }
   ],
   "decisions_for_user": [
-    "Lane H: decide the rig and book the marker session; performer releases covering ML training use."
+    "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
+    "After D3, what runs next: D4 (momentum on the MHR mean body; pymomentum must be installed first, per tools/fitter/README.md) or D7 (the pelvis frame, a converter step with no new dependency). D3 handed the shoulder construction, the thigh vertical and the spine ratios to D5.",
+    "D3's recorded miss: the exact-skeleton oracle's arm band (0.5 mm) fails by 0.19 mm on one of six synthetic bodies (D2's clavicle residual on a longer lever); accept it as a standing fail or re-derive the band from the lever in D5. And tests/test_body_export.py:145 (your uncommitted file) asserts the old exporter's root; expect the track root without the asset's 0.8 offset."
   ],
   "log": [
     {
@@ -494,6 +507,11 @@
       "date": "2026-09-03",
       "step": "D3",
       "text": "D3 shipped 2026-09-03, merged fde2b87 (no-ff), the delivery rebuilt in place and byte-identical to the gated build; previous build under artifacts/compare/delivered-before-d3-2026-09-03. Orientation found the delivery carrying TWO skeletons: the converter, FK, validation, projection and every joint instrument used the code rig (T-pose, 540 mm shoulders) while the exporter wrote the MPFB asset's own rest (A-pose directions, 340 mm shoulders) into the GLB, 81-195 mm apart at frame 0, confirmed by a hand reader and Blender's importer. One rest skeleton per performer, sized from the performer's own limb lengths (performer_skeleton, the torso-drop derivation folded in, no constant), now rides the BodyTrack (schema 1.3, float64, legacy loads canonical) through FK, validation, the ground projection, the exporter, the unified character, the verify script and every instrument. Gate (16 rows): the delivered GLB reproduces the track's own FK to 5e-7 m on both subjects (Blender agrees to 0.005 mm) where the pre-D3 exporter misses by 96/93 mm; six synthetic bodies with independently perturbed bone channels come back legs exact and arms 0.43-0.69 mm, the 0.5 mm band FAILING on one seed and kept (D2's clavicle residual on a longer lever); the canonical body reproduces D2c's round trip exactly and a whole delivery rebuilt with the canonical rest is bit-identical to the pre-D3 build. Reported, never selected on: delivered arms on our capture 51/30 -> 26/22 mm, legs 32/30 -> 20/16; rung 11 vs MAMMA 71/68 -> 47/46 (the rotations replayed on the fixed rig 97/124, the alternative now); hoist 83/49 -> 73/36; facing within 0.02, every handedness sign unchanged; the head gate unchanged (5.52/7.19 deg); and the I6 silhouette, which fell 8 of 8 under D2b, ROSE 8 of 8, 0.521 -> 0.627, oracle bit-identical: D2b's fall was the mesh moved off its own skeleton. Deviations: the MHR subject substituted by per-bone perturbations (pymomentum unavailable); four Opus API overloads during a Claude outage, the gate finished by the coordinator on Fable in the same worktree; Sol reviewed before the merge, late. Handoffs: the shoulder construction, thigh vertical and spine ratios to D5; the binding to D6; the pelvis frame as its own pose step; the arm joints below the clavicle 14 -> 21 frames over the ceiling on subject 0 (shorter lever). One existing test asserts the old exporter's root convention and is the user's file (fix quoted in the review)."
+    },
+    {
+      "date": "2026-09-04",
+      "step": "D4",
+      "text": "D3 done, so D4 is unblocked on the ladder; it still needs pymomentum installed (a throwaway venv per tools/fitter/README.md: uv venv /tmp/momenv --python 3.12; uv pip install pymomentum-cpu; MHR assets from the MHR release, never the SOMA redistribution) -- installed in neither python on this machine on 2026-09-03."
     }
   ]
 }

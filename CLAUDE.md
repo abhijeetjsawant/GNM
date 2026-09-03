@@ -82,7 +82,8 @@
   hip-landmark midpoint with the hip joints 80 mm below. Root placement is now derived from
   the skeleton (`_leg_root_offset`); the round trip closes at ~0.5 mm. And the rig has ONE
   frame for the whole trunk, so on a bent performer that offset rides the lean; a pelvis
-  frame (SOMA-77 index 0 `Hips`, `Spine1`, `Spine2` are unmapped) is D3's.
+  frame (SOMA-77 index 0 `Hips`, `Spine1`, `Spine2` are unmapped) is its own pose step after D3
+  (D3 shipped the per-performer skeleton on 2026-09-03 and left the pelvis frame to that step).
 - **The round trip cannot score a temporal step.** It rebuilds its torso frame from the
   upper-arm origins that D2c's clavicle reject moves, so its second pass rejects frames its
   first pass accepted. Score temporal treatments on synthetic truth (I7's fixture with the
