@@ -1,52 +1,48 @@
 #!/usr/bin/env python3
-"""Scale the rig to each performer's OWN measured bones, so the mocap can be judged.
+"""Scale the rig to each performer's OWN measured bones -- now a thin re-export.
 
-The delivered rig is a fixed character: 540 mm across the shoulders where these performers
-measure 346 and 363. Judging the capture through it confounds two separate things -- how
-well the motion was captured, and how well it was retargeted onto a body of a different
-size. **You cannot see a mocap error through a retarget error.**
+**D3, 2026-09-03: the algorithm moved into the shipping path.** It lives in
+`src/autoanim_gnm/performer_skeleton.py` and the delivery build calls it directly, so the
+instrument arm and the delivered rig are the SAME sizing by construction and cannot drift
+apart. This file stays because a dozen instruments import `sized_skeleton` by name; it
+adds nothing but the legacy report shape (millimetres, rounded), which several reports
+and `tools/compare/ladder.py` read by key.
 
-So this builds a per-performer skeleton, the way a parametric body (SMPL-X and kin) is fitted
-to a subject before anyone looks at the pose. Bone rest offsets are scaled to the lengths
-`estimate_limb_lengths_m` already measures per subject per take -- the pipeline computes them
-to constrain triangulation and then the retarget rebuilds on canonical offsets and discards
-them.
+**One behavioural change came with the move, and it is a repair, not a redesign.** The
+spine chain used to take `estimate_limb_lengths_m`'s `("root", "neck")` length outright.
+That length is measured from the detector's `root` landmark, while the chain it scales
+sums the rig's **Hips -> Neck** distance, and since D2b the root places the rig's LEG
+ROOTS on the hip-landmark midpoint -- so `Hips` sits one upper-leg drop above it. The
+target is now the hip-midpoint-to-neck span MINUS that drop, read from the skeleton's own
+rest. The same repair had already been made in
+`tools/swap-harness/retarget_cost.py::scaled_skeleton`, where the uncorrected version
+showed up as a delivered neck sitting at exactly 80.00 mm on both performers.
 
-This is an EVALUATION skeleton, not a delivery change. Nothing downstream is touched: the
-shipped character is still the fixed MPFB asset, whose mesh is skinned to canonical bind-pose
-bone lengths and would deform if those lengths moved. Retargeting onto a differently-sized
-character is a separate problem and is deliberately not addressed here.
+Anything re-run through this file after 2026-09-03 therefore reports a different sized
+arm than it did before, by design. The frozen D1/D2 gates are not re-run.
+
+This is no longer *only* an evaluation skeleton: `reconstruct_multiview` builds one per
+performer and serialises it on the track.
 """
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 import sys
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from autoanim_gnm.body import HumanoidSkeleton, JointSpec  # noqa: E402
-from autoanim_gnm.commercial_multiview import estimate_limb_lengths_m  # noqa: E402
+from autoanim_gnm.body import HumanoidSkeleton  # noqa: E402
+from autoanim_gnm.performer_skeleton import (  # noqa: E402
+    DIRECT_LIMBS,
+    HALF_HIP,
+    HALF_SHOULDER,
+    SPINE_CHAIN,
+    performer_skeleton,
+)
 
-# rig bone -> the measured limb whose length it should take.
-# Chains that share one measurement are listed together and split proportionally, because
-# the capture has no landmark between them: there is no measured spine segmentation, only
-# root->neck, so the four spine bones keep their canonical RATIOS and take the measured TOTAL.
-DIRECT = {
-    "LeftLowerArm": ("left_shoulder", "left_elbow"),
-    "LeftHand": ("left_elbow", "left_wrist"),
-    "RightLowerArm": ("right_shoulder", "right_elbow"),
-    "RightHand": ("right_elbow", "right_wrist"),
-    "LeftLowerLeg": ("left_hip", "left_knee"),
-    "LeftFoot": ("left_knee", "left_ankle"),
-    "RightLowerLeg": ("right_hip", "right_knee"),
-    "RightFoot": ("right_knee", "right_ankle"),
-}
-SPINE_CHAIN = ("Spine", "Chest", "UpperChest", "Neck")   # sums to root->neck
-HALF_SHOULDER = ("LeftShoulder", "LeftUpperArm", "RightShoulder", "RightUpperArm")
-HALF_HIP = ("LeftUpperLeg", "RightUpperLeg")
+DIRECT = DIRECT_LIMBS
 
 
 def sized_skeleton(
@@ -54,70 +50,24 @@ def sized_skeleton(
 ) -> tuple[HumanoidSkeleton, dict]:
     """A copy of `skeleton` with rest offsets scaled to this subject's measured limbs."""
 
-    lengths = estimate_limb_lengths_m(positions_world_z_up_m)
-    joints = list(skeleton.joints)
-    index = {j.name: i for i, j in enumerate(joints)}
+    fitted, metres = performer_skeleton(skeleton, positions_world_z_up_m)
     report: dict[str, float] = {}
-
-    def rescale(name: str, target_m: float) -> None:
-        i = index[name]
-        offset = np.asarray(joints[i].rest_translation_m, dtype=np.float64)
-        norm = float(np.linalg.norm(offset))
-        if norm <= 1e-9 or not np.isfinite(target_m) or target_m <= 1e-9:
-            return
-        joints[i] = dataclasses.replace(
-            joints[i], rest_translation_m=tuple(offset * (target_m / norm))
+    for name in tuple(DIRECT_LIMBS) + SPINE_CHAIN:
+        if name in metres:
+            report[name] = round(1000.0 * metres[name], 1)
+    if "shoulder_half_span_m" in metres:
+        report["shoulder_span_mm"] = round(2000.0 * metres["shoulder_half_span_m"], 1)
+        report["shoulder_span_canonical_mm"] = round(
+            2000.0 * metres["shoulder_half_span_canonical_m"], 1
         )
-        report[name] = round(1000.0 * target_m, 1)
-
-    for name, limb in DIRECT.items():
-        if limb in lengths:
-            rescale(name, lengths[limb])
-
-    # spine: canonical ratios, measured total
-    if ("root", "neck") in lengths:
-        canon = [float(np.linalg.norm(joints[index[n]].rest_translation_m)) for n in SPINE_CHAIN]
-        total = sum(canon)
-        if total > 1e-9:
-            for name, c in zip(SPINE_CHAIN, canon, strict=True):
-                rescale(name, lengths[("root", "neck")] * c / total)
-
-    # shoulder span: the arm ROOT must sit at half the measured shoulder width. The rig
-    # reaches it through two bones, so both scale by the same factor.
-    if ("left_shoulder", "right_shoulder") in lengths:
-        half = 0.5 * lengths[("left_shoulder", "right_shoulder")]
-        canon_half = abs(
-            float(joints[index["LeftShoulder"]].rest_translation_m[0])
-            + float(joints[index["LeftUpperArm"]].rest_translation_m[0])
-        )
-        if canon_half > 1e-9:
-            k = half / canon_half
-            for name in HALF_SHOULDER:
-                off = np.asarray(joints[index[name]].rest_translation_m, dtype=np.float64)
-                joints[index[name]] = dataclasses.replace(
-                    joints[index[name]], rest_translation_m=tuple(off * k)
-                )
-            report["shoulder_span_mm"] = round(2000.0 * half, 1)
-            report["shoulder_span_canonical_mm"] = round(2000.0 * canon_half, 1)
-
-    # hip span, same construction
-    if ("left_hip", "right_hip") in lengths:
-        half = 0.5 * lengths[("left_hip", "right_hip")]
-        canon_half = abs(float(joints[index["LeftUpperLeg"]].rest_translation_m[0]))
-        if canon_half > 1e-9:
-            k = half / canon_half
-            for name in HALF_HIP:
-                off = np.asarray(joints[index[name]].rest_translation_m, dtype=np.float64)
-                joints[index[name]] = dataclasses.replace(
-                    joints[index[name]],
-                    rest_translation_m=(float(off[0] * k), float(off[1]), float(off[2])),
-                )
-            report["hip_span_mm"] = round(2000.0 * half, 1)
-    return HumanoidSkeleton(joints=tuple(joints), schema_version=skeleton.schema_version), report
+    if "hip_half_span_m" in metres:
+        report["hip_span_mm"] = round(2000.0 * metres["hip_half_span_m"], 1)
+    return fitted, report
 
 
 if __name__ == "__main__":
     import json
+
     from autoanim_gnm.body import skeleton_for_joint_names
 
     tracks = Path("artifacts/commercial-multiview-soma77")

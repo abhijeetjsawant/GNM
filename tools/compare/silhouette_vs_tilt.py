@@ -52,6 +52,7 @@ from autoanim_gnm.commercial_multiview import JOINT_INDEX, load_camera_rig  # no
 from autoanim_gnm.body import (  # noqa: E402
     forward_kinematics_positions,
     skeleton_for_joint_names,
+    skeleton_for_track_dict,
 )
 
 OUT_DIR = ROOT / "artifacts/compare/d2-clavicle"
@@ -123,9 +124,9 @@ WATCHED = ("Hips", "UpperChest", "Head", "LeftHand", "RightHand",
 
 def joints_world_capture(tracks: Path, subject: int) -> dict[str, np.ndarray]:
     """`WATCHED` joints of the delivered rig, per frame, in the capture's Z-up world."""
-    names = json.loads((tracks / f"subject-{subject:02d}.body-track.json").read_text())[
-        "joint_names"]
-    base = skeleton_for_joint_names(names)
+    track_doc = json.loads((tracks / f"subject-{subject:02d}.body-track.json").read_text())
+    names = track_doc["joint_names"]
+    base = skeleton_for_track_dict(track_doc)   # D3: the track's own rest
     npz = np.load(tracks / f"subject-{subject:02d}.body-track.npz")
     world = forward_kinematics_positions(
         np.asarray(npz["root_translation_m"], dtype=np.float64),

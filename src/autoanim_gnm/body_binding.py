@@ -19,7 +19,7 @@ import zipfile
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .body import skeleton_for_joint_names
+from .body import HumanoidSkeleton, skeleton_for_joint_names
 from .body_provider import load_and_validate_body_asset, sha256_file
 from .serialization import write_json, write_npz
 
@@ -420,8 +420,22 @@ def calibrate_gnm_body_binding(
     gnm_cut_fraction: float = 0.35,
     collar_height_m: float = 0.015,
     minimum_cut_loop_edge_m: float = 0.00075,
+    skeleton: HumanoidSkeleton | None = None,
 ) -> dict[str, Any]:
-    """Create one exact, immutable geometric preview binding."""
+    """Create one exact, immutable geometric preview binding.
+
+    ``skeleton`` names the rest skeleton the socket is calibrated against.  It defaults
+    to the ASSET's own rest, read from ``local_rest_matrices``, which is what this
+    function has always used and what the socket's neck/head axis is measured in.
+
+    D3, stated rather than assumed: the socket is **canonical-by-construction only while
+    every caller ships the asset's own body**.  Today the one caller
+    (`scripts/build_gnm_body_binding.py` and its tests) passes no track at all, so there
+    is no per-performer rest for it to be wrong about.  The moment a caller binds a head
+    to a *sized* body it must pass that body's skeleton here, or the collar will be cut
+    at the canonical neck height on a neck that has moved.  The parameter exists so that
+    the requirement is visible at the call site instead of buried in this docstring.
+    """
 
     provider_manifest = load_and_validate_body_asset(
         body_manifest_path, body_asset_path
@@ -458,11 +472,17 @@ def calibrate_gnm_body_binding(
     baked_gnm_head = gnm_head @ GNM_TO_AUTOANIM_BASIS.T
 
     world_rest = _global_rest_matrices(body["local_rest_matrices"], body["parents"])
-    target_skeleton = skeleton_for_joint_names(
-        tuple(str(value) for value in body["joint_names"].tolist())
+    asset_names = tuple(str(value) for value in body["joint_names"].tolist())
+    target_skeleton = (
+        skeleton_for_joint_names(asset_names) if skeleton is None else skeleton
     )
+    if target_skeleton.names != asset_names:
+        raise BodyBindingError("Binding skeleton does not match the body asset joints")
     neck_index = target_skeleton.index("Neck")
     head_index = target_skeleton.index("Head")
+    # Measured in the ASSET's rest frame either way -- the skeleton above supplies the
+    # joint INDICES; the positions come from the asset's own rest matrices, which is the
+    # space the GNM mesh is cut and welded in.
     body_neck = world_rest[neck_index, :3, 3]
     body_head = world_rest[head_index, :3, 3]
     body_axis = body_head - body_neck

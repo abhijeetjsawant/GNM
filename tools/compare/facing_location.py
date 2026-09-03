@@ -58,7 +58,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools" / "head"))
-from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names  # noqa: E402
+from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_joint_names, skeleton_for_track_dict  # noqa: E402
 from autoanim_gnm.commercial_multiview import DETAILED_HUMANOID, JOINT_INDEX  # noqa: E402
 from subject_map import mamma_index_for  # noqa: E402
 
@@ -377,8 +377,10 @@ def main() -> None:
     args = parser.parse_args()
     delivery, asset_path = args.delivery, args.asset
 
-    names = json.loads((delivery / "subject-00.body-track.json").read_text())["joint_names"]
-    skeleton = skeleton_for_joint_names(names)
+    track_doc = json.loads((delivery / "subject-00.body-track.json").read_text())
+    names = track_doc["joint_names"]
+    # D3: the skeleton the track was BUILT on (its own rest), never the canonical one.
+    skeleton = skeleton_for_track_dict(track_doc)
     parents = [j.parent for j in DETAILED_HUMANOID.joints]
     rig_camera = json.loads((delivery / "camera-rig.json").read_text())["cameras"]
 

@@ -23,6 +23,17 @@ SKELETON_SCHEMA_VERSION = "autoanim.humanoid-skeleton/1.0"
 BODY_TRACK_SCHEMA_VERSION = "autoanim.body-track/1.0"
 DETAILED_SKELETON_SCHEMA_VERSION = "autoanim.humanoid-skeleton/1.1"
 DETAILED_BODY_TRACK_SCHEMA_VERSION = "autoanim.body-track/1.1"
+# D3, 2026-09-03. A track that carries a PER-PERFORMER rest skeleton -- the same joint
+# names, the same parents, the same schema of skeleton, different bone offsets. It is a
+# new body-track schema and NOT a new skeleton schema: `skeleton_schema_version` names the
+# joint set and the hierarchy, and neither moved.
+#
+# The version is stamped only when the rest actually differs from the canonical one, so a
+# generated (canonical) track serialises byte-for-byte as it always did and every reader
+# of an existing file keeps working. `from_dict` accepts both field sets: without the
+# field the rest IS canonical, which is what every track written before today meant.
+RESTED_BODY_TRACK_SCHEMA_VERSION = "autoanim.body-track/1.2"
+RESTED_DETAILED_BODY_TRACK_SCHEMA_VERSION = "autoanim.body-track/1.3"
 ATTACHMENT_SCHEMA_VERSION = "autoanim.gnm-body-attachment/1.0"
 DEFAULT_SAMPLE_RATE_HZ = 30
 MAX_SAMPLE_RATE_HZ = 120
@@ -79,6 +90,48 @@ class HumanoidSkeleton:
             return self.names.index(name)
         except ValueError as exc:
             raise BodyValidationError(f"Unknown humanoid joint: {name}") from exc
+
+    @property
+    def rest_translations_m(self) -> np.ndarray:
+        """The skeleton's per-joint rest offsets as a read-only ``[joint, 3]`` float64.
+
+        float64 and not float32 deliberately.  The rest travels through JSON (which
+        carries doubles), the converter, validation, projection, the exporter and every
+        instrument, and all of them must read BIT-IDENTICAL values or a round trip that
+        should read 0.00 mm reads 1e-7 and a closure band becomes a coin toss.
+        """
+
+        return _readonly_array(
+            [joint.rest_translation_m for joint in self.joints], np.float64
+        )
+
+    def with_rest_translations(self, rest_translations_m: Any) -> HumanoidSkeleton:
+        """This skeleton's names, parents, paths and roles on different bone offsets.
+
+        D3.  A per-performer skeleton is this and nothing else: the joint set and the
+        hierarchy are the contract, the offsets are the performer.  Nothing here may
+        reorder, rename or reparent a joint -- a skeleton that did would no longer be
+        resolvable from a track's joint names, which is the whole propagation mechanism.
+        """
+
+        rest = np.asarray(rest_translations_m, dtype=np.float64)
+        if rest.shape != (len(self.joints), 3) or not np.isfinite(rest).all():
+            raise BodyValidationError(
+                "Per-performer rest translations must be a finite [joint, 3] array"
+            )
+        if np.any(rest[0] != 0.0):
+            raise BodyValidationError("The skeleton root's rest offset must be zero")
+        joints = tuple(
+            JointSpec(
+                joint.name,
+                joint.parent,
+                (float(row[0]), float(row[1]), float(row[2])),
+                joint.usd_path,
+                joint.vrm_humanoid,
+            )
+            for joint, row in zip(self.joints, rest, strict=True)
+        )
+        return HumanoidSkeleton(joints=joints, schema_version=self.schema_version)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -353,6 +406,50 @@ def skeleton_for_joint_names(joint_names: Sequence[str]) -> HumanoidSkeleton:
     raise BodyValidationError("Body track joint order does not match a supported skeleton")
 
 
+def skeleton_for_track(track: BodyTrack) -> HumanoidSkeleton:
+    """The skeleton a track was BUILT on: its joint names AND its own rest offsets.
+
+    D3.  ``skeleton_for_joint_names`` is the defect pattern this replaces wherever a
+    track is in hand: it resolves the joint ORDER and then hands back the canonical
+    body, so a per-performer skeleton that reached the track was silently discarded and
+    every consumer downstream reconstructed a differently-proportioned body from the
+    same rotations.  Use this anywhere a track is available; use
+    ``skeleton_for_joint_names`` only where there is no track (an asset, a joint-name
+    list on disk).
+
+    The canonical objects are returned BY IDENTITY when the rest is canonical, because
+    callers compare with ``is`` (``as_dict`` here, ``blender_body_worker`` on the
+    schema-version map).
+    """
+
+    base = skeleton_for_joint_names(track.joint_names)
+    rest = np.asarray(track.rest_translations_m, dtype=np.float64)
+    if np.array_equal(rest, base.rest_translations_m):
+        return base
+    return base.with_rest_translations(rest)
+
+
+def skeleton_for_track_dict(value: Any) -> HumanoidSkeleton:
+    """The skeleton of a SERIALISED track (``subject-XX.body-track.json`` as a dict).
+
+    D3.  For instruments that read the delivery from disk and never build a
+    :class:`BodyTrack`: resolves the joint order from ``joint_names`` and the rest from
+    ``rest_translations_m`` when the file carries one, and the canonical rest when it
+    does not (legacy files).  Same identity rule as :func:`skeleton_for_track`.
+    """
+
+    if not isinstance(value, dict) or "joint_names" not in value:
+        raise BodyValidationError("Serialized body track must carry joint_names")
+    base = skeleton_for_joint_names(tuple(value["joint_names"]))
+    rest_value = value.get("rest_translations_m")
+    if rest_value is None:
+        return base
+    rest = np.asarray(rest_value, dtype=np.float64)
+    if np.array_equal(rest, base.rest_translations_m):
+        return base
+    return base.with_rest_translations(rest)
+
+
 def validate_skeleton(skeleton: HumanoidSkeleton = CANONICAL_HUMANOID) -> None:
     if skeleton.schema_version not in {
         SKELETON_SCHEMA_VERSION,
@@ -472,6 +569,11 @@ class BodyTrack:
     gaze_strength: np.ndarray
     gnm_eye_rotations_xyzw: np.ndarray
     source_plan_sha256: str
+    # D3: the rest skeleton this track was solved on, `[joint, 3]` float64 metres.
+    # `None` means canonical, and is resolved to the canonical rest in `__post_init__`,
+    # so the attribute is ALWAYS populated after construction and no consumer has to
+    # branch on it.  The default keeps every existing caller working unchanged.
+    rest_translations_m: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         raw_ticks = np.asarray(self.ticks)
@@ -511,18 +613,48 @@ class BodyTrack:
             "gnm_eye_rotations_xyzw",
             _readonly_array(self.gnm_eye_rotations_xyzw, np.float32),
         )
-        validate_body_track(self, skeleton=skeleton_for_joint_names(self.joint_names))
+        base = skeleton_for_joint_names(self.joint_names)
+        if self.rest_translations_m is None:
+            object.__setattr__(self, "rest_translations_m", base.rest_translations_m)
+        else:
+            rest = np.asarray(self.rest_translations_m, dtype=np.float64)
+            if rest.shape != (len(base.joints), 3):
+                raise BodyValidationError(
+                    "Body track rest translations must be a [joint, 3] array"
+                )
+            if not np.isfinite(rest).all():
+                raise BodyValidationError("Body track rest translations must be finite")
+            if np.any(rest[0] != 0.0):
+                raise BodyValidationError("The body track root's rest offset must be zero")
+            object.__setattr__(
+                self, "rest_translations_m", _readonly_array(rest, np.float64)
+            )
+        validate_body_track(self, skeleton=skeleton_for_track(self))
 
     def as_dict(self) -> dict[str, Any]:
-        skeleton = skeleton_for_joint_names(self.joint_names)
-        detailed = skeleton is DETAILED_HUMANOID
+        skeleton = skeleton_for_track(self)
+        detailed = skeleton_for_joint_names(self.joint_names) is DETAILED_HUMANOID
+        # A canonical rest is not written down: it is the default, every track written
+        # before D3 meant it, and emitting it would change the hash of every generated
+        # track for no information.  A per-performer rest is written down AND carries a
+        # schema version that says so, so a reader cannot silently miss it.
+        canonical_rest = skeleton is CANONICAL_HUMANOID or skeleton is DETAILED_HUMANOID
         return {
             "schema_version": (
-                DETAILED_BODY_TRACK_SCHEMA_VERSION
-                if detailed
-                else BODY_TRACK_SCHEMA_VERSION
+                (DETAILED_BODY_TRACK_SCHEMA_VERSION if detailed else BODY_TRACK_SCHEMA_VERSION)
+                if canonical_rest
+                else (
+                    RESTED_DETAILED_BODY_TRACK_SCHEMA_VERSION
+                    if detailed
+                    else RESTED_BODY_TRACK_SCHEMA_VERSION
+                )
             ),
             "skeleton_schema_version": skeleton.schema_version,
+            **(
+                {}
+                if canonical_rest
+                else {"rest_translations_m": self.rest_translations_m.tolist()}
+            ),
             "timebase": {
                 "ticks_per_second": self.ticks_per_second,
                 "duration_ticks": self.duration_ticks,
@@ -570,20 +702,46 @@ class BodyTrack:
             "source_plan_sha256",
             "limitations",
         }
-        if set(value) != expected:
+        # A serialised track either carries a per-performer rest or it does not, and the
+        # schema version says which.  Legacy JSON -- everything written before D3 -- has
+        # no field and loads as canonical, which is exactly what it meant.
+        rested = expected | {"rest_translations_m"}
+        if set(value) not in (expected, rested):
             raise BodyValidationError("Serialized body track fields are missing or unknown")
         schema_pair = (
             value["schema_version"],
             value["skeleton_schema_version"],
         )
-        if schema_pair not in {
-            (BODY_TRACK_SCHEMA_VERSION, SKELETON_SCHEMA_VERSION),
-            (
-                DETAILED_BODY_TRACK_SCHEMA_VERSION,
-                DETAILED_SKELETON_SCHEMA_VERSION,
-            ),
-        }:
+        allowed = (
+            {
+                (RESTED_BODY_TRACK_SCHEMA_VERSION, SKELETON_SCHEMA_VERSION),
+                (
+                    RESTED_DETAILED_BODY_TRACK_SCHEMA_VERSION,
+                    DETAILED_SKELETON_SCHEMA_VERSION,
+                ),
+            }
+            if "rest_translations_m" in value
+            else {
+                (BODY_TRACK_SCHEMA_VERSION, SKELETON_SCHEMA_VERSION),
+                (
+                    DETAILED_BODY_TRACK_SCHEMA_VERSION,
+                    DETAILED_SKELETON_SCHEMA_VERSION,
+                ),
+            }
+        )
+        if schema_pair not in allowed:
             raise BodyValidationError("Unsupported body-track/skeleton schema pair")
+        rest_translations = value.get("rest_translations_m")
+        if rest_translations is not None:
+            if not isinstance(rest_translations, list) or any(
+                not isinstance(row, list)
+                or len(row) != 3
+                or any(not isinstance(item, (int, float)) or isinstance(item, bool) for item in row)
+                for row in rest_translations
+            ):
+                raise BodyValidationError(
+                    "Serialized rest translations must be [joint, 3] numbers"
+                )
         if value["attachment_schema_version"] != ATTACHMENT_SCHEMA_VERSION:
             raise BodyValidationError("Unsupported GNM attachment schema")
         if value["limitations"] != list(BODY_TRACK_LIMITATIONS):
@@ -632,6 +790,11 @@ class BodyTrack:
             gaze_strength=gaze["strength"],
             gnm_eye_rotations_xyzw=gaze["gnm_eye_rotations_xyzw"],
             source_plan_sha256=value["source_plan_sha256"],
+            rest_translations_m=(
+                None
+                if rest_translations is None
+                else np.asarray(rest_translations, dtype=np.float64)
+            ),
         )
 
 
@@ -756,7 +919,7 @@ def validate_body_track(
     contact_tolerance_m: float = CONTACT_TOLERANCE_M,
 ) -> None:
     if skeleton is None:
-        skeleton = skeleton_for_joint_names(track.joint_names)
+        skeleton = skeleton_for_track(track)
     validate_skeleton(skeleton)
     duration = _validate_integer(track.duration_ticks, "duration_ticks", positive=True)
     ticks_per_second = _validate_integer(
@@ -773,6 +936,17 @@ def validate_body_track(
         )
     if tuple(track.joint_names) != skeleton.names:
         raise BodyValidationError("Body track joint order does not match the canonical skeleton")
+    # D3.  Names alone were the whole check, so a sized track validated happily against
+    # the canonical body and the contact-anchor forward kinematics below ran on the wrong
+    # bone lengths -- a contact that holds on one rest does not hold on another.  A
+    # caller that passes a skeleton must pass the track's OWN skeleton.
+    if not np.array_equal(
+        np.asarray(track.rest_translations_m, dtype=np.float64),
+        skeleton.rest_translations_m,
+    ):
+        raise BodyValidationError(
+            "Body track rest translations do not match the skeleton it is validated against"
+        )
     ticks = np.asarray(track.ticks)
     if ticks.ndim != 1 or ticks.size < 2:
         raise BodyValidationError("Body track requires at least two sample ticks")

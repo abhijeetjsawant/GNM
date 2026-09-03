@@ -27,7 +27,7 @@ from .animated_gltf import (
     _fit_morph_normals,
     factor_vertex_animation,
 )
-from .body import BodyTrack, skeleton_for_joint_names, validate_body_track
+from .body import BodyTrack, skeleton_for_track, validate_body_track
 from .body_binding import (
     GNM_TO_AUTOANIM_BASIS,
     array_sha256,
@@ -166,7 +166,9 @@ def _skin_matrices(
     parents: np.ndarray,
     track: BodyTrack,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    target_skeleton = skeleton_for_joint_names(track.joint_names)
+    # D3: the track's OWN skeleton and its OWN rest, so the unified character's joints
+    # land where `forward_kinematics_positions` puts them, exactly as `body_export` does.
+    target_skeleton = skeleton_for_track(track)
     translations, rotations = _compose_rest_and_delta(
         local_rest,
         track.local_rotations_xyzw,
@@ -174,6 +176,7 @@ def _skin_matrices(
         world_bind_alignment_xyzw=_canonical_arm_bind_alignment(
             local_rest, parents, skeleton=target_skeleton
         ),
+        rest_translations_m=track.rest_translations_m,
     )
     frame_count, joint_count = rotations.shape[:2]
     local = np.repeat(
@@ -458,7 +461,7 @@ def export_unified_character_glb(
 ) -> UnifiedCharacterGLBExport:
     """Export one connected, ownership-safe diagnostic character."""
 
-    target_skeleton = skeleton_for_joint_names(track.joint_names)
+    target_skeleton = skeleton_for_track(track)
     validate_body_track(track, skeleton=target_skeleton)
     load_and_validate_body_asset(
         body_manifest_path, body_asset_path
