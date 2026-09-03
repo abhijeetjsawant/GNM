@@ -1421,6 +1421,80 @@ def _world_for_bone(parent_world: np.ndarray, rest_child_offset: np.ndarray, tar
     return output / np.linalg.norm(output)
 
 
+def _leg_root_offset(
+    hips_world: np.ndarray,
+    rest: dict[str, np.ndarray],
+) -> np.ndarray:
+    """The world vector from the rig's ``Hips`` joint to the midpoint of its two leg roots.
+
+    D2b. Forward kinematics puts the leg roots at
+    ``UpperLegMid = root_translation + rest["Root"] + rest["Hips"] + R_hips . mid`` with
+    ``mid = 0.5 * (rest["LeftUpperLeg"] + rest["RightUpperLeg"])`` and ``rest["Root"] = 0``.
+    The captured ``left_hip`` / ``right_hip`` landmarks ARE the femoral joint centres, so
+    the rig's **leg roots** -- not ``Hips`` -- are what belongs on their midpoint. Setting
+    ``UpperLegMid = pelvis`` gives
+    ``root_translation = pelvis - rest["Hips"] - R_hips . mid``, and this returns the
+    ``R_hips . mid`` term.
+
+    NO CONSTANT ENTERS. ``mid`` is read from the caller's own ``rest`` dict, so a patched
+    or per-performer-sized skeleton is honoured and the canonical (0, -0.08, 0) is never
+    written down. The offset is taken in the HIPS' frame, not the world's: as the pelvis
+    tilts its vertical component shrinks and a horizontal component appears, which a world
+    vertical of the same length cannot reproduce -- that is the control that discriminates
+    this derivation from a number (`tools/compare/d2_clavicle_gate.py`, `d2b_root_placement`).
+
+    Deliberately module level and called by bare name, exactly as :func:`_joint_origin` is,
+    so an instrument can substitute it and run every control through the identical code
+    path rather than a re-implementation of it.
+    """
+
+    mid = 0.5 * (
+        np.asarray(rest["LeftUpperLeg"], dtype=np.float64)
+        + np.asarray(rest["RightUpperLeg"], dtype=np.float64)
+    )
+    return _rotate_vector(hips_world, mid)
+
+
+def _joint_origin(
+    world: np.ndarray,
+    frame: int,
+    root_translation: np.ndarray,
+    rest: dict[str, np.ndarray],
+    joint_name: str,
+) -> np.ndarray:
+    """Where ``joint_name``'s origin actually is on ``frame``, from the rotations set so far.
+
+    This is :func:`autoanim_gnm.body.forward_kinematics_positions`'s recursion, walked for
+    one joint instead of all of them, and it must stay EXACTLY that:
+    ``positions[root] = roots + rest[root]`` and
+    ``positions[child] = positions[parent] + _rotate_vector(world[parent], rest[child])``.
+    A converter that measures a direction from a different origin than the one the rotation
+    turns about is the D2 defect itself, in miniature.
+
+    `rest` is the caller's own dict, so a patched or per-performer-sized skeleton is
+    honoured; `DETAILED_HUMANOID` is looked up as a module global at call time, because the
+    swap harness rebinds `commercial_multiview.DETAILED_HUMANOID` to run the converter on a
+    sized rig. This function is deliberately module level and called by bare name so an
+    instrument can substitute it and run the controls through the identical code path.
+    """
+
+    skeleton = DETAILED_HUMANOID
+    chain: list[int] = []
+    index = skeleton.index(joint_name)
+    while index != -1:
+        chain.append(index)
+        index = skeleton.joints[index].parent
+    chain.reverse()
+    position = np.asarray(root_translation[frame], dtype=np.float64) + rest[
+        skeleton.joints[chain[0]].name
+    ]
+    for parent, child in zip(chain, chain[1:]):
+        position = position + _rotate_vector(
+            world[frame, parent], rest[skeleton.joints[child].name]
+        )
+    return position
+
+
 def _set_world(
     local: np.ndarray,
     world: np.ndarray,
@@ -1439,6 +1513,92 @@ def _set_world(
         else _quaternion_multiply(_quat_inverse(world[frame, parent]), normalized)
     )
     local[frame, index] /= np.linalg.norm(local[frame, index])
+
+
+# A HARD PHYSICAL REJECT ON THE CLAVICLE, NOT A TUNING KNOB, AND NOT A SMOOTHER.
+#
+# A human joint peaks near 500-800 deg/s (the same physiology `head_orientation.
+# MAXIMUM_FRAME_TRAVEL_DEG` is drawn from), so at 30 fps 26.67 deg between consecutive
+# frames is already the extreme end. A sternoclavicular joint has roughly 45 deg of
+# elevation and 30 deg of protraction in total, so this ceiling is generous by a wide
+# margin: it is here to reject the impossible, never to shape the possible.
+#
+# WHY IT WAS ADDED. D2 aims the clavicle from the rig's own Shoulder origin and D2b puts
+# the root on the captured hips. Both are right, and both SHORTEN the lever from the
+# pivot to the shoulder landmark -- ~400 mm under the old torso-axis anchor, 100-160 mm
+# median after, 13-39 mm at its worst. Landmark wander of 21-35 mm across that lever is
+# angle, and when an excursion carries the landmark near the pivot the direction flips
+# outright. On the delivered take that produced single steps of 139 and 164 deg -- 4200
+# and 4900 deg/s -- and the picture is unambiguous: at frame 48 of camera A001 the near
+# performer's arm is drawn in and angled down, and one frame later it has snapped out
+# straight and horizontal. A positional score prices that at zero, because the arm is in
+# roughly the right place on both frames.
+#
+# THE RULE IS REACHABILITY, NOT A STEP TEST. A per-step test catches the transition into
+# a wrong plateau and then accepts the plateau. A frame is accepted only if its clavicle
+# LOCAL rotation lies within `ceiling * (t - t_last_accepted)` of the last accepted
+# frame's -- an envelope that GROWS with elapsed frames, so a rejected run terminates on
+# its own with no run-length constant anywhere, and an outlier first frame recovers (the
+# envelope passes 180 deg after ceil(180 / 26.67) = 7 frames, which bounds both).
+#
+# LOCAL, NEVER WORLD, for the head lane's stated reason: a bone on a turning body travels
+# in world with its own joint perfectly still, so a world-measured ceiling rejects honest
+# motion. Measured at the joint.
+#
+# docs/reviews/clavicle-origin-2026-09-02.md section 15 (D2c).
+CLAVICLE_MAXIMUM_FRAME_TRAVEL_DEG_PER_S = 800.0
+
+
+def _quaternion_travel_deg(a: np.ndarray, b: np.ndarray) -> float:
+    """Angle between two xyzw quaternions as rotations, degrees. Sign-insensitive."""
+
+    dot = abs(float(np.dot(np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64))))
+    return float(np.degrees(2.0 * np.arccos(min(1.0, max(-1.0, dot)))))
+
+
+def _reachable_clavicle_sequence(
+    local_rotations: np.ndarray,
+    parent_world_rotations: np.ndarray,
+    ceiling_deg_per_frame: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reject clavicle frames a human clavicle could not have reached, and slerp across.
+
+    ``local_rotations`` is ``[frame, 4]`` xyzw for ONE clavicle, in its parent's frame.
+    Returns ``(replaced_local, accepted)``: the accepted frames are returned BYTE FOR BYTE
+    as they arrived -- nothing here smooths a frame it accepts -- and each rejected run is
+    replaced by shortest-arc slerp between the accepted frames that bracket it, or held at
+    the last accepted value if the run trails off the end.
+
+    ``parent_world_rotations`` is unused by this rule and is in the signature on purpose:
+    the world-measured variant is the control that demonstrates why the rule is local
+    (`tools/compare/d2c_clavicle_temporal_gate.py`), and it must run through the identical
+    call site rather than a re-implementation of it. This function is deliberately module
+    level and called by bare name for the same reason :func:`_joint_origin` and
+    :func:`_leg_root_offset` are.
+    """
+
+    rotations = np.asarray(local_rotations, dtype=np.float64)
+    frames = len(rotations)
+    accepted = np.zeros(frames, dtype=bool)
+    if frames == 0:
+        return rotations.copy(), accepted
+    output = rotations.copy()
+    accepted[0] = True
+    last = 0
+    for frame in range(1, frames):
+        envelope = ceiling_deg_per_frame * (frame - last)
+        if _quaternion_travel_deg(output[last], rotations[frame]) <= envelope:
+            accepted[frame] = True
+            last = frame
+    indices = np.flatnonzero(accepted)
+    for start, stop in zip(indices, indices[1:]):
+        for frame in range(start + 1, stop):
+            output[frame] = _slerp(
+                output[start], output[stop], (frame - start) / (stop - start)
+            )
+    for frame in range(int(indices[-1]) + 1, frames):
+        output[frame] = output[int(indices[-1])]
+    return output, accepted
 
 
 def positions_to_body_track(
@@ -1492,6 +1652,9 @@ def positions_to_body_track(
     world[..., 3] = 1.0
     root_translation = np.zeros((frames, 3), dtype=np.float64)
     identity = np.asarray((0.0, 0.0, 0.0, 1.0))
+    # Pass A computes the torso frame; pass C's feet fall back to it. Kept rather than
+    # recomputed so the two passes cannot drift apart by a rounding.
+    torso_world_by_frame = np.zeros((frames, 4), dtype=np.float64)
 
     rest = {joint.name: np.asarray(joint.rest_translation_m, dtype=np.float64) for joint in DETAILED_HUMANOID.joints}
     head_rotations = None
@@ -1536,7 +1699,19 @@ def positions_to_body_track(
         # defect the moment per-performer proportions are stamped: the root would be
         # placed using one hips height while the exporter adds back another, floating
         # or sinking the whole character by the difference, at the feet.
-        root_translation[frame] = pelvis - rest["Hips"]
+        #
+        # D2b, 2026-09-03. The second term is the rest of that same argument. Until now
+        # this line put the rig's `Hips` JOINT on the captured hip-landmark midpoint,
+        # while the rig's leg roots -- which is what a `left_hip` landmark actually is,
+        # the femoral joint centre -- hang `rest["LeftUpperLeg"]` = (0.09, -0.08, 0)
+        # below and beside it. The whole skeleton therefore sat 80 mm low on its own
+        # hips, on every frame, and `project_generated_foot_contacts` then hoisted it
+        # ~140 / ~110 mm to keep it out of the floor. `_leg_root_offset` puts the LEG
+        # ROOTS on that midpoint instead, so FK's UpperLeg midpoint lands exactly on the
+        # captured one. Every term is the skeleton's own rest geometry; no constant
+        # arrives. docs/reviews/clavicle-origin-2026-09-02.md section 12.
+        root_translation[frame] = pelvis - rest["Hips"] - _leg_root_offset(
+            hips_world, rest)
         _set_world(local, world, frame, "Root", identity)
         _set_world(local, world, frame, "Hips", hips_world)
         for name in ("Spine", "Chest", "UpperChest"):
@@ -1559,29 +1734,116 @@ def positions_to_body_track(
         _set_world(local, world, frame, "Head", head_world)
         for name in ("LeftEye", "RightEye"):
             _set_world(local, world, frame, name, head_world)
+        # Recorded HERE and not a line earlier, deliberately. `_set_world` normalises its
+        # argument IN PLACE, and without a head solve `neck_world`, `head_world` and the
+        # eyes' argument are all the same array as `torso_world` -- so by this point it has
+        # been through seven normalisations, and that is the state the feet were handed
+        # when the whole solve was one loop. Freezing it any earlier hands them a
+        # differently-rounded quaternion; the gap is 1e-17 and it is large enough to show
+        # up in the toes' near-identity local rotation after the float32 cast, which would
+        # make this restructure visible in a bit-identity test that must see nothing.
+        torso_world_by_frame[frame] = torso_world
 
-        # NOTE: measuring these directions from the joint's own forward-kinematic
+        # NOTE, and it has two halves that came apart on 2026-09-02.
+        #
+        # THE LEGS. Measuring their directions from the joint's own forward-kinematic
         # origin instead of from the captured landmarks was tried on 2026-08-30 and
         # REVERTED -- it is correct in principle and fails in practice, because no
-        # rig joint origin coincides with its captured landmark. `root_translation`
-        # places Hips *at* the captured pelvis while the upper legs hang 80 mm below
+        # rig LEG joint origin coincided with its captured landmark. `root_translation`
+        # placed Hips *at* the captured pelvis while the upper legs hung 80 mm below
         # and 90 mm to each side of it, so a leg direction measured from the rig's
-        # own hip origin starts 80 mm off. The canonical round trip went 0.00 mm ->
-        # 46-67 mm on the legs. Fix the root/hip placement convention first; see the
-        # retarget entry in docs/BODY_LANE_PLAN.md.
-        chains = (
-            ("LeftShoulder", "LeftUpperArm", at("left_shoulder") - (pelvis + 0.72 * torso_up)),
+        # own hip origin started 80 mm off. The canonical round trip went 0.00 mm ->
+        # 46-67 mm on the legs. THAT PREMISE IS NOW GONE: D2b (below) places the leg
+        # ROOTS on the captured hip midpoint, so an FK-origin leg direction would
+        # round-trip too. It is deliberately NOT done here -- the legs below are still
+        # measured landmark-to-landmark (knee - hip, ankle - knee), and re-measuring
+        # them is D3's territory, with its own gate. See docs/BODY_LANE_PLAN.md.
+        #
+        # THE CLAVICLES. Done, D2, 2026-09-02, and NOT because they escape the root
+        # placement above -- they do not. The clavicle's origin hangs off the same
+        # misplaced Hips as the legs do. What is different is that measuring the
+        # direction from that origin is right ANYWAY, because it is the point
+        # `_world_for_bone` turns the bone about: wherever the root puts the rig, the
+        # bone pivots there, and a direction measured from anywhere else asks the
+        # rotation to do something it cannot. Get the origin right and the root fix,
+        # when it comes, carries the clavicle with it and needs no further change here.
+        # What was here instead was a synthetic anchor on the torso axis,
+        # `pelvis + 0.72 * torso_up` -- 418 mm up the canonical rig -- while
+        # `_world_for_bone` turned the bone about the rig's OWN Shoulder origin at
+        # Hips + 0.12 + 0.16 + 0.15 + (+-0.11, 0.10, 0): 530 mm up and 110 mm out.
+        # Two different origins for one direction. The delivered clavicle came out
+        # 14.9 / 19.1 degrees off and the arm root landed 36-47 mm from the requested
+        # shoulder EVEN ON A BODY WITH CANONICAL PROPORTIONS, which the canonical
+        # round-trip oracle measures directly. The 0.72 was a fitted-looking number
+        # nothing fitted (tools/compare/provenance.py) and it LEAVES with this change;
+        # nothing replaces it. `_joint_origin` is the rig's own geometry and no
+        # reference, MAMMA's least of all, enters it.
+        #
+        # ONE CONSEQUENCE, MEASURED AND OPEN. The old anchor was expressed in the
+        # LANDMARK frame (`pelvis + ...`), so it was immune to the root-placement
+        # offset above; this one is in the RIG frame, so it inherits it. The canonical
+        # round-trip oracle therefore READS WORSE after this change, 41.57/47.05 ->
+        # 67.25/79.32 mm, and every millimetre of that is root placement, not the
+        # clavicle: `landmarks_from_fk` feeds the rig's UpperLeg origins back as hip
+        # landmarks (anatomically right) and the converter puts `Hips` on them (80 mm
+        # wrong), so the re-solve sees the rig 80 mm lower against the same landmarks.
+        # Take the rig's own hip drop out of this origin and the round trip reads
+        # 0.51/0.08 mm. On the delivery path, where the solve runs once, the arms
+        # improve 181.33 -> 124.39 and 217.50 -> 89.56 mm.
+        # docs/reviews/clavicle-origin-2026-09-02.md.
+        left_shoulder_origin = _joint_origin(
+            world, frame, root_translation, rest, "LeftShoulder")
+        right_shoulder_origin = _joint_origin(
+            world, frame, root_translation, rest, "RightShoulder")
+        # PASS A ends with the two clavicles. Everything below them waits for pass C,
+        # because the temporal reject in pass B can replace a clavicle and `_world_for_bone`
+        # builds every arm bone from its PARENT's world: leave the arm locals as solved and
+        # a replaced clavicle swings the whole arm rigidly, taking the elbow and the wrist
+        # off the landmarks they were solved onto. Replace, then RE-SOLVE.
+        for joint_name, child_name, direction in (
+            ("LeftShoulder", "LeftUpperArm", at("left_shoulder") - left_shoulder_origin),
+            ("RightShoulder", "RightUpperArm", at("right_shoulder") - right_shoulder_origin),
+        ):
+            joint_index = DETAILED_HUMANOID.index(joint_name)
+            parent_index = DETAILED_HUMANOID.joints[joint_index].parent
+            target_world = _world_for_bone(
+                world[frame, parent_index], rest[child_name], direction
+            )
+            _set_world(local, world, frame, joint_name, target_world)
+
+    # ---------------------------------------------------------------- PASS B: the reject
+    # A sequence rule, so it cannot live inside a per-frame loop. Both clavicles
+    # independently; accepted frames are left exactly as pass A wrote them, and only a
+    # rejected frame's local rotation and the world derived from it are rewritten.
+    ceiling_deg_per_frame = CLAVICLE_MAXIMUM_FRAME_TRAVEL_DEG_PER_S / float(sample_rate_hz)
+    for clavicle in ("LeftShoulder", "RightShoulder"):
+        clavicle_index = DETAILED_HUMANOID.index(clavicle)
+        parent_index = DETAILED_HUMANOID.joints[clavicle_index].parent
+        replaced, accepted = _reachable_clavicle_sequence(
+            local[:, clavicle_index], world[:, parent_index], ceiling_deg_per_frame
+        )
+        for frame in np.flatnonzero(~accepted):
+            rotation = np.asarray(replaced[frame], dtype=np.float64)
+            rotation = rotation / np.linalg.norm(rotation)
+            local[frame, clavicle_index] = rotation
+            composed = _quaternion_multiply(world[frame, parent_index], rotation)
+            world[frame, clavicle_index] = composed / np.linalg.norm(composed)
+
+    # ------------------------------------------- PASS C: everything below the clavicles
+    for frame in range(frames):
+        p = points[frame]
+        at = lambda name: p[JOINT_INDEX[name]]
+        torso_world = torso_world_by_frame[frame]
+        for joint_name, child_name, direction in (
             ("LeftUpperArm", "LeftLowerArm", at("left_elbow") - at("left_shoulder")),
             ("LeftLowerArm", "LeftHand", at("left_wrist") - at("left_elbow")),
-            ("RightShoulder", "RightUpperArm", at("right_shoulder") - (pelvis + 0.72 * torso_up)),
             ("RightUpperArm", "RightLowerArm", at("right_elbow") - at("right_shoulder")),
             ("RightLowerArm", "RightHand", at("right_wrist") - at("right_elbow")),
             ("LeftUpperLeg", "LeftLowerLeg", at("left_knee") - at("left_hip")),
             ("LeftLowerLeg", "LeftFoot", at("left_ankle") - at("left_knee")),
             ("RightUpperLeg", "RightLowerLeg", at("right_knee") - at("right_hip")),
             ("RightLowerLeg", "RightFoot", at("right_ankle") - at("right_knee")),
-        )
-        for joint_name, child_name, direction in chains:
+        ):
             joint_index = DETAILED_HUMANOID.index(joint_name)
             parent_index = DETAILED_HUMANOID.joints[joint_index].parent
             target_world = _world_for_bone(

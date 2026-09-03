@@ -110,6 +110,30 @@ CURATED: dict[str, dict] = {
                  "1800 deg/s and is not a neck.' Commit 981e437 records the 140 deg "
                  "single-frame flip it was added to reject.",
     ),
+    "CLAVICLE_MAXIMUM_FRAME_TRAVEL_DEG_PER_S": dict(
+        provenance=ANATOMY,
+        evidence="src/autoanim_gnm/commercial_multiview.py -- 'A HARD PHYSICAL REJECT ON "
+                 "THE CLAVICLE, NOT A TUNING KNOB, AND NOT A SMOOTHER... A human joint "
+                 "peaks near 500-800 deg/s (the same physiology `head_orientation."
+                 "MAXIMUM_FRAME_TRAVEL_DEG` is drawn from), so at 30 fps 26.67 deg between "
+                 "consecutive frames is already the extreme end. A sternoclavicular joint "
+                 "has roughly 45 deg of elevation and 30 deg of protraction in total, so "
+                 "this ceiling is generous by a wide margin: it is here to reject the "
+                 "impossible, never to shape the possible.' D2c, "
+                 "docs/reviews/clavicle-origin-2026-09-02.md section 15, added to reject "
+                 "the 139 and 164 deg single-frame clavicle flips D2 and D2b's shorter "
+                 "lever produced.",
+        selected_against="nothing -- it is a physical ceiling, not a fitted value. Its "
+                         "inertness was DEMONSTRATED on synthetic truth (I7's FK fixture, "
+                         "true clavicle peak 1.38 deg/frame against this 26.67) and the "
+                         "degenerate that must fail it is a ceiling below that true peak. "
+                         "No MAMMA figure and no reference fitter enters it.",
+        note="ANATOMY and not a category called 'physical': the taxonomy above has no such "
+             "value, and the head lane's identical ceiling "
+             "(`MAXIMUM_FRAME_TRAVEL_DEG`) is registered as ANATOMY. Adding a taxonomy "
+             "value would move `tests/test_provenance_audit.py`, which is the registry "
+             "owner's file.",
+    ),
     "NECK_ROTATION_SHARE": dict(
         provenance=ANATOMY,
         evidence="src/autoanim_gnm/commercial_multiview.py:1250 -- 'This is an ANATOMICAL "

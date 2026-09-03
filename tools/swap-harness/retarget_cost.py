@@ -22,7 +22,23 @@ Two things had to be got right, and both were found by a control that failed:
    in. That body has canonical proportions BY CONSTRUCTION, so the converter must
    reproduce it. Whatever it costs there is the converter's own approximation; the
    excess on a real performer is the proportion mismatch. It is the ORACLE arm:
-   0.00 mm on the legs, 36-47 mm on the arms (the known clavicle-origin cost).
+   0.00 mm on the legs, and 67-79 mm on the arms since D2 (2026-09-02).
+
+   THE ARM FIGURE IS NOT THE CLAVICLE'S COST, and before D2 it was not either.
+   It read 36-47 mm while the clavicle direction was measured from `pelvis + 0.72 *
+   torso_up`; D2 measures it from the rig's own Shoulder origin, and this arm went
+   UP to 67-79 while the delivered configuration went DOWN, 181/218 -> 124/90 mm.
+   The reason is in this construction, not in the converter: `landmarks_from_fk`
+   below writes the rig's UpperLeg origins into the `left_hip`/`right_hip` slots --
+   anatomically right, they are the femoral joint centres -- and the converter puts
+   `Hips` on that midpoint, 80 mm higher. So the SECOND solve sees the rig 80 mm
+   lower against the same landmark cloud. Every direction measured
+   landmark-to-landmark is blind to a translation, and this score is root-relative,
+   which is why the legs read 0.00 here and always did; that was never evidence the
+   root placement is right. The clavicle is the only direction measured in the RIG's
+   frame, so it is the only one that can see it. Take the rig's own hip drop out of
+   the re-solve's origin and this arm reads 0.60/0.22 mm.
+   tools/compare/d2_clavicle_gate.py, docs/reviews/clavicle-origin-2026-09-02.md.
 
 THE SPLIT (ladder step I1). Three questions, three families of arm:
 
@@ -502,7 +518,13 @@ def run_subject(subject, mamma_body_id, report, rng):
     fk_rt = fk_of(t_rt)
     add("ORACLE_roundtrip_canonical", score(fk_rt, synth), t_rt, fk_rt, DETAILED_HUMANOID,
         "a body with canonical proportions BY CONSTRUCTION -- the converter's own cost",
-        "must reproduce: 0.00 mm on the legs, 36-47 mm on the arms (clavicle origin)")
+        "must reproduce 0.00 mm on the legs. The ARM figure is 67-79 mm since D2 and it "
+        "is this CONSTRUCTION's cost, not the converter's: the hip landmarks fed back are "
+        "the rig's UpperLeg origins while the converter puts Hips on their midpoint, "
+        "80 mm higher, so the re-solve sits 80 mm low and the clavicle -- the one "
+        "direction measured in the rig's own frame -- turns. Remove the rig's hip drop "
+        "from the re-solve's origin and it reads 0.60/0.22 mm. See the module docstring "
+        "and tools/compare/d2_clavicle_gate.py.")
 
     # ---- own capture, RE-SOLVED on the sized skeleton (scoreboard's sizing)
     skel_sz, limbs = sized_skeleton(DETAILED_HUMANOID, src)
@@ -624,14 +646,29 @@ def run_subject(subject, mamma_body_id, report, rng):
         "converter_is_scale_invariant": {
             "max_abs_rotation_difference_sized_vs_canonical_solve": dq,
             "max_abs_root_translation_difference_m": dr,
-            "finding": "TRUE for isotropic per-bone sizing, which is every sizing in this repo "
-                       "(an ANISOTROPIC rescale of a chain child would turn its rest offset and "
-                       "would change them). Re-solving on the sized skeleton returns the SAME rotations as "
-                       "the canonical solve. The execution plan's premise that the scoreboard's "
-                       "sized arm (canonical rotations replayed on a sized skeleton) is a LOWER "
-                       "BOUND on a re-solved sized arm is refuted: the two are the same arm. "
-                       "Every rotation is built by turning a rest offset's DIRECTION onto a "
-                       "measured direction, and sizing scales rest offsets without turning them.",
+            "value": bool(dq < 1e-9),
+            "finding": (
+                "TRUE for isotropic per-bone sizing, which is every sizing in this repo "
+                "(an ANISOTROPIC rescale of a chain child would turn its rest offset and "
+                "would change them). Re-solving on the sized skeleton returns the SAME "
+                "rotations as the canonical solve. The execution plan's premise that the "
+                "scoreboard's sized arm (canonical rotations replayed on a sized skeleton) "
+                "is a LOWER BOUND on a re-solved sized arm is refuted: the two are the "
+                "same arm. Every rotation is built by turning a rest offset's DIRECTION "
+                "onto a measured direction, and sizing scales rest offsets without turning "
+                "them."
+                if dq < 1e-9 else
+                "FALSE, and deliberately so since D2 (2026-09-02). It was TRUE while every "
+                "rotation aimed a rest offset's DIRECTION, because sizing scales rest "
+                "offsets without turning them. D2 measures the clavicle direction from the "
+                "rig's own forward-kinematic Shoulder origin, and sizing MOVES that origin, "
+                "so the clavicle chain -- and only that chain, six joints -- now re-solves "
+                "differently on a sized skeleton. Two consequences the reader must carry: "
+                "the scoreboard's `sized` column (canonical rotations REPLAYED on a sized "
+                "skeleton) is no longer equivalent to `performer_sized_resolved` below, and "
+                "the two are reported separately; and this max is a QUATERNION COMPONENT "
+                "difference, which reads ~2 for a mere sign flip -- read the per-joint "
+                "angles in artifacts/compare/d2-clavicle/gate.json, not this number."),
         },
         "input_bone_length_std_mm_max": controls["CONTROL_input_copied_through"][
             "integrity"]["bone_length_std_mm_max"],
