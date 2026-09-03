@@ -488,10 +488,198 @@ def x_root_placement(_: dict) -> tuple[list, list]:
     return figs, ctrls
 
 
+
+# =======================================================================================
+# D2c -- the clavicle's TEMPORAL defect. A third rung, a third report, and a fourth unit.
+#
+# The units on this rung are DEGREES PER FRAME against human physiology and DEGREES of
+# clavicle rotation against synthetic truth. Neither may ever share a chart with a
+# millimetre, and the two are not each other's axis either: one is a rate against anatomy,
+# the other an error against a known answer. The MAMMA oracle here is a 2-DoF DIRECTION
+# step where ours is a 3-DoF rotation step, so it gets a chart to itself.
+REPORT_D2C = "artifacts/compare/d2-clavicle/gate-d2c.json"
+REGEN_D2C = ("PYTHONPATH=$PWD/src .venv/bin/python "
+             "tools/compare/d2c_clavicle_temporal_gate.py --seeds 20")
+REF_PHYSIOLOGY = ("the rig's own joint angles against human physiology -- a peak joint "
+                  "rate near 800 deg/s, 26.67 deg per frame at 30 fps. Physical, not "
+                  "fitted, and no reference fitter enters it")
+REF_SYNTH = ("exact synthetic truth: the converter's OWN output on the noise-free "
+             "landmarks of I7's FK fixture, MAMMA-free. Degrees of clavicle LOCAL rotation")
+REF_MASKS = ("MAMMA's SAM2 masks -- pixels of the actual footage. Reported, never banded")
+
+
+def x_clavicle_temporal(_: dict) -> tuple[list, list]:
+    report = _load(REPORT_D2C)
+    if not report:
+        return [], []
+    figs: list = []
+    ctrls: list = []
+
+    # --- the real take. REPORTED, never banded: a reject zeroes this by construction.
+    for s in SUBJECTS:
+        d = _g(report, "delivery", "subjects", s)
+        if not d:
+            continue
+        t = s.replace("_", " ")
+        chain = _g(d, "clavicle_chain_over_the_ceiling", default={})
+        for label, key, value in (
+            ("D2b", "d2c_over_ceiling_before", chain.get("before")),
+            ("D2c", "d2c_over_ceiling_after", chain.get("after")),
+        ):
+            figs.append(fig(f"clavicle-chain frames faster than a human joint can turn, "
+                            f"{label}, {t}", value, "frames of 894", REF_PHYSIOLOGY, LOWER,
+                            key=f"{key}_{s}",
+                            note="REPORTED, NOT BANDED: this is exactly what a reject "
+                                 "zeroes, so a band on it would be a band the mechanism "
+                                 f"optimises directly. regenerate: {REGEN_D2C}"))
+        worst = {}
+        for arm in ("d2b", "d2c"):
+            worst[arm] = max(
+                (_g(d, "joints", j, arm, "max_deg", default=0.0)
+                 for j in ("LeftShoulder", "RightShoulder", "LeftUpperArm", "RightUpperArm",
+                           "LeftLowerArm", "RightLowerArm")), default=None)
+        figs.append(fig(f"worst single-frame clavicle-chain step, D2b, {t}", worst["d2b"],
+                        "degrees in one frame", REF_PHYSIOLOGY, LOWER,
+                        key=f"d2c_max_step_before_{s}"))
+        figs.append(fig(f"worst single-frame clavicle-chain step, D2c, {t}", worst["d2c"],
+                        "degrees in one frame", REF_PHYSIOLOGY, LOWER,
+                        key=f"d2c_max_step_after_{s}"))
+        for arm, key in (("d2b", "d2c_median_step_before"), ("d2c", "d2c_median_step_after")):
+            figs.append(fig(f"MEDIAN clavicle step, {arm.upper()}, {t} -- this must NOT move",
+                            _g(d, "joints", "LeftShoulder", arm, "median_deg"),
+                            "degrees per frame", REF_PHYSIOLOGY, LOWER,
+                            key=f"{key}_{s}",
+                            note="the median is the SHORT LEVER D2 and D2b created, and "
+                                 "D2c does not touch it. That is D5's"))
+
+    # --- synthetic truth. The selector.
+    noisy = _g(report, "synthetic", "noisy", default={})
+    for arm, key in (("d2b_passthrough", "before"), ("d2c_shipped", "after")):
+        error = _g(noisy, arm, "error_vs_truth", default={})
+        for statistic, suffix in (("median_deg", "median"), ("p95_deg", "p95"),
+                                  ("max_deg", "max")):
+            figs.append(fig(f"clavicle error against synthetic truth, {suffix}, "
+                            f"{'D2b' if key == 'before' else 'D2c'}",
+                            error.get(statistic), "degrees", REF_SYNTH, LOWER,
+                            key=f"d2c_synth_{suffix}_{key}",
+                            note="pooled over 20 noise seeds, both performers, both "
+                                 "clavicles"))
+    figs.append(fig("attenuation of true clavicle peaks, D2c, on CLEAN input",
+                    _g(report, "synthetic", "clean", "d2c_shipped", "attenuation_median"),
+                    "fraction of true peak speed lost", REF_SYNTH, LOWER,
+                    key="d2c_synth_attenuation_after",
+                    note="exactly 0: on reachable motion the reject is inert and the track "
+                         "is bit-identical. I7's 0.3183 is 3D DISPLACEMENT over 17 joints "
+                         "and is NOT this axis"))
+    figs.append(fig("phase lag introduced by D2c, on CLEAN input",
+                    _g(report, "synthetic", "clean", "d2c_shipped", "lag_frames_median"),
+                    "frames of shift at the error minimum", REF_SYNTH, LOWER,
+                    key="d2c_synth_lag_after"))
+
+    # --- the controls, every one through the identical call site.
+    ctrls.append(fig("CONTROL an over-smoother (Savitzky-Golay, window 27) instead of a "
+                     "reject -- attenuation on clean input",
+                     _g(report, "synthetic", "clean", "ctrl_oversmoother",
+                        "attenuation_median"),
+                     "fraction of true peak speed lost", REF_SYNTH, LOWER,
+                     key="d2c_ctrl_oversmoother_attenuation",
+                     note="it wins on the error tail and destroys two thirds of the true "
+                          "peak. Zero-phase, so it CANNOT fail on lag -- which is why "
+                          "attenuation is the discriminating band"))
+    ctrls.append(fig("CONTROL the same over-smoother -- error tail against synthetic truth",
+                     _g(noisy, "ctrl_oversmoother", "error_vs_truth", "p95_deg"),
+                     "degrees", REF_SYNTH, LOWER, key="d2c_ctrl_oversmoother_p95"))
+    ctrls.append(fig("CONTROL a ceiling BELOW the fixture's own true clavicle peak "
+                     "(1.0 deg/frame) -- frames it rejects on CLEAN input",
+                     _g(report, "synthetic", "clean", "ctrl_low_ceiling", "rejects",
+                        "rejected_frames"),
+                     "frames of 112", REF_SYNTH, LOWER, key="d2c_ctrl_low_ceiling_rejects",
+                     note="the shipped ceiling rejects 0 of these. The brief's 5 deg/frame "
+                          "control was INERT here -- the true peak is 1.38 deg/frame -- so "
+                          "a degenerate below the true peak was substituted and both are "
+                          "reported"))
+    ctrls.append(fig("CONTROL the same low ceiling -- attenuation on clean input",
+                     _g(report, "synthetic", "clean", "ctrl_low_ceiling",
+                        "attenuation_median"),
+                     "fraction of true peak speed lost", REF_SYNTH, LOWER,
+                     key="d2c_ctrl_low_ceiling_attenuation"))
+    ctrls.append(fig("CONTROL the same reject read in WORLD, on a body spinning at "
+                     "1350 deg/s -- frames it rejects",
+                     _g(report, "synthetic", "turning_body", "45_deg_per_frame",
+                        "world_measured", "rejected_frames"),
+                     "frames of 56", REF_SYNTH, LOWER, key="d2c_ctrl_world_rejects",
+                     note="the shipped LOCAL rule rejects 0 of the same frames, and at a "
+                          "pirouette's 12 deg/frame neither fires. A bone on a turning "
+                          "body travels in world with its own joint perfectly still"))
+    ctrls.append(fig("CONTROL a STEP test instead of reachability -- frames of a rejected "
+                     "excursion it accepts",
+                     _g(noisy, "step_test_vs_reachability",
+                        "step_test_accepts_what_reachability_rejects"),
+                     "frames", REF_SYNTH, LOWER, key="d2c_ctrl_step_test_accepts",
+                     note="it catches the transitions into a wrong plateau and then accepts "
+                          "the plateau, which is the whole reason the rule is reachability"))
+
+    # --- the arms this step does not touch, on our own capture and on arm B.
+    for s in SUBJECTS:
+        block = _g(report, "capture", s)
+        if not block:
+            continue
+        t = s.replace("_", " ")
+        for arm, key in (("d2b", "before"), ("d2c", "after")):
+            figs.append(fig(f"arm landmarks on our own capture, canonical rig, "
+                            f"{arm.upper()}, {t}",
+                            _g(block, f"{arm}_on_our_capture_canonical", "arms"),
+                            "mm median", REF_OURS, LOWER,
+                            key=f"d2c_delivered_arms_{key}_{s}",
+                            note="D2c must not move this: it touches 1-9 % of clavicle "
+                                 "frames and the score is a whole-take median"))
+            ctrls.append(fig(f"ARM B (MAMMA's joints in), canonical, {arm.upper()}, {t}",
+                             _g(block, "arm_B_mamma_joints_in", f"{arm}_canonical", "arms"),
+                             "mm median", REF_ARMB, LOWER,
+                             key=f"d2c_mammaB_arms_{key}_{s}",
+                             note="a different body, different poses, a different joint "
+                                  "convention. NEVER the same axis as the own-capture bars"))
+    figs.append(fig("the committed D2 and D2b figures, reproduced through the pass-through "
+                    "rule",
+                    _g(report, "committed_regression", "max_abs_difference_mm"),
+                    "mm, worst of six figures", REF_OURS, LOWER,
+                    key="d2c_roundtrip_reproduces_d2b_mm",
+                    note="0.000 means installing D2c rewrote none of D2's or D2b's "
+                         "committed numbers. The pass-through IS the pre-D2c converter, "
+                         "bit for bit"))
+
+    # --- the oracle. Reports, selects nothing, and never shares an axis with ours.
+    for s in SUBJECTS:
+        entry = _g(report, "oracle_mamma_collars", "subjects", s)
+        if not entry:
+            continue
+        t = s.replace("_", " ")
+        ctrls.append(fig(f"ORACLE MAMMA's own collar->shoulder DIRECTION over the same "
+                         f"ceiling, {t}",
+                         (entry.get("left", {}).get("over_the_ceiling", 0)
+                          + entry.get("right", {}).get("over_the_ceiling", 0)),
+                         "frames of 298", REF_MAMMA, LOWER,
+                         key=f"d2c_oracle_mamma_collar_over_ceiling_{s}",
+                         note="a 2-DoF DIRECTION step; ours is a 3-DoF rotation step "
+                              "including twist. The floor a real clavicle sequence shows "
+                              "on this take. MAMMA reports and never selects"))
+
+    # --- the silhouette. Reported, never banded, and on its own reference.
+    for arm, key in (("d2b_iou", "before"), ("d2c_iou", "after")):
+        figs.append(fig(f"silhouette agreement with the footage's own masks, "
+                        f"{'D2b' if key == 'before' else 'D2c'}",
+                        _g(report, "silhouette", arm), "IoU, median of 8 cells",
+                        REF_MASKS, HIGHER, key=f"d2c_silhouette_iou_{key}",
+                        note="REPORTED, NOT BANDED. Blind to depth, to a fore-aft "
+                             "symmetric mirror, and to everything inside the outline"))
+    return figs, ctrls
+
+
 if __name__ == "__main__":
     f, c = x_clavicle({})
     f2, c2 = x_root_placement({})
-    f, c = f + f2, c + c2
+    f3, c3 = x_clavicle_temporal({})
+    f, c = f + f2 + f3, c + c2 + c3
     for row in f:
         print(f"FIG   {row['value']!s:>10}  {row['unit']:<24} {row['label']}")
     for row in c:
@@ -722,6 +910,109 @@ PROPOSED_VISUALS_D2B = {
                         key="d2b_temporal_over_ceiling_d2_subject_01"),
                    dict(label="Performer 2, hips placed too", role="ours",
                         key="d2b_temporal_over_ceiling_d2b_subject_01")]),
+    ],
+    "clavicle_temporal": [
+        dict(title="The arm no longer dislocates: frames faster than a human joint can turn",
+             plain="Count of frames in which the collarbone or an arm joint turns faster "
+                   "than any human joint can move. Lower is better. Aiming the collarbone "
+                   "from the shoulder made the arm land in a much better place and travel "
+                   "there far less smoothly, because the distance from the pivot to the "
+                   "landmark shrank from about 40 cm to 10-16 cm and a short lever "
+                   "magnifies wobble. This step throws away the frames a body could not "
+                   "have reached and interpolates across them. It is reported, not scored: "
+                   "a rule that rejects these frames drives this number down by "
+                   "construction, so passing it would prove nothing.",
+             better="lower",
+             bars=[dict(label="Performer 1, before this step", role="control",
+                        key="d2c_over_ceiling_before_subject_00"),
+                   dict(label="Performer 1, after", role="ours",
+                        key="d2c_over_ceiling_after_subject_00"),
+                   dict(label="Performer 2, before this step", role="control",
+                        key="d2c_over_ceiling_before_subject_01"),
+                   dict(label="Performer 2, after", role="ours",
+                        key="d2c_over_ceiling_after_subject_01")]),
+
+        dict(title="The worst single frame, and the typical frame that does not move",
+             plain="Left pair: the largest turn the collarbone chain makes in one frame. It "
+                   "was a visible dislocation -- 139 and 164 degrees, four to five thousand "
+                   "degrees a second -- and it is gone. Right pair: the TYPICAL frame-to-"
+                   "frame turn, which barely moves at all, and that is the honest half of "
+                   "the story: the everyday shake comes from the short lever and this step "
+                   "does not fix it. Lower is better on both, and every bar is the same "
+                   "unit measured on the same joints.",
+             better="lower",
+             bars=[dict(label="Performer 1, worst frame, before", role="control",
+                        key="d2c_max_step_before_subject_00"),
+                   dict(label="Performer 1, worst frame, after", role="ours",
+                        key="d2c_max_step_after_subject_00"),
+                   dict(label="Performer 2, worst frame, before", role="control",
+                        key="d2c_max_step_before_subject_01"),
+                   dict(label="Performer 2, worst frame, after", role="ours",
+                        key="d2c_max_step_after_subject_01"),
+                   dict(label="Performer 1, typical frame, before", role="alt",
+                        key="d2c_median_step_before_subject_00"),
+                   dict(label="Performer 1, typical frame, after", role="alt",
+                        key="d2c_median_step_after_subject_00")]),
+
+        dict(title="Measured against a known answer, not against another model",
+             plain="A synthetic performer whose true pose we know exactly, filmed by the "
+                   "same four virtual cameras, with our own detector's measured noise "
+                   "injected into the pictures. The bars are how far the collarbone ends "
+                   "up from the truth, in degrees, at the worst 5 % of frames. Lower is "
+                   "better. The last bar is a deliberately wrong answer run through the "
+                   "identical code: a heavy smoother, which wins here and pays for it by "
+                   "destroying real motion -- which is the next chart.",
+             better="lower",
+             bars=[dict(label="Before this step", role="control",
+                        key="d2c_synth_p95_before"),
+                   dict(label="After this step", role="ours", key="d2c_synth_p95_after"),
+                   dict(label="A heavy smoother instead (wrong)", role="control",
+                        key="d2c_ctrl_oversmoother_p95")]),
+
+        dict(title="What the wrong answers destroy, and this one does not",
+             plain="On a clean synthetic take with no noise at all, how much of the "
+                   "collarbone's real speed each method throws away. Lower is better, and "
+                   "zero is the only acceptable answer: motion a body performed must "
+                   "survive untouched. This step is exactly zero -- it never fires on "
+                   "reachable motion, and the frames it accepts come out bit-for-bit "
+                   "identical. The heavy smoother loses two thirds of the real motion and "
+                   "a ceiling set below this body's own speed loses a seventh.",
+             better="lower",
+             bars=[dict(label="After this step", role="ours",
+                        key="d2c_synth_attenuation_after"),
+                   dict(label="A heavy smoother instead (wrong)", role="control",
+                        key="d2c_ctrl_oversmoother_attenuation"),
+                   dict(label="A ceiling below true motion (wrong)", role="control",
+                        key="d2c_ctrl_low_ceiling_attenuation")]),
+
+        dict(title="Where the arm lands, which this step must leave alone",
+             plain="How far the top of the arm sits from the shoulder the cameras saw, in "
+                   "millimetres. Lower is better. This step only changes 1 to 9 percent of "
+                   "frames, so these should barely move -- and they do not. Bars on this "
+                   "chart are all our own capture; the reference fitter's body is a "
+                   "separate reference and is not on it.",
+             better="lower",
+             bars=[dict(label="Performer 1, before", role="alt",
+                        key="d2c_delivered_arms_before_subject_00"),
+                   dict(label="Performer 1, after", role="ours",
+                        key="d2c_delivered_arms_after_subject_00"),
+                   dict(label="Performer 2, before", role="alt",
+                        key="d2c_delivered_arms_before_subject_01"),
+                   dict(label="Performer 2, after", role="ours",
+                        key="d2c_delivered_arms_after_subject_01")]),
+
+        dict(title="The reference fitter's own collarbone, over the same physical ceiling",
+             plain="MAMMA is the research fitter we measure against. Its own collarbone "
+                   "direction, put through the identical test, is the floor a real "
+                   "collarbone sequence shows on this footage. Lower is better. It reports "
+                   "and it selects nothing: no number in this step was chosen from it. It "
+                   "is a direction rather than a full rotation, so it is on a chart of its "
+                   "own and never beside ours.",
+             better="lower",
+             bars=[dict(label="Reference fitter, performer 1", role="mamma",
+                        key="d2c_oracle_mamma_collar_over_ceiling_subject_00"),
+                   dict(label="Reference fitter, performer 2", role="mamma",
+                        key="d2c_oracle_mamma_collar_over_ceiling_subject_01")]),
     ],
     "delivered": [
         dict(title="Agreement with the reference fitter, arms and legs kept apart",

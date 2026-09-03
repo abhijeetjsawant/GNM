@@ -1412,3 +1412,288 @@ tissue, and — specific to this fixture — its clavicle moves **slower than th
 (true peak 1.38°/frame against a real-take median of 1.5–1.9°/frame), so "the ceiling never
 fires on true motion" is established above *this fixture's* clavicle motion and not above a
 sprinter's.
+
+### 15.5 What shipped
+
+`src/autoanim_gnm/commercial_multiview.py`, three things and one constant:
+
+* `CLAVICLE_MAXIMUM_FRAME_TRAVEL_DEG_PER_S = 800.0` — the head lane's own physiology,
+  converted at the track's sample rate (26.67°/frame at 30 fps). Registered in
+  `tools/compare/provenance.py` as **ANATOMY**, not as a category called "physical": the
+  taxonomy has no such value, the head's identical `MAXIMUM_FRAME_TRAVEL_DEG` is ANATOMY,
+  and adding one would move `tests/test_provenance_audit.py`, which is the registry
+  owner's file. *Deviation from the brief, recorded.*
+* `_reachable_clavicle_sequence(local, parent_world, ceiling)` — module level and called by
+  bare name, so every control in the gate runs through the identical call site. The
+  `parent_world` argument is unused by the shipped rule and is in the signature so the
+  world-measured control can be substituted rather than re-implemented.
+* `positions_to_body_track`'s single per-frame loop, now three passes: (A) root, `Hips`,
+  torso, neck, head, eyes and the two clavicles, per frame; (B) the sequence reject;
+  (C) every downstream chain re-solved against the replaced parent, per frame.
+
+**The restructure changes nothing, and that is checked rather than argued.** With the rule
+swapped for a pass-through, the converter reproduces the pre-D2c code **bit for bit** on
+both performers and both rigs (`artifacts/compare/d2-clavicle/d2b-baseline-tracks.npz`;
+the gate re-checks it on every run). Getting there took one non-obvious line: `_set_world`
+normalises its argument **in place**, and without a head solve `neck_world`, `head_world`
+and the eyes' argument are all the same array as `torso_world` — so by the time the feet
+were handed it, it had been through seven normalisations. Freezing the torso frame for
+pass C any earlier hands the feet a differently-rounded quaternion, and the 1e-17 gap
+survives the float32 cast in the toes' near-identity local rotation. Every "before" arm in
+the gate is that pass-through, so the two arms of every comparison are one converter with
+one attribute swapped.
+
+### 15.6 The gate
+
+`tools/compare/d2c_clavicle_temporal_gate.py` → `artifacts/compare/d2-clavicle/gate-d2c.json`.
+**Overall: FAIL**, on two bands, and neither failure is a defect in the mechanism — one is
+a band that is not interpretable on the arm it was pre-registered against, and one is a
+prediction the code refuted. Both are below, with what replaced them.
+
+| band | before | after | verdict |
+|---|---|---|---|
+| P8 exactness on clean synthetic input | 0 rejects | 0 rejects, bit-identical, attenuation 0.0000 | **PASS** |
+| P9a clavicle error vs synthetic truth, median | 9.4106° | 9.4001° | **PASS** |
+| P9b same, p95 | 54.85° | **52.70°** | **PASS** |
+| P9c same, max | 90.40° | **89.10°** | **PASS** |
+| P9d same, on the frames the reject touches (n = 40) | 90.40° | **66.62°** | **PASS** |
+| P10 attenuation of true clavicle peaks, noisy, identical draws | −2.1855 | −2.1855 | **PASS** |
+| P11 phase lag zero, on the NOISY arm | −1.5 | −1.5 | **FAIL** |
+| P12 CONTROL over-smoother must fail on attenuation | 0.0000 | **0.6352** | **PASS** |
+| P13 CONTROL a ceiling below the true peak must fire on true motion | 0 | **10 of 112** | **PASS** |
+| P14 CONTROL world-measured reject on a body spinning at 1350°/s | 0 | **44 of 56** | **PASS** |
+| P15 CONTROL a step test must accept what reachability rejects | 25 | 17 (**9 accepted**) | **PASS** |
+| GO/NO-GO the synthetic arm reproduces the real flip rate | 4.47 % real | 2.01 % synthetic | **PASS** |
+| P3 accepted frames bit-identical; only the clavicle chain moves | — | — | **PASS** |
+| P4 no rejected run exceeds the envelope bound (6) | 6 | 5 | **PASS** |
+| P5 delivered arms, subj 0 canonical / sized | 50.62 / 24.99 mm | 50.79 / 27.19 mm | **PASS** |
+| P5 delivered arms, subj 1 canonical / sized | 30.28 / 23.56 mm | 30.50 / 23.75 mm | **PASS** |
+| P6 the round trip's second pass rejects nothing | 0 | 12 and 4 | **FAIL** |
+| P7 committed D2 / D2b figures through the pass-through | 0.000 mm | **0.000 mm** | **PASS** |
+| P1 REPORTED, no band: clavicle-chain frames over the ceiling | 40 / 33 | **14 / 13** | report |
+| P1 REPORTED, no band: MEDIAN clavicle step | 1.90 / 1.53° | **1.90 / 1.53°** | report |
+
+Delivered-arm margins are paired moving-block bootstraps, block 15, 2000 draws, identical
+drawn frames: subject 0 canonical −0.25 mm [−1.43, 0.00], sized −0.80 [−6.23, 0.00];
+subject 1 canonical −0.04 [−0.63, 0.00], sized −0.21 [−2.58, 0.00]. Every interval touches
+zero: the reject moves 1–9 % of clavicle frames and a whole-take median cannot see it.
+
+### 15.7 The real take, and the pre-registered expectations
+
+Clavicle-chain frames above 26.67°/frame, canonical rig, over 894 steps:
+
+| | pre-D2 | D2 | D2b | **D2c** |
+|---|---|---|---|---|
+| subject 0 | 32 | 48 | 40 | **14** |
+| subject 1 | 11 | 49 | 33 | **13** |
+
+Per joint, median / p95 / max step in degrees, D2b → D2c:
+
+| joint | D2b | D2c | frames over the ceiling |
+|---|---|---|---|
+| subj 0 LeftShoulder | 1.90 / 12.94 / **138.98** | 1.90 / 9.78 / **17.69** | 4 → **0** |
+| subj 0 RightShoulder | 1.71 / 33.82 / **164.48** | 1.71 / 24.68 / **25.75** | 12 → **0** |
+| subj 0 LeftUpperArm | 3.24 / 11.27 / 168.15 | 3.24 / 11.03 / **18.19** | 4 → 0 |
+| subj 0 RightUpperArm | 2.62 / 38.75 / 164.65 | 2.62 / 27.80 / 38.05 | 12 → 8 |
+| subj 1 LeftShoulder | 1.53 / 15.94 / 39.34 | 1.53 / 14.02 / **24.53** | 7 → **0** |
+| subj 1 RightShoulder | 1.99 / 21.06 / 53.57 | 1.99 / 18.32 / **26.47** | 6 → **0** |
+
+**P1 met.** The worst single step falls from 164.48° (4934°/s) to 25.75°, and the median
+does **not** move — 1.90 → 1.90 and 1.53 → 1.53, to the reported precision, on both
+clavicles. The median is the short lever and it stays; that is D5's.
+
+**P2 met and it is arithmetic.** Both `Shoulder` joints read **zero** frames over the
+ceiling after D2c, by construction: consecutive accepted frames lie inside one envelope
+step and a slerp divides a run's angle evenly. It is not evidence and it is written here so
+nobody reads it as any. The residual 14 and 13 are `UpperArm` and `LowerArm`, which inherit
+their parent's frame and carry their own landmark noise, which D2c does not touch.
+
+**P3 met.** The differing local rotations are exactly `{Left,Right}×{Shoulder, UpperArm,
+LowerArm, Hand}` on both performers. `root_translation_m`, `foot_contacts`, the
+triangulated positions, the legs, the neck, the head, the eyes, the toes and every finger
+local are bit-identical on every frame, and the accepted clavicle frames are bit-identical
+to D2b's. The eight cached `*observations.jsonl` are byte-identical to the delivered
+build's: nothing re-extracted and nothing re-detected.
+
+**P4 met.** Rejected fractions 1.3 %, 8.7 % (subject 0) and 3.3 %, 2.7 % (subject 1); run
+lengths 1–5 against the theorem's bound of 6.
+
+**P5 met**, above. **P7 met**: every committed D2 and D2b figure reproduces to **0.000 mm**
+through the pass-through rule.
+
+### 15.8 Synthetic truth, which is the selector
+
+I7's `fk_trajectory` (stride 3, 28 frames × 2 subjects per seed), the real record builder,
+the real `reconstruct_multiview`, the real converter, **20 noise seeds** of I8's
+`heavy_tail_frame_correlated` at our own detector's measured amplitude. Truth is the
+converter's own output on the noise-free landmarks. 2240 clavicle frames per arm; every arm
+sees the *same* noisy positions, so the denominators are identical by construction.
+
+| arm | median | p95 | max | on the 40 rejected frames (med / p95 / max) | attenuation | lag |
+|---|---|---|---|---|---|---|
+| D2b (pass-through) | 9.41° | 54.85° | 90.40° | 36.34 / 80.71 / 90.40 | −2.1855 | −1.5 |
+| **D2c** | **9.40°** | **52.70°** | **89.10°** | **28.02 / 62.57 / 66.62** | −2.1855 | −1.5 |
+| CONTROL over-smoother, window 27 | 8.55° | 43.82° | 85.29° | 22.99 / 62.44 / 67.48 | −0.2163 | −2.0 |
+| CONTROL ceiling 1.0°/frame | 9.21° | 31.17° | 65.52° | 25.70 / 38.70 / 64.80 | −0.4196 | −3.0 |
+| CONTROL step test | 9.40° | 53.02° | 90.40° | 30.11 / 80.71 / 90.40 | −2.1855 | −1.5 |
+
+On the **clean** fixture the true clavicle peak is **1.3837°/frame = 41.5°/s**, a 19.3×
+margin under the ceiling; D2c rejects 0 frames, the track is bit-identical to no-reject,
+attenuation is 0.0000 and lag 0. The 0.0446° "error" floor there is float32 `arccos` noise
+on identical quaternions, not an error.
+
+**The two controls that carry the argument, on clean input:** the over-smoother replaces
+every frame, destroys **63.5 %** of the true clavicle peak and reads a lag of −0.5; the
+1.0°/frame ceiling fires on **10** true frames and destroys 14.2 %. Both would sail through
+"frames over the ceiling", which is exactly why that figure is reported and never banded.
+
+**P9 met on every statistic, and the interesting row is P9d.** The pooled max improves only
+89.10 from 90.40, because the worst *error* frame is a reachable one the reject does not and
+should not touch. On the 40 frames the reject does touch — scored identically on all five
+arms — the max falls **90.40 → 66.62°** and the p95 **80.71 → 62.57°**. The step test on
+the same 40 frames leaves both at D2b's values, because it accepts the plateau.
+
+**P10 met, and the figure needs its caveat.** Attenuation on the noisy arm is negative
+(−2.19) on *every* arm that is not a filter: noise makes the clavicle move faster than
+truth, so "attenuation" measures the noise, not the rule. The band that bites is the clean
+one, where D2c is exactly 0 and the over-smoother is 0.6352.
+
+**P14 and P15 met.** A body yawing at a pirouette's 12°/frame (360°/s) fires neither
+variant; at a skater's 45°/frame (1350°/s) the world-measured variant rejects **44 of 56**
+frames and the local one still rejects **none** — the head lane's lesson, demonstrated
+rather than asserted, on a clavicle held perfectly still. The step test rejects 17 frames
+where reachability rejects 25, and **9** of the frames it accepts are ones reachability
+rejects: the transitions caught, the wrong plateau kept.
+
+**The GO/NO-GO, and the honest thing about it.** Pooled over 20 seeds the synthetic arm puts
+**2.01 %** of clavicle-chain steps over the ceiling against the real take's 3.7–4.5 %. But
+the per-seed counts are `[6, 38, 1, 0, 0, 0, 18, 0, 0, 23, 4, 7, 0, 22, 4, 0, 5, 0, 2, 0]`
+— **9 of 20 seeds contain no flip at all**, and one seed contains a quarter of them. The
+phenomenon is a heavy-tail event: a flip needs a tail draw to land on a shoulder while the
+lever is short, and a 28-frame take usually contains none. The five seeds the brief asked
+for would have been one seed's number; that is why this ran at 20, and the spread is in the
+report rather than smoothed over.
+
+### 15.9 Three predictions the code refuted, and one band that could not be read
+
+**P11 FAILED as pre-registered, and the band is not interpretable on the arm it was written
+against.** On the noisy arm the lag sweep reads −1.5 frames for D2b, D2c *and* the step
+test alike — it is a property of the noisy positions, not of any rule. On the clean fixture,
+where a phase question is answerable, D2b and D2c both read **0** and the over-smoother
+reads −0.5. Both readings are in the report as `P11a` and `P11b`; **neither is a substitute
+for the FAIL**, and the band is left exactly as it was written. What can honestly be
+claimed is the weaker statement: *D2c adds no phase of its own* — its lag is identical to
+D2b's to the frame on the noisy arm and identical to zero on the clean one.
+
+**P6 REFUTED, and the reason is the round trip's own self-reference.** Pass 2 does not
+reject nothing: it rejects 12 and 4 frames. With the reject switched off for pass 2 alone,
+its raw clavicle steps peak at **33.52°** and **33.37°** — an order of magnitude below the
+real capture's 139–164°, and still over the ceiling. The cause: `landmarks_from_fk` writes
+the rig's **UpperArm origins** into the `left_shoulder` / `right_shoulder` slots, and the
+converter builds the **torso frame** from exactly those two landmarks. So a clavicle the
+reject replaced moves the arm roots, which moves the frame pass 2 measures the clavicle's
+*local* rotation against, and the local picks up a jumping twist while the arm root itself
+barely moves. The round-trip statistic is untroubled: canonical 0.51 → 0.55 and 0.08 → 0.08
+mm, sized 0.07 → 0.07 and 0.04 → 0.05. **The round trip cannot see this step**, which is
+§7's self-reference blindness in miniature, and it is the second half of P6's correction to
+the brief: not only can it not reproduce D2b to 0.000 mm, it cannot serve as a "the reject
+fires zero times" check either.
+
+**The brief's 5°/frame low-ceiling control is inert here**, pre-registered as P13 before the
+run and confirmed by it: the fixture's true clavicle peak is 1.38°/frame, so a 5°/frame
+ceiling fires on nothing and the must-fail control would have *passed*. 1.0°/frame was
+substituted and both are reported. The general lesson: **a reject ceiling's "no gate a
+constant can pass" demonstration needs true motion faster than the constant.**
+
+### 15.10 The oracle, and the arms nothing here touches
+
+**MAMMA's own collar → shoulder direction**, through the identical ceiling — the floor a
+real clavicle sequence shows on this take. It reports and selects nothing; it is a **2-DoF
+direction** step where ours is a 3-DoF rotation step including twist, and the two never
+share an axis.
+
+| | median | p95 | max | over the ceiling | collar→shoulder |
+|---|---|---|---|---|---|
+| subj 0, left / right | 2.41° / 1.61° | 4.79° / 4.37° | 5.44° / 4.96° | **0 / 0** of 149 | 146 / 128 mm |
+| subj 1, left / right | 1.59° / 1.90° | 5.25° / 5.49° | 5.88° / 6.73° | **0 / 0** of 149 | 146 / 128 mm |
+
+A real clavicle sequence on this footage never comes within a factor of four of the ceiling.
+That is what makes 139–164° a defect rather than a performance.
+
+**Rung 11**, absolute capture world, MAMMA's `pred_joints`, the scoreboard's own statistic,
+paired moving-block bootstrap on identical draws, D2b → D2c: subject 0 canonical arms
+83.72 → 83.62 (margin 0.13 [0.00, 2.16], p 0.26), legs 58.62 → 58.62 (0.00, exactly), all
+15 joints 71.30 → 71.30; subject 1 arms 68.34 → 68.29, legs 63.54 → 63.54, all 67.92 →
+67.82. Nothing moves, which is the expectation: the reject touches a few percent of frames.
+**Arm B** (MAMMA's joints in) is *bit-identical* on both rigs and both subjects — that input
+contains no unreachable clavicle frame at all, which is its own small oracle.
+
+**I6, the silhouette** — reported, never banded, on the only reference in this lane that is
+not another model. Median IoU over the eight camera-subject cells **0.5191 (D2b) →
+0.5207 (D2c)**, up in 7 of 8. MAMMA's own mesh through our scoring path is unchanged to
+0.000000, so the two runs are comparable. It is a small rise and it is *not* evidence for
+D2c: 2 mm of arm on 8 % of frames is inside this instrument's noise.
+
+### 15.11 The picture, which is what priced the pop correctly in the first place
+
+`artifacts/compare/d2-clavicle/jitter-d2c/d2c-zoom-subject01-f047-050.png` and
+`d2c-contact-sheet-subject01-LeftShoulder.png` — subject 1, camera A001, frames 44–54, D2b
+on top and D2c beneath, rendered through `tools/compare/d2_jitter_sheet.py`'s own overlay
+(its module-level paths rebound, not edited), which sets the scene fps from the track before
+the glTF import.
+
+**What the eye sees:** in the D2b row every tile from f47 to f50 is boxed red — 39.3°, then
+27.6°, 28.5°, 29.7° — and the outstretched arm jerks unevenly through them, the shoulder
+buckling as it goes; in the D2c row the same four frames carry an identical, even 24.5° per
+frame, the arm sweeps down through the same range in one continuous motion, and the shoulder
+holds its shape. The steps the reject removed are the *unevenness*, not the travel.
+
+### 15.12 What D2c is blind to
+
+* **The median step, which is the lever.** D2c removes unreachable transitions, not the
+  noise that produces them. The typical frame-to-frame clavicle turn is unchanged to two
+  decimal places, and it is 1.5–1.9° because the pivot is 100–160 mm from the landmark. That
+  is D5's, and nothing here shortens the wait for it.
+* **A wrong plateau that is reachable.** A physical reject can only see physics violations.
+  A clavicle that is 30° wrong and stays there is invisible to it by construction, and no
+  band in this gate would notice.
+* **The arms below the clavicle.** Their own landmark noise is untouched; the residual 14
+  and 13 over-ceiling frames are `UpperArm` and `LowerArm`.
+* **Whatever the synthetic fixture does not contain** — calibration error, camera sync, soft
+  tissue — and specifically **its clavicle is slower than the real take's** (true peak
+  1.38°/frame against a real-take median of 1.5–1.9). "The ceiling never fires on true
+  motion" is established above *this fixture's* clavicle and not above a sprinter's. The
+  MAMMA oracle above is the only reading of a *real* clavicle's rate here, and it agrees.
+* **The fixture's length.** 28 frames × 2 subjects per seed. The over-smoother's window 27
+  is close to a global parabola on it, and the flip phenomenon is present in only half the
+  seeds.
+* **The round trip**, which is structurally unable to score this step (§15.9).
+* **The silhouette's arm share**, which is D6's.
+
+### 15.13 In plain language
+
+The collarbone fix put the arm in a much better place and made it travel there badly. On
+four frames of the delivered take the arm did something no shoulder can do — turning 164
+degrees between one frame and the next, about five thousand degrees a second — and on
+another seventy-odd it moved faster than a human joint can. A score that measures *where*
+the arm ends up prices all of that at zero, because on both sides of the jump the arm is
+roughly where it should be.
+
+This step throws those frames away. It asks, of each frame, whether a real collarbone could
+have got there from the last frame it believed, at 800 degrees a second — the same speed
+limit the head already uses — and if not it draws a smooth line across the gap and re-solves
+the elbow, wrist and hand so they still land on what the cameras saw. Frames it believes are
+passed through untouched, bit for bit. Impossible frames: 40 and 33 before, **14 and 13**
+after, and none at all on the collarbones themselves. The worst single frame goes from 164
+degrees to 26.
+
+Two things are worth knowing. The everyday shake is **not** fixed, and was never going to
+be: it comes from measuring the collarbone's direction over a 10–16 cm distance instead of
+40, and the typical frame-to-frame wobble is identical before and after, to two decimal
+places. And the speed limit itself was chosen from anatomy, never from data: it was tested
+on a synthetic performer whose true pose we know exactly, where it correctly does nothing at
+all, and against two deliberately wrong answers run through the same code — a heavy smoother
+that throws away two thirds of the performer's real motion, and a limit set below what this
+body actually does, which throws away a seventh. The research fitter we compare against
+never exceeds a quarter of the limit on this footage, which is what makes 164 degrees a
+fault and not a performance.
