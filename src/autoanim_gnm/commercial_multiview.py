@@ -232,6 +232,12 @@ class ReconstructionDiagnostics:
     # Per-subject ball-of-foot triangulation, the evidence behind the foot
     # orientation. Absent means the feet fell back to the torso frame.
     toe_triangulation: tuple[dict[str, Any], ...] = ()
+    # D7. Per-subject `Spine1` triangulation -- the evidence behind the pelvis frame --
+    # and per-subject whether `Hips` took that frame or fell back to the trunk line.
+    # A fallback is the pre-D7 behaviour: the whole trunk as one rigid block, with the
+    # root offset riding the lean. It must never be silent.
+    spine_triangulation: tuple[dict[str, Any], ...] = ()
+    pelvis_frame: tuple[dict[str, Any], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -258,6 +264,8 @@ class ReconstructionDiagnostics:
             "contact_frames": [list(value) for value in self.contact_frames],
             "head_orientation": [dict(value) for value in self.head_orientation],
             "toe_triangulation": [dict(value) for value in self.toe_triangulation],
+            "spine_triangulation": [dict(value) for value in self.spine_triangulation],
+            "pelvis_frame": [dict(value) for value in self.pelvis_frame],
         }
 
 
@@ -1457,6 +1465,185 @@ def _leg_root_offset(
     return _rotate_vector(hips_world, mid)
 
 
+# ------------------------------------------------------------------- D7: the pelvis frame
+#
+# THE REST PELVIS, AS A CONVENTION AND NOT AS A FACT -- read this before changing it.
+#
+# `Hips` used to take the TRUNK line (neck - hip midpoint) for its up axis, exactly as
+# `Spine`, `Chest` and `UpperChest` do, so the whole trunk was one rigid block and
+# `_leg_root_offset`'s `R_hips . mid` rode the lean. On the fixture's own clips a rigid
+# pelvis departs from that trunk line by 26.0 / 32.8 deg median / p95 on the squat clip's
+# bent frames (correlation +0.93 with tilt) and 3.9-8.7 deg on the upright ones.
+#
+# SOMA-77's `Spine1` (index 1) is a DIRECT CHILD of `Hips` (index 0), as are `LeftLeg`
+# (67) and `RightLeg` (72). So `Spine1 - root` and `Spine1 - mid(hips)` rotate rigidly
+# with the pelvis and a Kabsch fit of the three rest offsets recovers the pelvis rotation
+# EXACTLY on noiseless input (residual 4.2e-8 m, `tools/compare/d7_pelvis_synthetic.py`).
+# `Spine2` is a child of `Spine1` and therefore carries lumbar flexion (14.5 / 20.9 deg
+# median / p95 on the squat clip); it is a LUMBAR direction, reported and never shipped.
+#
+# THE VECTORS BELOW ARE A CONVENTION. `src/autoanim_gnm/data/somaskel77-v1.json` carries
+# names, parents and a coordinate system and NO rest geometry -- the plan card is wrong
+# about that. The rest lives per clip in `.cache/autoanim_gnm/gem-x/outputs/*/
+# soma_motion.npz` and is PER PERFORMER: five full-body clips' pelvis source frames differ
+# by up to 10.03 deg. The delivered performer's own SOMA rest is unobservable, so these
+# are the component-wise MEDIAN over those five rests, re-normalised. Third-party schema
+# (GEM-X / Kimodo somaskel77). MAMMA-FREE: no MAMMA file, `ma_cap` output, SMPL-X fit or
+# report computed from one enters them. Derivation and spread:
+# `artifacts/compare/d7-pelvis-frame/rest-pelvis-constants.json`,
+# `docs/reviews/pelvis-frame-2026-09-04.md`.
+#
+# WHAT A RESIDUAL COSTS. A leftover pitch `delta` between this convention and the
+# performer's own pelvis moves the root fore/aft by `|mid| . sin(delta)` with `|mid|` about
+# 80 mm -- on EVERY frame, upright ones included. At the measured spread that is 0.6-2.6 mm
+# for the mid-hips lever. It is a constant, and a rigid fit cannot see a constant.
+#
+# THE AXES. SOMA-77 publishes right-handed, +Y up, +Z forward; so does this rig, and +X is
+# the anatomical left in both. The capture-to-rig change of basis in
+# `positions_to_body_track` is exactly the inverse of the SOMA-to-capture rotation the
+# fixture applies, so SOMA REST AXES ARE RIG AXES and these vectors need no conversion.
+SOMA77_REST_PELVIS_UP = (-0.0036018134417667037, 0.9928183854915898, 0.11957708965267391)
+SOMA77_REST_HIPMID_TO_SPINE1 = (-0.003113853958207582, 0.9922427141575809, -0.12427670785277636)
+SOMA77_REST_HIP_ACROSS = (0.9999986844845044, -0.0015715732215503752, 0.00040148084638751965)
+SOMA77_REST_PELVIS_TEMPLATE_M = (
+    (-0.00014224140613805503, 0.03922509402036667, 0.004722291603684425),   # root -> Spine1
+    (0.09644327312707901, -0.05622021108865738, 0.017420830205082893),      # root -> LeftLeg
+    (-0.0960559993982315, -0.055917683988809586, 0.017343545332551003),     # root -> RightLeg
+)
+
+# Which construction ships. SELECTED ON SYNTHETIC TRUTH ONLY, on the NOISY arm -- the clean
+# arm cannot select, because every rigid candidate is exact on it by construction. The
+# MAMMA arm reported beside it and selected nothing.
+# PROVENANCE: `tools/compare/d7_pelvis_synthetic.py` ->
+# `artifacts/compare/d7-pelvis-frame/synthetic.json`.
+PELVIS_FRAME_SOURCE = "C_kabsch_pelvis"
+
+# Temporal window on the pelvis FRAME, smoothed as a rotation in the tangent space about
+# the take's mean -- the same treatment `_thorax_frames` applies, and for the same reason:
+# a frame is a NONLINEAR function of its landmarks, so smoothing the points does not smooth
+# the frame. 0 means none.
+# PROVENANCE: synthetic truth, the same sweep. A window optimises exactly the quantity the
+# sweep measures, so it is reported with its LAG and its peak ATTENUATION and it proves
+# nothing about the pelvis frame itself.
+PELVIS_SMOOTHING_FRAMES = 0
+
+# Below this fraction of frames with a resolved spine point the WHOLE subject falls back to
+# the torso frame with a diagnostics status. Deliberately a whole-subject decision: a
+# per-frame flip between a spine-derived and a trunk-derived pelvis moves `R_hips . mid` by
+# tens of millimetres in one frame and spikes the root. Engineering limit; nothing is
+# fitted to it.
+PELVIS_MINIMUM_RESOLVED_FRACTION = 0.5
+
+
+def _pelvis_world_frames(
+    points_rig_y_up_m: np.ndarray,
+    spine1_rig_y_up_m: np.ndarray,
+    *,
+    mode: str | None = None,
+    smoothing_frames: int | None = None,
+) -> tuple[np.ndarray | None, dict[str, Any]]:
+    """`Hips`' own world rotation per frame from the PELVIS's landmarks, or ``None``.
+
+    Returns ``([frame, 4] xyzw, report)``. ``None`` restores the pre-existing behaviour --
+    `Hips` takes the trunk line -- which is not a neutral default but the very defect this
+    closes, so every path out of here carries a status the diagnostics publish.
+
+    Both inputs are in the RIG's Y-up world, i.e. after `positions_to_body_track`'s change
+    of basis. Gaps in the spine point are filled by linear interpolation over frames,
+    exactly as `_fill_and_smooth_positions` fills the body joints; a subject with too few
+    resolved frames falls back WHOLE, never frame by frame.
+
+    Deliberately module level and called by bare name, exactly as :func:`_joint_origin` and
+    :func:`_leg_root_offset` are, so an instrument can substitute it and run every control
+    -- thorax-as-pelvis, a world vertical, the lumbar directions -- through the identical
+    code path rather than a re-implementation of it.
+    """
+
+    mode = PELVIS_FRAME_SOURCE if mode is None else mode
+    smoothing_frames = (
+        PELVIS_SMOOTHING_FRAMES if smoothing_frames is None else smoothing_frames
+    )
+    points = np.asarray(points_rig_y_up_m, dtype=np.float64)
+    spine = np.asarray(spine1_rig_y_up_m, dtype=np.float64)
+    frames = len(points)
+    if spine.shape != (frames, 3):
+        raise CommercialMultiviewError("Spine positions must be [frame, 3]")
+    valid = np.isfinite(spine).all(axis=1)
+    resolved = float(valid.mean())
+    if resolved < PELVIS_MINIMUM_RESOLVED_FRACTION or int(valid.sum()) < 2:
+        return None, {
+            "status": "fell_back_to_torso_frame",
+            "reason": (
+                f"only {resolved:.3f} of frames carry a resolved Spine1 point, below "
+                f"PELVIS_MINIMUM_RESOLVED_FRACTION={PELVIS_MINIMUM_RESOLVED_FRACTION}; "
+                "the whole subject falls back rather than switching definition per frame"
+            ),
+            "resolved_fraction": resolved,
+            "mode": mode,
+        }
+    filled = spine.copy()
+    axis = np.arange(frames, dtype=np.float64)
+    for component in range(3):
+        filled[:, component] = np.interp(axis, axis[valid], spine[valid, component])
+
+    root = points[:, JOINT_INDEX["root"]]
+    left_hip = points[:, JOINT_INDEX["left_hip"]]
+    right_hip = points[:, JOINT_INDEX["right_hip"]]
+    hip_mid = 0.5 * (left_hip + right_hip)
+    hip_across = left_hip - right_hip
+
+    quaternions = np.zeros((frames, 4), dtype=np.float64)
+    if mode == "C_kabsch_pelvis":
+        template = np.asarray(SOMA77_REST_PELVIS_TEMPLATE_M, dtype=np.float64)
+        for frame in range(frames):
+            observed = np.stack(
+                (filled[frame] - root[frame],
+                 left_hip[frame] - root[frame],
+                 right_hip[frame] - root[frame])
+            )
+            u, _, vt = np.linalg.svd(template.T @ observed)
+            sign = float(np.sign(np.linalg.det(vt.T @ u.T)))
+            rotation = vt.T @ np.diag((1.0, 1.0, sign)) @ u.T
+            quaternions[frame] = Rotation.from_matrix(rotation).as_quat()
+    else:
+        if mode == "A_root_to_spine1":
+            source, target = SOMA77_REST_PELVIS_UP, filled - root
+        elif mode == "B_hipmid_to_spine1":
+            source, target = SOMA77_REST_HIPMID_TO_SPINE1, filled - hip_mid
+        else:
+            raise CommercialMultiviewError(f"unknown pelvis frame source {mode!r}")
+        for frame in range(frames):
+            quaternions[frame] = _frame_alignment(
+                source, SOMA77_REST_HIP_ACROSS, target[frame], hip_across[frame]
+            )
+
+    if smoothing_frames and smoothing_frames > 1 and frames >= smoothing_frames:
+        from .head_orientation import log_so3, orthonormalise, rodrigues
+
+        matrices = Rotation.from_quat(quaternions).as_matrix()
+        mean = orthonormalise(matrices.mean(axis=0)[None])[0]
+        tangent = log_so3(np.einsum("nij,kj->nik", matrices, mean))
+        window = smoothing_frames if smoothing_frames % 2 else smoothing_frames - 1
+        tangent = savgol_filter(
+            tangent, window_length=window, polyorder=2, axis=0, mode="interp"
+        )
+        smoothed = orthonormalise(np.einsum("nij,jk->nik", rodrigues(tangent), mean))
+        quaternions = Rotation.from_matrix(smoothed).as_quat()
+
+    # Keep the quaternion path continuous; `_set_world` reads one frame at a time and a
+    # sign flip between frames would show up as a 360 deg step in every consumer.
+    for frame in range(1, frames):
+        if float(np.dot(quaternions[frame], quaternions[frame - 1])) < 0.0:
+            quaternions[frame] *= -1.0
+    return quaternions, {
+        "status": "solved",
+        "mode": mode,
+        "smoothing_frames": int(smoothing_frames),
+        "resolved_fraction": resolved,
+        "interpolated_frames": int(frames - int(valid.sum())),
+    }
+
+
 def _joint_origin(
     world: np.ndarray,
     frame: int,
@@ -1610,6 +1797,8 @@ def positions_to_body_track(
     provenance_sha256: str,
     head_world_rotations: np.ndarray | None = None,
     toe_world_z_up_m: np.ndarray | None = None,
+    spine_world_z_up_m: np.ndarray | None = None,
+    pelvis_report_out: dict[str, Any] | None = None,
     skeleton: HumanoidSkeleton | None = None,
 ) -> BodyTrack:
     """Convert triangulated positions into a rig track.
@@ -1635,6 +1824,15 @@ def positions_to_body_track(
     neck and both eyes take the torso's frame, which makes head orientation a **constant**.
     That default is retained only so existing callers are unaffected; it is not a good
     head.
+
+    ``spine_world_z_up_m`` is ``[frame, 3]``, SOMA-77's ``Spine1`` triangulated under the
+    pipeline's own association, in the SAME world as the positions. Supplying it gives
+    ``Hips`` its own frame from the PELVIS's landmarks (D7) instead of the trunk line, so
+    the trunk is no longer one rigid block and ``_leg_root_offset`` no longer rides the
+    lean. ``None`` restores the previous behaviour **bit for bit** -- the branch is one
+    line and nothing else in this function moves -- and that fallback is a defect, not a
+    neutral default, so ``pelvis_report_out`` (a dict this function fills in when given)
+    carries the status the diagnostics publish. See :func:`_pelvis_world_frames`.
 
     When rotations are supplied, **the whole head-on-torso rotation is placed on `Head`**
     and `Neck` keeps the torso frame. Distributing it across the neck chain would look
@@ -1684,6 +1882,23 @@ def positions_to_body_track(
             raise CommercialMultiviewError("Toe positions must be [frame, 2, 3]")
         toes = toes[..., (0, 2, 1)].copy()
         toes[..., 2] *= -1.0
+    # D7. `Hips`' own frame, or None -- in which case every line below is exactly what it
+    # was before D7 and the delivered track is bit-identical.
+    pelvis_world = None
+    pelvis_report: dict[str, Any] = {
+        "status": "not_attempted",
+        "reason": "no spine landmarks supplied; Hips takes the trunk line",
+    }
+    if spine_world_z_up_m is not None:
+        spine = np.asarray(spine_world_z_up_m, dtype=np.float64)
+        if spine.shape != (frames, 3):
+            raise CommercialMultiviewError("Spine positions must be [frame, 3]")
+        spine = spine[..., (0, 2, 1)].copy()
+        spine[..., 2] *= -1.0
+        pelvis_world, pelvis_report = _pelvis_world_frames(points, spine)
+    if pelvis_report_out is not None:
+        pelvis_report_out.clear()
+        pelvis_report_out.update(pelvis_report)
     if head_world_rotations is not None:
         head_rotations = np.asarray(head_world_rotations, dtype=np.float64)
         if head_rotations.shape != (frames, 3, 3):
@@ -1709,6 +1924,13 @@ def positions_to_body_track(
         # degrees; +X is the anatomical left in the convention the skeleton publishes.
         # docs/reviews/facing-fix-2026-09-02.md.
         hips_world = _frame_alignment((0.0, 1.0, 0.0), (1.0, 0.0, 0.0), torso_up, hip_across)
+        # D7, and it is deliberately THE ONLY line that changes inside this loop. With no
+        # spine landmark `pelvis_world` is None and the trunk line above stands, so a
+        # legacy caller's track is bit-identical -- which `tests/test_pelvis_frame.py`
+        # asserts. `_set_world` normalises its argument IN PLACE, so this hands it a copy
+        # rather than a row of the pelvis array.
+        if pelvis_world is not None:
+            hips_world = pelvis_world[frame].copy()
         torso_world = _frame_alignment((0.0, 1.0, 0.0), (1.0, 0.0, 0.0), torso_up, shoulder_across)
         # Read the hips' rest height from the skeleton rather than repeating it.
         # It was written as a literal (0, 0.98, 0), duplicating body.py's canonical
@@ -2111,6 +2333,64 @@ def _toe_world_for_subject(
     }
 
 
+def _spine_world_for_subject(
+    cameras: Sequence[CalibratedCamera],
+    spine_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None,
+    assignment: np.ndarray,
+    frames: int,
+    *,
+    minimum_confidence: float,
+    pixel_scale: float,
+) -> tuple[np.ndarray | None, dict]:
+    """Triangulate SOMA-77's ``Spine1`` under the pipeline's own association.
+
+    ``[frame, 3]``, NaN where a frame does not resolve -- `_pelvis_world_frames` fills
+    those by interpolation, or falls the WHOLE subject back if there are too few.
+
+    Uses `triangulate_point` at production settings, exactly as
+    :func:`_toe_world_for_subject` does, so the lower spine enjoys no gate the mapped body
+    joints do not. `Spine2` is deliberately NOT consumed here: it is a child of `Spine1`
+    and carries lumbar flexion, which makes it a LUMBAR direction and not a pelvis one
+    (14.5 / 20.9 deg median / p95 of flexion on the fixture's squat clip). It is measured
+    by the gate as a reported arm and never enters the delivery.
+    """
+
+    if spine_landmarks_by_camera is None:
+        return None, {"status": "not_attempted", "reason": "no spine landmarks supplied"}
+    out = np.full((frames, 3), np.nan, dtype=np.float64)
+    support_total = 0
+    for frame in range(frames):
+        points = np.full((len(cameras), 2), np.nan)
+        weights = np.zeros(len(cameras))
+        for camera in range(len(cameras)):
+            person = int(assignment[frame, camera])
+            if person < 0:
+                continue
+            try:
+                sample = np.asarray(
+                    spine_landmarks_by_camera[camera][frame][person], dtype=np.float64
+                )
+            except (IndexError, TypeError, ValueError):
+                continue
+            if sample.shape != (3,):
+                continue
+            x, y, confidence = sample
+            points[camera], weights[camera] = (x, y), confidence
+        result = triangulate_point(
+            cameras, points, weights,
+            minimum_confidence=minimum_confidence, pixel_scale=pixel_scale,
+        )
+        if result is not None:
+            out[frame] = result.position_world_m
+            support_total += len(result.used_camera_indices)
+    resolved = float(np.isfinite(out).all(axis=1).mean())
+    return out, {
+        "status": "solved" if resolved > 0.0 else "unresolved",
+        "resolved_fraction": resolved,
+        "mean_camera_support": support_total / max(1.0, float(frames)),
+    }
+
+
 def _solve_head_for_subject(
     cameras: Sequence[CalibratedCamera],
     observations_by_camera: Sequence[Sequence[dict[str, Any]]],
@@ -2221,6 +2501,11 @@ def reconstruct_multiview(
     head_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None = None,
     head_landmark_names: Sequence[str] = (),
     toe_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None = None,
+    # D7. Per-camera SOMA-77 `Spine1` landmarks, indexed [camera][frame][person] -> (3,)
+    # of (x, y, confidence) in the same pixel space as the observations. Supplying them
+    # gives `Hips` its own frame from the pelvis instead of the trunk line; omitting them
+    # keeps the previous behaviour bit for bit, and the diagnostics say which happened.
+    spine_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None = None,
 ) -> tuple[tuple[BodyTrack, ...], ReconstructionDiagnostics, np.ndarray, np.ndarray]:
     """Reconstruct every subject from calibrated multiview observations.
 
@@ -2414,6 +2699,8 @@ def reconstruct_multiview(
     recovered_counts: list[float] = []
     head_reports: list[dict[str, Any]] = []
     toe_reports: list[dict[str, Any]] = []
+    spine_reports: list[dict[str, Any]] = []
+    pelvis_reports: list[dict[str, Any]] = []
     for subject in range(subject_count):
         # Recover single-ray joints from limb-length and temporal constraints
         # before falling back to interpolation, so an evidence-based estimate is
@@ -2450,6 +2737,16 @@ def reconstruct_multiview(
             pixel_scale=pixel_scale,
         )
         toe_reports.append(toe_report)
+        spine_world, spine_report = _spine_world_for_subject(
+            scaled_cameras,
+            spine_landmarks_by_camera,
+            head_assignment[:, subject],
+            frames,
+            minimum_confidence=minimum_confidence,
+            pixel_scale=pixel_scale,
+        )
+        spine_reports.append(spine_report)
+        pelvis_report: dict[str, Any] = {}
         # D3. ONE rest skeleton per performer, built from THIS performer's own
         # triangulated capture -- the same `positions` array the converter is handed and
         # the same array the build writes to disk, so an instrument that re-derives the
@@ -2470,8 +2767,11 @@ def reconstruct_multiview(
             ).hexdigest(),
             head_world_rotations=head_rotations,
             toe_world_z_up_m=toe_world,
+            spine_world_z_up_m=spine_world,
+            pelvis_report_out=pelvis_report,
             skeleton=performer,
         )
+        pelvis_reports.append(pelvis_report)
         tracks.append(track)
         contacts.append(
             (int(np.sum(track.foot_contacts[:, 0])), int(np.sum(track.foot_contacts[:, 1])))
@@ -2496,6 +2796,8 @@ def reconstruct_multiview(
         contact_frames=tuple(contacts),
         head_orientation=tuple(head_reports),
         toe_triangulation=tuple(toe_reports),
+        spine_triangulation=tuple(spine_reports),
+        pelvis_frame=tuple(pelvis_reports),
     )
     # `smoothed` is post-interpolation and Savitzky-Golay filtered, so it cannot
     # measure raw triangulation noise. `world` is what triangulation actually

@@ -209,6 +209,12 @@ _SOMA77_HEAD_INDICES = (6, 7, 8, 9, 10)
 # 12.8-63.3 % against body controls at 2.5-4.1 %, while the ball survives at 5.0-9.6 %.
 # docs/FEET_MEASURED.md section 1.
 _SOMA77_TOE_INDICES = (70, 75)
+# D7. SOMA-77's `Spine1` -- the FIRST lumbar joint and a DIRECT CHILD of `Hips`, so it is
+# rigid to the pelvis and gives `Hips` a frame of its own instead of the trunk line.
+# `Spine2` (2) is a child of `Spine1` and carries lumbar flexion, so it is a LUMBAR
+# direction and is deliberately not fed to the converter; the gate measures it as a
+# reported arm. docs/reviews/pelvis-frame-2026-09-04.md.
+_SOMA77_SPINE_INDEX = 1
 
 
 def _toe_landmarks(records: list[dict[str, Any]]) -> list[list[Any]]:
@@ -232,6 +238,29 @@ def _toe_landmarks(records: list[dict[str, Any]]) -> list[list[Any]]:
             people.append(
                 np.asarray([marks[index] for index in _SOMA77_TOE_INDICES], dtype=float)
             )
+        out.append(people)
+    return out
+
+
+def _spine_landmarks(records: list[dict[str, Any]]) -> list[list[Any]]:
+    """Per-frame, per-person `Spine1` landmark, or empty when absent.
+
+    `[frame][person] -> (3,)`. Same contract as `_toe_landmarks` and `_head_landmarks`: a
+    detector without `landmarks_soma77` yields empty rows, `Hips` keeps the trunk line,
+    and the run report records that fallback rather than passing it off as a pelvis.
+    """
+
+    import numpy as np
+
+    out: list[list[Any]] = []
+    for record in records:
+        people: list[Any] = []
+        for person in record.get("people", ()):
+            marks = person.get("landmarks_soma77")
+            if not marks or len(marks) <= _SOMA77_SPINE_INDEX:
+                people.append(None)
+                continue
+            people.append(np.asarray(marks[_SOMA77_SPINE_INDEX], dtype=float))
         out.append(people)
     return out
 
@@ -327,6 +356,7 @@ def main() -> int:
     # detector keeps the previous behaviour and the run report says so.
     head_landmarks: list[list[list[Any]]] = []
     toe_landmarks: list[list[list[Any]]] = []
+    spine_landmarks: list[list[list[Any]]] = []
     input_hashes: dict[str, str] = {}
     for camera_name in camera_names:
         video = (arguments.videos / f"{camera_name}.mp4").resolve(strict=True)
@@ -357,6 +387,7 @@ def main() -> int:
         observations.append(records)
         head_landmarks.append(_head_landmarks(records))
         toe_landmarks.append(_toe_landmarks(records))
+        spine_landmarks.append(_spine_landmarks(records))
     rig_value = _camera_rig_from_mamma_fixture(arguments.calibration_yaml.resolve(strict=True))
     rig_path = output / "camera-rig.json"
     write_json(rig_path, rig_value)
@@ -384,6 +415,7 @@ def main() -> int:
         head_landmarks_by_camera=head_landmarks if solvable else None,
         head_landmark_names=HEAD_LANDMARK_NAMES if solvable else (),
         toe_landmarks_by_camera=toe_landmarks if solvable else None,
+        spine_landmarks_by_camera=spine_landmarks if solvable else None,
         subject_count=arguments.subject_count,
         sample_rate_hz=30,
         rest_skeleton=arguments.rest_skeleton,
