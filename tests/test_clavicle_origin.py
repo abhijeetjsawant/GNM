@@ -355,8 +355,12 @@ def test_the_roundtrip_residual_is_root_placement_not_the_clavicle():
     """
     shipped = _round_trip()
     corrected = _round_trip(make_pass2=_make_hip_drop_removed)
-    assert max(shipped[n] for n in ARM_LANDMARKS) > 5.0
-    assert max(corrected[n] for n in ARM_LANDMARKS) <= 1.0, corrected
+    # D2b (2026-09-03) placed the root on the captured hips, so the SHIPPED round trip now
+    # closes, and the control that once attributed the residual to root placement inverts:
+    # removing the hip drop a SECOND time un-corrects the round trip by the same 60-80 mm.
+    # The attribution stands, read the other way round -- the control is now a must-fail.
+    assert max(shipped[n] for n in ARM_LANDMARKS) <= 1.0, shipped
+    assert max(corrected[n] for n in ARM_LANDMARKS) > 5.0, corrected
     for name in LEG_LANDMARKS + ("neck",):
         assert corrected[name] == pytest.approx(0.0, abs=EXACT_MM), name
 

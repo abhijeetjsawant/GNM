@@ -216,6 +216,6 @@ chart. Every rung now carries a chart, ours beside MAMMA's, lower/higher-is-bett
 not a yaw (§2's D1 row carries the corrected gate); repaired by relabelling, delivery rebuilt.
 `THORAX_SMOOTHING_FRAMES` moved 15 → 9 on synthetic truth, the audit is clean, and the head
 gate's fixed 20° band is recorded as near-miscalibrated for the narrower frame (not moved).
-**Next is D2**, the clavicle origin, unblocked by I1 and D1; then D3–D6 in order. Lane H is
+**D2 shipped on 2026-09-03 as three changes** (the clavicle aimed from its own pivot, the root on the captured hips, a physical reachability reject at the clavicle; `docs/reviews/clavicle-origin-2026-09-02.md`), with its costs stated: the silhouette against the photographs fell while every joint instrument improved, and the round trip can no longer score a temporal step. **Next is D3**; the pelvis frame (SOMA-77 carries an unmapped pelvis root and two lower-spine joints) and the shoulder-cap binding are the two handoffs D2 left. Lane H is
 the user's, and I7 handed it a candidate one-frame sync offset on D001. Nothing in this plan
 fits a constant on a MAMMA-derived arm at any point; the MAMMA arm reports and never selects.

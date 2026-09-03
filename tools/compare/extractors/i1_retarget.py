@@ -62,8 +62,11 @@ def x_retarget(_: dict) -> tuple[list, list]:
         figs.append(fig(f"same arms, rig sized to the performer (re-solved), {t}",
                         _g(a, "performer_sized_resolved", "arms"), "mm median", REF_OURS,
                         key=f"sized_arms_{s}",
-                        note="sizing is bit-identical re-solved or replayed: the converter "
-                             "turns rest DIRECTIONS and sizing does not turn them"))
+                        note="re-solved on the sized skeleton. Until D2 (2026-09-02) this was "
+                             "bit-identical to replaying the canonical rotations; since D2 the "
+                             "clavicle is measured from the sized rig's OWN shoulder origin, so "
+                             "re-solved and replayed differ, and the scoreboard's replayed sized "
+                             "arm (rung 11) is no longer this figure"))
         figs.append(fig(f"same legs, rig sized to the performer (re-solved), {t}",
                         _g(a, "performer_sized_resolved", "legs"), "mm median", REF_OURS,
                         key=f"sized_legs_{s}"))
@@ -89,11 +92,15 @@ def x_retarget(_: dict) -> tuple[list, list]:
                          _g(a, "ORACLE_roundtrip_canonical", "legs"), "mm median",
                          "a canonical-proportioned body BY CONSTRUCTION", LOWER,
                          key=f"oracle_legs_{s}"))
-        ctrls.append(fig(f"ORACLE canonical round-trip, arms, {t} (the KNOWN 36-47 mm converter cost)",
+        ctrls.append(fig(f"ORACLE canonical round-trip, arms, {t} (D2's band: at most 5 mm median)",
                          _g(a, "ORACLE_roundtrip_canonical", "arms"), "mm median",
                          "a canonical-proportioned body BY CONSTRUCTION", LOWER,
                          key=f"oracle_arms_{s}",
-                         note="if this DEPARTS from 36-47 mm the instrument is broken, not the pipeline"))
+                         note="read 36-47 mm until D2 (2026-09-02): the clavicle aimed from a synthetic "
+                              "torso anchor. Since D2 + D2b it closes to ~0.5 mm median. Its p95 is "
+                              "NOT a converter figure any more: the round trip rebuilds its torso "
+                              "frame from the upper-arm origins that D2c's temporal reject moves, so "
+                              "the instrument cannot score the temporal step (scored on synthetic truth)"))
         ctrls.append(fig(f"ORACLE round-trip inside arm B, arms, {t}",
                          _g(ba, "ORACLE_roundtrip_from_mamma_solve", "arms"), "mm median",
                          "a canonical body built from arm B's own output", LOWER,

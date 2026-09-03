@@ -80,18 +80,27 @@ def test_round_trip_oracle_is_exact_on_the_legs(solved, synthetic_observations):
         assert float(np.median(err[name])) < 1e-3, name
 
 
-def test_converter_rotations_do_not_depend_on_bone_lengths(synthetic_observations):
-    """Refutes the plan's premise that a replayed sized arm is a LOWER BOUND on a
-    re-solved one: the converter turns rest DIRECTIONS, and sizing does not turn
-    them, so the two arms are the same arm."""
+def test_converter_rotations_depend_on_bone_lengths_only_through_the_clavicle(synthetic_observations):
+    """Until D2 (2026-09-02) this asserted that a re-solve on a sized skeleton returned
+    bit-identical rotations, because every rotation aimed a rest DIRECTION and sizing
+    does not turn one. D2 measures the clavicle from the sized rig's OWN shoulder origin,
+    which sizing does move, so the clavicle chain -- and nothing else -- now depends on
+    the skeleton it is solved on. The scoreboard's replayed sized arm (rung 11) is
+    therefore no longer equivalent to a re-solve; both are reported there."""
     from sized_skeleton import sized_skeleton
     from autoanim_gnm.body import DETAILED_HUMANOID
 
     skel, _ = sized_skeleton(DETAILED_HUMANOID, synthetic_observations)
     canonical = rc.solve(synthetic_observations)
     sized = rc.solve(synthetic_observations, skel)
-    assert np.allclose(np.asarray(canonical.local_rotations_xyzw),
-                       np.asarray(sized.local_rotations_xyzw), atol=1e-12)
+    a = np.asarray(canonical.local_rotations_xyzw)
+    b = np.asarray(sized.local_rotations_xyzw)
+    chain = {DETAILED_HUMANOID.index(f"{side}{part}")
+             for side in ("Left", "Right") for part in ("Shoulder", "UpperArm", "LowerArm", "Hand")}
+    others = [i for i in range(a.shape[1]) if i not in chain]
+    assert np.allclose(a[:, others], b[:, others], atol=1e-12)
+    assert not np.allclose(a[:, sorted(chain)], b[:, sorted(chain)], atol=1e-6), (
+        "the clavicle chain must move with the skeleton it is solved on since D2")
     assert np.allclose(np.asarray(canonical.root_translation_m),
                        np.asarray(sized.root_translation_m), atol=1e-12)
 

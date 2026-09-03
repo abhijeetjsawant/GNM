@@ -119,7 +119,6 @@ def test_the_unknown_list_is_pinned_so_a_new_unaudited_constant_fails(provenance
     unknown = sorted({e["name"] for e in manifest
                       if e["provenance"] == provenance.UNKNOWN})
     assert unknown == [
-        "0.72 * torso_up (clavicle origin)",
         "BOX_PADDING",
         "DEFAULT_WEIGHTS grid extent",
         "ambiguity_margin_px",

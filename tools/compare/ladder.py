@@ -227,7 +227,9 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     """Rung 1: I6's extractor, `tools/compare/extractors/i6_silhouette.py`, wired by the registry owner."""
     sys.path.insert(0, str(ROOT / "tools/compare"))
     from extractors.i6_silhouette import x_silhouette as _x  # noqa: E402
-    return _x(spec)
+    figs, ctrls = _x(spec)
+    f3, c3 = _d2_figures("masks")
+    return figs + f3, ctrls + c3
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -287,7 +289,39 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     sys.path.insert(0, str(ROOT / "tools/compare"))
     from extractors.i1_retarget import x_retarget  # noqa: E402
     f2, c2 = x_retarget(spec)
-    return figs + f2, ctrls + c2
+    f3, c3 = _d2_figures("converter")
+    return figs + f2 + f3, ctrls + c2 + c3
+
+
+def _d2_figures(where: str) -> tuple[list, list]:
+    """D2 / D2b / D2c figures from `tools/compare/extractors/d2_clavicle.py` (the agents' stubs, wired
+    here by the registry owner), routed by what each figure REFERENCES so no rung stacks two axes:
+    the end-to-end scoreboard figures (`rung11`) go to rung 11, the silhouette figures to rung 1, and
+    everything else -- round trips, our-capture placement, arm B, the temporal counts -- to rung 7,
+    the converter. One extractor call, three destinations."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d2_clavicle  # noqa: E402
+    except ImportError:
+        return [], []
+    figs: list = []
+    ctrls: list = []
+    for name in ("x_clavicle", "x_root_placement", "x_clavicle_temporal"):
+        fn = getattr(d2_clavicle, name, None)
+        if fn is None:
+            continue
+        f, c = fn({})
+        figs += f
+        ctrls += c
+
+    def dest(key: str) -> str:
+        if "rung11" in key:
+            return "delivered"
+        if "silhouette" in key:
+            return "masks"
+        return "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
 
 
 def x_delivered(_: dict) -> tuple[list, list]:
@@ -306,7 +340,8 @@ def x_delivered(_: dict) -> tuple[list, list]:
     ctrls = [fig("shoulder span the delivered rig carries", lim.get("shoulder_span_canonical_mm"), "mm",
                  "against measured 346 / 363 and a full SMPL-X shape range topping out near 367", LOWER,
                  key="rig_shoulder_span")]
-    return figs, ctrls
+    f3, c3 = _d2_figures("delivered")
+    return figs + f3, ctrls + c3
 
 
 def x_head(_: dict) -> tuple[list, list]:
@@ -698,6 +733,17 @@ RUNGS: list[dict[str, Any]] = [
 FIGURES = ROOT / "docs/ladder-figures.json"
 VISUALS: dict[str, list[dict]] = {
     "masks": [
+        dict(title="What D2 cost on the photographs: outline overlap before and after",
+             plain="Each camera's own person mask is the reference, the one measurement here that reads pixels of "
+                   "the footage rather than another model. The skeleton is better placed by every joint measure and "
+                   "the mesh bound to it overlaps worse; the discordance lives in what joins them. MAMMA's mesh "
+                   "through the same renderer is the ceiling.",
+             better="higher",
+             bars=[dict(label="Before, performer 0", role="alt", key="d2b_silhouette_iou_before_subject_00"),
+                   dict(label="After, performer 0", role="ours", key="d2b_silhouette_iou_after_subject_00"),
+                   dict(label="Before, performer 1", role="alt", key="d2b_silhouette_iou_before_subject_01"),
+                   dict(label="After, performer 1", role="ours", key="d2b_silhouette_iou_after_subject_01"),
+                   dict(label="MAMMA's mesh, same renderer", role="mamma", key="d2b_silhouette_oracle_subject_00")]),
         dict(title="How much our body outline overlaps the person in the frame",
              plain="Each camera's own person mask is the reference. MAMMA's mesh through the same renderer is the "
                    "best this measurement can reach; a flat rectangle over the person is the wrong answer that must lose.",
@@ -805,6 +851,62 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Fixed rig, performer 1", role="ours", key="canonical_arms_subject_01"),
                    dict(label="Rig sized to performer 1", role="alt", key="sized_arms_subject_01"),
                    dict(label="Converter floor, performer 1", role="control", key="converter_floor_arms_subject_01")]),
+        # ---- D2 / D2b (2026-09-02/03): the clavicle aimed from its own pivot, the root on the captured hips
+        dict(title="D2: where the arm root lands on the delivered character, before and after",
+             plain="Our own capture is the reference, root-relative. Before: the collarbone aimed from a made-up "
+                   "point on the spine. After: aimed from the joint it pivots about, with the rig's hips placed "
+                   "on the captured hips. The legs are shown to prove they did not move.",
+             better="lower",
+             bars=[dict(label="Arms before, performer 0", role="alt", key="d2_delivered_arms_before_subject_00"),
+                   dict(label="Arms after, performer 0", role="ours", key="d2b_delivered_arms_after_subject_00"),
+                   dict(label="Legs after, performer 0", role="ours", key="d2b_delivered_legs_after_subject_00"),
+                   dict(label="Arms before, performer 1", role="alt", key="d2_delivered_arms_before_subject_01"),
+                   dict(label="Arms after, performer 1", role="ours", key="d2b_delivered_arms_after_subject_01"),
+                   dict(label="Legs after, performer 1", role="ours", key="d2b_delivered_legs_after_subject_01")]),
+        dict(title="D2: the converter's own round trip on a canonical body, arms",
+             plain="A body built to the rig's proportions is the reference, so the right answer is zero. Before: "
+                   "the known clavicle cost. The hatched bar is the best any constant on the spine could do, which "
+                   "never reaches the band. After: the rig's own geometry, no constant.",
+             better="lower",
+             bars=[dict(label="Before, performer 0", role="alt", key="d2_roundtrip_arms_before_subject_00"),
+                   dict(label="Best spine constant, performer 0", role="control", key="d2_ctrl_best_scalar_subject_00"),
+                   dict(label="After, performer 0", role="ours", key="d2b_roundtrip_arms_after_subject_00"),
+                   dict(label="Before, performer 1", role="alt", key="d2_roundtrip_arms_before_subject_01"),
+                   dict(label="Best spine constant, performer 1", role="control", key="d2_ctrl_best_scalar_subject_01"),
+                   dict(label="After, performer 1", role="ours", key="d2b_roundtrip_arms_after_subject_01")]),
+        dict(title="D2: the same converter on MAMMA's own joints, arms",
+             plain="MAMMA's rigid skeleton fed through the converter and scored against itself: a separate reference "
+                   "from our capture, never on one axis with it. MAMMA reports here and selects nothing.",
+             better="lower",
+             bars=[dict(label="Before, performer 0", role="alt", key="d2_mammaB_arms_before_subject_00"),
+                   dict(label="After, performer 0", role="mamma", key="d2b_mammaB_arms_after_subject_00"),
+                   dict(label="Before, performer 1", role="alt", key="d2_mammaB_arms_before_subject_01"),
+                   dict(label="After, performer 1", role="mamma", key="d2b_mammaB_arms_after_subject_01")]),
+        dict(title="What D2 cost and D2c gave back: frames where a collarbone or arm joint turns faster than a human joint can",
+             plain="A physical ceiling of 800 degrees per second is the reference. Aiming the collarbone from a pivot "
+                   "only 100 to 160 mm from its landmark turns landmark wander into angle; the hatched bar is the "
+                   "collarbone fix alone. D2c rejects frames a collarbone cannot reach at that speed and re-solves the "
+                   "arm below. MAMMA's collarbones through the same measure never approach the ceiling. The median "
+                   "step is unchanged, which is the lever and not this step's to fix.",
+             better="lower",
+             bars=[dict(label="Before, performer 0", role="alt", key="d2b_temporal_over_ceiling_before_d2_subject_00"),
+                   dict(label="Collarbone fix alone, performer 0", role="control", key="d2b_temporal_over_ceiling_d2_subject_00"),
+                   dict(label="With the reject, performer 0", role="ours", key="d2c_over_ceiling_after_subject_00"),
+                   dict(label="MAMMA's collarbones, performer 0", role="mamma", key="d2c_oracle_mamma_collar_over_ceiling_subject_00"),
+                   dict(label="Before, performer 1", role="alt", key="d2b_temporal_over_ceiling_before_d2_subject_01"),
+                   dict(label="Collarbone fix alone, performer 1", role="control", key="d2b_temporal_over_ceiling_d2_subject_01"),
+                   dict(label="With the reject, performer 1", role="ours", key="d2c_over_ceiling_after_subject_01"),
+                   dict(label="MAMMA's collarbones, performer 1", role="mamma", key="d2c_oracle_mamma_collar_over_ceiling_subject_01")]),
+        dict(title="D2c on synthetic truth: collarbone error on a body whose true motion is known, worst frames",
+             plain="Exact synthetic truth is the reference: our own motion through the real cameras with the "
+                   "detector's measured noise injected, so the right answer is known. The 95th percentile of the "
+                   "collarbone's error is shown; the median is unchanged because the reject touches 2 percent of "
+                   "frames. The hatched bar is a heavy smoother, which scores better here and destroys 64 percent "
+                   "of true peak speed, which is why it is the wrong answer.",
+             better="lower",
+             bars=[dict(label="Before the reject", role="alt", key="d2c_synth_p95_before"),
+                   dict(label="With the reject", role="ours", key="d2c_synth_p95_after"),
+                   dict(label="A heavy smoother", role="control", key="d2c_ctrl_oversmoother_p95")]),
     ],
     "hands": [
         dict(title="The hand fit scored on a camera it never saw, per hand",
@@ -885,6 +987,19 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Welded foot, 1 right", role="control", key="CONTROL_welded_to_shin_zero_articulation_subject_01_R")]),
     ],
     "delivered": [
+        dict(title="D2: the delivered character against MAMMA's joints, arms and legs kept apart",
+             plain="MAMMA's joints are the reference, in absolute world coordinates, so unlike the root-relative "
+                   "charts this one can see where the character actually stands. Agreement with another instrument, "
+                   "not accuracy. The arms improve a lot and the legs a little, as written down before the numbers.",
+             better="lower",
+             bars=[dict(label="Arms before, performer 0", role="alt", key="d2b_rung11_arms_before_subject_00"),
+                   dict(label="Arms after, performer 0", role="ours", key="d2b_rung11_arms_after_subject_00"),
+                   dict(label="Legs before, performer 0", role="alt", key="d2b_rung11_legs_before_subject_00"),
+                   dict(label="Legs after, performer 0", role="ours", key="d2b_rung11_legs_after_subject_00"),
+                   dict(label="Arms before, performer 1", role="alt", key="d2b_rung11_arms_before_subject_01"),
+                   dict(label="Arms after, performer 1", role="ours", key="d2b_rung11_arms_after_subject_01"),
+                   dict(label="Legs before, performer 1", role="alt", key="d2b_rung11_legs_before_subject_01"),
+                   dict(label="Legs after, performer 1", role="ours", key="d2b_rung11_legs_after_subject_01")]),
         dict(title="The delivered character against MAMMA's joints, end to end",
              plain="MAMMA's joints are the reference, at zero, the same reference as the pose rung. The gap between "
                    "the fixed rig and the sized rig is the body; the rest is everything above compounded.",

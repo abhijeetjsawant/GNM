@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-02T18:10:19",
+ "rendered": "2026-09-03T12:43:17",
  "git": {
-  "sha": "48d1ae2",
+  "sha": "18573f1",
   "dirty": true
  },
  "rungs": [
@@ -19,6 +19,39 @@
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
     {
+     "title": "What D2 cost on the photographs: outline overlap before and after",
+     "plain": "Each camera's own person mask is the reference, the one measurement here that reads pixels of the footage rather than another model. The skeleton is better placed by every joint measure and the mesh bound to it overlaps worse; the discordance lives in what joins them. MAMMA's mesh through the same renderer is the ceiling.",
+     "better": "higher",
+     "unit": "IoU, 0-1",
+     "bars": [
+      {
+       "label": "Before, performer 0",
+       "role": "alt",
+       "value": 0.5707
+      },
+      {
+       "label": "After, performer 0",
+       "role": "ours",
+       "value": 0.4951
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "alt",
+       "value": 0.5815
+      },
+      {
+       "label": "After, performer 1",
+       "role": "ours",
+       "value": 0.531
+      },
+      {
+       "label": "MAMMA's mesh, same renderer",
+       "role": "mamma",
+       "value": 0.8679
+      }
+     ]
+    },
+    {
      "title": "How much our body outline overlaps the person in the frame",
      "plain": "Each camera's own person mask is the reference. MAMMA's mesh through the same renderer is the best this measurement can reach; a flat rectangle over the person is the wrong answer that must lose.",
      "better": "higher",
@@ -27,7 +60,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.5846448331552535
+       "value": 0.5207114250844875
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -42,7 +75,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.46596583169740696
+       "value": 0.4787812294111048
       }
      ]
     },
@@ -55,7 +88,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.6504391684863893
+       "value": 0.5896806515232931
       },
       {
        "label": "MAMMA's mesh",
@@ -333,32 +366,207 @@
       {
        "label": "Fixed rig, performer 0",
        "role": "ours",
-       "value": 181.33
+       "value": 50.79
       },
       {
        "label": "Rig sized to performer 0",
        "role": "alt",
-       "value": 85.08
+       "value": 27.19
       },
       {
        "label": "Converter floor, performer 0",
        "role": "control",
-       "value": 30.31
+       "value": 0.07
       },
       {
        "label": "Fixed rig, performer 1",
        "role": "ours",
-       "value": 217.5
+       "value": 30.5
       },
       {
        "label": "Rig sized to performer 1",
        "role": "alt",
-       "value": 91.64
+       "value": 23.75
       },
       {
        "label": "Converter floor, performer 1",
        "role": "control",
-       "value": 35.53
+       "value": 0.05
+      }
+     ]
+    },
+    {
+     "title": "D2: where the arm root lands on the delivered character, before and after",
+     "plain": "Our own capture is the reference, root-relative. Before: the collarbone aimed from a made-up point on the spine. After: aimed from the joint it pivots about, with the rig's hips placed on the captured hips. The legs are shown to prove they did not move.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Arms before, performer 0",
+       "role": "alt",
+       "value": 181.33
+      },
+      {
+       "label": "Arms after, performer 0",
+       "role": "ours",
+       "value": 50.62
+      },
+      {
+       "label": "Legs after, performer 0",
+       "role": "ours",
+       "value": 32.48
+      },
+      {
+       "label": "Arms before, performer 1",
+       "role": "alt",
+       "value": 217.5
+      },
+      {
+       "label": "Arms after, performer 1",
+       "role": "ours",
+       "value": 30.28
+      },
+      {
+       "label": "Legs after, performer 1",
+       "role": "ours",
+       "value": 30.03
+      }
+     ]
+    },
+    {
+     "title": "D2: the converter's own round trip on a canonical body, arms",
+     "plain": "A body built to the rig's proportions is the reference, so the right answer is zero. Before: the known clavicle cost. The hatched bar is the best any constant on the spine could do, which never reaches the band. After: the rig's own geometry, no constant.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Before, performer 0",
+       "role": "alt",
+       "value": 41.57
+      },
+      {
+       "label": "Best spine constant, performer 0",
+       "role": "control",
+       "value": 12.08
+      },
+      {
+       "label": "After, performer 0",
+       "role": "ours",
+       "value": 0.51
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "alt",
+       "value": 47.05
+      },
+      {
+       "label": "Best spine constant, performer 1",
+       "role": "control",
+       "value": 10.62
+      },
+      {
+       "label": "After, performer 1",
+       "role": "ours",
+       "value": 0.08
+      }
+     ]
+    },
+    {
+     "title": "D2: the same converter on MAMMA's own joints, arms",
+     "plain": "MAMMA's rigid skeleton fed through the converter and scored against itself: a separate reference from our capture, never on one axis with it. MAMMA reports here and selects nothing.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Before, performer 0",
+       "role": "alt",
+       "value": 200.32
+      },
+      {
+       "label": "After, performer 0",
+       "role": "mamma",
+       "value": 52.84
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "alt",
+       "value": 219.51
+      },
+      {
+       "label": "After, performer 1",
+       "role": "mamma",
+       "value": 30.8
+      }
+     ]
+    },
+    {
+     "title": "What D2 cost and D2c gave back: frames where a collarbone or arm joint turns faster than a human joint can",
+     "plain": "A physical ceiling of 800 degrees per second is the reference. Aiming the collarbone from a pivot only 100 to 160 mm from its landmark turns landmark wander into angle; the hatched bar is the collarbone fix alone. D2c rejects frames a collarbone cannot reach at that speed and re-solves the arm below. MAMMA's collarbones through the same measure never approach the ceiling. The median step is unchanged, which is the lever and not this step's to fix.",
+     "better": "lower",
+     "unit": "frames of 149 steps",
+     "bars": [
+      {
+       "label": "Before, performer 0",
+       "role": "alt",
+       "value": 32.0
+      },
+      {
+       "label": "Collarbone fix alone, performer 0",
+       "role": "control",
+       "value": 48.0
+      },
+      {
+       "label": "With the reject, performer 0",
+       "role": "ours",
+       "value": 14.0
+      },
+      {
+       "label": "MAMMA's collarbones, performer 0",
+       "role": "mamma",
+       "value": 0.0
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "alt",
+       "value": 11.0
+      },
+      {
+       "label": "Collarbone fix alone, performer 1",
+       "role": "control",
+       "value": 49.0
+      },
+      {
+       "label": "With the reject, performer 1",
+       "role": "ours",
+       "value": 13.0
+      },
+      {
+       "label": "MAMMA's collarbones, performer 1",
+       "role": "mamma",
+       "value": 0.0
+      }
+     ]
+    },
+    {
+     "title": "D2c on synthetic truth: collarbone error on a body whose true motion is known, worst frames",
+     "plain": "Exact synthetic truth is the reference: our own motion through the real cameras with the detector's measured noise injected, so the right answer is known. The 95th percentile of the collarbone's error is shown; the median is unchanged because the reject touches 2 percent of frames. The hatched bar is a heavy smoother, which scores better here and destroys 64 percent of true peak speed, which is why it is the wrong answer.",
+     "better": "lower",
+     "unit": "degrees",
+     "bars": [
+      {
+       "label": "Before the reject",
+       "role": "alt",
+       "value": 54.8474
+      },
+      {
+       "label": "With the reject",
+       "role": "ours",
+       "value": 52.7029
+      },
+      {
+       "label": "A heavy smoother",
+       "role": "control",
+       "value": 43.823
       }
      ]
     }
@@ -635,6 +843,54 @@
    "status": "measured; faces the right way since 2026-09-02 (D1: the naming mirror relabelled at five sites)",
    "visuals": [
     {
+     "title": "D2: the delivered character against MAMMA's joints, arms and legs kept apart",
+     "plain": "MAMMA's joints are the reference, in absolute world coordinates, so unlike the root-relative charts this one can see where the character actually stands. Agreement with another instrument, not accuracy. The arms improve a lot and the legs a little, as written down before the numbers.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Arms before, performer 0",
+       "role": "alt",
+       "value": 231.21
+      },
+      {
+       "label": "Arms after, performer 0",
+       "role": "ours",
+       "value": 83.72
+      },
+      {
+       "label": "Legs before, performer 0",
+       "role": "alt",
+       "value": 64.82
+      },
+      {
+       "label": "Legs after, performer 0",
+       "role": "ours",
+       "value": 58.62
+      },
+      {
+       "label": "Arms before, performer 1",
+       "role": "alt",
+       "value": 241.47
+      },
+      {
+       "label": "Arms after, performer 1",
+       "role": "ours",
+       "value": 68.34
+      },
+      {
+       "label": "Legs before, performer 1",
+       "role": "alt",
+       "value": 81.8
+      },
+      {
+       "label": "Legs after, performer 1",
+       "role": "ours",
+       "value": 63.54
+      }
+     ]
+    },
+    {
      "title": "The delivered character against MAMMA's joints, end to end",
      "plain": "MAMMA's joints are the reference, at zero, the same reference as the pose rung. The gap between the fixed rig and the sized rig is the body; the rest is everything above compounded.",
      "better": "lower",
@@ -643,22 +899,22 @@
       {
        "label": "Delivered, one fixed body, 0",
        "role": "ours",
-       "value": 151.58444559520817
+       "value": 71.29816781974344
       },
       {
        "label": "Rig sized to performer 0",
        "role": "alt",
-       "value": 136.58100360504903
+       "value": 72.27368386192545
       },
       {
        "label": "Delivered, one fixed body, 1",
        "role": "ours",
-       "value": 137.37544002667912
+       "value": 67.81767373187023
       },
       {
        "label": "Rig sized to performer 1",
        "role": "alt",
-       "value": 113.03824810858812
+       "value": 75.52275841663788
       }
      ]
     },
@@ -686,12 +942,12 @@
       {
        "label": "The delivered mesh's nose",
        "role": "ours",
-       "value": 0.8147692015692449
+       "value": 0.8147691874089674
       },
       {
        "label": "Delivered feet (solved from the toes)",
        "role": "alt",
-       "value": 0.944361446698597
+       "value": 0.9448162548592096
       },
       {
        "label": "MAMMA's reading of the performers",
@@ -701,7 +957,7 @@
       {
        "label": "Our capture turned 180 degrees",
        "role": "control",
-       "value": -0.8266665202490049
+       "value": -0.8266664445328679
       }
      ]
     }

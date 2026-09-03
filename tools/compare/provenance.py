@@ -436,16 +436,6 @@ CURATED: dict[str, dict] = {
                  "narrow would silently clamp the per-take selection.",
         synthetic=True,
     ),
-    "0.72 * torso_up (clavicle origin)": dict(
-        provenance=UNKNOWN,
-        evidence="commercial_multiview.py:1565 and :1568 -- the shoulder chain's origin is "
-                 "placed 72 % of the way up the torso. Introduced whole in 6579460 with no "
-                 "stated origin. LADDER_EXECUTION_PLAN.md D2 names this line pair as the "
-                 "converter defect worth 36-47 mm on the arms; the ladder's canonical "
-                 "round-trip control measures it. Not MAMMA-derived -- it predates the "
-                 "comparison -- but it is a fitted-looking number nothing fitted.",
-        synthetic=True,
-    ),
     "Hips rest height 0.98 m": dict(
         provenance=ASSET,
         evidence="src/autoanim_gnm/body.py:119, CANONICAL_HUMANOID's Hips offset -- the "
