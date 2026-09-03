@@ -1515,6 +1515,92 @@ def _set_world(
     local[frame, index] /= np.linalg.norm(local[frame, index])
 
 
+# A HARD PHYSICAL REJECT ON THE CLAVICLE, NOT A TUNING KNOB, AND NOT A SMOOTHER.
+#
+# A human joint peaks near 500-800 deg/s (the same physiology `head_orientation.
+# MAXIMUM_FRAME_TRAVEL_DEG` is drawn from), so at 30 fps 26.67 deg between consecutive
+# frames is already the extreme end. A sternoclavicular joint has roughly 45 deg of
+# elevation and 30 deg of protraction in total, so this ceiling is generous by a wide
+# margin: it is here to reject the impossible, never to shape the possible.
+#
+# WHY IT WAS ADDED. D2 aims the clavicle from the rig's own Shoulder origin and D2b puts
+# the root on the captured hips. Both are right, and both SHORTEN the lever from the
+# pivot to the shoulder landmark -- ~400 mm under the old torso-axis anchor, 100-160 mm
+# median after, 13-39 mm at its worst. Landmark wander of 21-35 mm across that lever is
+# angle, and when an excursion carries the landmark near the pivot the direction flips
+# outright. On the delivered take that produced single steps of 139 and 164 deg -- 4200
+# and 4900 deg/s -- and the picture is unambiguous: at frame 48 of camera A001 the near
+# performer's arm is drawn in and angled down, and one frame later it has snapped out
+# straight and horizontal. A positional score prices that at zero, because the arm is in
+# roughly the right place on both frames.
+#
+# THE RULE IS REACHABILITY, NOT A STEP TEST. A per-step test catches the transition into
+# a wrong plateau and then accepts the plateau. A frame is accepted only if its clavicle
+# LOCAL rotation lies within `ceiling * (t - t_last_accepted)` of the last accepted
+# frame's -- an envelope that GROWS with elapsed frames, so a rejected run terminates on
+# its own with no run-length constant anywhere, and an outlier first frame recovers (the
+# envelope passes 180 deg after ceil(180 / 26.67) = 7 frames, which bounds both).
+#
+# LOCAL, NEVER WORLD, for the head lane's stated reason: a bone on a turning body travels
+# in world with its own joint perfectly still, so a world-measured ceiling rejects honest
+# motion. Measured at the joint.
+#
+# docs/reviews/clavicle-origin-2026-09-02.md section 15 (D2c).
+CLAVICLE_MAXIMUM_FRAME_TRAVEL_DEG_PER_S = 800.0
+
+
+def _quaternion_travel_deg(a: np.ndarray, b: np.ndarray) -> float:
+    """Angle between two xyzw quaternions as rotations, degrees. Sign-insensitive."""
+
+    dot = abs(float(np.dot(np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64))))
+    return float(np.degrees(2.0 * np.arccos(min(1.0, max(-1.0, dot)))))
+
+
+def _reachable_clavicle_sequence(
+    local_rotations: np.ndarray,
+    parent_world_rotations: np.ndarray,
+    ceiling_deg_per_frame: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reject clavicle frames a human clavicle could not have reached, and slerp across.
+
+    ``local_rotations`` is ``[frame, 4]`` xyzw for ONE clavicle, in its parent's frame.
+    Returns ``(replaced_local, accepted)``: the accepted frames are returned BYTE FOR BYTE
+    as they arrived -- nothing here smooths a frame it accepts -- and each rejected run is
+    replaced by shortest-arc slerp between the accepted frames that bracket it, or held at
+    the last accepted value if the run trails off the end.
+
+    ``parent_world_rotations`` is unused by this rule and is in the signature on purpose:
+    the world-measured variant is the control that demonstrates why the rule is local
+    (`tools/compare/d2c_clavicle_temporal_gate.py`), and it must run through the identical
+    call site rather than a re-implementation of it. This function is deliberately module
+    level and called by bare name for the same reason :func:`_joint_origin` and
+    :func:`_leg_root_offset` are.
+    """
+
+    rotations = np.asarray(local_rotations, dtype=np.float64)
+    frames = len(rotations)
+    accepted = np.zeros(frames, dtype=bool)
+    if frames == 0:
+        return rotations.copy(), accepted
+    output = rotations.copy()
+    accepted[0] = True
+    last = 0
+    for frame in range(1, frames):
+        envelope = ceiling_deg_per_frame * (frame - last)
+        if _quaternion_travel_deg(output[last], rotations[frame]) <= envelope:
+            accepted[frame] = True
+            last = frame
+    indices = np.flatnonzero(accepted)
+    for start, stop in zip(indices, indices[1:]):
+        for frame in range(start + 1, stop):
+            output[frame] = _slerp(
+                output[start], output[stop], (frame - start) / (stop - start)
+            )
+    for frame in range(int(indices[-1]) + 1, frames):
+        output[frame] = output[int(indices[-1])]
+    return output, accepted
+
+
 def positions_to_body_track(
     positions_world_z_up_m: np.ndarray,
     *,
@@ -1566,6 +1652,9 @@ def positions_to_body_track(
     world[..., 3] = 1.0
     root_translation = np.zeros((frames, 3), dtype=np.float64)
     identity = np.asarray((0.0, 0.0, 0.0, 1.0))
+    # Pass A computes the torso frame; pass C's feet fall back to it. Kept rather than
+    # recomputed so the two passes cannot drift apart by a rounding.
+    torso_world_by_frame = np.zeros((frames, 4), dtype=np.float64)
 
     rest = {joint.name: np.asarray(joint.rest_translation_m, dtype=np.float64) for joint in DETAILED_HUMANOID.joints}
     head_rotations = None
@@ -1645,6 +1734,15 @@ def positions_to_body_track(
         _set_world(local, world, frame, "Head", head_world)
         for name in ("LeftEye", "RightEye"):
             _set_world(local, world, frame, name, head_world)
+        # Recorded HERE and not a line earlier, deliberately. `_set_world` normalises its
+        # argument IN PLACE, and without a head solve `neck_world`, `head_world` and the
+        # eyes' argument are all the same array as `torso_world` -- so by this point it has
+        # been through seven normalisations, and that is the state the feet were handed
+        # when the whole solve was one loop. Freezing it any earlier hands them a
+        # differently-rounded quaternion; the gap is 1e-17 and it is large enough to show
+        # up in the toes' near-identity local rotation after the float32 cast, which would
+        # make this restructure visible in a bit-identity test that must see nothing.
+        torso_world_by_frame[frame] = torso_world
 
         # NOTE, and it has two halves that came apart on 2026-09-02.
         #
@@ -1697,19 +1795,55 @@ def positions_to_body_track(
             world, frame, root_translation, rest, "LeftShoulder")
         right_shoulder_origin = _joint_origin(
             world, frame, root_translation, rest, "RightShoulder")
-        chains = (
+        # PASS A ends with the two clavicles. Everything below them waits for pass C,
+        # because the temporal reject in pass B can replace a clavicle and `_world_for_bone`
+        # builds every arm bone from its PARENT's world: leave the arm locals as solved and
+        # a replaced clavicle swings the whole arm rigidly, taking the elbow and the wrist
+        # off the landmarks they were solved onto. Replace, then RE-SOLVE.
+        for joint_name, child_name, direction in (
             ("LeftShoulder", "LeftUpperArm", at("left_shoulder") - left_shoulder_origin),
+            ("RightShoulder", "RightUpperArm", at("right_shoulder") - right_shoulder_origin),
+        ):
+            joint_index = DETAILED_HUMANOID.index(joint_name)
+            parent_index = DETAILED_HUMANOID.joints[joint_index].parent
+            target_world = _world_for_bone(
+                world[frame, parent_index], rest[child_name], direction
+            )
+            _set_world(local, world, frame, joint_name, target_world)
+
+    # ---------------------------------------------------------------- PASS B: the reject
+    # A sequence rule, so it cannot live inside a per-frame loop. Both clavicles
+    # independently; accepted frames are left exactly as pass A wrote them, and only a
+    # rejected frame's local rotation and the world derived from it are rewritten.
+    ceiling_deg_per_frame = CLAVICLE_MAXIMUM_FRAME_TRAVEL_DEG_PER_S / float(sample_rate_hz)
+    for clavicle in ("LeftShoulder", "RightShoulder"):
+        clavicle_index = DETAILED_HUMANOID.index(clavicle)
+        parent_index = DETAILED_HUMANOID.joints[clavicle_index].parent
+        replaced, accepted = _reachable_clavicle_sequence(
+            local[:, clavicle_index], world[:, parent_index], ceiling_deg_per_frame
+        )
+        for frame in np.flatnonzero(~accepted):
+            rotation = np.asarray(replaced[frame], dtype=np.float64)
+            rotation = rotation / np.linalg.norm(rotation)
+            local[frame, clavicle_index] = rotation
+            composed = _quaternion_multiply(world[frame, parent_index], rotation)
+            world[frame, clavicle_index] = composed / np.linalg.norm(composed)
+
+    # ------------------------------------------- PASS C: everything below the clavicles
+    for frame in range(frames):
+        p = points[frame]
+        at = lambda name: p[JOINT_INDEX[name]]
+        torso_world = torso_world_by_frame[frame]
+        for joint_name, child_name, direction in (
             ("LeftUpperArm", "LeftLowerArm", at("left_elbow") - at("left_shoulder")),
             ("LeftLowerArm", "LeftHand", at("left_wrist") - at("left_elbow")),
-            ("RightShoulder", "RightUpperArm", at("right_shoulder") - right_shoulder_origin),
             ("RightUpperArm", "RightLowerArm", at("right_elbow") - at("right_shoulder")),
             ("RightLowerArm", "RightHand", at("right_wrist") - at("right_elbow")),
             ("LeftUpperLeg", "LeftLowerLeg", at("left_knee") - at("left_hip")),
             ("LeftLowerLeg", "LeftFoot", at("left_ankle") - at("left_knee")),
             ("RightUpperLeg", "RightLowerLeg", at("right_knee") - at("right_hip")),
             ("RightLowerLeg", "RightFoot", at("right_ankle") - at("right_knee")),
-        )
-        for joint_name, child_name, direction in chains:
+        ):
             joint_index = DETAILED_HUMANOID.index(joint_name)
             parent_index = DETAILED_HUMANOID.joints[joint_index].parent
             target_world = _world_for_bone(
