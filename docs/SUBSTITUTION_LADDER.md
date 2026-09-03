@@ -112,11 +112,11 @@ control arm), **instrument missing** (the comparison is defined and nothing writ
 | 4 | triangulation | `triangulate_point` | `swap-harness/swap_true.py` → `compare/swap-2d-into-our-triangulation.json` | MAMMA's exact 512 landmarks | **measured**: 11.1 / 9.2 mm at full coverage (uniform confidence); 9.7 / 8.2 mm with its visibility on fewer landmarks — at the instrument's floor |
 | 5 | temporal | `solve_sequence_positions` + fill + Savitzky-Golay | none valid — both references banned | — | **dark**; exposure counts only |
 | 6 | shape | none in delivery (one fixed rig); rung 1 `fit_smplx_to_capture.py`; MHR + momentum prototype (prints) | `compare/smplx-shape-fit.json` | our own measured limb lengths | **measured** (instrument): 19.3 / 14.1 mm vs the rig's 39.5 / 39.1; control: head 724 / 671 mm above pelvis, plausible |
-| 7 | pose | `positions_to_body_track`, analytic; rung 2 `fit_smplx_pose.py` | `compare/scoreboard-*.json`, `compare/smplx-pose-fit.json` | MAMMA `pred_joints`, 15 joints | **measured**: capture 36.1 / 41.3; capture → SMPL-X 27.7 / 40.1; control: 14.7 / 11.4 vs our own capture |
+| 7 | pose | `positions_to_body_track`, analytic; rung 2 `fit_smplx_pose.py` | `compare/scoreboard-*.json`, `compare/smplx-pose-fit.json` | MAMMA `pred_joints`, 15 joints | **measured**: capture 36.1 / 41.3; capture → SMPL-X 27.7 / 40.1; control: 14.7 / 11.4 vs our own capture. **D2 shipped 2026-09-03** (`d2_clavicle.py` extractor, gates under `compare/d2-clavicle/`): the converter's canonical round trip 0.55 / 0.08 mm on the arms, legs 0.00; delivered arms on our capture 51 / 30 mm; the round trip can NO LONGER score a temporal step (it rebuilds its torso frame from the upper-arm origins the clavicle reject moves), so D2c's temporal figures are scored on synthetic truth |
 | 8 | hands | delivered: rest-curl constant; prototype `hand_fit.py` | none written — held-out figures live in `BATTLE1_INCREMENT5_HAND_FIT_RESULT.md` only | held-out camera | **instrument missing** |
 | 9 | head | `_solve_head_for_subject` | `head/gate_the_shipped_head.py` → `head-lane/head-gate-shipped.json` | MAMMA's head in our thorax frame | **measured**: 6.39 / 8.25° P1 median; oracle 3.62 / 3.87; constant 15.4 / 16.2 fails |
 | 10 | feet | `Toes` constant, foot welded to torso | `feet/` → `feet-lane/delivered-foot.json` (both sides ours) | our own ball-of-foot direction | measured against ourselves only; **MAMMA's feet unscored** |
-| 11 | delivered | rig retarget + MPFB mesh | `compare/mamma_scoreboard.py` canon / sized | MAMMA `pred_joints` — same reference as rung 7 | **measured**: 151.6 / 137.8 as delivered, 136.6 / 113.0 sized |
+| 11 | delivered | rig retarget + MPFB mesh | `compare/mamma_scoreboard.py` canon / sized | MAMMA `pred_joints` — same reference as rung 7 | **measured**: 151.6 / 137.8 as delivered before D2, 136.6 / 113.0 sized; **71.3 / 67.8 as delivered since D2** (the replayed sized arm is no longer a re-solve and reads 72.3 / 75.5; both reported) |
 
 What the ladder says today, read top to bottom: **the front end reaches the
 reference and the rig throws it away.** Given MAMMA's 2D our geometry lands at its
@@ -146,7 +146,7 @@ not by what is easiest.
    momentum, Apache/MIT) are both on disk. Gate: rung 7's *sized* arm must move toward
    rung 7's SMPL-X arm on the same 15 joints — the two share a reference, so that is a
    legal comparison. The MHR prototype must write a report before it counts.
-2. **The pose rung's other direction (rung 7).** MAMMA's `pred_joints`, mapped through
+2. **The pose rung's other direction (rung 7)** — done as I1 arm B (2026-09-02), and the converter defect it priced shipped as D2 (2026-09-03). MAMMA's `pred_joints`, mapped through
    the scoreboard's `PAIRS` onto our 19-joint contract, into `positions_to_body_track` —
    buildable from disk today, isolates our retarget on MAMMA's *fitted* joints, and
    prices the converter defect the plan already records (36–47 mm on the arms,

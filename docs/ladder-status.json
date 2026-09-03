@@ -146,7 +146,7 @@
         {
           "id": "D2",
           "title": "Fix the converter: shoulder origin and hip height",
-          "plain": "Two known defects in the maths that turns points into a skeleton, worth 36 to 47 mm on the arms.",
+          "plain": "Three fixes to the maths that turns points into a skeleton, shipped 2026-09-03: the collarbone is aimed from the joint it pivots about, the hips sit on the captured hips, and a collarbone frame no human joint could reach is rejected and bridged. The arm root lands 181/218 -> 51/30 mm from the shoulder the cameras saw and the whole character sits 152/104 -> 71/68 mm from the reference fitter's joints. The cost, stated: the body's outline overlaps the footage a little less (0.585 -> 0.521), because the mesh's skin binding and the missing pelvis frame now show; those go to D3 and D6.",
           "owner": "opus-agent",
           "state": "done",
           "started": "2026-09-02",
@@ -157,13 +157,13 @@
         {
           "id": "D3",
           "title": "A skeleton per performer, carried all the way to export",
-          "plain": "Today the body size is one fixed rig. This makes a per-performer skeleton flow through every stage without silently reverting.",
+          "plain": "Today the body size is one fixed rig 540 mm wide at the shoulders against 350 measured. This makes a per-performer skeleton the thing the whole pipeline carries. It inherits two handoffs from D2: a pelvis frame of its own (SOMA-77 carries an unmapped pelvis root and two lower-spine joints) and the shoulder-cap skin binding, which is where the outline cost lives.",
           "owner": "opus-agent",
           "state": "planned",
           "started": null,
           "finished": null,
           "report": null,
-          "blocked_on": "D2"
+          "blocked_on": null
         },
         {
           "id": "D4",
@@ -202,8 +202,7 @@
     }
   ],
   "decisions_for_user": [
-    "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
-    "D2 + D2b (branch ladder/D2, pushed, unmerged): the skeleton is better placed by every joint instrument (round trip 0.5/0.1 mm; hip offset 26/43 -> 0; vs MAMMA all joints 152/104 -> 71/68; ground hoist 142/110 -> 83/49) and the photographs say the mesh overlaps worse (IoU 0.585 -> 0.519: the root's share ~0.02/0.013, tilt-dependent, the pelvis has no frame of its own; the clavicle chain's ~0.04/0.02, present upright, binding suspected). Clavicle jitter 32/11 -> 40/33 frames over the ceiling is D2c's baseline, unaddressed. Options: (1) merge D2 + D2b as the skeleton fix with the three costs stated, D2c gating the jitter first, accepting a measured regression on the one photograph-referenced instrument with two thirds of its mechanism unproven; (2) hold until a pelvis frame (SOMA-77 has an unmapped pelvis root and two lower-spine joints, so it is a converter step, not a wait for markers) and the shoulder binding are addressed; (3) merge and accept both costs without D2c, not recommended. Recommendation: the skeleton is right and should not be un-fixed; the mesh's response is the next thing to instrument; the trade is yours."
+    "Lane H: decide the rig and book the marker session; performer releases covering ML training use."
   ],
   "log": [
     {

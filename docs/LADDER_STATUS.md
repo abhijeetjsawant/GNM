@@ -15,7 +15,7 @@ Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2. In flight: nothing. Blocked: n
 
 ## Next up (unblocked, not started)
 
-- none
+- **D3** A skeleton per performer, carried all the way to export — an Opus agent
 
 ## Blocked
 
@@ -24,7 +24,6 @@ Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2. In flight: nothing. Blocked: n
 ## Decisions waiting on the user
 
 - Lane H: decide the rig and book the marker session; performer releases covering ML training use.
-- D2 + D2b (branch ladder/D2, pushed, unmerged): the skeleton is better placed by every joint instrument (round trip 0.5/0.1 mm; hip offset 26/43 -> 0; vs MAMMA all joints 152/104 -> 71/68; ground hoist 142/110 -> 83/49) and the photographs say the mesh overlaps worse (IoU 0.585 -> 0.519: the root's share ~0.02/0.013, tilt-dependent, the pelvis has no frame of its own; the clavicle chain's ~0.04/0.02, present upright, binding suspected). Clavicle jitter 32/11 -> 40/33 frames over the ceiling is D2c's baseline, unaddressed. Options: (1) merge D2 + D2b as the skeleton fix with the three costs stated, D2c gating the jitter first, accepting a measured regression on the one photograph-referenced instrument with two thirds of its mechanism unproven; (2) hold until a pelvis frame (SOMA-77 has an unmapped pelvis root and two lower-spine joints, so it is a converter step, not a wait for markers) and the shoulder binding are addressed; (3) merge and accept both costs without D2c, not recommended. Recommendation: the skeleton is right and should not be un-fixed; the mesh's response is the next thing to instrument; the trade is yours.
 
 ## Recent log
 

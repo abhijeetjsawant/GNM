@@ -75,6 +75,32 @@
   sign, and no joint, forward-dot or silhouette gate can see it. Swap the names (rest X,
   joint map, asset node names) and prove it with a signed-volume test. And a curl about a
   finger's own bone axis displaces nothing: the delivered "rest curl" is inert.
+- **A direction measured from the rig's own origin sees root placement; one measured from
+  a landmark anchor is blind to it.** The clavicle's 36–47 mm "converter cost" was never the
+  clavicle: the old anchor lived in the landmark frame, the fix aimed from the rig's shoulder
+  origin, and the first rig-frame direction ever measured exposed that `Hips` sat on the
+  hip-landmark midpoint with the hip joints 80 mm below. Root placement is now derived from
+  the skeleton (`_leg_root_offset`); the round trip closes at ~0.5 mm. And the rig has ONE
+  frame for the whole trunk, so on a bent performer that offset rides the lean; a pelvis
+  frame (SOMA-77 index 0 `Hips`, `Spine1`, `Spine2` are unmapped) is D3's.
+- **The round trip cannot score a temporal step.** It rebuilds its torso frame from the
+  upper-arm origins that D2c's clavicle reject moves, so its second pass rejects frames its
+  first pass accepted. Score temporal treatments on synthetic truth (I7's fixture with the
+  detector's measured heavy-tail noise); report frames-over-ceiling, never band it, because
+  a reject zeroes it by construction. A per-frame temporal rule needs a REACHABILITY test
+  (accept only what the joint can reach from the last accepted frame at a physical rate),
+  not a step test, which accepts the wrong plateau between two big steps; and after
+  replacing a parent, RE-SOLVE the chains below it or the elbow and wrist leave their landmarks.
+- **Joint instruments and the photograph instrument can disagree, and both be right.** D2
+  placed the skeleton better by every joint measure (ours and MAMMA's) and the mesh bound to
+  it overlapped the SAM2 masks worse in 8 of 8 cells. Three explanations were pre-registered
+  and refuted in turn; what survived was the root's own share (exact by translating the same
+  rendered mesh) and a larger share from the clavicle chain through skin-weight bleed at the
+  shoulder cap. The silhouette scores the MESH; it is not a limb-placement gate, and a
+  folded-arm control does not realise "a limb hidden inside the outline" under four cameras.
+- **Blender-only instruments run under Blender:** `facing_surface_probe.py` imports `bpy`
+  (`Blender --background --python tools/compare/facing_surface_probe.py -- OUT.json GLB_DIR`).
+  And a waiter loop `until ! pgrep -f NAME` matches its own command line; use `[N]AME`.
 - **Every part carries a picture, and the picture says which way is good.** Each rung on the
   ladder page and each part on the progress page shows a bar chart -- ours beside MAMMA's, with
   an alternative of ours and a deliberately wrong answer where they exist -- labelled in plain
