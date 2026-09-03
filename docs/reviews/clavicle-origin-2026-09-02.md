@@ -1643,10 +1643,10 @@ on top and D2c beneath, rendered through `tools/compare/d2_jitter_sheet.py`'s ow
 the glTF import.
 
 **What the eye sees:** in the D2b row every tile from f47 to f50 is boxed red — 39.3°, then
-27.6°, 28.5°, 29.7° — and the outstretched arm jerks unevenly through them, the shoulder
-buckling as it goes; in the D2c row the same four frames carry an identical, even 24.5° per
-frame, the arm sweeps down through the same range in one continuous motion, and the shoulder
-holds its shape. The steps the reject removed are the *unevenness*, not the travel.
+27.6°, 28.5°, 29.7° — and the outstretched arm jumps from angled down at f47 to horizontal
+at f48 and stays uneven through f50, where the forearm crosses the torso; in the D2c row the
+same four frames carry an identical, even 24.5° per frame and read as one continuous sweep.
+The steps the reject removed are the *unevenness*, not the travel.
 
 ### 15.12 What D2c is blind to
 
