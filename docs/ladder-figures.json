@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-03T12:43:17",
+ "rendered": "2026-09-03T19:05:58",
  "git": {
-  "sha": "18573f1",
+  "sha": "fde2b87",
   "dirty": true
  },
  "rungs": [
@@ -18,6 +18,39 @@
    "title": "Person masks and per-view identity",
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
+    {
+     "title": "D3: how well the delivered outline covers the person in the footage, before and after",
+     "plain": "MAMMA's person masks are the reference; higher is better. This is the instrument that FELL under D2b. It rose in all eight cells once the mesh carried the same skeleton the joints were solved on. The hatched bar is MAMMA's own mesh through the same rasteriser.",
+     "better": "higher",
+     "unit": "IoU",
+     "bars": [
+      {
+       "label": "Before, performer 0",
+       "role": "alt",
+       "value": 0.4839
+      },
+      {
+       "label": "After, performer 0",
+       "role": "ours",
+       "value": 0.6045
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "alt",
+       "value": 0.538
+      },
+      {
+       "label": "After, performer 1",
+       "role": "ours",
+       "value": 0.6266
+      },
+      {
+       "label": "MAMMA's mesh (oracle)",
+       "role": "control",
+       "value": 0.8548
+      }
+     ]
+    },
     {
      "title": "What D2 cost on the photographs: outline overlap before and after",
      "plain": "Each camera's own person mask is the reference, the one measurement here that reads pixels of the footage rather than another model. The skeleton is better placed by every joint measure and the mesh bound to it overlaps worse; the discordance lives in what joins them. MAMMA's mesh through the same renderer is the ceiling.",
@@ -60,7 +93,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.5207114250844875
+       "value": 0.6266466243627052
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -75,7 +108,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.4787812294111048
+       "value": 0.42066538183972435
       }
      ]
     },
@@ -88,7 +121,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.5896806515232931
+       "value": 0.7275762412458768
       },
       {
        "label": "MAMMA's mesh",
@@ -291,8 +324,92 @@
    "id": "shape",
    "n": 6,
    "title": "Body shape per performer",
-   "status": "measured (instrument), absent (delivery)",
+   "status": "measured; per-performer rest in the delivery since D3 (2026-09-03)",
    "visuals": [
+    {
+     "title": "D3: does the delivered character carry the body the joints were solved on?",
+     "plain": "The reference is the track's own forward kinematics, so the right answer is zero. The hatched bar is the exporter as it was before D3, on the same track: it put the mesh's joints about nine centimetres from where every joint instrument scored them.",
+     "better": "lower",
+     "unit": "mm",
+     "bars": [
+      {
+       "label": "Delivered GLB vs its own FK, performer 0",
+       "role": "ours",
+       "value": 0.0005
+      },
+      {
+       "label": "Pre-D3 exporter, performer 0",
+       "role": "control",
+       "value": 96.49
+      },
+      {
+       "label": "Delivered GLB vs its own FK, performer 1",
+       "role": "ours",
+       "value": 0.00058
+      },
+      {
+       "label": "Pre-D3 exporter, performer 1",
+       "role": "control",
+       "value": 92.59
+      }
+     ]
+    },
+    {
+     "title": "D3: a body we built, recovered exactly through the whole delivery",
+     "plain": "Synthetic truth is the reference. Six bodies with every bone length, span and spine segment drawn independently, posed, solved, exported and read back. The hatched bar is the same body arriving canonical downstream, which is what shipped before D3.",
+     "better": "lower",
+     "unit": "mm",
+     "bars": [
+      {
+       "label": "Worst arms, 6 bodies",
+       "role": "ours",
+       "value": 0.69
+      },
+      {
+       "label": "Worst legs, 6 bodies",
+       "role": "ours",
+       "value": 0.0
+      },
+      {
+       "label": "Arriving canonical, arms",
+       "role": "control",
+       "value": 31.41
+      },
+      {
+       "label": "Arriving canonical, legs",
+       "role": "control",
+       "value": 11.44
+      }
+     ]
+    },
+    {
+     "title": "D3: the rig's shoulder span, fixed rig against the performer's own",
+     "plain": "Limb lengths measured from our own capture are the reference. The fixed rig was 540 mm across the shoulders; the delivered body is now each performer's own width.",
+     "better": "lower",
+     "unit": "m",
+     "bars": [
+      {
+       "label": "Fixed rig, performer 0",
+       "role": "alt",
+       "value": 0.54
+      },
+      {
+       "label": "Delivered body, performer 0",
+       "role": "ours",
+       "value": 0.34643
+      },
+      {
+       "label": "Fixed rig, performer 1",
+       "role": "alt",
+       "value": 0.54
+      },
+      {
+       "label": "Delivered body, performer 1",
+       "role": "ours",
+       "value": 0.3631
+      }
+     ]
+    },
     {
      "title": "How far each body's limb lengths are from the performer's own",
      "plain": "Limb lengths measured from our own capture are the reference. A body fitted to the performer should sit well below our one-size rig.",
@@ -329,6 +446,54 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D3: where the delivered rig lands on our own capture, before and after",
+     "plain": "Our own capture is the reference, root-relative. Before: the fixed rig. After: the rig sized to the performer, which is now what ships.",
+     "better": "lower",
+     "unit": "mm",
+     "bars": [
+      {
+       "label": "Arms before, performer 0",
+       "role": "alt",
+       "value": 50.79
+      },
+      {
+       "label": "Arms after, performer 0",
+       "role": "ours",
+       "value": 25.55
+      },
+      {
+       "label": "Legs before, performer 0",
+       "role": "alt",
+       "value": 32.48
+      },
+      {
+       "label": "Legs after, performer 0",
+       "role": "ours",
+       "value": 19.54
+      },
+      {
+       "label": "Arms before, performer 1",
+       "role": "alt",
+       "value": 30.5
+      },
+      {
+       "label": "Arms after, performer 1",
+       "role": "ours",
+       "value": 21.84
+      },
+      {
+       "label": "Legs before, performer 1",
+       "role": "alt",
+       "value": 30.03
+      },
+      {
+       "label": "Legs after, performer 1",
+       "role": "ours",
+       "value": 15.96
+      }
+     ]
+    },
     {
      "title": "Distance from MAMMA's joints, 15 body joints",
      "plain": "MAMMA's joints are the reference, at zero. Our raw capture, and the same capture driving a parametric body, on identical frames.",
@@ -371,12 +536,12 @@
       {
        "label": "Rig sized to performer 0",
        "role": "alt",
-       "value": 27.19
+       "value": 25.55
       },
       {
        "label": "Converter floor, performer 0",
        "role": "control",
-       "value": 0.07
+       "value": 0.06
       },
       {
        "label": "Fixed rig, performer 1",
@@ -386,12 +551,12 @@
       {
        "label": "Rig sized to performer 1",
        "role": "alt",
-       "value": 23.75
+       "value": 21.84
       },
       {
        "label": "Converter floor, performer 1",
        "role": "control",
-       "value": 0.05
+       "value": 0.04
       }
      ]
     },
@@ -775,7 +940,7 @@
       {
        "label": "Ours, performer 0 left",
        "role": "ours",
-       "value": 6.5760522511803945
+       "value": 6.545185041362351
       },
       {
        "label": "MAMMA through our frames, 0 left",
@@ -790,7 +955,7 @@
       {
        "label": "Ours, performer 0 right",
        "role": "ours",
-       "value": 6.2013599972949525
+       "value": 5.777028584656267
       },
       {
        "label": "MAMMA through our frames, 0 right",
@@ -805,7 +970,7 @@
       {
        "label": "Ours, performer 1 left",
        "role": "ours",
-       "value": 9.474158207791225
+       "value": 9.473122743246773
       },
       {
        "label": "MAMMA through our frames, 1 left",
@@ -820,7 +985,7 @@
       {
        "label": "Ours, performer 1 right",
        "role": "ours",
-       "value": 8.445846812397312
+       "value": 8.445865470898736
       },
       {
        "label": "MAMMA through our frames, 1 right",
@@ -842,6 +1007,44 @@
    "title": "Mesh and delivered skeleton -- the end-to-end rung, deliberately last",
    "status": "measured; faces the right way since 2026-09-02 (D1: the naming mirror relabelled at five sites)",
    "visuals": [
+    {
+     "title": "D3: the delivered character against MAMMA's joints, before and after",
+     "plain": "MAMMA's joints are the reference, at zero; agreement with an instrument, not accuracy. Before: the fixed rig. After: the performer's own body. The aqua bar replays the new rotations on the old fixed rig, which is what a consumer that ignored the skeleton would show.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Before, performer 0",
+       "role": "alt",
+       "value": 72.27
+      },
+      {
+       "label": "After, performer 0",
+       "role": "ours",
+       "value": 47.08
+      },
+      {
+       "label": "Replayed on the fixed rig, 0",
+       "role": "alt",
+       "value": 96.84
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "alt",
+       "value": 75.52
+      },
+      {
+       "label": "After, performer 1",
+       "role": "ours",
+       "value": 45.83
+      },
+      {
+       "label": "Replayed on the fixed rig, 1",
+       "role": "alt",
+       "value": 124.48
+      }
+     ]
+    },
     {
      "title": "D2: the delivered character against MAMMA's joints, arms and legs kept apart",
      "plain": "MAMMA's joints are the reference, in absolute world coordinates, so unlike the root-relative charts this one can see where the character actually stands. Agreement with another instrument, not accuracy. The arms improve a lot and the legs a little, as written down before the numbers.",
@@ -897,24 +1100,24 @@
      "unit": "mm median",
      "bars": [
       {
-       "label": "Delivered, one fixed body, 0",
+       "label": "Delivered, performer 0's own body",
        "role": "ours",
-       "value": 71.29816781974344
+       "value": 47.08125645201164
       },
       {
-       "label": "Rig sized to performer 0",
+       "label": "Replayed on the fixed rig, 0",
        "role": "alt",
-       "value": 72.27368386192545
+       "value": 96.83593636696948
       },
       {
-       "label": "Delivered, one fixed body, 1",
+       "label": "Delivered, performer 1's own body",
        "role": "ours",
-       "value": 67.81767373187023
+       "value": 45.83116492819972
       },
       {
-       "label": "Rig sized to performer 1",
+       "label": "Replayed on the fixed rig, 1",
        "role": "alt",
-       "value": 75.52275841663788
+       "value": 124.48388946115682
       }
      ]
     },
@@ -942,7 +1145,7 @@
       {
        "label": "The delivered mesh's nose",
        "role": "ours",
-       "value": 0.8147691874089674
+       "value": 0.8132469421447652
       },
       {
        "label": "Delivered feet (solved from the toes)",
@@ -957,7 +1160,7 @@
       {
        "label": "Our capture turned 180 degrees",
        "role": "control",
-       "value": -0.8266664445328679
+       "value": -0.8266670020076858
       }
      ]
     }

@@ -172,7 +172,8 @@ def x_shape(_: dict) -> tuple[list, list]:
                          d.get("head_above_pelvis_mm"), "mm", "the fitted body's own geometry", HIGHER,
                          key=f"head_above_{s}",
                          note="plausible" if d.get("anatomically_plausible") else "NOT PLAUSIBLE"))
-    return figs, ctrls
+    f3, c3 = _d3_figures("shape")
+    return figs + f3, ctrls + c3
 
 
 def x_pose(_: dict) -> tuple[list, list]:
@@ -229,7 +230,8 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     from extractors.i6_silhouette import x_silhouette as _x  # noqa: E402
     figs, ctrls = _x(spec)
     f3, c3 = _d2_figures("masks")
-    return figs + f3, ctrls + c3
+    f4, c4 = _d3_figures("masks")
+    return figs + f3 + f4, ctrls + c3 + c4
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -290,7 +292,8 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     from extractors.i1_retarget import x_retarget  # noqa: E402
     f2, c2 = x_retarget(spec)
     f3, c3 = _d2_figures("converter")
-    return figs + f2 + f3, ctrls + c2 + c3
+    f4, c4 = _d3_figures("converter")
+    return figs + f2 + f3 + f4, ctrls + c2 + c3 + c4
 
 
 def _d2_figures(where: str) -> tuple[list, list]:
@@ -324,6 +327,31 @@ def _d2_figures(where: str) -> tuple[list, list]:
             [c for c in ctrls if dest(c["key"]) == where])
 
 
+def _d3_figures(where: str) -> tuple[list, list]:
+    """D3 figures from `tools/compare/extractors/d3_skeleton.py` (the agent's stub, wired here by the
+    registry owner), routed by what each figure REFERENCES so no rung stacks two axes: the closure,
+    oracle and rest-span figures (`closure_`, `oracle_`, `rest_`) to rung 6, the body the delivery is
+    built on; the own-capture and hoist figures (`converter_`) to rung 7; `rung11_` to rung 11; and
+    `silhouette_` to rung 1. One extractor call, four destinations."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d3_skeleton  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d3_skeleton.x_skeleton({})
+
+    def dest(key: str) -> str:
+        if key.startswith("rung11_"):
+            return "delivered"
+        if key.startswith("silhouette_"):
+            return "masks"
+        if key.startswith("converter_"):
+            return "converter"
+        return "shape"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
 def x_delivered(_: dict) -> tuple[list, list]:
     sb = _load("artifacts/compare/scoreboard-commercial-multiview-soma77.json")
     if not sb:
@@ -333,15 +361,20 @@ def x_delivered(_: dict) -> tuple[list, list]:
     for s in ("subject_00", "subject_01"):
         m = sb["subjects"][s]["median_mm"]
         t = s.replace("_", " ")
-        figs.append(fig(f"our rig as delivered (canonical proportions), {t}", m["canon"], "mm median", ref,
-                        key=f"canon_{s}"))
-        figs.append(fig(f"our rig sized to the performer, {t}", m["sized"], "mm median", ref, key=f"sized_{s}"))
+        # D3 (2026-09-03): the scoreboard's `sized` arm is the DELIVERED body (the rest the track
+        # carries) and `canon` is the same rotations REPLAYED on the fixed canonical rig. Before D3
+        # `canon` was the delivery and `sized` a replay; the report's `arms` block says which.
+        figs.append(fig(f"the delivered rotations replayed on the fixed canonical rig, {t}", m["canon"],
+                        "mm median", ref, key=f"canon_{s}"))
+        figs.append(fig(f"our rig as delivered, the performer's own body (D3), {t}", m["sized"], "mm median",
+                        ref, key=f"sized_{s}"))
     lim = sb["subjects"]["subject_00"]["measured_limbs_mm"]
     ctrls = [fig("shoulder span the delivered rig carries", lim.get("shoulder_span_canonical_mm"), "mm",
                  "against measured 346 / 363 and a full SMPL-X shape range topping out near 367", LOWER,
                  key="rig_shoulder_span")]
     f3, c3 = _d2_figures("delivered")
-    return figs + f3, ctrls + c3
+    f4, c4 = _d3_figures("delivered")
+    return figs + f3 + f4, ctrls + c3 + c4
 
 
 def x_head(_: dict) -> tuple[list, list]:
@@ -555,7 +588,10 @@ RUNGS: list[dict[str, Any]] = [
         title="Body shape per performer",
         mamma="Inside `ma_3d`, run 2: 16 SMPL-X betas free with `body_shape_prior_loss`, per subject, jointly "
               "with pose. Emits `smplx_betas` (1, 16).",
-        ours="Nothing in the delivery path: the rig is one fixed body (540 mm shoulders). Instruments: rung 1, "
+        ours="D3 (2026-09-03): ONE rest skeleton per performer, sized from that performer's own triangulated "
+             "limb lengths (`performer_skeleton`), stamped on the track and carried through FK, validation, "
+             "the ground projection and the exporter. Before D3 the rig was one fixed body (540 mm shoulders) "
+             "and the delivered GLB carried the MPFB asset's skeleton instead, 81-195 mm off the scored FK. Instruments: rung 1, "
              "`fit_smplx_to_capture.py`, 10 betas to our own measured limb lengths with the model's own "
              "standardised-beta prior; and an MHR + momentum prototype (`tools/fitter/`, 20.4 vs 26.1 mm, "
              "printed, no report).",
@@ -565,8 +601,8 @@ RUNGS: list[dict[str, Any]] = [
         reference="limb lengths measured from our own capture",
         blind="surface entirely -- 11 limb targets say nothing about girth. And this is 10 betas with an L2 "
               "prior, not MAMMA's 16 with its prior: our SMPL-X instrument is not MAMMA's SMPL-X configuration.",
-        status="measured (instrument), absent (delivery)", extract=x_shape,
-        reports=["artifacts/compare/smplx-shape-fit.json"],
+        status="measured; per-performer rest in the delivery since D3 (2026-09-03)", extract=x_shape,
+        reports=["artifacts/compare/smplx-shape-fit.json", "artifacts/compare/d3-skeleton/gate.json"],
         both_directions="MAMMA->ours: its `smplx_betas` could size our rig -- pointless, the rig has no shape "
                         "space. Ours->MAMMA: our limb lengths into its fitter as a fixed shape -- not built.",
     ),
@@ -733,6 +769,15 @@ RUNGS: list[dict[str, Any]] = [
 FIGURES = ROOT / "docs/ladder-figures.json"
 VISUALS: dict[str, list[dict]] = {
     "masks": [
+        # ---- D3 (2026-09-03): one rest skeleton per performer, carried into the delivered file
+        dict(title='D3: how well the delivered outline covers the person in the footage, before and after',
+             plain="MAMMA's person masks are the reference; higher is better. This is the instrument that FELL under D2b. It rose in all eight cells once the mesh carried the same skeleton the joints were solved on. The hatched bar is MAMMA's own mesh through the same rasteriser.",
+             better='higher',
+             bars=[dict(label='Before, performer 0', role='alt', key='silhouette_before_subject_00'),
+                   dict(label='After, performer 0', role='ours', key='silhouette_after_subject_00'),
+                   dict(label='Before, performer 1', role='alt', key='silhouette_before_subject_01'),
+                   dict(label='After, performer 1', role='ours', key='silhouette_after_subject_01'),
+                   dict(label="MAMMA's mesh (oracle)", role='control', key='silhouette_oracle')]),
         dict(title="What D2 cost on the photographs: outline overlap before and after",
              plain="Each camera's own person mask is the reference, the one measurement here that reads pixels of "
                    "the footage rather than another model. The skeleton is better placed by every joint measure and "
@@ -823,6 +868,28 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="With no smoothing at all", role="control", key="fk_spike2_identity")]),
     ],
     "shape": [
+        # ---- D3 (2026-09-03): one rest skeleton per performer, carried into the delivered file
+        dict(title='D3: does the delivered character carry the body the joints were solved on?',
+             plain="The reference is the track's own forward kinematics, so the right answer is zero. The hatched bar is the exporter as it was before D3, on the same track: it put the mesh's joints about nine centimetres from where every joint instrument scored them.",
+             better='lower',
+             bars=[dict(label='Delivered GLB vs its own FK, performer 0', role='ours', key='closure_max_subject_00'),
+                   dict(label='Pre-D3 exporter, performer 0', role='control', key='closure_ctrl_pre_d3_subject_00'),
+                   dict(label='Delivered GLB vs its own FK, performer 1', role='ours', key='closure_max_subject_01'),
+                   dict(label='Pre-D3 exporter, performer 1', role='control', key='closure_ctrl_pre_d3_subject_01')]),
+        dict(title='D3: a body we built, recovered exactly through the whole delivery',
+             plain='Synthetic truth is the reference. Six bodies with every bone length, span and spine segment drawn independently, posed, solved, exported and read back. The hatched bar is the same body arriving canonical downstream, which is what shipped before D3.',
+             better='lower',
+             bars=[dict(label='Worst arms, 6 bodies', role='ours', key='oracle_worst_arms'),
+                   dict(label='Worst legs, 6 bodies', role='ours', key='oracle_worst_legs'),
+                   dict(label='Arriving canonical, arms', role='control', key='oracle_ctrl_canonical_arms'),
+                   dict(label='Arriving canonical, legs', role='control', key='oracle_ctrl_canonical_legs')]),
+        dict(title="D3: the rig's shoulder span, fixed rig against the performer's own",
+             plain="Limb lengths measured from our own capture are the reference. The fixed rig was 540 mm across the shoulders; the delivered body is now each performer's own width.",
+             better='lower',
+             bars=[dict(label='Fixed rig, performer 0', role='alt', key='rest_shoulder_span_m_canonical_subject_00'),
+                   dict(label='Delivered body, performer 0', role='ours', key='rest_shoulder_span_m_delivered_subject_00'),
+                   dict(label='Fixed rig, performer 1', role='alt', key='rest_shoulder_span_m_canonical_subject_01'),
+                   dict(label='Delivered body, performer 1', role='ours', key='rest_shoulder_span_m_delivered_subject_01')]),
         dict(title="How far each body's limb lengths are from the performer's own",
              plain="Limb lengths measured from our own capture are the reference. A body fitted to the performer "
                    "should sit well below our one-size rig.",
@@ -833,6 +900,18 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Fitted body (instrument), performer 1", role="alt", key="smplx_subject_01")]),
     ],
     "pose": [
+        # ---- D3 (2026-09-03): one rest skeleton per performer, carried into the delivered file
+        dict(title='D3: where the delivered rig lands on our own capture, before and after',
+             plain='Our own capture is the reference, root-relative. Before: the fixed rig. After: the rig sized to the performer, which is now what ships.',
+             better='lower',
+             bars=[dict(label='Arms before, performer 0', role='alt', key='converter_arms_before_subject_00'),
+                   dict(label='Arms after, performer 0', role='ours', key='converter_arms_after_subject_00'),
+                   dict(label='Legs before, performer 0', role='alt', key='converter_legs_before_subject_00'),
+                   dict(label='Legs after, performer 0', role='ours', key='converter_legs_after_subject_00'),
+                   dict(label='Arms before, performer 1', role='alt', key='converter_arms_before_subject_01'),
+                   dict(label='Arms after, performer 1', role='ours', key='converter_arms_after_subject_01'),
+                   dict(label='Legs before, performer 1', role='alt', key='converter_legs_before_subject_01'),
+                   dict(label='Legs after, performer 1', role='ours', key='converter_legs_after_subject_01')]),
         dict(title="Distance from MAMMA's joints, 15 body joints",
              plain="MAMMA's joints are the reference, at zero. Our raw capture, and the same capture driving a "
                    "parametric body, on identical frames.",
@@ -987,6 +1066,16 @@ VISUALS: dict[str, list[dict]] = {
                    dict(label="Welded foot, 1 right", role="control", key="CONTROL_welded_to_shin_zero_articulation_subject_01_R")]),
     ],
     "delivered": [
+        # ---- D3 (2026-09-03): one rest skeleton per performer, carried into the delivered file
+        dict(title="D3: the delivered character against MAMMA's joints, before and after",
+             plain="MAMMA's joints are the reference, at zero; agreement with an instrument, not accuracy. Before: the fixed rig. After: the performer's own body. The aqua bar replays the new rotations on the old fixed rig, which is what a consumer that ignored the skeleton would show.",
+             better='lower',
+             bars=[dict(label='Before, performer 0', role='alt', key='rung11_delivered_before_subject_00'),
+                   dict(label='After, performer 0', role='ours', key='rung11_delivered_after_subject_00'),
+                   dict(label='Replayed on the fixed rig, 0', role='alt', key='rung11_canonical_replay_after_subject_00'),
+                   dict(label='Before, performer 1', role='alt', key='rung11_delivered_before_subject_01'),
+                   dict(label='After, performer 1', role='ours', key='rung11_delivered_after_subject_01'),
+                   dict(label='Replayed on the fixed rig, 1', role='alt', key='rung11_canonical_replay_after_subject_01')]),
         dict(title="D2: the delivered character against MAMMA's joints, arms and legs kept apart",
              plain="MAMMA's joints are the reference, in absolute world coordinates, so unlike the root-relative "
                    "charts this one can see where the character actually stands. Agreement with another instrument, "
@@ -1004,10 +1093,10 @@ VISUALS: dict[str, list[dict]] = {
              plain="MAMMA's joints are the reference, at zero, the same reference as the pose rung. The gap between "
                    "the fixed rig and the sized rig is the body; the rest is everything above compounded.",
              better="lower",
-             bars=[dict(label="Delivered, one fixed body, 0", role="ours", key="canon_subject_00"),
-                   dict(label="Rig sized to performer 0", role="alt", key="sized_subject_00"),
-                   dict(label="Delivered, one fixed body, 1", role="ours", key="canon_subject_01"),
-                   dict(label="Rig sized to performer 1", role="alt", key="sized_subject_01")]),
+             bars=[dict(label="Delivered, performer 0's own body", role="ours", key="sized_subject_00"),
+                   dict(label="Replayed on the fixed rig, 0", role="alt", key="canon_subject_00"),
+                   dict(label="Delivered, performer 1's own body", role="ours", key="sized_subject_01"),
+                   dict(label="Replayed on the fixed rig, 1", role="alt", key="canon_subject_01")]),
         dict(title="Which way the delivered character faces, part by part",
              plain="+1 means a part points the same way the performer does in the footage; -1 means exactly the "
                    "opposite way. Since the 2026-09-02 fix every part points with the performer; before it the "

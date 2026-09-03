@@ -101,6 +101,16 @@
 - **Blender-only instruments run under Blender:** `facing_surface_probe.py` imports `bpy`
   (`Blender --background --python tools/compare/facing_surface_probe.py -- OUT.json GLB_DIR`).
   And a waiter loop `until ! pgrep -f NAME` matches its own command line; use `[N]AME`.
+- **The delivered file must be read back from its own bytes; a code-path instrument cannot see
+  what the exporter wrote.** Until D3 (2026-09-03) every joint instrument scored
+  `forward_kinematics_positions` on `DETAILED_HUMANOID` while `export_animated_body_glb` wrote the
+  MPFB asset's own rest into the GLB: two skeletons, 81–195 mm apart, and only the silhouette
+  (which renders the file) could see it. A per-performer rest now rides on the `BodyTrack`
+  (`rest_translations_m`; `skeleton_for_track`, `skeleton_for_track_dict`), and the closure band
+  in `tools/compare/d3_skeleton_gate.py` parses the delivered GLB and forward-kinematics it against
+  the track's own rest. `skeleton_for_joint_names(track.joint_names)` is the defect pattern: it
+  hands back the canonical body whatever the track carries. `tools/head/sized_skeleton.py`
+  re-exports the shipped sizing, so D2's frozen gates no longer reproduce their SIZED arms.
 - **Every part carries a picture, and the picture says which way is good.** Each rung on the
   ladder page and each part on the progress page shows a bar chart -- ours beside MAMMA's, with
   an alternative of ours and a deliberately wrong answer where they exist -- labelled in plain
