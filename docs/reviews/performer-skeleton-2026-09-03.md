@@ -196,6 +196,16 @@ follows the joints through the weights it already has.
 **Overall: FAIL on one pre-registered band**, the oracle's arm residual, by 0.19 mm on one
 of six bodies. It is not moved.
 
+**A second route on closure, at Sol's pre-merge request.** Blender 4.2's own importer on
+the rebuilt `subject-00.glb` (scene fps set to 30 before import) puts every bone head
+within **0.005 mm** (median 0.002) of `forward_kinematics_positions` on the track's own
+rest at frame 0, over all 55 joints. The gate's reader and the consumer that renders the
+silhouette agree, so the silhouette is scoring a mesh in the place closure describes.
+
+**Temporal, reported (added at review):** clavicles over the 800°/s ceiling 0 → 0 on both
+subjects (the D2c reject holds); the arm joints below the clavicle, which no reject bounds,
+14 → 21 on subject 0 and 13 → 12 on subject 1 (`gate.json` → `temporal`).
+
 ## 5. The pre-registered expectations, and whether each was met
 
 | | expectation (§0) | outcome |
@@ -266,6 +276,13 @@ branch with the new module reachable (no literal arrives with the sizing).
   on the shorter lever (14 → 21 frames over the ceiling on subject 0).
 * **D6:** the binding; the mesh is stretched onto its skeleton, not re-skinned.
 * **Pelvis frame:** a converter/pose step with its own gate.
+* **`tools/head/sized_skeleton.py` now re-exports the drop-corrected sizing.** D2's frozen
+  gates (`d2_clavicle_gate.py`, `d2c_clavicle_temporal_gate.py`, its `_baseline_check`)
+  build their SIZED arms through it, so re-running them will not reproduce their committed
+  sized figures; their canonical arms are unaffected. The committed reports stand as the
+  record; the ladder's `regenerate` strings for those rungs carry that caveat.
+* **`tests/test_body_export.py` is one of the user's uncommitted files** (modified in the
+  main tree). The one-line fix in §6 is reported, not applied.
 * **Stale:** `docs/parity-board.html` stage 06 says "the rig is one fixed body (540 mm
   shoulders)"; `ladder.py` rung 6 says "Nothing in the delivery path"; the scoreboard's
   `sized` arm label on pre-D3 reports means a replay, on D3 reports the delivered body (the

@@ -77,9 +77,10 @@ def x_skeleton(_: dict) -> tuple[list, list]:
     closure = r.get("closure", {}).get("subjects", {})
     for s, block in closure.items():
         t = _subject_label(s)
+        max_m = block.get("max_error_m")
         figs.append(fig(f"D3 closure: delivered GLB vs the track's own FK, max over frames and joints, {t}",
-                        block.get("max_error_m"), "m", REF_CLOSURE, key=f"closure_max_{s}",
-                        note=f"band {r['closure'].get('band_m')} m"))
+                        None if max_m is None else round(1000.0 * max_m, 5), "mm", REF_CLOSURE,
+                        key=f"closure_max_{s}", note=f"band {1000.0 * r['closure'].get('band_m', 0)} mm"))
         ctrls.append(fig(f"D3 must-fail: the PRE-D3 exporter on the same track, median, {t}",
                          block.get("mustfail_pre_d3_exporter", {}).get("median_error_mm"), "mm", REF_CLOSURE, LOWER,
                          key=f"closure_ctrl_pre_d3_{s}", note="must fail the band, and does"))
@@ -119,6 +120,18 @@ def x_skeleton(_: dict) -> tuple[list, list]:
                         "mm", "the projection's own floor estimate", key=f"converter_hoist_before_{s}"))
         figs.append(fig(f"D3 ground hoist, median, after, {t}", block.get("after", {}).get("hoist_median_mm"),
                         "mm", "the projection's own floor estimate", key=f"converter_hoist_after_{s}"))
+    temporal = r.get("temporal", {}).get("subjects", {})
+    for s, block in temporal.items():
+        t = _subject_label(s)
+        for when in ("before", "after"):
+            figs.append(fig(f"D3 arm joints below the clavicle over the 800 deg/s ceiling, {when}, {t}",
+                            block.get(when, {}).get("arm_joints_below_over_ceiling"), "frames",
+                            "human peak joint rate (ANATOMY); no reject bounds these joints", LOWER,
+                            key=f"converter_below_clavicle_over_ceiling_{when}_{s}"))
+            figs.append(fig(f"D3 clavicles over the ceiling (the D2c reject bounds these), {when}, {t}",
+                            block.get(when, {}).get("clavicles_over_ceiling"), "frames",
+                            "human peak joint rate (ANATOMY)", LOWER,
+                            key=f"converter_clavicle_over_ceiling_{when}_{s}"))
     ext = r.get("external_reports", {})
     for when in ("before", "after"):
         head = ext.get(f"rung11_{when}", {}).get("headline", {})

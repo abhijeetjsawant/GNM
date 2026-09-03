@@ -866,6 +866,39 @@ CONSUMER_MANIFEST = json.loads(
 ) if (Path(__file__).with_name("d3_consumer_manifest.json")).exists() else {}
 
 
+
+# ------------------------------------------------------------------ TEMPORAL (reported)
+def temporal_block(report: dict) -> None:
+    """Frames over the 800 deg/s ceiling (26.67 deg/frame at 30 fps) on the delivered
+    tracks, before and after, split into the CLAVICLES the D2c reject bounds and the arm
+    joints below them, which no reject bounds. Reported, never banded: the sized rig's
+    lever is shorter, so the same landmark wander becomes more angle (D2's finding)."""
+    ceiling = 800.0 / 30.0
+
+    def step_deg(q: np.ndarray) -> np.ndarray:
+        d = np.abs(np.sum(q[:-1] * q[1:], axis=1)).clip(0.0, 1.0)
+        return np.degrees(2.0 * np.arccos(d))
+
+    block: dict = {"ceiling_deg_per_frame": round(ceiling, 2), "banded": False, "subjects": {}}
+    for subject in (0, 1):
+        row = {}
+        for label, directory in (("before", DELIVERED), ("after", REBUILD)):
+            q = np.load(directory / f"subject-{subject:02d}.body-track.npz")[
+                "local_rotations_xyzw"].astype(np.float64)
+            clav = {n: int((step_deg(q[:, DETAILED_HUMANOID.index(n)]) > ceiling).sum())
+                    for n in ("LeftShoulder", "RightShoulder")}
+            below = {n: int((step_deg(q[:, DETAILED_HUMANOID.index(n)]) > ceiling).sum())
+                     for n in ("LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm")}
+            row[label] = {
+                "clavicles_over_ceiling": sum(clav.values()),
+                "arm_joints_below_over_ceiling": sum(below.values()),
+                "per_joint": {**clav, **below},
+                "median_clavicle_step_deg": round(float(np.median(np.concatenate(
+                    [step_deg(q[:, DETAILED_HUMANOID.index(n)]) for n in ("LeftShoulder", "RightShoulder")]))), 3),
+            }
+        block["subjects"][f"subject_{subject:02d}"] = row
+    report["temporal"] = block
+
 # ------------------------------------------------------------------ main
 def main() -> int:
     started = time.time()
@@ -904,6 +937,7 @@ def main() -> int:
     canonical_bit_identity(report, REBUILD / "work")
     delivered_block(report)
     hoist_block(report)
+    temporal_block(report)
     fold_external(report)
 
     gate: list[dict] = []
