@@ -292,7 +292,7 @@ on the squat clip) and is a *lumbar* direction, not a pelvis one.
 | **B6 D3 CLOSURE** on the rebuilt GLB, read from its own bytes, band 1e-4 m | 4.8e-7 / 5.2e-7 m | **PASS** |
 | **B8 REBUILD hygiene.** 8 observation files byte-identical; triangulation byte-identical | all true | **PASS** |
 | **LEGACY BIT-IDENTITY.** the whole real `reconstruct_multiview` with no spine feed vs the pre-D7 delivery | rotations, root and contacts byte-identical on both subjects | **PASS** |
-| **B7 SILHOUETTE.** the pre-registered clauses | **NOT MEASURED**, §6 | verdict withheld |
+| **B7 SILHOUETTE**, part-wise and by trunk tilt. torso+legs rises on the bent tercile; arms within their CI; the upright tercile within its CI; the MAMMA oracle bit-identical | subject 0 **+0.0220** [0.0035, 0.0276] on the bent tercile, arms +0.0022 [−0.0052, 0.0094], **upright +0.0083 [0.0026, 0.0160] — rose, clear of zero**; subject 1 bent **−0.0003** [−0.0047, 0.0074], arms +0.0037 [−0.0018, 0.0062], upright −0.0072 [−0.0166, 0.0124]; oracle **bit-identical in 8/8** | **FAIL on 2 of 7 clauses**, §5 |
 | **HEAD GATE UNCHANGED EXACTLY.** `head_orientation` and `toe_triangulation` diagnostics, before vs after | byte-equal | **PASS** |
 | **FACING (reported).** `Hips` forward-dot > 0.9 and all handedness signs unchanged | 0.972 / 0.962 and 0.984 / 0.979; **0 of 16 signs changed**; `Hips` is the ONLY joint whose forward-dot moved at all | reported, and it holds |
 
@@ -311,6 +311,32 @@ on the squat clip) and is a *lumbar* direction, not a pelvis one.
 | `Hips` median angular rate | 63.4 → 67.5 °/s | 84.0 → 96.6 °/s |
 | silhouette IoU, whole person, 8 cells | +0.035, −0.024, +0.030, −0.003 | −0.008, +0.007, +0.006, −0.007 |
 | MAMMA's own pelvis-to-thorax separation (SMPL-X joints 3·6·9 composed), beside ours (`Spine`·`Chest`·`UpperChest`) | 32.34° / ours 18.92° | 39.64° / ours 15.82° |
+
+**Rung 11 vs MAMMA `pred_joints`, per joint — run by the coordinator on this delivery
+(`artifacts/compare/scoreboard-d7-pelvis-frame.json` against the committed
+`artifacts/compare/scoreboard-commercial-multiview-soma77.json`). REPORTED; it selected
+nothing.** Quoted per joint and not by the median, because a rank statistic over a bimodal
+population is not a summary of it:
+
+| joint | subject 0, before → after | subject 1 |
+|---|---|---|
+| **root** | **37.1 → 22.0 mm** (−15.1) | **39.6 → 23.2** (−16.5) |
+| **neck** | **112.4 → 91.3** (−21.0) | **107.7 → 89.0** (−18.8) |
+| **nose** | **110.7 → 131.8** (+21.1) | **84.5 → 102.8** (+18.3) |
+| ankles | 66.0 → 53.9 (−12.1), 56.2 → 60.6 (+4.4) | 51.6 → 48.7, 31.1 → 36.6 |
+| knees | 32.6 → 26.7, 25.4 → 18.6 | 45.8 → 40.1, 29.5 → 31.7 |
+| shoulders / elbows / wrists / hips | all within ±9 mm, signs mixed | same |
+| **15-joint median** | 47.08 → **48.31** | 45.83 → **49.63** |
+| joints improved / worsened | 8 / 7 | 8 / 7 |
+
+**The median moves the wrong way and says nothing.** The population is bimodal: the two
+joints D7 most directly places — the **root**, and the **neck** that rides on it — improve
+by 15–21 mm on both performers, the **nose** worsens by 18–21 mm on both, and the other
+twelve are inside ±9 mm with mixed signs. Eight improve and seven worsen on each performer,
+so the median lands in the middle of a gap that has nothing in it. The nose result is stated
+as an observation and not a mechanism: the head's world *orientation* is byte-identical
+(§5), so what moved is its *position*, carried by the root — and the root moving toward
+MAMMA's root moves the head away from MAMMA's head. Why is not measured here.
 
 **The two performers behave differently and the instruments agree about it.** Subject 0's
 `Hips` joint moved 40 mm closer to its own captured hips on bent frames and its silhouette
@@ -350,21 +376,26 @@ chains and different conventions and are not comparable beyond that sign.
 
 ## 6. What was not run, and why
 
-* **The part-wise and tercile silhouette cuts.** `silhouette.py` writes summaries, not
-  per-frame arrays, and `silhouette_partwise.py` / `silhouette_vs_tilt.py` have their
-  `BUILDS` hard-coded to the D2 paths. What was measured is the whole-person before/after
-  by camera and subject, on the same masks, the same rasteriser and the same mask cache,
-  with MAMMA's mesh oracle bit-identical between the runs. **Four of eight cells rose and
-  four fell, every change ≤ 0.035 IoU**, so at whole-person resolution the photographs
-  neither confirm nor deny D7. A whole-person band invented now would be a band chosen
-  after seeing the numbers, so none is: the verdict is withheld rather than manufactured.
-* **The block-bootstrap CIs on the silhouette difference**, for the same reason.
-* **The rigid-translation over-attribution arm.** It would be an upper bound and not an
-  isolation — D7 leaves the leg roots on the captured hips, so translating D3's mesh moves
-  legs D7 does not.
-* **Rung 11 (`mamma_scoreboard.py`) was not re-run** on the D7 delivery. D7 changes the
-  `Hips` channel and the root, both of which move every joint's world position, so rung 11
-  *would* move; it is a gap. (`facing_location.py` **was** run — §5.)
+* **The rigid-translation over-attribution arm.** Not run, and it would be an upper bound
+  and not an isolation: D7 leaves the leg roots on the captured hips, so translating D3's
+  mesh moves legs D7 does not.
+* **The remaining whole-person-by-camera cut is superseded, not deleted.** It read 4 of 8
+  cells rising, every change ≤ 0.035 IoU; the part-wise cut in §3 uses the right
+  denominator (frames *every* camera scored, IoU averaged over the four) and reads subject 0
+  rising in all three terciles and subject 1 flat. Both are in `gate.json`; the second is
+  the pre-registered one.
+* **Nothing else in B7 is unmeasured.** `d7_silhouette_partwise.py` is a wrapper, not an
+  edit: `silhouette_partwise.py` and `silhouette_vs_tilt.py` carry D2's three builds, D2's
+  folded-arm control and D2's exact root/clavicle decomposition, and their committed reports
+  are the record of that pass, so they were left alone and their `split_ours`,
+  `split_smplx`, `block_draws`, `paired` and `clavicle_weight_bleed` were imported instead.
+  `silhouette.py` needed no change: it already caches the posed mesh, and the per-frame
+  scores this band needs are computed here. **Nothing was written under
+  `artifacts/commercial-multiview-soma77/` or `artifacts/compare/i6/`** — the D3 mesh cache
+  was copied into this step's own work directory, and verified byte-identical to
+  `artifacts/compare/d3-skeleton/silhouette-work/delivered-mesh.npz` (the committed
+  delivery's GLBs are themselves byte-identical to the D3 rebuild's, so the "before" arm is
+  D3).
 
 ## 7. The instrument findings, recorded because they change how the numbers read
 
@@ -400,6 +431,47 @@ after the first result was seen, and that is why it is written down here.
 **The plan card is wrong about where the rest lives**, §0.2. The shipped rest-pitch is a
 convention with a measured 1.75–4.42° spread, registered as third-party provenance with its
 cost stated (a residual δ moves the root by `|mid|·sin δ`, about 80 mm of lever).
+
+## 7b. POST-HOC, and not pre-registered: the world-vertical control on the REAL take
+
+Added after the synthetic band failed, to answer one question the synthetic arm raises about
+the real take: **is subject 0's 47 mm hoist gain the pelvis frame, or merely
+not-the-thorax?** The control is run through the converter's *identical* call site —
+`_pelvis_world_frames` is module level and called by bare name, so an instrument substitutes
+it and nothing enters `src/` and no delivery is rebuilt. Same helpers, same triangulated
+`Spine1`, same skeleton, same watcher on `project_generated_foot_contacts`.
+
+| | before (no pelvis frame) | D7 (measured pelvis) | **POST-HOC world-vertical** |
+|---|---:|---:|---:|
+| subject 0, ground hoist median | 72.68 mm | 25.34 mm | **20.13 mm** |
+| subject 0, `Hips` offset, bent tercile | 68.74 mm | 27.98 mm | **6.36 mm** |
+| subject 0, offset correlation with tilt | +0.981 | +0.719 | −0.074 |
+| subject 1, ground hoist median | 35.54 mm | 34.11 mm | **60.15 mm** |
+| subject 1, `Hips` offset, bent tercile | 79.20 mm | 79.75 mm | **0.00 mm** |
+| subject 1, offset correlation with tilt | +0.977 | +0.857 | +0.062 |
+
+**Three readings, and the first is uncomfortable.**
+
+1. **Subject 0's hoist gain is mostly not-the-thorax, not the measured pelvis.** A pelvis
+   frozen bolt upright takes the hoist to 20.13 mm, slightly *past* D7's 25.34. The real
+   take says what the synthetic arm said.
+2. **The `Hips`-joint offset is zeroed by construction, exactly as pre-registered.** The
+   world-vertical control drives it to **6.36 mm** on subject 0 and to
+   **0.00000009 mm** on subject 1 — because with a vertical pelvis `R_hips · mid` has no
+   horizontal component at all. §0.6 said "it must move, and a constant can zero it, so it
+   is not a band". The constant zeroes it. That figure is evidence of nothing, and the
+   decision not to band it is vindicated rather than assumed.
+3. **But the constant is not a free win either.** It nearly *doubles* subject 1's hoist,
+   35.54 → 60.15 mm, where D7 leaves it where it was. So "freeze the pelvis upright" is
+   better than D7 on one performer and clearly worse on the other, on the one figure here
+   that a constant cannot trivially optimise.
+
+**And it forces a limit on §3's silhouette result.** Subject 0's torso+legs rise
+(+0.0102 → +0.0178 → +0.0220 IoU, monotone in tilt) is **not attributed** between "the
+pelvis is measured" and "the pelvis is not the thorax". The build that would separate them
+is a world-vertical delivery rendered through the same rasteriser, and it was not run. What
+the photographs establish is that the change is real, tilt-dependent and confined to
+torso+legs; what they do not establish is which of the two changes made it.
 
 ## 8. Tests
 
@@ -442,14 +514,23 @@ be inferred from a diff.
    pre-registered verdict stands on the pre-registered noise.
 5. **The hoist was computed after the rebuild, not before** (§5), so its pre-registered
    number was never at risk.
-6. **The silhouette's pre-registered clauses were not measured** (§6) and no substitute band
-   was invented.
-7. **Rung 11 was not re-run** (§6).
-8. **An earlier version of the MAMMA oracle measured `spine3` alone** instead of the composed
+6. **The silhouette's pre-registered clauses WERE measured**, in a later pass, by a thin
+   wrapper (`tools/compare/d7_silhouette_partwise.py`) rather than by editing
+   `silhouette_partwise.py` / `silhouette_vs_tilt.py`, whose `BUILDS` carry D2's three
+   builds and whose committed reports are the record of that pass. `silhouette.py` needed no
+   change. Nothing was written under `artifacts/commercial-multiview-soma77/` or
+   `artifacts/compare/i6/`. An earlier version of this document said the clauses were
+   unmeasured and withheld a verdict; that is superseded, and the whole-person cut it
+   reported is kept beside the pre-registered one.
+7. **Rung 11 was run by the coordinator**, not by this session, on this delivery
+   (`artifacts/compare/scoreboard-d7-pelvis-frame.json`); it is folded into §4 as REPORTED.
+8. **The world-vertical control on the real take (§7b) is POST-HOC**, added after the
+   synthetic band failed, and labelled as such in `gate.json` and here.
+9. **An earlier version of the MAMMA oracle measured `spine3` alone** instead of the composed
    `spine1·spine2·spine3` chain, and was corrected before this was written.
-9. **`tools/compare/provenance.py` rewrote the shared `artifacts/compare/provenance.json`.**
+10. **`tools/compare/provenance.py` rewrote the shared `artifacts/compare/provenance.json`.**
    It is regenerable and untracked, but the main tree's copy is now this branch's.
-10. **`tools/compare/provenance.py` was edited** (four new constants). `ladder.py` and
+11. **`tools/compare/provenance.py` was edited** (four new constants). `ladder.py` and
     `status.py` were not touched, no existing test was edited, and nothing was written under
     `artifacts/commercial-multiview-soma77/`.
 
@@ -465,19 +546,25 @@ Everything in §0.8 stands, and the run added three more:
 * **Generalisation of the world-vertical result.** Five clips from one motion source, all
   with a near-upright pelvis. A take with real pelvic tilt would separate the candidate from
   the constant, and this fixture cannot.
+* **Which of two changes the silhouette saw.** §7b: subject 0's torso+legs rise is not
+  attributed between the measured pelvis and merely-not-the-thorax, and the world-vertical
+  silhouette arm that would separate them was not rendered.
 
 ## 10. What needs a decision
 
 **D7 is built, measured, and it fails its own pre-registered band. It should not be merged
 on the strength of this gate.** The three things that would settle it, in order of cost:
 
-1. **A motion source with real pelvic tilt.** The world-vertical control wins because these
-   five clips barely tilt the pelvis. That is a fixture property, and lane H's owned capture
-   is where it gets fixed.
-2. **A lag/attenuation instrument that works at this noise**, so the window can be selected
+1. **A motion source with real pelvic tilt.** The world-vertical control wins on synthetic
+   truth because these five clips barely tilt the pelvis, and §7b shows the same control
+   taking most of subject 0's hoist gain on the real take. That is a fixture property, and
+   lane H's owned capture is where it gets fixed.
+2. **A world-vertical delivery, rendered.** One rebuild and one silhouette pass would tell
+   us whether the photographs are seeing the measured pelvis or merely a pelvis that is not
+   the thorax (§7b). It is the cheapest thing on this list that would move the verdict
+   either way.
+3. **A lag/attenuation instrument that works at this noise**, so the window can be selected
    rather than refused.
-3. **The part-wise silhouette on the D3 and D7 rebuilds**, which needs `silhouette.py` to
-   emit per-frame arrays or `silhouette_partwise.py` to take its builds as arguments.
 
 ## 11. In plain language
 
@@ -502,5 +589,19 @@ against the dumb answer it loses by two and a half degrees. The reason turns out
 practice footage: in every clip available, the performers' pelvises barely tip away from
 upright, so "always upright" is already nearly right there. On footage with real hip tilt
 that would not hold — but we do not have that footage, and a step does not get to pass its
-own test by explaining the test away. So the work is written up, the failure is recorded,
-and whether it ships is not this step's call to make.
+own test by explaining the test away.
+
+The photographs were then checked properly, split into body and arms and cut by how far the
+performer was bent over. On one performer the body's outline improved in every band, and
+most where they were most bent over; the arms did not move, which is right, because this step
+does not touch them. On the other performer nothing moved at all — and that is the same
+performer whose hip joint did not move either, so the two checks agree about which person
+this step reaches. Then the dumb answer was run on the real footage too, and it took most of
+the first performer's gain: freezing the pelvis upright puts the character on the floor
+slightly better than measuring it does. It also made the second performer noticeably worse,
+so it is not simply better. What none of this separates is whether the outline improved
+because the pelvis is now measured, or merely because it is no longer glued to the chest.
+The check that would tell us apart has not been run.
+
+So the work is written up, every failure is recorded where it fell, and whether it ships is
+not this step's call to make.

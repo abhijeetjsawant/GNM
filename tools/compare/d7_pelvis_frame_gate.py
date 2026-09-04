@@ -599,10 +599,12 @@ def mamma_pelvis_oracle(report: dict) -> None:
 def silhouette_block(report: dict) -> None:
     """B7. The photographs -- the one band the candidate cannot optimise.
 
-    BEFORE is D3's own committed run (`artifacts/compare/d3-skeleton/silhouette-d3.json`);
-    AFTER is the same instrument, the same rasteriser, the same masks and the same mask
-    cache pointed at the D7 rebuild. The MAMMA mesh oracle reads NONE of our track, so its
-    bit-identity between the two runs is the proof that reusing the caches changed nothing.
+    The PRE-REGISTERED clauses, part-wise and by trunk tilt, come from
+    `tools/compare/d7_silhouette_partwise.py`, which imports `silhouette.py`'s rasteriser,
+    scorer and mask store and `silhouette_partwise.py`'s part split, block draws and paired
+    bootstrap, so both builds and the oracle go through one pixel path and one statistic.
+    The whole-person before/after by camera cell is folded in beside them from the two
+    `silhouette.py` runs.
     """
     before = json.loads((ROOT / "artifacts/compare/d3-skeleton/silhouette-d3.json").read_text())
     after = json.loads((OUT_DIR / "silhouette-d7.json").read_text())
@@ -626,40 +628,152 @@ def silhouette_block(report: dict) -> None:
             ob = before["arms"]["ORACLE_mamma_mesh"][camera][subject]["iou"]["median"]
             oa = after["arms"]["ORACLE_mamma_mesh"][camera][subject]["iou"]["median"]
             oracle[f"{camera}/{subject}"] = {
-                "before": round(ob, 6), "after": round(oa, 6),
-                "identical": bool(ob == oa)}
+                "before": round(ob, 6), "after": round(oa, 6), "identical": bool(ob == oa)}
     identical = all(v["identical"] for v in oracle.values())
-    report["B7_silhouette"] = {
-        "reference": ("MAMMA's SAM2 person masks -- the pixels of the actual footage. The one "
-                      "band the candidate cannot optimise."),
-        "before": "artifacts/compare/d3-skeleton/silhouette-d3.json (D3's committed run)",
-        "after": "artifacts/compare/d7-pelvis-frame/silhouette-d7.json",
-        "cells": cells,
-        "cells_that_rose": rose,
+
+    block: dict = {
+        "reference": ("MAMMA's SAM2 person masks -- the pixels of the actual footage. The "
+                      "one band the candidate cannot optimise."),
+        "before": "artifacts/commercial-multiview-soma77 (the committed delivery, which IS D3)",
+        "after": "artifacts/compare/d7-pelvis-frame/delivery",
+        "whole_person_by_camera_cell": cells,
+        "whole_person_cells_that_rose": rose,
         "mamma_mesh_oracle_bit_identical": identical,
         "oracle": oracle,
-        # NOT A VERDICT, DELIBERATELY. The pre-registered clauses name the torso+legs
-        # part, the arms part and the tilt terciles; none of them was measured (below), so
-        # inventing a whole-person band now -- "5 of 8 cells" -- would be picking a band
-        # after seeing the numbers, which is the defect this lane exists to catch.
-        "verdict_withheld": ("REPORTED, NOT BANDED: the pre-registered clauses were not "
-                             "measured, and no substitute band is invented after the fact."),
-        "mamma_mesh_oracle_bit_identical_IS_the_one_thing_this_run_proves": identical,
-        "band_was": ("torso+legs rises on the bent tercile; arms within their CI of D3; the "
-                     "upright tercile within its CI; the MAMMA oracle bit-identical"),
-        "DEVIATION_the_partwise_and_tercile_cuts_were_NOT_run": (
-            "`silhouette.py` writes summaries, not per-frame arrays, and "
-            "`silhouette_partwise.py` / `silhouette_vs_tilt.py` have their BUILDS hardcoded "
-            "to the D2 paths. The whole-person before/after by cell is what was measured; "
-            "the torso+legs vs arms split and the tilt terciles, and therefore the "
-            "block-bootstrap CIs on the difference, were NOT computed. The pre-registered "
-            "clauses that name them are UNMEASURED, not met."),
         "over_attribution_note": ("a rigid-translation arm would be an UPPER BOUND, not an "
                                   "isolation: D7 leaves the leg roots on the captured hips, "
                                   "so translating D3's mesh moves legs D7 does not."),
-        "blind_to": ("depth, a left/right mirror of a fore-aft symmetric pose, and anything "
-                     "inside the outline. Every figure is read against a mesh whose shoulder "
-                     "span is 540 mm against 346 and 363 measured."),
+        "blind_to": ("depth, a left/right mirror of a fore-aft symmetric pose, and, WITHIN "
+                     "each part, where inside the outline a limb sits. Every figure is read "
+                     "against a mesh whose shoulder span is 540 mm against 346 and 363 "
+                     "measured."),
+    }
+    partwise_path = OUT_DIR / "silhouette-partwise.json"
+    if not partwise_path.exists():
+        block["verdict_withheld"] = (
+            "REPORTED, NOT BANDED: the pre-registered clauses were not measured, and no "
+            "substitute band is invented after the fact.")
+        report["B7_silhouette"] = block
+        return
+    partwise = json.loads(partwise_path.read_text())
+    block["preregistered_clauses"] = partwise["preregistered_clause_verdicts"]
+    block["partwise_and_tercile"] = partwise["subjects"]
+    block["part_split"] = partwise["part_split"]
+    block["statistics"] = partwise["statistics"]
+    block["instrument"] = "tools/compare/d7_silhouette_partwise.py"
+    block["verdict"] = partwise["verdict"]
+    report["B7_silhouette"] = block
+
+
+def world_vertical_posthoc(report: dict) -> None:
+    """POST-HOC, and NOT pre-registered: is performer 0's gain the PELVIS, or just NOT-THORAX?
+
+    The world-vertical control on the REAL take, against our own capture. It is run through
+    the IDENTICAL code path -- `_pelvis_world_frames` is module level and called by bare
+    name, exactly as `_leg_root_offset` and `_joint_origin` are, so an instrument
+    substitutes it and the converter never knows. Nothing here enters `src/`; no delivery is
+    rebuilt.
+
+    The question it answers: D7's `Hips`-joint offset fell 65.1 -> 25.3 mm on the bent
+    tercile and the ground projection's hoist fell 72.7 -> 25.3 mm, both on subject 0. If a
+    pelvis frozen upright does the same, those gains are "the pelvis is not the thorax" and
+    not "the pelvis is measured" -- which is the same reading the synthetic arm's failed
+    band gives, arriving from the real take instead.
+    """
+    import triangulate_soma as ts  # noqa: E402
+    from autoanim_gnm.performer_skeleton import performer_skeleton  # noqa: E402
+
+    ts.OUT = OUT_DIR
+    spine, _support, _used = ts.triangulate([1])          # SOMA-77 Spine1
+    shipped = cm._pelvis_world_frames
+
+    def world_vertical(points_rig_y_up_m, spine1_rig_y_up_m, *, mode=None,
+                       smoothing_frames=None):
+        """The plausible shortcut, through the converter's own construction.
+
+        Same signature, same call site, same `_frame_alignment`, same secondary axis (the
+        hip line). ONLY the primary target differs: the rig's +Y, which IS world up after
+        `positions_to_body_track`'s change of basis. A constant pelvis pitch, per frame.
+        """
+        points = np.asarray(points_rig_y_up_m, dtype=np.float64)
+        frames = len(points)
+        left = points[:, cm.JOINT_INDEX["left_hip"]]
+        right = points[:, cm.JOINT_INDEX["right_hip"]]
+        quaternions = np.zeros((frames, 4), dtype=np.float64)
+        for frame in range(frames):
+            quaternions[frame] = cm._frame_alignment(
+                (0.0, 1.0, 0.0), (1.0, 0.0, 0.0),
+                np.asarray((0.0, 1.0, 0.0)), left[frame] - right[frame])
+        for frame in range(1, frames):
+            if float(np.dot(quaternions[frame], quaternions[frame - 1])) < 0.0:
+                quaternions[frame] *= -1.0
+        return quaternions, {"status": "solved", "mode": "world_vertical_POST_HOC_CONTROL",
+                             "smoothing_frames": 0, "resolved_fraction": 1.0,
+                             "interpolated_frames": 0}
+
+    out = {}
+    for subject in (0, 1):
+        source = capture_positions(REBUILD, subject)
+        skeleton = performer_skeleton(DETAILED_HUMANOID, source)[0]
+        hip_mid = 0.5 * (source[:, cm.JOINT_INDEX["left_hip"]]
+                         + source[:, cm.JOINT_INDEX["right_hip"]])
+        trunk = source[:, cm.JOINT_INDEX["neck"]] - hip_mid
+        tilt = np.degrees(np.arccos(np.clip(
+            trunk[:, 2] / np.linalg.norm(trunk, axis=1), -1.0, 1.0)))
+        bent = tilt >= np.percentile(tilt, 66.7)
+        row = {}
+        for label, patch, spine_input in (
+            ("before_no_pelvis_frame", None, None),
+            ("D7_measured_pelvis", None, spine[subject, :, 0, :]),
+            ("POST_HOC_world_vertical_pelvis", world_vertical, spine[subject, :, 0, :]),
+        ):
+            saved = cm.project_generated_foot_contacts
+            captured: list = []
+
+            def watcher(track, **kwargs):
+                captured.append(track)
+                return saved(track, **kwargs)
+
+            cm.project_generated_foot_contacts = watcher
+            if patch is not None:
+                cm._pelvis_world_frames = patch
+            try:
+                solved = cm.positions_to_body_track(
+                    source, sample_rate_hz=30, provenance_sha256="0" * 64,
+                    spine_world_z_up_m=spine_input, skeleton=skeleton)
+            finally:
+                cm.project_generated_foot_contacts = saved
+                cm._pelvis_world_frames = shipped
+            unprojected = np.asarray(captured[-1].root_translation_m, np.float64)
+            projected = np.asarray(solved.root_translation_m, np.float64)
+            world = forward_kinematics_positions(
+                projected, np.asarray(solved.local_rotations_xyzw, np.float64),
+                skeleton=skeleton)
+            rig_hips = world[:, solved.joint_names.index("Hips")]
+            capture = np.stack([rig_hips[:, 0], -rig_hips[:, 2], rig_hips[:, 1]], axis=-1)
+            horizontal = np.linalg.norm((capture - hip_mid)[:, :2], axis=1) * 1000.0
+            row[label] = {
+                "hoist_median_mm": round(1000.0 * float(np.median(
+                    np.linalg.norm(projected - unprojected, axis=1))), 2),
+                "hips_offset_median_mm": round(float(np.median(horizontal)), 3),
+                "hips_offset_bent_tercile_median_mm": round(
+                    float(np.median(horizontal[bent])), 3),
+                "hips_offset_bent_tercile_ci95": block_bootstrap(horizontal[bent]),
+                "correlation_with_trunk_tilt": round(
+                    float(np.corrcoef(horizontal, tilt)[0, 1]), 4),
+            }
+        out[f"subject_{subject:02d}"] = row
+    report["world_vertical_posthoc_on_the_real_take"] = {
+        "status": "POST-HOC, NOT PRE-REGISTERED. Added after the synthetic band failed.",
+        "why": world_vertical_posthoc.__doc__,
+        "how": ("`_pelvis_world_frames` is substituted at module level, so the control runs "
+                "through the converter's identical call site rather than a "
+                "re-implementation of it -- the pattern `_leg_root_offset` was built for. "
+                "Nothing enters src/; no delivery is rebuilt."),
+        "reference": ("our own triangulated capture (the hip-landmark midpoint) and the "
+                      "ground projection's own floor estimate. Both are the CONVERTER "
+                      "scored against its own input, and neither is truth."),
+        "subjects": out,
     }
 
 
@@ -682,6 +796,7 @@ def main() -> int:
         ("delivery", delivery_block), ("legacy", legacy_bit_identity),
         ("reported", reported_block), ("mamma", mamma_pelvis_oracle),
         ("silhouette", silhouette_block), ("hoist", hoist_block),
+        ("world_vertical", world_vertical_posthoc),
         ("facing", facing_block), ("head", head_unchanged_block),
     ):
         try:
