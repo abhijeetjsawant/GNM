@@ -283,7 +283,7 @@ on the squat clip) and is a *lumbar* direction, not a pelvis one.
 | **B1 degenerate.** thorax-as-pelvis (today's code), band ≥ 20° on the squat's bent frames | 26.97° | PASS (fails as required) |
 | **B1 degenerate.** world-vertical, band ≥ 20° | **5.25°** | **REFUTED** — §5 |
 | **B1 lumbar.** best lumbar arm, band ≥ 5° | 12.22° | PASS |
-| **B2a NOISY SYNTHETIC, the selector.** winner below thorax **and** world-vertical **and** the best lumbar | C 9.96 vs thorax 27.61 ✓, lumbar 14.24 ✓, **world-vertical 7.32 ✗** | **FAIL** |
+| **B2a NOISY SYNTHETIC, the selector.** winner below thorax **and** world-vertical **and** the best lumbar | C **10.19** vs thorax 27.61 ✓, best lumbar 14.34 ✓, **world-vertical 7.32 ✗** | **FAIL** |
 | **B2b the window.** interior optimum + lag + attenuation, over-smoothed must fail on the fast clip | the protocol could not be executed; selection is 0 by the pre-registered fallback | reported |
 | **B3 RIGIDITY on the real take** (sd_mm, the pre-registered reading rule) | root→Spine1 5.09 / 8.44 mm, mid(hips)→Spine1 6.61 / 11.10 mm, against body controls 9.39–26.62 / 10.24–47.73 mm | **TRUSTED** |
 | **B4 ROUND TRIP canonical.** legs 0.00, torso 0.00, arms 0.55 / 0.08 | exactly that | PASS (and **blind to D7**, §0.5) |
@@ -293,6 +293,8 @@ on the squat clip) and is a *lumbar* direction, not a pelvis one.
 | **B8 REBUILD hygiene.** 8 observation files byte-identical; triangulation byte-identical | all true | **PASS** |
 | **LEGACY BIT-IDENTITY.** the whole real `reconstruct_multiview` with no spine feed vs the pre-D7 delivery | rotations, root and contacts byte-identical on both subjects | **PASS** |
 | **B7 SILHOUETTE.** the pre-registered clauses | **NOT MEASURED**, §6 | verdict withheld |
+| **HEAD GATE UNCHANGED EXACTLY.** `head_orientation` and `toe_triangulation` diagnostics, before vs after | byte-equal | **PASS** |
+| **FACING (reported).** `Hips` forward-dot > 0.9 and all handedness signs unchanged | 0.972 / 0.962 and 0.984 / 0.979; **0 of 16 signs changed**; `Hips` is the ONLY joint whose forward-dot moved at all | reported, and it holds |
 
 **Overall: FAIL, on B2a, and the failure is the finding.**
 
@@ -302,12 +304,13 @@ on the squat clip) and is a *lumbar* direction, not a pelvis one.
 |---|---|---|
 | `Hips` **joint's** horizontal offset from the captured hip midpoint, bent tercile, before → after | **65.1 → 25.3 mm** [CI 11.8, 27.3] | 79.2 → 79.7 mm |
 | … correlation with trunk tilt, before → after | +0.979 → +0.876 | +0.977 → +0.856 |
-| lowest joint (the hoist proxy), before → after | −0.1308 → −0.0971 m | −0.8253 → −0.8329 m |
+| **the ground projection's own hoist**, before → after (both arms without the head and toe solves) | **72.68 → 25.34 mm** median | 35.54 → 34.11 mm |
+| lowest joint height (a proxy, not the hoist), before → after | −0.1308 → −0.0971 m | −0.8253 → −0.8329 m |
 | foot contacts, before → after | [33, 49] → [36, 49] | [2, 20] → [6, 20] |
 | `Hips` frames over 800 °/s | 0 → 0 | 0 → 0 |
 | `Hips` median angular rate | 63.4 → 67.5 °/s | 84.0 → 96.6 °/s |
 | silhouette IoU, whole person, 8 cells | +0.035, −0.024, +0.030, −0.003 | −0.008, +0.007, +0.006, −0.007 |
-| MAMMA's own pelvis-vs-spine3 separation, beside ours | 8.85° / ours 18.92° | 9.49° / ours 15.82° |
+| MAMMA's own pelvis-to-thorax separation (SMPL-X joints 3·6·9 composed), beside ours (`Spine`·`Chest`·`UpperChest`) | 32.34° / ours 18.92° | 39.64° / ours 15.82° |
 
 **The two performers behave differently and the instruments agree about it.** Subject 0's
 `Hips` joint moved 40 mm closer to its own captured hips on bent frames and its silhouette
@@ -329,17 +332,19 @@ chains and different conventions and are not comparable beyond that sign.
 | B1 degenerate, thorax | ≥ 20° on the squat's bent frames | **MET**, 26.97° |
 | B1 degenerate, world-vertical | ≥ 20° on the squat's bent frames | **REFUTED**, **5.25°**. The true pelvis on all five clips sits **1.1–12.7°** from world vertical, so on this motion source a frozen upright pelvis is already a good approximation. Nobody had measured that before the band was written. |
 | B1 lumbar | ≥ 5° | **MET**, 12.22° |
-| B2a selector | the winner below all three controls | **REFUTED on one of three.** C beats thorax by 17.6° and the best lumbar by 4.3°, and **loses to world-vertical by 2.6°.** |
-| B2a prediction | A's median ≈ 2.5× B's (the lever ratio) | **MET**, 26.88 / 11.90 = 2.26× |
-| B2a prediction | C ≥ B | **MET**, 9.96 vs 11.90 |
-| B2b window | an interior optimum with lag ≤ 1 frame and attenuation ≥ 0.9 | **NOT EXECUTABLE.** At this noise the lag estimator reads −2.4 to −8.1 frames and the attenuation 1.2–7.3 (*amplification*) at **every** window, window 0 included — both instruments are unusable here. The pre-registered fallback selects **0**. The p95 does improve monotonically to the widest window (33.2 → 17.2°) and that is reported, not selected on. |
+| B2a selector | the winner below all three controls | **REFUTED on one of three.** C beats thorax by 17.4° and the best lumbar by 4.1°, and **loses to world-vertical by 2.9°.** |
+| B2a prediction | A's median ≈ 2.5× B's (the lever ratio) | **MET**, 30.49 / 13.26 = 2.30× |
+| B2a prediction | C ≥ B | **MET**, 10.19 vs 13.26 |
+| B2b window | an interior optimum with lag ≤ 1 frame and attenuation ≥ 0.9 | **NOT EXECUTABLE.** At this noise the lag estimator reads −3.1 to −8.1 frames and the attenuation 1.2–7.0 (*amplification*) at **every** window, window 0 included — both instruments are unusable here. The pre-registered fallback selects **0**. The p95 does improve monotonically to the widest window (36.1 → 17.2°) and that is reported, not selected on. |
 | B3 rigidity | candidates' sd_mm ≤ the worst body control's | **MET**, 0.16–0.33× the worst control. And the reading rule earned its keep: on sd % `root→Spine1` reads **16.4 %** on subject 1, at the very top of the control range, where on sd_mm it is 8.44 against 47.73. |
 | B4 round trip | 0.55 / 0.08, legs and torso 0.00 | **MET exactly** — and trivially, as pre-registered |
 | B5 oracle | ≤ 0.01° | **MET**, 2.1e-6° |
 | B5 must-fail | ≥ 10° | **MET**, 34.38° |
 | B6 closure | ≤ 1e-4 m, prediction 5e-7 or smaller | **MET**, 4.8e-7 / 5.2e-7 m |
 | B8 hygiene | byte-identical observations and triangulation | **MET** |
-| §0.6 hoist | moves by no more than the `Hips`-joint shift, a few mm | **REFUTED in size on subject 0**: the lowest joint rose 33.7 mm, more than "a few". The `Hips` joint itself moved ~40 mm on bent frames, so the prediction's *bound* holds; its "a few mm" gloss does not. Subject 1: 7.5 mm. |
+| §0.6 hoist | moves by no more than the `Hips`-joint shift, "a few mm" | **REFUTED on subject 0, in the good direction.** The ground projection's own correction fell **72.68 → 25.34 mm**, a change of 47.3 mm — larger than "a few", and larger than the `Hips`-joint shift itself (27.4 → 9.7 mm over the whole take, 65.1 → 25.3 on the bent tercile), so the prediction's *bound* is exceeded too. The mechanism is clear enough: the rig no longer sinks on a leaning pelvis, so the projection has far less to correct. Subject 1: 35.54 → 34.11 mm, within the prediction. **Also a deviation:** §0.6 said this would be computed offline BEFORE the rebuild; it was not, it was computed after, and the pre-registered number was therefore never at risk. |
+| §0.6 facing | `Hips` forward-dot median > 0.9 and p05 > 0, all handedness signs unchanged | **MET.** 0.9724 / 0.9623 (subject 0) and 0.9841 / 0.9794 (subject 1) against our capture and MAMMA; **0 of 16 handedness signs changed**; and `Hips` is the only joint in the whole report whose forward-dot median moved by more than 0.02, which is exactly the joint D7 touches. **And a circular figure died here:** before D7 the `Hips` forward-dot against our own capture was **1.0000 by construction**, because `Hips` took the trunk frame built from the very landmarks the capture's forward is derived from. It is a real measurement for the first time. |
+| §0.6 head gate | unchanged EXACTLY | **MET**, verified rather than asserted: `head_orientation` and `toe_triangulation` diagnostics are byte-equal between the pre-D7 delivery and the rebuild. |
 | §0.6 offset must move | it must move | **MET on subject 0** (65.1 → 25.3 mm), **not met on subject 1** (79.2 → 79.7) — and §4 says why that is the expected behaviour of a genuinely tilted pelvis, not a null result |
 | B7 silhouette | torso+legs rises on the bent tercile; arms within CI; upright tercile within CI; MAMMA oracle bit-identical | **the first three NOT MEASURED** (§6); the oracle **is bit-identical in all 8 cells**, which is the proof that reusing the mask caches changed nothing |
 
@@ -357,9 +362,9 @@ chains and different conventions and are not comparable beyond that sign.
 * **The rigid-translation over-attribution arm.** It would be an upper bound and not an
   isolation — D7 leaves the leg roots on the captured hips, so translating D3's mesh moves
   legs D7 does not.
-* **Facing and rung 11 as separate reruns.** `facing_location.py` and `mamma_scoreboard.py`
-  were not re-run on the D7 delivery; the handedness- and facing-sensitive quantity D7
-  touches is `Hips`, and its offset and rate are reported in §4 instead. This is a gap.
+* **Rung 11 (`mamma_scoreboard.py`) was not re-run** on the D7 delivery. D7 changes the
+  `Hips` channel and the root, both of which move every joint's world position, so rung 11
+  *would* move; it is a gap. (`facing_location.py` **was** run — §5.)
 
 ## 7. The instrument findings, recorded because they change how the numbers read
 
@@ -373,15 +378,24 @@ already failed — reads:
 
 | σ (px) | synthetic mid(hips)→Spine1 sd | C (ships) | B | world-vertical | thorax |
 |---:|---:|---:|---:|---:|---:|
-| 3.20 (pre-registered) | 18.85 mm | 9.96° | 11.90° | **7.32°** | 27.61° |
-| 2.40 | 12.74 mm | 7.90° | 10.36° | **7.01°** | 27.09° |
-| 1.60 | 10.36 mm | 7.43° | 8.81° | **7.11°** | 27.73° |
-| 1.12 | 6.93 mm | **5.39°** | 6.70° | 6.54° | 27.09° |
-| 0.80 | 4.95 mm | **3.74°** | 5.17° | 6.09° | 27.05° |
+| 3.20 (pre-registered) | 21.61 mm | 10.19° | 13.26° | **7.32°** | 27.61° |
+| 2.40 | 15.97 mm | 7.98° | 12.22° | **7.01°** | 27.09° |
+| 1.60 | 11.97 mm | 7.55° | 9.68° | **7.11°** | 27.73° |
+| 1.12 | 8.03 mm | **5.49°** | 7.29° | 6.54° | 27.09° |
+| 0.80 | 5.72 mm | **3.80°** | 5.60° | 6.09° | 27.05° |
 
-The real take's own bracket is 6.61–11.10 mm, i.e. between the ×0.35 and ×0.5 rows: **at
+The real take's own bracket is 6.61–11.10 mm, i.e. between the ×0.25 and ×0.5 rows: **at
 subject 0's noise the pelvis frame wins, at subject 1's it is level with a constant.**
 That is a reading, not a verdict, and **the pre-registered verdict stands as it fell.**
+
+**And a correction of my own, recorded rather than quietly fixed.** The first run of this
+sweep, and the first version of the noisy arm's headline, put a Savitzky-Golay window on the
+*spine point* — which is not what ships. `_spine_world_for_subject` triangulates per frame
+and never filters, exactly like the toe feed it extends. Every figure above and in §3 and §5
+is now on the **shipped** arm (the spine point raw); the smoothed variant is kept in the
+report under `noisy_stride_1_spine_smoothed_NOT_WHAT_SHIPS` and reads C **9.96°**, i.e.
+smoothing the input would buy 0.23° and would not change any verdict. The switch was made
+after the first result was seen, and that is why it is written down here.
 
 **The plan card is wrong about where the rest lives**, §0.2. The shipped rest-pitch is a
 convention with a measured 1.75–4.42° spread, registered as third-party provenance with its
@@ -409,6 +423,35 @@ asserts the pre-D3 exporter's root translation `(0, 0.8, 0)` and has failed sinc
 (D3 review §6). It is unrelated to D7 and, like D3, is reported rather than fixed.
 
 No existing test was edited (the user has uncommitted edits in `tests/`).
+
+## 8b. Deviations from the brief and from the pre-registration
+
+Every one of these is a departure from what was written down, listed so none of them has to
+be inferred from a diff.
+
+1. **The pre-registration was committed as this document's §0, not as
+   `artifacts/compare/d7-pelvis-frame/gate.json`.** `artifacts/` is a symlink into the main
+   tree and nothing under it is tracked, so `gate.json` cannot be committed at all. §0 was
+   written at the same moment and is the tamper-evident copy.
+2. **The plan card is wrong about `somaskel77-v1.json` carrying rest geometry** (§0.2), so
+   the "constant from the rest geometry" became an explicit convention with a measured
+   spread, registered as third-party provenance.
+3. **The noisy arm's headline was recomputed** after the first run modelled a pipeline that
+   does not ship (§7). Both arms are in the report.
+4. **The calibration sweep is post-hoc** and is labelled as such in the report; the
+   pre-registered verdict stands on the pre-registered noise.
+5. **The hoist was computed after the rebuild, not before** (§5), so its pre-registered
+   number was never at risk.
+6. **The silhouette's pre-registered clauses were not measured** (§6) and no substitute band
+   was invented.
+7. **Rung 11 was not re-run** (§6).
+8. **An earlier version of the MAMMA oracle measured `spine3` alone** instead of the composed
+   `spine1·spine2·spine3` chain, and was corrected before this was written.
+9. **`tools/compare/provenance.py` rewrote the shared `artifacts/compare/provenance.json`.**
+   It is regenerable and untracked, but the main tree's copy is now this branch's.
+10. **`tools/compare/provenance.py` was edited** (four new constants). `ladder.py` and
+    `status.py` were not touched, no existing test was edited, and nothing was written under
+    `artifacts/commercial-multiview-soma77/`.
 
 ## 9. What this is blind to
 

@@ -450,6 +450,8 @@ def calibration_sweep() -> dict:
     angular figure on it is a pessimistic bound. CLAUDE.md: *when a fit is short, suspect
     the instrument and the free parameters before reaching for more input.*
 
+    Run on the SHIPPED arm (the spine point unsmoothed), not the smoothed variant.
+
     This sweeps the pixel sigma and reports, at each scale, the synthetic segment spread
     beside the real take's -- so the reader can read every arm at the noise level the real
     detector actually delivers. It is MAMMA-FREE: the calibration target is our own
@@ -466,7 +468,7 @@ def calibration_sweep() -> dict:
         sds, errors = [], {arm: {str(w): [] for w in WINDOWS} for arm in ALL_ARMS}
         for seed in SEEDS:
             rng = np.random.default_rng(seed)
-            noisy = observe(cameras, take, rng, smooth_spine=True, sigma_scale=scale)
+            noisy = observe(cameras, take, rng, smooth_spine=False, sigma_scale=scale)
             sds.append(segment_sd_mm(noisy))
             for arm in ALL_ARMS:
                 base = candidate_frames(noisy, arm, None)
@@ -504,9 +506,13 @@ def main() -> int:
             "seeds; a tie within 0.5 deg broken by the smaller convention spread. The "
             "clean arm cannot select; the MAMMA arm selects nothing at any point."),
         "clean": clean_arm(),
-        "noisy_stride_1": noisy_arm(1, "real-time", smooth_spine=True),
-        "noisy_stride_1_spine_unsmoothed": noisy_arm(1, "real-time", smooth_spine=False),
-        "noisy_fast": noisy_arm(FAST_STRIDE, "fast", smooth_spine=True),
+        # THE SHIPPED ARM. `_spine_world_for_subject` triangulates per frame and never
+        # Savitzky-Golay filters -- exactly like the toe feed it extends -- so the spine
+        # point arrives raw. The smoothed variant below models a pipeline that does NOT
+        # exist and is reported only as "what smoothing the input would buy".
+        "noisy_stride_1": noisy_arm(1, "real-time", smooth_spine=False),
+        "noisy_stride_1_spine_smoothed_NOT_WHAT_SHIPS": noisy_arm(1, "real-time", smooth_spine=True),
+        "noisy_fast": noisy_arm(FAST_STRIDE, "fast", smooth_spine=False),
         "noise_calibration_sweep": calibration_sweep(),
     }
     squat_bent = report["noisy_stride_1"]["clips"][SQUAT]["bent_frames_only"]

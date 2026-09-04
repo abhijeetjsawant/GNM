@@ -165,7 +165,7 @@ VISUALS = {
              bars=[dict(label="Ships (fit the whole pelvis)", role="ours", key="pelvis_noisy_kabsch"),
                    dict(label="Alternative (hips to lower spine)", role="alt", key="pelvis_noisy_hipmid_to_spine1"),
                    dict(label="Alternative (pelvis centre to lower spine)", role="alt", key="pelvis_noisy_root_to_spine1"),
-                   dict(label="Before D7: the trunk line", role="mamma", key="pelvis_ctrl_thorax_as_pelvis"),
+                   dict(label="Before D7: the trunk line", role="alt", key="pelvis_ctrl_thorax_as_pelvis"),
                    dict(label="Deliberately wrong: frozen upright", role="control", key="pelvis_ctrl_world_vertical")]),
         dict(title="D7: is the lower-spine landmark stable enough to build a pelvis on?",
              plain="No reference at all here -- a bone does not change length, so the spread of a "

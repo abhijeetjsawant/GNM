@@ -380,7 +380,10 @@ def reported_block(report: dict) -> None:
             rows[label]["hips_frames_over_800_deg_per_s"] = int((step > 800.0).sum())
             rows[label]["hips_median_deg_per_s"] = round(float(np.median(step)), 2)
             floor = float(np.min(world[..., 1]))
-            rows[label]["lowest_joint_y_m"] = round(floor, 5)
+            # NOT the hoist. The hoist is `projected_root - unprojected_root` from
+            # `project_generated_foot_contacts`; this is the lowest joint's height, a
+            # PROXY, and the real figure is in `ground_projection` below.
+            rows[label]["lowest_joint_y_m_PROXY_not_the_hoist"] = round(floor, 5)
             rows[label]["foot_contacts"] = [int(v) for v in np.sum(track.foot_contacts, axis=0)]
         hips[f"subject_{subject:02d}"] = rows
     report["reported_never_banded"] = {
@@ -392,6 +395,142 @@ def reported_block(report: dict) -> None:
                                  "since D2b, which is why this replaces it. A world-vertical "
                                  "pelvis would also produce a tilt-correlated offset; the "
                                  "synthetic arm is where the two are separated."),
+    }
+
+
+def hoist_block(report: dict) -> None:
+    """The ground projection's OWN correction, before -> after, both arms the same way.
+
+    D3's watcher pattern: `project_generated_foot_contacts` is wrapped so the UNPROJECTED
+    track is captured, and the hoist is `projected_root - unprojected_root`. Both arms omit
+    the head and toe solves -- so this is not the delivered number to the millimetre -- and
+    they omit them IDENTICALLY, which is what makes the comparison the figure.
+
+    The AFTER arm is handed the rebuild's own triangulated `Spine1`, recovered through
+    `tools/head/triangulate_soma.triangulate` on the association this branch's rigidity
+    pass wrapped out of the real pipeline.
+    """
+    import triangulate_soma as ts  # noqa: E402
+    from autoanim_gnm.performer_skeleton import performer_skeleton  # noqa: E402
+
+    ts.OUT = OUT_DIR
+    spine, _support, _used = ts.triangulate([1])          # SOMA-77 Spine1
+    out = {}
+    for subject in (0, 1):
+        row = {}
+        source = capture_positions(REBUILD, subject)
+        skeleton = performer_skeleton(DETAILED_HUMANOID, source)[0]
+        for label, spine_input in (("before_no_pelvis_frame", None),
+                                   ("after_D7", spine[subject, :, 0, :])):
+            saved = cm.project_generated_foot_contacts
+            captured: list = []
+
+            def watcher(track, **kwargs):
+                captured.append(track)
+                return saved(track, **kwargs)
+
+            cm.project_generated_foot_contacts = watcher
+            try:
+                solved = cm.positions_to_body_track(
+                    source, sample_rate_hz=30, provenance_sha256="0" * 64,
+                    spine_world_z_up_m=spine_input, skeleton=skeleton)
+            finally:
+                cm.project_generated_foot_contacts = saved
+            unprojected = np.asarray(captured[-1].root_translation_m, np.float64)
+            projected = np.asarray(solved.root_translation_m, np.float64)
+            row[label] = {
+                "hoist_median_mm": round(1000.0 * float(np.median(
+                    np.linalg.norm(projected - unprojected, axis=1))), 2),
+                "hoist_max_mm": round(1000.0 * float(np.max(np.abs(projected - unprojected))), 2),
+            }
+        out[f"subject_{subject:02d}"] = row
+    report["ground_projection_the_real_hoist"] = {
+        "reference": "the projection's own floor estimate",
+        "note": ("measured WITHOUT the head and toe solves, so it is not the delivered "
+                 "number to the millimetre; both arms are computed the same way and the "
+                 "COMPARISON is the figure. The two arms differ only in the spine feed."),
+        "prediction_was": ("PRE-REGISTERED: the hoist moves by no more than the Hips-joint "
+                           "shift, a few mm. The pre-registration also said it would be "
+                           "computed OFFLINE BEFORE the rebuild; it was not, and that is a "
+                           "recorded deviation."),
+        "subjects": out,
+    }
+
+
+def facing_block(report: dict) -> None:
+    """Facing and handedness on the D7 delivery, against D3's committed run. REPORTED."""
+
+    before = json.loads(
+        (ROOT / "artifacts/compare/d3-skeleton/facing-d3.json").read_text())
+    after = json.loads((OUT_DIR / "facing-d7.json").read_text())
+
+    def signs(payload: dict) -> dict:
+        found: dict = {}
+
+        def walk(node, path):
+            if isinstance(node, dict):
+                if "sign_median" in node:
+                    found[path] = node["sign_median"]
+                else:
+                    for key, value in node.items():
+                        walk(value, f"{path}/{key}")
+
+        walk(payload["triple_product"], "")
+        return found
+
+    sa, sb = signs(before), signs(after)
+    changed = [k for k in sa if sa[k] != sb.get(k)]
+    moved, hips = [], {}
+    for subject in ("subject_00", "subject_01"):
+        for joint, block in after["forward_dot"][subject].items():
+            if not isinstance(block, dict):
+                continue
+            for ref, value in block.items():
+                if not isinstance(value, dict) or "median" not in value:
+                    continue
+                old = before["forward_dot"][subject][joint][ref]["median"]
+                delta = value["median"] - old
+                if abs(delta) > 0.02:
+                    moved.append({"subject": subject, "joint": joint, "reference": ref,
+                                  "before": round(old, 4), "after": round(value["median"], 4)})
+                if joint == "delivered_torso_Hips":
+                    hips[f"{subject}/{ref}"] = {
+                        "before": round(old, 4), "after": round(value["median"], 4),
+                        "ci95": [round(v, 4) for v in value["ci95"]],
+                        "above_0_9": bool(value["median"] > 0.9)}
+    report["facing_reported"] = {
+        "reference": ("the footage, two ways: our own capture's forward and MAMMA's. "
+                      "Before = D3's committed run on the D3 delivery."),
+        "handedness_signs_total": len(sa),
+        "handedness_signs_changed": changed or "NONE",
+        "hips_forward_dot": hips,
+        "hips_median_above_0_9_everywhere": all(v["above_0_9"] for v in hips.values()),
+        "forward_dot_medians_that_moved_more_than_0_02": moved,
+        "THE_ONLY_JOINT_THAT_MOVED_IS_HIPS": all(
+            row["joint"] == "delivered_torso_Hips" for row in moved),
+        "and_why_the_before_value_was_1_0000": (
+            "before D7, `Hips` took the trunk frame built from the very landmarks the "
+            "capture's forward is derived from, so its forward-dot against our capture was "
+            "1.0000 BY CONSTRUCTION -- a circular figure. It is a real measurement for the "
+            "first time here."),
+    }
+
+
+def head_unchanged_block(report: dict) -> None:
+    """The head solve reads `_thorax_frames`, not the converter's `Hips`. VERIFY, not assert."""
+
+    before = json.loads((DELIVERED / "run-report.json").read_text())
+    after = json.loads((REBUILD / "run-report.json").read_text())
+    rows = {}
+    for key in ("head_orientation", "toe_triangulation"):
+        a = before.get("diagnostics", before).get(key)
+        b = after.get("diagnostics", after).get(key)
+        rows[key] = bool(json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True))
+    report["head_gate_unchanged_exactly"] = {
+        "pre_registered": ("the head gate must be unchanged EXACTLY -- `_solve_head_for_"
+                           "subject` reads `_thorax_frames`, not the converter's Hips."),
+        "diagnostics_byte_equal": rows,
+        "verdict": "PASS" if all(rows.values()) else "FAIL",
     }
 
 
@@ -416,31 +555,37 @@ def mamma_pelvis_oracle(report: dict) -> None:
             continue
         with np.load(path, allow_pickle=True) as archive:
             pose = np.asarray(archive["smplx_pose"], dtype=np.float64)
-        pelvis = Rotation.from_rotvec(pose[:, :3]).as_matrix()
-        spine3 = Rotation.from_rotvec(pose[:, 9 * 3:9 * 3 + 3]).as_matrix()
-        # MAMMA's spine3 is PARENT-RELATIVE, so its own pelvis-vs-thorax separation is the
-        # composed chain; the pitch difference below is an AGREEMENT figure and nothing
-        # more. It never selects.
-        theirs = geodesic_deg(pelvis, np.einsum("nij,njk->nik", pelvis, spine3))
+        # `smplx_pose` is [frame, 165]: global_orient at [0:3] and then body_pose for
+        # joint j at [3j : 3j+3], all PARENT-RELATIVE axis-angle. SMPL-X's spine chain is
+        # joints 3, 6, 9, so MAMMA's own pelvis-to-thorax separation is the COMPOSED chain
+        # spine1 . spine2 . spine3 -- not spine3 alone, which is what an earlier version of
+        # this block measured and is recorded here as the correction it was.
+        identity = np.broadcast_to(np.eye(3), (len(pose), 3, 3))
+        chain_theirs = identity
+        for joint in (3, 6, 9):
+            local = Rotation.from_rotvec(pose[:, 3 * joint:3 * joint + 3]).as_matrix()
+            chain_theirs = np.einsum("nij,njk->nik", chain_theirs, local)
+        theirs = geodesic_deg(chain_theirs, identity)
         track = load_track(REBUILD, subject)
-        skeleton = skeleton_for_track(track)
-        hips = track.joint_names.index("Hips")
-        chest = track.joint_names.index("Chest")
         world = np.asarray(track.local_rotations_xyzw, np.float64)
-        hips_world = Rotation.from_quat(world[:, hips]).as_matrix()
-        # Chest's world = Hips' world composed down the chain; the local chain product is
-        # what the separation is, and Spine/Chest share the thorax frame.
-        spine = track.joint_names.index("Spine")
-        chain = Rotation.from_quat(world[:, spine]).as_matrix()
-        chain = np.einsum("nij,njk->nik", chain, Rotation.from_quat(world[:, chest]).as_matrix())
-        ourss = geodesic_deg(np.einsum("nij,njk->nik", hips_world, chain), hips_world)
+        # Ours is the same quantity on our own chain: Hips -> Spine -> Chest -> UpperChest,
+        # all PARENT-RELATIVE, so the composed product IS the pelvis-to-thorax separation.
+        # Before D7 it was the identity by construction, because Hips took the thorax frame.
+        chain_ours = np.broadcast_to(np.eye(3), (len(world), 3, 3))
+        for name in ("Spine", "Chest", "UpperChest"):
+            local = Rotation.from_quat(world[:, track.joint_names.index(name)]).as_matrix()
+            chain_ours = np.einsum("nij,njk->nik", chain_ours, local)
+        ourss = geodesic_deg(chain_ours, np.broadcast_to(np.eye(3), (len(world), 3, 3)))
         rows[f"subject_{subject:02d}"] = {
             "mamma_body_id": int(body_id),
-            "mamma_pelvis_to_spine3_median_deg": round(float(np.median(theirs)), 3),
-            "ours_pelvis_to_chest_median_deg": round(float(np.median(ourss)), 3),
-            "note": ("two different chains and two different conventions; the figure that "
-                     "matters is that BOTH are non-zero, i.e. both carry a pelvis that is "
-                     "not welded to the thorax. Before D7 ours was 0.000 by construction."),
+            "mamma_pelvis_to_thorax_median_deg": round(float(np.median(theirs)), 3),
+            "mamma_chain": "SMPL-X body joints 3, 6, 9 composed (spine1 . spine2 . spine3)",
+            "ours_pelvis_to_thorax_median_deg": round(float(np.median(ourss)), 3),
+            "ours_chain": "Spine . Chest . UpperChest composed, all parent-relative",
+            "note": ("two different skeletons and two different spine chains; the figure "
+                     "that matters is that BOTH are non-zero, i.e. both carry a pelvis that "
+                     "is not welded to the thorax. Before D7 ours was 0.000 BY "
+                     "CONSTRUCTION, because Hips took the thorax frame. AGREEMENT ONLY."),
         }
     report["mamma_pelvis_oracle"] = {
         "reference": REF_MAMMA,
@@ -536,7 +681,8 @@ def main() -> int:
         ("oracle", oracle_block), ("roundtrip", roundtrip_block),
         ("delivery", delivery_block), ("legacy", legacy_bit_identity),
         ("reported", reported_block), ("mamma", mamma_pelvis_oracle),
-        ("silhouette", silhouette_block),
+        ("silhouette", silhouette_block), ("hoist", hoist_block),
+        ("facing", facing_block), ("head", head_unchanged_block),
     ):
         try:
             function(report)
