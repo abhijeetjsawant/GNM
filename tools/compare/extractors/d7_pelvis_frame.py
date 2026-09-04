@@ -132,7 +132,35 @@ def x_pelvis_frame(_: dict) -> tuple[list, list]:
                              note="shin, thigh, forearm, upper arm -- the controls this lane "
                                   "already trusts. The candidate must not exceed it"))
 
-    silhouette = r.get("B7_silhouette", {}).get("cells", {})
+    # The PRE-REGISTERED cut: torso+legs and arms, by trunk tilt tercile, one denominator
+    # (frames every camera scored, IoU averaged over the four).
+    partwise = r.get("B7_silhouette", {}).get("partwise_and_tercile", {})
+    for subject, row in partwise.items():
+        t = _subject_label(subject)
+        for tercile in ("upright", "middle", "bent"):
+            cell = row.get("terciles", {}).get(tercile, {})
+            figs.append(fig(f"D7 silhouette, torso+legs IoU, {tercile} tercile, before (D3), {t}",
+                            cell.get("torso_iou_D3"), "IoU", REF_MASKS, HIGHER,
+                            key=f"silhouette_torso_before_{tercile}_{subject}"))
+            figs.append(fig(f"D7 silhouette, torso+legs IoU, {tercile} tercile, after (D7), {t}",
+                            cell.get("torso_iou_D7"), "IoU", REF_MASKS, HIGHER,
+                            key=f"silhouette_torso_after_{tercile}_{subject}",
+                            note="pre-registered to RISE on the bent tercile"))
+            ctrls.append(fig(f"D7 oracle: MAMMA's own mesh, torso+legs, {tercile}, {t}",
+                             cell.get("torso_iou_ORACLE"), "IoU", REF_MASKS, HIGHER,
+                             key=f"silhouette_oracle_torso_{tercile}_{subject}",
+                             note="the ceiling this instrument can reach; it reads none of "
+                                  "our track and is bit-identical between runs"))
+        arm = row.get("arm_iou_all_frames", {})
+        figs.append(fig(f"D7 silhouette, ARMS IoU, all frames, before (D3), {t}",
+                        arm.get("D3"), "IoU", REF_MASKS, HIGHER,
+                        key=f"silhouette_arms_before_{subject}"))
+        figs.append(fig(f"D7 silhouette, ARMS IoU, all frames, after (D7), {t}",
+                        arm.get("D7"), "IoU", REF_MASKS, HIGHER,
+                        key=f"silhouette_arms_after_{subject}",
+                        note="pre-registered to be UNCHANGED -- the thorax frame is untouched"))
+    # the whole-person by-camera cut, superseded by the above but kept
+    silhouette = r.get("B7_silhouette", {}).get("whole_person_by_camera_cell", {})
     for cell, row in silhouette.items():
         key = cell.replace("/", "_").replace("subject_", "s")
         figs.append(fig(f"D7 silhouette IoU before (D3), {cell}", row.get("iou_before_D3"),
@@ -188,18 +216,41 @@ VISUALS = {
                    dict(label="After D7, performer 1", role="ours", key="pelvis_hips_offset_after_subject_01")]),
     ],
     "masks": [
-        dict(title="D7: how well the delivered outline covers the person in the footage",
-             plain="The reference fitter's person masks are the reference; higher is better. Four of "
-                   "the eight camera-and-performer cells rose and four fell, all by small amounts, "
-                   "so the photographs neither confirm nor deny this step at whole-person "
-                   "resolution.",
+        dict(title="D7: how well the body's outline covers the person, by how far they are bent over",
+             plain="The reference fitter's person masks are the reference; higher is better. This is "
+                   "the body and legs only, with the arms taken out. On performer 0 it rises in every "
+                   "band and most where they are most bent over, which is what this step was meant to "
+                   "do. The hatched bars are the reference fitter's own mesh through the same "
+                   "rasteriser -- the ceiling, not a target.",
              better="higher",
-             bars=[dict(label="Before D7, camera A, performer 0", role="alt", key="silhouette_before_A001_s00"),
-                   dict(label="After D7, camera A, performer 0", role="ours", key="silhouette_after_A001_s00"),
-                   dict(label="Before D7, camera C, performer 0", role="alt", key="silhouette_before_C001_s00"),
-                   dict(label="After D7, camera C, performer 0", role="ours", key="silhouette_after_C001_s00"),
-                   dict(label="Before D7, camera B, performer 1", role="alt", key="silhouette_before_B001_s01"),
-                   dict(label="After D7, camera B, performer 1", role="ours", key="silhouette_after_B001_s01")]),
+             bars=[dict(label="Upright, before", role="alt", key="silhouette_torso_before_upright_subject_00"),
+                   dict(label="Upright, after", role="ours", key="silhouette_torso_after_upright_subject_00"),
+                   dict(label="Middle, before", role="alt", key="silhouette_torso_before_middle_subject_00"),
+                   dict(label="Middle, after", role="ours", key="silhouette_torso_after_middle_subject_00"),
+                   dict(label="Most bent, before", role="alt", key="silhouette_torso_before_bent_subject_00"),
+                   dict(label="Most bent, after", role="ours", key="silhouette_torso_after_bent_subject_00"),
+                   dict(label="Reference fitter's mesh, most bent", role="control", key="silhouette_oracle_torso_bent_subject_00")]),
+        dict(title="D7: the same check on performer 1, where nothing moved",
+             plain="Same reference, same three bands, higher is better. On this performer the outline "
+                   "did not change in any band -- and this is the same performer whose hip joint did "
+                   "not move either, so the two checks agree about who this step reaches.",
+             better="higher",
+             bars=[dict(label="Upright, before", role="alt", key="silhouette_torso_before_upright_subject_01"),
+                   dict(label="Upright, after", role="ours", key="silhouette_torso_after_upright_subject_01"),
+                   dict(label="Middle, before", role="alt", key="silhouette_torso_before_middle_subject_01"),
+                   dict(label="Middle, after", role="ours", key="silhouette_torso_after_middle_subject_01"),
+                   dict(label="Most bent, before", role="alt", key="silhouette_torso_before_bent_subject_01"),
+                   dict(label="Most bent, after", role="ours", key="silhouette_torso_after_bent_subject_01"),
+                   dict(label="Reference fitter's mesh, most bent", role="control", key="silhouette_oracle_torso_bent_subject_01")]),
+        dict(title="D7: the arms, which this step does not touch and which did not move",
+             plain="Same masks, higher is better, arms only. This step changes the hips and nothing "
+                   "below the collarbone, and the photographs agree: neither performer's arms moved "
+                   "outside the range the measurement itself is uncertain by.",
+             better="higher",
+             bars=[dict(label="Before D7, performer 0", role="alt", key="silhouette_arms_before_subject_00"),
+                   dict(label="After D7, performer 0", role="ours", key="silhouette_arms_after_subject_00"),
+                   dict(label="Before D7, performer 1", role="alt", key="silhouette_arms_before_subject_01"),
+                   dict(label="After D7, performer 1", role="ours", key="silhouette_arms_after_subject_01")]),
     ],
 }
 
