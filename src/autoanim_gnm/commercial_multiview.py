@@ -2521,11 +2521,54 @@ def positions_to_body_track(
         p = points[frame]
         at = lambda name: p[JOINT_INDEX[name]]
         torso_world = torso_world_by_frame[frame]
+        # THE ARMS ARE AIMED FROM THEIR OWN ORIGINS. D9, 2026-09-05.
+        #
+        # This loop used to read `at("left_elbow") - at("left_shoulder")`: a
+        # LANDMARK-TO-LANDMARK direction, handed to a rotation that turns the bone about
+        # the rig's OWN `LeftUpperArm` origin. Those are two different points. D2 aims the
+        # clavicle from its own pivot and that is right, but the clavicle has a FIXED rest
+        # length, so its child's origin cannot in general reach the captured shoulder --
+        # 10-13 mm median on the shipped D8 delivery, 69 mm on one frame -- and a
+        # direction-aimed chain measured from a displaced origin misses everything below
+        # it BY THAT DISPLACEMENT. The delivered elbow and wrist carried exactly that:
+        # 14 and 15-20 mm median, measured from the delivered file's own bytes.
+        #
+        # This is D7b's mechanism one chain further out (there the `Spine` origin rode the
+        # pelvis pitch and the neck went 14 -> 59 mm off its landmark) and it is D7b's fix:
+        # aim the bone from the origin the rotation actually turns about. `LowerArm`'s rest
+        # is a single offset from `UpperArm`'s world rotation, so aiming that rotation from
+        # `UpperArm`'s origin at the captured elbow puts the elbow ON the ray and leaves
+        # the bone's LENGTH error alone -- which belongs to a fitted arm (D5), not to an
+        # aim. `tools/compare/delivered_vs_capture.py` reports that floor beside the figure.
+        #
+        # THE ORDER IS THE POINT, and it is the D2c lesson: a placed parent, THEN the chain
+        # below it re-solved. `_joint_origin` reads the rotations set so far, so
+        # `LeftLowerArm`'s origin is only correct once `LeftUpperArm`'s world has been
+        # written -- hence the origin is computed INSIDE the loop, per bone, and the four
+        # arm entries stay in parent-before-child order.
+        #
+        # THE LEGS ARE DELIBERATELY UNCHANGED and stay landmark-to-landmark below. D2b puts
+        # the leg-root MIDPOINT on the captured hip midpoint, so the leg origins are not
+        # displaced the way the arm root is; the closed-form dry run says aiming the thigh
+        # from its own origin would move the knee 3.1-4.2 mm median, and moving it is its
+        # own step with its own gate (`docs/reviews/arm-origin-2026-09-05.md` section 7).
+        # docs/reviews/arm-origin-2026-09-05.md, docs/reviews/trunk-resolve-2026-09-05.md.
+        for joint_name, child_name, target_name in (
+            ("LeftUpperArm", "LeftLowerArm", "left_elbow"),
+            ("LeftLowerArm", "LeftHand", "left_wrist"),
+            ("RightUpperArm", "RightLowerArm", "right_elbow"),
+            ("RightLowerArm", "RightHand", "right_wrist"),
+        ):
+            joint_index = skeleton.index(joint_name)
+            parent_index = skeleton.joints[joint_index].parent
+            direction = at(target_name) - _joint_origin(
+                world, frame, root_translation, rest, joint_name)
+            target_world = _world_for_bone(
+                world[frame, parent_index], rest[child_name], direction
+            )
+            _set_world(local, world, frame, joint_name, target_world)
+
         for joint_name, child_name, direction in (
-            ("LeftUpperArm", "LeftLowerArm", at("left_elbow") - at("left_shoulder")),
-            ("LeftLowerArm", "LeftHand", at("left_wrist") - at("left_elbow")),
-            ("RightUpperArm", "RightLowerArm", at("right_elbow") - at("right_shoulder")),
-            ("RightLowerArm", "RightHand", at("right_wrist") - at("right_elbow")),
             ("LeftUpperLeg", "LeftLowerLeg", at("left_knee") - at("left_hip")),
             ("LeftLowerLeg", "LeftFoot", at("left_ankle") - at("left_knee")),
             ("RightUpperLeg", "RightLowerLeg", at("right_knee") - at("right_hip")),
