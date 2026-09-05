@@ -241,6 +241,17 @@
           "finished": "2026-09-06",
           "report": "artifacts/compare/d9-arms/gate.json",
           "blocked_on": null
+        },
+        {
+          "id": "D8b",
+          "title": "Captured segments that break the performer's own bone length",
+          "plain": "Where the falling performer twists, the detector puts both his shoulders too close together in every camera at once, so three cameras agree on a shoulder line a third of his real width and nothing geometric can tell. His own bone lengths can. Frames whose captured segment leaves his own length are handed back to the solver to recover from the neighbouring joint.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-06",
+          "finished": null,
+          "report": null,
+          "blocked_on": null
         }
       ]
     }
@@ -634,6 +645,11 @@
       "date": "2026-09-06",
       "step": "D9",
       "text": "2026-09-06, found during D9's close-out: the D3 gate's EXACT-SKELETON ORACLE has read legs 12.8-16.0 mm (band: 0.00) since the D7b close-out on 2026-09-05 -- oracle_worst_legs 0.0 at 6ea50f4 (D7), 16.01 at 5b010b5 (D7b), 12.77 since -- and every close-out log kept only the gate's verdict line, so it was read as the standing 0.19 mm arm miss. It is not the src: the D3-era code (fffe45f) reads 12.77 on today's inputs too. The oracle takes the DELIVERED rotations as its truth motion, re-posed on a perturbed rest, and rebuilds through positions_to_body_track with NO spine landmark, i.e. the legacy trunk-line hips frame; D7b moved the delivered neck off the trunk line, so the oracle's rebuilt hips frame no longer matches the motion it was given, the leg roots move with that frame (hip_half_span is perturbed by up to 27 %) and the landmark-aimed legs carry the displacement -- D9's mechanism on the legs, exposed by an instrument whose reconstruction is two steps behind the converter. Two repairs, one instrument-side (feed the oracle the spine landmark so the pelvis path runs, and log every gate line at close-out, not the last four), one converter-side (D9's leg dry run: aim the thighs and shins from their own origin, predicted 3-4 mm on the real take and exact on this oracle). Neither done tonight; recorded for the next step. The re-baselined D3 gate also shows 'CANONICAL UNCHANGED' and 'round trip reproduces D2c's figures' as FAIL: both compare against frozen D2c/D3-era references that D7, D7b and D9 moved by design (the round trip's arms improved 0.55 -> 0.17); the gate needs those references re-pinned, not the code."
+    },
+    {
+      "date": "2026-09-06",
+      "step": "D8b",
+      "text": "card written 2026-09-06 (Sol-reviewed; effect measured and classified per camera: three cameras agree on the collapsed shoulder, a detector bias no geometric gate can see); worktree ladder/D8b from 82749e7"
     }
   ]
 }
