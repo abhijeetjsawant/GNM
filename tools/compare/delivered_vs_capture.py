@@ -44,6 +44,14 @@ to the points the delivery claims to have been solved onto.
         --delivery D7=artifacts/commercial-multiview-soma77 \
         --out artifacts/compare/d7b-trunk/delivered-vs-capture.json
 
+THE FLOORS. Two are reported, each read from EACH delivery's own file and never carried
+across arms. `trunk_length_floor` is D7b's: the residual a straight rigid trunk cannot
+remove. `arm_aim_floor` is D9's, and it is the same idea for the operation D9 performs --
+the elbow put on the ray from the delivered `UpperArm` origin at the rest upper-arm length,
+then the wrist chained from that placed elbow. A placement figure quoted without its floor
+says nothing about whether an aim can do better, which is the only question a step like
+this asks.
+
 Any number of `--delivery LABEL=PATH` arms; every pairwise difference of two arms is
 block-bootstrapped on IDENTICAL draws (block 15, 2000 draws, fixed seed), paired frame by
 frame, so the same denominator holds across arms by construction.
@@ -334,6 +342,138 @@ def distributed_flexion_recovery(directory: Path, subject: int) -> dict:
     }
 
 
+# -------------------------------------------------------------------------- the arm floor
+# The take's own frame ids run 60..209 and the array index is `id - 60`
+# (`tools/compare/d8_occlusion_silhouette.py` carries the same two constants, from the
+# observations themselves). Frame id 118 is the length-limited frame the D9 card names.
+FIRST_FRAME_ID = 60
+WINDOW_FIRST_ID, WINDOW_LAST_ID = 85, 125
+ARM_SIDES: tuple[tuple[str, str, str, str, str], ...] = (
+    ("left", "LeftUpperArm", "LeftLowerArm", "LeftHand", "left"),
+    ("right", "RightUpperArm", "RightLowerArm", "RightHand", "right"),
+)
+
+
+def arm_aim_floor_per_frame(directory: Path, subject: int) -> dict[str, np.ndarray]:
+    """The residual an AIM cannot remove on the arms, per frame, in mm, for THIS delivery.
+
+    The companion of :func:`trunk_length_floor`, for the operation D9 actually performs,
+    and it is a CHAINED floor because the operation is chained.
+
+    `UpperArm`'s origin is read from the delivered file itself -- the real one, wherever
+    the trunk chord and the clavicle's fixed length happen to have put it -- and D9 does
+    not move it (that miss is D5's: the trunk chord and a missing shoulder translation).
+    From that origin the best any aim can do is put the elbow ON THE RAY to the captured
+    elbow at the rest upper-arm length, so the elbow residual is
+    ``| ||captured_elbow - origin|| - L_upper |``: a LENGTH error alone, exactly the shape
+    of the trunk floor. The wrist is then chained from that PLACED elbow, not from the
+    captured one -- because that is where the delivered elbow will be -- so its floor is
+    ``| ||captured_wrist - placed_elbow|| - L_lower |`` and it inherits the elbow's
+    length error as a displacement of its own origin.
+
+    Read from EACH delivery's own file, never carried across arms: a different `UpperArm`
+    origin is a different floor, and quoting one build's floor against another would be
+    scoring against a number instead of a construction (`trunk_length_floor`'s own note).
+
+    BLIND TO the same things the instrument is: this is a floor on PLACEMENT, and a bone
+    that reaches its landmark can still be rolled about its own axis.
+    """
+
+    rest = track_rest(directory, subject)
+    index, world = delivered_positions(directory, subject)
+    capture = capture_positions(directory, subject)
+    out: dict[str, np.ndarray] = {}
+    for side, upper, lower, hand, landmark in ARM_SIDES:
+        length_upper = float(np.linalg.norm(rest[lower]))
+        length_lower = float(np.linalg.norm(rest[hand]))
+        origin = world[:, index[upper]]
+        elbow = capture[:, JOINT_INDEX[f"{landmark}_elbow"]]
+        wrist = capture[:, JOINT_INDEX[f"{landmark}_wrist"]]
+        shoulder = capture[:, JOINT_INDEX[f"{landmark}_shoulder"]]
+        reach = elbow - origin
+        span = np.linalg.norm(reach, axis=1)
+        placed = origin + (length_upper / span)[:, None] * reach
+        reach_wrist = wrist - placed
+        span_wrist = np.linalg.norm(reach_wrist, axis=1)
+        out[f"{side}_elbow"] = 1000.0 * np.abs(span - length_upper)
+        out[f"{side}_wrist"] = 1000.0 * np.abs(span_wrist - length_lower)
+        out[f"{side}_captured_upper_arm_mm"] = 1000.0 * np.linalg.norm(
+            elbow - shoulder, axis=1)
+        out[f"{side}_rest_upper_arm_mm"] = np.full(len(span), 1000.0 * length_upper)
+        out[f"{side}_rest_lower_arm_mm"] = np.full(len(span), 1000.0 * length_lower)
+    return out
+
+
+def arm_aim_floor(directory: Path, subject: int, masks: dict[str, np.ndarray],
+                  delivered: dict[str, np.ndarray] | None = None) -> dict:
+    """The per-side floor summarised, with the delivered arm's EXCESS over it beside it.
+
+    `delivered` is this delivery's own per-joint error arrays (`measure`'s rows). The
+    excess is the figure a 3 mm band cannot see on its own: after D9 the delivered elbow
+    residual should EQUAL the floor to storage precision, because it is length-only by
+    construction, and a gap larger than that means the change did more than aiming.
+    """
+
+    per_frame = arm_aim_floor_per_frame(directory, subject)
+    frames = len(per_frame["left_elbow"])
+    window = np.zeros(frames, dtype=bool)
+    window[max(WINDOW_FIRST_ID - FIRST_FRAME_ID, 0):
+           min(WINDOW_LAST_ID - FIRST_FRAME_ID + 1, frames)] = True
+    out: dict = {
+        "definition": (
+            "elbow: the residual left when the elbow is put ON THE RAY from the "
+            "delivered UpperArm origin to the captured elbow, at the rest upper-arm "
+            "length -- a LENGTH error alone. wrist: chained from that PLACED elbow to "
+            "the captured wrist at the rest lower-arm length."),
+        "read_from": "this delivery's own GLB origin and its own captured landmarks",
+        "frame_ids": {"first_array_index_is_frame_id": FIRST_FRAME_ID,
+                      "window": [WINDOW_FIRST_ID, WINDOW_LAST_ID]},
+        "sides": {},
+    }
+    for side, upper, lower, hand, _landmark in ARM_SIDES:
+        row: dict = {
+            "rest_upper_arm_mm": round(float(per_frame[f"{side}_rest_upper_arm_mm"][0]), 2),
+            "rest_lower_arm_mm": round(float(per_frame[f"{side}_rest_lower_arm_mm"][0]), 2),
+        }
+        for part, joint in (("elbow", lower), ("wrist", hand)):
+            values = per_frame[f"{side}_{part}"]
+            cell = {
+                "median_mm": _round(np.median(values)),
+                "p95_mm": _round(np.percentile(values, 95)),
+                "max_mm": _round(np.max(values)),
+                "window_median_mm": _round(np.median(values[window])),
+                "bent_tercile_median_mm": _round(np.median(values[masks["bent"]])),
+                "upright_tercile_median_mm": _round(np.median(values[masks["upright"]])),
+            }
+            if delivered is not None:
+                excess = delivered[joint] - values
+                cell["delivered_minus_floor_mm"] = {
+                    "median": _round(np.median(excess)),
+                    "p95": _round(np.percentile(excess, 95)),
+                    "max_abs": _round(np.max(np.abs(excess))),
+                }
+            row[part] = cell
+        # The length-limited frame the D9 card names. Reported ALWAYS, not only when it
+        # is bad: a floor that is 36 mm on one frame is not an aim failing, it is a
+        # captured upper arm longer than the performer's own bone (a D8 leftover on the
+        # yellow), and the card pre-registered it as such.
+        row["frame_id_118"] = {
+            "array_index": 118 - FIRST_FRAME_ID,
+            "elbow_floor_mm": _round(per_frame[f"{side}_elbow"][118 - FIRST_FRAME_ID]),
+            "wrist_floor_mm": _round(per_frame[f"{side}_wrist"][118 - FIRST_FRAME_ID]),
+            "captured_upper_arm_mm": _round(
+                per_frame[f"{side}_captured_upper_arm_mm"][118 - FIRST_FRAME_ID]),
+            "why": ("length-limited, not aim-limited: compare `captured_upper_arm_mm` "
+                    "with `rest_upper_arm_mm` above. Where the captured segment is "
+                    "LONGER than the performer's own rest bone no aim can reach it (D9's "
+                    "card names performer 1's left arm here: 333 against a rest of 277, "
+                    "a D8 leftover on the yellow); where it is shorter the bone "
+                    "overshoots by the same construction"),
+        }
+        out["sides"][side] = row
+    return out
+
+
 # ------------------------------------------------------------------------------ the sweep
 def measure(directory: Path, reference: str = "smoothed") -> dict[int, dict[str, np.ndarray]]:
     """Per-frame error in mm for every mapped joint, per subject. The raw arrays.
@@ -466,6 +606,9 @@ def report(deliveries: dict[str, Path], reference_mode: str = "smoothed") -> dic
             "joints": per_joint,
             "groups": GROUPS,
             "trunk_length_floor": floors,
+            "arm_aim_floor": {
+                label: arm_aim_floor(path, subject, masks, arms[label][subject])
+                for label, path in deliveries.items()},
             "distributed_flexion_would_recover": {
                 label: distributed_flexion_recovery(path, subject)
                 for label, path in deliveries.items()},
@@ -518,6 +661,17 @@ def main() -> int:
                 for label in deliveries)
             print(f"  {joint:<34}{cells}")
         print(f"  trunk length floor: {json.dumps(subject['trunk_length_floor'])}")
+        for label, floor in subject["arm_aim_floor"].items():
+            for side, row in floor["sides"].items():
+                print(f"  arm aim floor [{label}] {side:<5} "
+                      f"elbow {row['elbow']['median_mm']:>6.2f} "
+                      f"(p95 {row['elbow']['p95_mm']:>6.2f}, window "
+                      f"{row['elbow']['window_median_mm']:>6.2f})  "
+                      f"wrist {row['wrist']['median_mm']:>6.2f} "
+                      f"(p95 {row['wrist']['p95_mm']:>6.2f}, window "
+                      f"{row['wrist']['window_median_mm']:>6.2f})  "
+                      f"frame 118 {row['frame_id_118']['elbow_floor_mm']:>6.2f} / "
+                      f"{row['frame_id_118']['wrist_floor_mm']:>6.2f}")
     print(f"\nsame denominator: {payload['same_denominator']}")
     print(f"wrote {args.out}")
     return 0 if payload["same_denominator"] else 1
