@@ -623,8 +623,12 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--reference", choices=sorted(REFERENCE_ARRAY), default="smoothed",
                         help="which of the delivery's own landmark arrays to score "
-                             "against. `smoothed` is the historical default and its "
-                             "output is byte-identical to before this option existed. "
+                             "against. `smoothed` is the historical default. NOTE that "
+                             "both FLOOR blocks (`trunk_length_floor`, `arm_aim_floor`) "
+                             "always read the SMOOTHED array, whatever is chosen here: "
+                             "they are constructions from the delivered origins, not "
+                             "scores, and they are the same points wherever a landmark "
+                             "triangulated. "
                              "`raw` is D8's: the pre-fill, pre-solve, pre-smoothing "
                              "points, NaNs intact, which is the one array a D8 build "
                              "shares bit for bit with a D7b build.")

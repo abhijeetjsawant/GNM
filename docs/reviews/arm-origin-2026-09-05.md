@@ -265,8 +265,8 @@ scoreboard is reading the same two builds. **It selects nothing.**
 Reran `tools/head/head_gate.py` and compared its report before and after. **Every figure is
 byte-equal.** The single difference is `absolute_facing_not_a_band.source`, an absolute path
 (the committed run was made from the main checkout, this rerun from the worktree); it is
-excluded by name in the gate and no figure is normalised. Both reports are committed as
-`artifacts/compare/d9-arms/head-gate-shipped-{before,after}-d9.json`, and
+excluded by name in the gate and no figure is normalised. Both reports are kept under
+`artifacts/compare/d9-arms/head-gate-shipped-{before,after}-d9.json` (`artifacts/` is gitignored), and
 `artifacts/head-lane/head-gate-shipped.json` was restored to the committed version so the
 shared artifact keeps the main checkout's provenance. The prediction — byte-equal, because
 the gate reads the head solve and the landmarks and neither is touched — holds.
@@ -317,9 +317,13 @@ translation leaves every rotation alone, so the delivered bone still points alon
 The gate recovers that hoist from the delivered file alone and the recovery is
 **over-determined**: each of the four arm bones contributes two linear equations in the same
 three unknowns, so if one rigid translation explains them all the residual is zero. It does:
-residual **1e-4 mm**, hoist median 0.0 mm, p95 12.5 / 8.8 mm, max 19.7 / 9.7 mm, on 140 and
-145 of 150 frames respectively. That is the second independent measurement the lane's rule
-asks for before a number is explained. It is present on the D8 build identically and it is
+residual **1.2e-4 mm at worst**, hoist median 0.0002 / 0.0001 mm, p95 12.54 / 8.79 mm, max
+19.71 / 9.68 mm, and **67 of 150** frames on performer 0 and **19 of 150** on performer 1
+carry a hoist above 0.5 mm (`gate.json` →
+`B1_placement.the_ground_projection.figures.*.recovered_root_shift_mm`). That is the second
+independent measurement the lane's rule asks for before a number is explained: a first fit
+that included the LEGS left 5.8 / 13.2 mm of residual and was discarded, because the legs
+are aimed landmark-to-landmark and do not satisfy the constraint the arms do. It is present on the D8 build identically and it is
 not this step's to fix.
 
 ### 7.2 Two committed tests now assert a contract this step supersedes — they were NOT edited
@@ -405,6 +409,11 @@ landmark-to-landmark so a later change cannot arrive unnoticed.
   `artifacts/compare/scoreboard-d9-arms.json` beside the committed D8 one. Report only.
 * `artifacts/head-lane/head-gate-shipped.json` was rerun and then **restored** to its
   committed bytes; the rerun is kept under `artifacts/compare/d9-arms/`. §6.3.
+* `arm_aim_floor` reads the delivery's **smoothed** landmarks whatever `--reference` is
+  given, exactly as `trunk_length_floor` has since D7b. Under `--reference raw` the joint
+  rows are scored against the raw array and the floor against the smoothed one; they are the
+  same points wherever a landmark triangulated, and the difference is stated here rather
+  than left for the next reader of that mode to discover.
 * No `ladder.py` edit, no `status.py` call, no publish — the brief reserves all three for the
   coordinator. The extractor is a stub with its `VISUALS` block and a self-check that reports
   `VISUALS keys missing from the extractor: NONE`.
