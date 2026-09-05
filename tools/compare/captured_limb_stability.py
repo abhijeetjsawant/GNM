@@ -105,6 +105,12 @@ WORK = DELIVERY / "work"
 RIG = DELIVERY / "camera-rig.json"
 OUT = ROOT / "artifacts/compare/d8-occlusion/limb-stability.json"
 
+# The delivery whose LANDMARK ARRAYS are read. The observations, the rig and the
+# association always come from the shipped build: they are the same bytes in every build
+# (the rebuild harness asserts it) and re-associating per arm would put a second variable
+# in a comparison that is supposed to have one. Only the two landmark arrays move.
+LANDMARK_SOURCE = DELIVERY
+
 CAMERAS = ("A001", "B001", "C001", "D001")
 SAMPLE_RATE_HZ = 30
 WORKING_WIDTH, WORKING_HEIGHT = 1280, 720
@@ -159,7 +165,7 @@ def records() -> list[list[dict]]:
 
 
 def landmark_arrays(subject: int) -> dict[str, np.ndarray]:
-    with np.load(DELIVERY / f"subject-{subject:02d}.body-track.npz") as archive:
+    with np.load(LANDMARK_SOURCE / f"subject-{subject:02d}.body-track.npz") as archive:
         return {name: np.asarray(archive[key], np.float64)
                 for name, key in ARRAY_KEYS.items()}
 
@@ -317,7 +323,7 @@ def ray_angles(cameras, point: np.ndarray, support: np.ndarray) -> tuple[float, 
 FIRST_FRAME_ID = 60          # set from the observations at run time; this is the fallback
 
 
-def build_report() -> dict:
+def build_report(check_reproduction: bool = True) -> dict:
     global FIRST_FRAME_ID
     cameras = cameras_scaled()
     rows = records()
@@ -346,8 +352,12 @@ def build_report() -> dict:
         "instrument": "tools/compare/captured_limb_stability.py",
         "nothing_ships": True,
         "reads": {
-            "landmarks": f"{DELIVERY.relative_to(ROOT)}/subject-XX.body-track.npz "
+            "landmarks": f"{LANDMARK_SOURCE.relative_to(ROOT)}/subject-XX.body-track.npz "
                          "(both arrays: raw and smoothed)",
+            "landmarks_are_the_only_thing_that_moves_between_arms": (
+                "the observations, the rig and the association always come from the "
+                "shipped build; re-associating per arm would put a second variable into a "
+                "one-variable comparison"),
             "observations": f"{WORK.relative_to(ROOT)}/*-soma77-observations.jsonl",
             "rig": str(RIG.relative_to(ROOT)),
             "re_detects": False,
@@ -570,9 +580,18 @@ def build_report() -> dict:
             for subject in (0, 1)},
     }
 
-    report["reproduction"] = reproduction(report)
-    report["verdict"] = ("PASS" if all(row["matches"] for row in
-                                       report["reproduction"]["clauses"]) else "FAIL")
+    if check_reproduction:
+        report["reproduction"] = reproduction(report)
+        report["verdict"] = ("PASS" if all(row["matches"] for row in
+                                           report["reproduction"]["clauses"]) else "FAIL")
+    else:
+        report["reproduction"] = {
+            "skipped": True,
+            "why": ("the reproduction clauses describe the DEFECT as it stands in the "
+                    "shipped build. Asserting them on a repaired build would be asking "
+                    "the repair to leave the defect in place."),
+        }
+        report["verdict"] = "REPORTED"
     return report
 
 
@@ -739,8 +758,24 @@ def reproduction(report: dict) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--landmarks-from", type=Path, default=None,
+                        help="a delivery directory whose subject-XX.body-track.npz supply "
+                             "the landmark arrays. Defaults to the shipped build. The "
+                             "observations, rig and association always come from the "
+                             "shipped build whatever this is set to.")
+    parser.add_argument("--skip-reproduction", action="store_true",
+                        help="do not check the card's figures. Set when scoring a build "
+                             "OTHER than the shipped one, whose numbers are supposed to "
+                             "have moved -- the reproduction clauses describe the DEFECT "
+                             "and asserting them on the repaired build would be nonsense.")
     args = parser.parse_args()
-    report = build_report()
+    global LANDMARK_SOURCE
+    if args.landmarks_from is not None:
+        LANDMARK_SOURCE = (args.landmarks_from if args.landmarks_from.is_absolute()
+                           else ROOT / args.landmarks_from)
+        if not LANDMARK_SOURCE.exists():
+            raise SystemExit(f"{LANDMARK_SOURCE} does not exist")
+    report = build_report(check_reproduction=not args.skip_reproduction)
     out = args.out if args.out.is_absolute() else ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1), encoding="utf-8")
@@ -759,12 +794,15 @@ def main() -> int:
                       f"{row['p95_mm']:>9.1f}{row['min_mm']:>9.1f}{row['max_mm']:>9.1f}"
                       f"{row['frames_off_median_by_more_than_15pct']:>9d}")
         print()
-    print("reproduction of the card's figures")
-    for row in report["reproduction"]["clauses"]:
-        print(f"  [{'ok ' if row['matches'] else 'NO '}] ({row['array']}) {row['clause']}")
+    if report["reproduction"].get("skipped"):
+        print("reproduction: skipped (scoring a build other than the shipped one)")
+    else:
+        print("reproduction of the card's figures")
+        for row in report["reproduction"]["clauses"]:
+            print(f"  [{'ok ' if row['matches'] else 'NO '}] ({row['array']}) {row['clause']}")
     print(f"\nverdict: {report['verdict']}")
     print(f"wrote {out}")
-    return 0 if report["verdict"] == "PASS" else 1
+    return 0 if report["verdict"] in ("PASS", "REPORTED") else 1
 
 
 if __name__ == "__main__":

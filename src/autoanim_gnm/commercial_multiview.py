@@ -1294,11 +1294,28 @@ def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
 # and recorded in `docs/reviews/occlusion-repair-2026-09-05.md`.
 # ======================================================================================
 
-# PROVENANCE: SYNTHETIC-TRUTH. Selected by `tools/compare/d8_occlusion_synthetic.py` on
-# SOMASKEL77 clips posed through our own FK, projected into THIS rig with the REAL
-# per-camera seen pattern replayed (I7's `replayed_keep`, so the A-C-only window occurs by
-# construction) and our own detector's measured heavy-tail pixel noise. Never on the real
-# take, never on a MAMMA-referenced arm.
+# PROVENANCE: ENGINEERING-LIMIT, derived in closed form, and NOT selected on any take --
+# including the synthetic one. The derivation, in one line: two rays meeting at an angle
+# theta determine a point ACROSS their common axis and only weakly ALONG it, and the
+# along-axis error is amplified by 1/|sin theta| relative to a right-angled pair. 90 deg is
+# 1.0x, 150 deg is 2.0x, 172 deg (which is what A001 and C001 make at the falling performer
+# in the reference window) is 7.2x. The ceiling below is the angle at which that
+# amplification reaches **2x**, and 2x is the declared choice. The complement clause falls
+# out of the same expression: 180 - 150 = 30 deg is where |sin theta| passes 0.5 from the
+# other side, so the rule is exactly "demote when |sin theta| < 0.5".
+#
+# WHY IT IS NOT SELECTED ON SYNTHETIC TRUTH, WHICH IS WHAT THE D8 CARD SAID IT WOULD BE.
+# `tools/compare/d8_occlusion_synthetic.py` tried and could not, and the reason is a
+# property of the fixture rather than of this rule: the fixture's bodies have exactly rigid
+# bones and exactly smooth motion, which are precisely the sequence solve's own priors. A
+# recovery whose priors are true by construction beats a noisy two-view triangulation at
+# EVERY angle -- including a well-conditioned right-angled pair -- so the score curve has no
+# crossover and its argmin is always the lowest candidate swept, which is "never trust two
+# views": a capacity change rather than evidence, and the thing the card explicitly forbids.
+# Shipping that argmin would be the standing error this lane keeps a rule about, a band the
+# candidate can optimise. What the fixture CAN do, and does, is confirm the closed form --
+# the measured two-view triangulation error rises with 1/|sin theta| across its angle bins.
+# The refuted prediction is recorded in docs/reviews/occlusion-repair-2026-09-05.md.
 #
 # A two-view slot whose supporting rays meet at more than this angle -- or at less than its
 # complement, the near-co-located case -- is depth-unconstrained along their common axis

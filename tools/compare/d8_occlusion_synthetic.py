@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from hashlib import sha256
 from pathlib import Path
 import sys
@@ -414,11 +415,24 @@ def main() -> int:
     seen = real_seen()
     keep = temporal.replayed_keep(seen, frames, names, offset=0)
     offenders = temporal.mask_is_runnable(keep, names)
+    # I7's AMPLIFIED arm, imported and not re-implemented. The replayed mask reproduces the
+    # real window by construction and is the primary arm -- but it turns out to contain no
+    # two-view cell below 140 degrees and no run in which ALL FOUR cameras lose a landmark,
+    # so it cannot locate a conditioning threshold (it never shows a well-conditioned pair)
+    # and cannot select the gap ceiling (it has no long gap). `amplified_keep` keeps every
+    # measured property of the occlusion -- the burst lengths, the within-subject
+    # correlation -- and changes only WHICH camera carries which measured series, so other
+    # camera pairs survive and genuine no-view runs occur. Nothing about the outage is
+    # invented; the amplification is the assignment, and I7 declares it as such.
+    amplified, amplified_provenance = temporal.amplified_keep(seen, frames, names, 0, 2)
+    amplified_offenders = temporal.mask_is_runnable(amplified, names)
     displacement, noise = heavy_tail_displacements(cameras, frames, names, NOISE_SEED)
 
     noisy_full = temporal.apply_displacements(records, displacement)
     masked = temporal.apply_keep_mask(noisy_full, keep)
+    masked_amplified = temporal.apply_keep_mask(noisy_full, amplified)
     cells = two_view_window_cells(keep, names)
+    cells_amplified = two_view_window_cells(amplified, names)
 
     report: dict = {
         "title": "D8 selector -- the occlusion repair against synthetic truth",
@@ -446,6 +460,21 @@ def main() -> int:
             "keep_mask": "temporal.replayed_keep over temporal.real_run_seen_mask -- the "
                          "real per-camera seen pattern, frame for frame",
             "mask_offenders": offenders,
+            "amplified_arm": {
+                "why": "the replayed mask contains no two-view cell below 140 degrees and "
+                       "no run in which all four cameras lose a landmark, so it cannot "
+                       "locate a conditioning threshold and cannot select the gap ceiling. "
+                       "I7's amplified_keep deals the four most-occluded MEASURED "
+                       "(subject, camera) series to the four cameras: every property of "
+                       "the outage is the footage's own and only the assignment changes",
+                "series_provenance": amplified_provenance,
+                "mask_offenders": amplified_offenders,
+                "used_for": ["the conditioning crossover's low-angle bins",
+                             "the gap ceiling"],
+                "not_used_for": ["the four-arm selector table, which stays on the replayed "
+                                 "mask because that is the one that reproduces the real "
+                                 "window by construction"],
+            },
             "noise": noise,
             "blind_to": [
                 "SPEED -- stride 1 is required to make a clip long enough to hold the "
@@ -502,22 +531,39 @@ def main() -> int:
         print(f"  ray ceiling {ceiling}: median {row.get('median_mm')} mm, "
               f"demoted {[r['demoted_slots'] for r in row['repair']['per_subject']]}")
     # ---------------------------------------------------- the conditioning crossover
-    angles = ray_angle_per_cell(cameras, keep, truth19, mapping, names)
     demote_all_positions, _r, _d = run(
         cameras, masked, ray_pair_conditioning_ceiling_deg=0.0,
         reachability_reject=False, maximum_interpolated_gap_frames=None)
     today_positions, _r, _d = run(cameras, masked, **ARMS["today"])
+    amp_demote_positions, _r, _d = run(
+        cameras, masked_amplified, ray_pair_conditioning_ceiling_deg=0.0,
+        reachability_reject=False, maximum_interpolated_gap_frames=None)
+    amp_today_positions, _r, _d = run(cameras, masked_amplified, **ARMS["today"])
+
+    # Pooled over the two masks, which between them cover the angle range. Each cell is
+    # scored on ITS OWN mask's two arms, so no cell is ever compared across masks.
+    angle_parts, keep_parts, drop_parts = [], [], []
+    for mask, cell_set, keep_pos, drop_pos in (
+            (keep, cells, today_positions, demote_all_positions),
+            (amplified, cells_amplified, amp_today_positions, amp_demote_positions)):
+        a = ray_angle_per_cell(cameras, mask, truth19, mapping, names)
+        inside = cell_set & np.isfinite(a)
+        angle_parts.append(a[inside])
+        keep_parts.append(temporal.error_mm(keep_pos, truth19, mapping, names)[inside])
+        drop_parts.append(temporal.error_mm(drop_pos, truth19, mapping, names)[inside])
+    angles_flat = np.concatenate(angle_parts)
+    today_flat = np.concatenate(keep_parts)
+    demoted_flat = np.concatenate(drop_parts)
     today_errors = temporal.error_mm(today_positions, truth19, mapping, names)
-    demoted_errors = temporal.error_mm(demote_all_positions, truth19, mapping, names)
     bins = [(0, 60), (60, 90), (90, 120), (120, 140), (140, 155), (155, 165), (165, 180)]
     rows = []
     for low, high in bins:
-        inside = cells & np.isfinite(angles) & (angles >= low) & (angles < high)
+        inside = (angles_flat >= low) & (angles_flat < high)
         if not inside.any():
             rows.append({"bin_deg": [low, high], "cells": 0})
             continue
-        keep_e = today_errors[inside]
-        drop_e = demoted_errors[inside]
+        keep_e = today_flat[inside]
+        drop_e = demoted_flat[inside]
         keep_e, drop_e = keep_e[np.isfinite(keep_e)], drop_e[np.isfinite(drop_e)]
         rows.append({
             "bin_deg": [low, high],
@@ -526,23 +572,72 @@ def main() -> int:
             "demoted_and_recovered_median_mm": round(float(np.median(drop_e)), 3),
             "recovery_wins_by_mm": round(float(np.median(keep_e) - np.median(drop_e)), 3),
         })
+    # The AMPLIFICATION each bin's geometry predicts, in closed form and from nothing but
+    # the angle: two rays meeting at theta pin the point across their common axis but only
+    # weakly along it, and the along-axis error is amplified by 1/|sin theta| relative to
+    # the best-conditioned pair at 90 degrees. 90 -> 1.0x, 150 -> 2.0x, 172 -> 7.2x.
+    for row in rows:
+        if not row.get("cells"):
+            continue
+        middle = math.radians(0.5 * (row["bin_deg"][0] + row["bin_deg"][1]))
+        row["predicted_amplification_1_over_sin"] = round(1.0 / max(abs(math.sin(middle)),
+                                                                    1e-9), 3)
     populated = [row for row in rows if row.get("cells")]
     wins = [row for row in populated if row["recovery_wins_by_mm"] > 0]
-    if wins and len(wins) < len(populated):
-        crossover = min(row["bin_deg"][0] for row in wins)
-        shape = {"shape": "INTERIOR crossover -- recovery beats triangulation above this "
-                          "angle and loses below it, which is what a conditioning "
-                          "threshold is"}
+    losses = [row for row in populated if row["recovery_wins_by_mm"] <= 0]
+    # Does the MEASURED triangulation error follow the closed form? This is the check the
+    # fixture CAN answer, and it is the one that matters: if it does, the ceiling can be
+    # derived from geometry instead of fitted to a score.
+    if len(populated) >= 3:
+        x = np.asarray([row["predicted_amplification_1_over_sin"] for row in populated])
+        y = np.asarray([row["triangulated_median_mm"] for row in populated])
+        correlation = round(float(np.corrcoef(x, y)[0, 1]), 4)
     else:
-        crossover = float(cm.RAY_PAIR_CONDITIONING_CEILING_DEG)
-        shape = {"shape": "NO CROSSOVER on this fixture -- the sequence solve beats a "
-                          "two-view triangulation in EVERY populated angle bin, so the "
-                          "fixture does not locate a conditioning threshold at all. The "
-                          "value is not selected here; see `why`."}
+        correlation = None
+    if wins and losses:
+        crossover = float(min(row["bin_deg"][0] for row in wins))
+        shape = {"shape": "INTERIOR crossover -- recovery beats a two-view triangulation "
+                          "above this angle and loses below it, which is exactly what a "
+                          "conditioning threshold is",
+                 "highest_bin_where_triangulation_still_wins":
+                     max(row["bin_deg"][1] for row in losses)}
+    else:
+        crossover = None
+        shape = {"shape": "NO CROSSOVER -- the sequence solve beats a two-view "
+                          "triangulation in EVERY populated angle bin, including the "
+                          "well-conditioned ones the amplified mask supplies at 70-120 "
+                          "degrees. THIS FIXTURE CANNOT SELECT THE CEILING AND NOTHING "
+                          "HERE DOES. See `refuted_prediction`."}
     conditioning_crossover = {
         "bins": rows,
-        "selected_ceiling_deg": float(crossover),
+        "selects_nothing": crossover is None,
+        "crossover_deg": None if crossover is None else float(crossover),
         "shape": shape["shape"],
+        "measured_error_vs_closed_form_correlation": correlation,
+        "closed_form": (
+            "two rays meeting at theta determine the point across their common axis and "
+            "only weakly along it; the along-axis error is amplified by 1/|sin theta| "
+            "relative to a right-angled pair. 90 deg -> 1.0x, 150 deg -> 2.0x, 172 deg -> "
+            "7.2x. This is a property of two-view triangulation, not of any take."),
+        "refuted_prediction": (
+            "THE CARD SAID THE RAY-ANGLE CEILING WOULD BE SELECTED ON SYNTHETIC TRUTH. IT "
+            "CANNOT BE, and the reason is a property of the fixture rather than of the "
+            "rule. The fixture's bodies have exactly rigid bones and exactly smooth "
+            "motion, which are precisely the sequence solve's own priors (limb length and "
+            "temporal continuity). A recovery whose priors are true by construction beats "
+            "a noisy two-view triangulation at EVERY angle, including a right-angled pair, "
+            "so the score has no crossover to find and its argmin is always 'demote every "
+            "two-view slot' -- a capacity change, not evidence, and the thing the card "
+            "explicitly forbids. Shipping that argmin would be the classic error this lane "
+            "keeps a rule about: a band the candidate can optimise proves nothing about "
+            "the candidate. What the fixture CAN do, and does, is confirm the closed form: "
+            "the measured two-view triangulation error rises with 1/|sin theta| across the "
+            "bins. So the ceiling is derived from that closed form at a declared "
+            "amplification factor and registered as an ENGINEERING LIMIT, not as "
+            "synthetic-truth selection. The slack and the gap ceiling ARE selected here."),
+        "shipped_ceiling_deg": float(cm.RAY_PAIR_CONDITIONING_CEILING_DEG),
+        "shipped_amplification_factor": round(
+            1.0 / abs(math.sin(math.radians(cm.RAY_PAIR_CONDITIONING_CEILING_DEG))), 3),
         "why": (
             "The ceiling is a threshold on the RAY-PAIR ANGLE, so it is measured on that "
             "axis: every two-view window cell is binned by the angle its two surviving "
@@ -562,7 +657,7 @@ def main() -> int:
     # from the mechanism it is a threshold on: the angle at which a two-view triangulation
     # stops being worth keeping, measured per angle bin below.
     ray_selection = conditioning_crossover
-    selected_ceiling = ray_selection["selected_ceiling_deg"]
+    selected_ceiling = float(cm.RAY_PAIR_CONDITIONING_CEILING_DEG)
     ray_note = ray_selection["shape"]
     sweeps["ray_pair_conditioning_ceiling_deg"] = {
         "candidates": ray_rows, "selected": selected_ceiling, "shape": ray_note,
@@ -612,35 +707,55 @@ def main() -> int:
     # the axis came out flat inside 0.6 mm for that reason. Every candidate is now scored on
     # ONE fixed population -- the cells inside a no-view run longer than the SMALLEST
     # candidate -- so each N is judged on the gaps it is actually deciding about.
-    gap_population = gap_cells_from_keep(keep, names, min(GAP_FRAMES))
+    # ON THE AMPLIFIED MASK. The replayed mask has no run in which all four cameras lose a
+    # landmark, so its gap population is EMPTY and every candidate scored `None` -- an
+    # argmin over an empty set is not a selection, and the first pass of this file made
+    # exactly that mistake. The amplified mask carries the footage's own burst lengths on
+    # all four cameras and therefore has real gaps.
+    gap_population = gap_cells_from_keep(amplified, names, min(GAP_FRAMES))
+    gap_population_replayed = int(gap_cells_from_keep(keep, names, min(GAP_FRAMES)).sum())
     gap_rows = []
     for gap in GAP_FRAMES:
         positions, _raw, diagnostics = run(
-            cameras, masked, ray_pair_conditioning_ceiling_deg=selected_ceiling,
+            cameras, masked_amplified, ray_pair_conditioning_ceiling_deg=selected_ceiling,
             reachability_reject=True, reachability_slack_m=selected_slack,
             maximum_interpolated_gap_frames=gap)
         row = score(positions, truth19, mapping, names, gap_population)
         row["maximum_interpolated_gap_frames"] = gap
-        row["on_all_two_view_window_cells"] = score(positions, truth19, mapping, names, cells)
+        row["on_all_two_view_window_cells_of_the_amplified_mask"] = score(
+            positions, truth19, mapping, names, cells_amplified)
         row["repair"] = repair_counts(diagnostics)
         gap_rows.append(row)
         print(f"  gap {gap}: median {row.get('median_mm')} mm on the gap cells, "
               f"held {row['repair']['held_joint_fraction']}")
+    if not int(gap_population.sum()):
+        raise SystemExit(
+            "no fixture arm contains a gap long enough to select "
+            "MAXIMUM_INTERPOLATED_GAP_FRAMES on. Refusing to report an argmin over an "
+            "empty population.")
     selected_gap, gap_note = _select(gap_rows, "maximum_interpolated_gap_frames",
                                      conservative=max)
     sweeps["maximum_interpolated_gap_frames"] = {
         "candidates": gap_rows, "selected": selected_gap, "shape": gap_note,
         "scored_on": {
+            "mask": "the AMPLIFIED mask",
             "population": "cells inside a no-view run longer than "
                           f"{min(GAP_FRAMES)} frames -- the gaps the clause decides about",
-            "cells": int(gap_population.sum())},
+            "cells": int(gap_population.sum()),
+            "cells_on_the_replayed_mask": gap_population_replayed,
+            "why_not_the_replayed_mask": (
+                "it has none. The replayed pattern never loses a landmark in all four "
+                "cameras for more than two frames, so its gap population is empty and no "
+                "candidate can be scored on it. That is reported, not worked around.")},
         "rule": "lowest median 3D error ON THE GAP CELLS, with both ceilings above fixed",
         "note": "on this fixture the replayed pattern produces few runs longer than the "
                 "shortest candidate, so this axis is expected to be weakly determined; "
                 "`shape` says whether it was, and which branch of the tie-break ran"}
     report["selection"] = sweeps
     report["selected"] = {
-        "RAY_PAIR_CONDITIONING_CEILING_DEG": selected_ceiling,
+        "RAY_PAIR_CONDITIONING_CEILING_DEG": "NOT SELECTED HERE -- see "
+                                             "selection.ray_pair_conditioning_ceiling_deg"
+                                             ".by_ray_angle.refuted_prediction",
         "REACHABILITY_SLACK_M": selected_slack,
         "MAXIMUM_INTERPOLATED_GAP_FRAMES": selected_gap,
     }
@@ -649,7 +764,13 @@ def main() -> int:
         "REACHABILITY_SLACK_M": cm.REACHABILITY_SLACK_M,
         "MAXIMUM_INTERPOLATED_GAP_FRAMES": cm.MAXIMUM_INTERPOLATED_GAP_FRAMES,
     }
-    report["shipped_equals_selected"] = report["selected"] == report["shipped"]
+    report["shipped_equals_selected"] = all(
+        report["selected"][key] == report["shipped"][key]
+        for key in ("REACHABILITY_SLACK_M", "MAXIMUM_INTERPOLATED_GAP_FRAMES"))
+    report["shipped_equals_selected_note"] = (
+        "the ray-angle ceiling is excluded from this comparison: it is not selected here "
+        "and is an ENGINEERING LIMIT derived in closed form. The two constants this "
+        "fixture does select are the ones compared.")
 
     # ------------------------------------------------------------------------- four arms
     arms: dict = {}

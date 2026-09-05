@@ -104,27 +104,30 @@ CURATED: dict[str, dict] = {
     # ------------------------------------------------------------------- D7, the pelvis
     # ------------------------------------------------------------- D8, the occlusion repair
     "RAY_PAIR_CONDITIONING_CEILING_DEG": dict(
-        provenance=SYNTHETIC,
+        provenance=ENGINEERING,
         evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. A two-view slot "
                  "whose supporting rays meet beyond this angle (or inside its complement) is "
                  "depth-unconstrained along their common axis and is DEMOTED to the sequence "
-                 "solve. SELECTED ON SYNTHETIC TRUTH ONLY by "
-                 "`tools/compare/d8_occlusion_synthetic.py` -> "
-                 "artifacts/compare/d8-occlusion/synthetic.json, on SOMASKEL77 clips posed "
-                 "through our own FK, projected into this rig with the REAL per-camera seen "
-                 "pattern replayed and our own detector's measured heavy-tail noise. Selected on "
-                 "the axis the constant is a threshold ON -- two-view cells binned by their "
-                 "measured ray-pair angle, triangulation against demotion per bin -- and NOT on "
-                 "the whole-window error score, whose curve falls monotonically as the ceiling "
-                 "drops so that its argmin is always the lowest candidate swept ('never trust "
-                 "two views', a capacity change rather than evidence). Both are in the report "
-                 "and the substitution is stated in docs/reviews/occlusion-repair-2026-09-05.md. "
-                 "The real take was measured first (tools/compare/captured_limb_stability.py) and "
-                 "selected nothing.",
-        selected_against="synthetic truth (SOMASKEL77 clips through our own FK) with our own "
-                         "detector's measured heavy-tail noise and the real seen pattern replayed",
-        remedy="none open. If it moves it must move on synthetic truth, a held-out camera or "
-               "anatomy -- never on the real take and never on the MAMMA arm.",
+                 "solve. DERIVED IN CLOSED FORM AND SELECTED ON NO TAKE, synthetic or real: two "
+                 "rays meeting at theta determine a point across their common axis and only "
+                 "weakly along it, with the along-axis error amplified by 1/|sin theta| "
+                 "relative to a right-angled pair (90 deg = 1.0x, 150 deg = 2.0x, 172 deg = "
+                 "7.2x). The value is the angle at which that amplification reaches 2x, and 2x "
+                 "is the declared choice; the complement clause is the same expression from the "
+                 "other side, so the rule is exactly |sin theta| < 0.5. THE D8 CARD SAID THIS "
+                 "WOULD BE SELECTED ON SYNTHETIC TRUTH AND IT COULD NOT BE: "
+                 "`tools/compare/d8_occlusion_synthetic.py` finds the sequence solve beating a "
+                 "two-view triangulation at EVERY angle bin, including well-conditioned ones, "
+                 "because the fixture's bones are exactly rigid and its motion exactly smooth "
+                 "-- the recovery's own priors -- so the score's argmin is always 'never trust "
+                 "two views', a capacity change rather than evidence. That refuted prediction is "
+                 "recorded in docs/reviews/occlusion-repair-2026-09-05.md. The fixture DOES "
+                 "confirm the closed form: measured two-view error rises with 1/|sin theta| "
+                 "across its bins.",
+        remedy="none open. If it moves it must move on the closed form with a different "
+               "declared amplification factor, or on a fixture whose limb lengths and motion "
+               "do NOT satisfy the sequence solve's priors -- never on the real take and never "
+               "on the MAMMA arm.",
     ),
     "REACHABILITY_SPEED_CEILING_M_S": dict(
         provenance=ANATOMY,
