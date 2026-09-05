@@ -1953,6 +1953,39 @@ def positions_to_body_track(
             hips_world, rest)
         _set_world(local, world, frame, "Root", identity)
         _set_world(local, world, frame, "Hips", hips_world)
+        # D7b, 2026-09-05, and it is deliberately THE ONLY line added inside this loop.
+        #
+        # THE STANDING RULE: after replacing a parent, RE-SOLVE the chains below it. D7
+        # replaced `Hips`' frame and did not re-solve the spine, and this is that.
+        #
+        # `torso_world` above aims the trunk from the captured hip MIDPOINT, which is
+        # where `Spine`'s origin used to be -- while the whole trunk was one rigid block
+        # the two coincided along the aim and the chain landed on the neck. Under a
+        # pelvis frame they do not: `Spine` hangs `rest["Spine"]` off `Hips` IN THE
+        # PELVIS FRAME, ~197 mm up the pelvis axis from the leg-root midpoint, so a
+        # pelvis pitched away from the trunk line carries that origin off the line and a
+        # straight rigid chain aimed from a displaced origin misses the captured neck by
+        # the displacement -- 56 mm whole take and 116 mm on the bent tercile, measured
+        # from the delivered file's own bytes (the delivered `Neck` went 14.3 -> 58.9 mm
+        # off its landmark on performer 0 and 28.6 -> 44.0 on performer 1).
+        #
+        # Aim it from the origin the rotation actually turns about, exactly as D2 did for
+        # the clavicle. `Spine`, `Chest` and `UpperChest` share this one world rotation
+        # and their rests are collinear +Y, so `Neck`'s origin lands ON the ray to the
+        # captured neck and the residual is the trunk's LENGTH error alone
+        # (20.9 / 41.7 mm on performer 0, 18.3 / 11.9 on performer 1) -- which belongs to
+        # a flexible spine (D5) and cannot be removed by any aim.
+        #
+        # `_joint_origin` reads `world[frame, Hips]`, so this MUST come after the two
+        # `_set_world` calls above; and it is gated on `pelvis_world` so a legacy caller's
+        # track stays bit-identical -- `tests/test_pelvis_frame.py` and
+        # `tests/test_trunk_resolve.py` assert both halves.
+        # docs/reviews/trunk-resolve-2026-09-05.md
+        if pelvis_world is not None:
+            torso_world = _frame_alignment(
+                (0.0, 1.0, 0.0), (1.0, 0.0, 0.0),
+                neck - _joint_origin(world, frame, root_translation, rest, "Spine"),
+                shoulder_across)
         for name in ("Spine", "Chest", "UpperChest"):
             _set_world(local, world, frame, name, torso_world)
         # The head is the one joint here with its own evidence. With no solve it inherits
