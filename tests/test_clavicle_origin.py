@@ -43,6 +43,8 @@ SHA = "0" * 64
 # variant that reached for it through the module would call itself.
 TRUE_ORIGIN = cm._joint_origin
 CLAVICLES = ("LeftShoulder", "RightShoulder")
+# D9 (2026-09-05): the four arm bones are aimed from their own origin too, the same idiom.
+ARM_BONES = ("LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm")
 ARM_LANDMARKS = ("left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
                  "left_wrist", "right_wrist")
 LEG_LANDMARKS = ("left_hip", "right_hip", "left_knee", "right_knee",
@@ -257,7 +259,8 @@ def test_joint_origin_as_the_converter_actually_calls_it():
     finally:
         cm._joint_origin = real
 
-    assert set(recorded) == set(CLAVICLES), sorted(recorded)
+    # D2 asked for the clavicles alone; D9 aims the arm bones from their own origin as well.
+    assert set(recorded) == set(CLAVICLES) | set(ARM_BONES), sorted(recorded)
     assert len(recorded["LeftShoulder"]) == len(source)
     fk = forward_kinematics_positions(
         np.asarray(track.root_translation_m, dtype=np.float64),

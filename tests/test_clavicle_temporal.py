@@ -246,25 +246,28 @@ def test_a_single_frame_pop_is_rejected_and_the_arm_is_re_solved_onto_its_landma
         skeleton=DETAILED_HUMANOID,
     )
 
-    def offset_deg(positions, parent, child, tail, head):
-        rig = unit(positions[frame, DETAILED_HUMANOID.index(child)]
-                   - positions[frame, DETAILED_HUMANOID.index(parent)])
-        want = unit(y_up[frame, JOINT_INDEX[head]] - y_up[frame, JOINT_INDEX[tail]])
-        return float(np.degrees(np.arccos(np.clip(np.dot(rig, want), -1.0, 1.0))))
+    # D9 (2026-09-05) changed what "re-solved onto its landmarks" means. Under D2 the arm
+    # bones were aimed along the LANDMARK direction (elbow - shoulder) from an origin the
+    # clavicle put wherever its fixed length allowed, so the whole arm rode the origin miss;
+    # the old assertion here checked that direction to 0.05 deg. D9 aims each arm bone from
+    # its OWN origin at the next landmark, so the contract is PLACEMENT: on the replaced
+    # frame the delivered elbow and wrist sit near the captured ones (what remains is bone
+    # length and the foot-contact hoist), while the swung control -- replace WITHOUT
+    # re-solving -- leaves them far off. The tolerances are stated against that control.
+    def miss_mm(positions, child, landmark):
+        return float(np.linalg.norm(positions[frame, DETAILED_HUMANOID.index(child)]
+                                    - y_up[frame, JOINT_INDEX[landmark]]) * 1000.0)
 
-    for parent, child, tail, head in (
-        ("LeftUpperArm", "LeftLowerArm", "left_shoulder", "left_elbow"),
-        ("LeftLowerArm", "LeftHand", "left_elbow", "left_wrist"),
-    ):
-        # 0.05 deg, not zero: `BodyTrack` stores the rotations as float32, and reading a
-        # direction back out of a float32 quaternion costs about a hundredth of a degree.
-        assert offset_deg(fk, parent, child, tail, head) < 0.05, (
-            f"{parent}->{child} left its landmark direction on the replaced frame: the arm "
+    for child, landmark in (("LeftLowerArm", "left_elbow"), ("LeftHand", "left_wrist")):
+        placed = miss_mm(fk, child, landmark)
+        swung_miss = miss_mm(fk_swung, child, landmark)
+        assert placed < 40.0, (
+            f"{child} sits {placed:.1f} mm from its landmark on the replaced frame: the arm "
             "was swung rigidly with the clavicle instead of being re-solved"
         )
-        assert offset_deg(fk_swung, parent, child, tail, head) > 5.0, (
-            f"{parent}->{child}: replacing WITHOUT re-solving must visibly break this "
-            "band, or the band is not testing anything"
+        assert swung_miss > 80.0 and placed < 0.5 * swung_miss, (
+            f"{child}: replacing WITHOUT re-solving must visibly break this band "
+            f"({swung_miss:.1f} mm), or the band is not testing anything"
         )
 
 
