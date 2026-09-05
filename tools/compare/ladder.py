@@ -234,7 +234,8 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f5, c5 = _d7_figures("masks")
     f6, c6 = _d7b_figures("masks")
     f7, c7 = _d8_figures("masks")
-    return figs + f3 + f4 + f5 + f6 + f7, ctrls + c3 + c4 + c5 + c6 + c7
+    f8, c8 = _d9_figures("masks")
+    return figs + f3 + f4 + f5 + f6 + f7 + f8, ctrls + c3 + c4 + c5 + c6 + c7 + c8
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -300,7 +301,8 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f5, c5 = _d7_figures("converter")
     f6, c6 = _d7b_figures("converter")
     f7, c7 = _d8_figures("converter")
-    return figs + f2 + f3 + f4 + f5 + f6 + f7, ctrls + c2 + c3 + c4 + c5 + c6 + c7
+    f8, c8 = _d9_figures("converter")
+    return figs + f2 + f3 + f4 + f5 + f6 + f7 + f8, ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -367,6 +369,27 @@ def _d8_figures(where: str) -> tuple[list, list]:
         if key.startswith("placement_"):
             return "converter"
         return "capture"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d9_figures(where: str) -> tuple[list, list]:
+    """D9 figures from `tools/compare/extractors/d9_arms.py` (the agent's stub, wired here by the registry
+    owner): `silhouette_` to rung 1, everything else (`arm_`: the delivered elbow and wrist against the
+    captured ones, from the file's own bytes) to rung 7, the converter. D9 shipped on 2026-09-05: the arm
+    bones are aimed from their own FK origin instead of along landmark-to-landmark directions, so the
+    clavicle's fixed-length miss no longer displaces the whole arm; elbows 14 -> 7 / 9 mm, wrists
+    15-20 -> 9-12, the smoothed landmarks byte-identical. What remains is bone length (D5) and the
+    foot-contact hoist applied after every aim (a stated handoff)."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d9_arms  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d9_arms.x_arm_origin({})
+
+    def dest(key: str) -> str:
+        return "masks" if key.startswith("silhouette_") else "converter"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
 
@@ -1436,6 +1459,12 @@ def _splice_d7_visuals() -> None:
         return
     VISUALS["triangulation"][0:0] = d8_occlusion.VISUALS.get("capture", [])
     VISUALS["masks"][0:0] = d8_occlusion.VISUALS.get("masks", [])
+    try:
+        from extractors import d9_arms  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["pose"][0:0] = d9_arms.VISUALS.get("converter", [])
+    VISUALS["masks"][0:0] = d9_arms.VISUALS.get("masks", [])
 
 
 

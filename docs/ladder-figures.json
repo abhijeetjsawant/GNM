@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-05T22:29:35",
+ "rendered": "2026-09-06T00:15:09",
  "git": {
-  "sha": "23dbfee",
+  "sha": "1ff7a8b",
   "dirty": true
  },
  "rungs": [
@@ -18,6 +18,72 @@
    "title": "Person masks and per-view identity",
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
+    {
+     "title": "D9: how well the arms' outline covers the person's arms",
+     "plain": "The reference fitter's person masks are the reference; higher is better. Arms only, everything else taken out. Whole take and the stretch where the two performers overlap. It rises on both performers in both cuts, and on performer 1's overlap stretch the interval is clear of zero. The hatched bars are the build before this one and the reference fitter's own mesh -- the ceiling a body of the wrong proportions can reach, not a target.",
+     "better": "higher",
+     "unit": "IoU",
+     "bars": [
+      {
+       "label": "Whole take, ships",
+       "role": "ours",
+       "value": 0.20922
+      },
+      {
+       "label": "Whole take, before D9",
+       "role": "control",
+       "value": 0.20675
+      },
+      {
+       "label": "Overlap stretch, ships",
+       "role": "ours",
+       "value": 0.11336
+      },
+      {
+       "label": "Overlap stretch, before D9",
+       "role": "control",
+       "value": 0.11282
+      },
+      {
+       "label": "Overlap stretch, reference fitter's mesh",
+       "role": "control",
+       "value": 0.15055
+      }
+     ]
+    },
+    {
+     "title": "D9: the same photographs on performer 1",
+     "plain": "Same masks, same two cuts, higher is better. This is the performer whose arms the previous step had the most trouble with, and it is where the rise is largest and the only cell whose interval is clear of zero.",
+     "better": "higher",
+     "unit": "IoU",
+     "bars": [
+      {
+       "label": "Whole take, ships",
+       "role": "ours",
+       "value": 0.21587
+      },
+      {
+       "label": "Whole take, before D9",
+       "role": "control",
+       "value": 0.21507
+      },
+      {
+       "label": "Overlap stretch, ships",
+       "role": "ours",
+       "value": 0.17037
+      },
+      {
+       "label": "Overlap stretch, before D9",
+       "role": "control",
+       "value": 0.15716
+      },
+      {
+       "label": "Overlap stretch, reference fitter's mesh",
+       "role": "control",
+       "value": 0.2224
+      }
+     ]
+    },
     {
      "title": "D8: how well the arms cover the person in the photographs, on the frames where it went wrong",
      "plain": "The reference fitter's person masks are the reference; higher is better. Arms only, and only the 41 frames where two of the four cameras have lost a performer -- the frames this step is about. The hatched bars are the build before this one and the reference fitter's own mesh, which is the ceiling a body of the wrong proportions can reach rather than a target. A short window gives a wide margin of uncertainty and that is stated on the technical page.",
@@ -369,7 +435,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.647297135422295
+       "value": 0.6502977927888318
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -384,7 +450,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.4218373247232737
+       "value": 0.4202253542283315
       }
      ]
     },
@@ -397,7 +463,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.7498641595047633
+       "value": 0.7520860159364329
       },
       {
        "label": "MAMMA's mesh",
@@ -611,22 +677,22 @@
       {
        "label": "Delivered GLB vs its own FK, performer 0",
        "role": "ours",
-       "value": 0.0005
+       "value": 0.00049
       },
       {
        "label": "Pre-D3 exporter, performer 0",
        "role": "control",
-       "value": 96.49
+       "value": 110.86
       },
       {
        "label": "Delivered GLB vs its own FK, performer 1",
        "role": "ours",
-       "value": 0.00058
+       "value": 0.00047
       },
       {
        "label": "Pre-D3 exporter, performer 1",
        "role": "control",
-       "value": 92.59
+       "value": 94.91
       }
      ]
     },
@@ -639,7 +705,7 @@
       {
        "label": "Worst arms, 6 bodies",
        "role": "ours",
-       "value": 5.24
+       "value": 2.76
       },
       {
        "label": "Worst legs, 6 bodies",
@@ -649,7 +715,7 @@
       {
        "label": "Arriving canonical, arms",
        "role": "control",
-       "value": 30.89
+       "value": 30.91
       },
       {
        "label": "Arriving canonical, legs",
@@ -672,7 +738,7 @@
       {
        "label": "Delivered body, performer 0",
        "role": "ours",
-       "value": 0.34643
+       "value": 0.35041
       },
       {
        "label": "Fixed rig, performer 1",
@@ -682,7 +748,7 @@
       {
        "label": "Delivered body, performer 1",
        "role": "ours",
-       "value": 0.3631
+       "value": 0.36137
       }
      ]
     },
@@ -722,6 +788,158 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D9: how far the delivered elbow and wrist sit from the ones we measured, performer 0",
+     "plain": "Our own measured elbow and wrist are the reference, at zero; lower is better. Blue is what this step delivers. The hatched bars are the build before it, which aimed each arm bone by the line between two measured points while the bone actually turns about a joint somewhere else -- so the whole arm was carried off by that gap. The aqua bars are the floor: the part of the miss that a bone of fixed length can never remove, whatever it is aimed at. Blue sits on the floor, so there is nothing left here for an aim to fix; the rest is an arm cut to this performer, and that is a later step.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Elbow, ships (aim from the arm's own joint)",
+       "role": "ours",
+       "value": 7.045
+      },
+      {
+       "label": "Elbow, before D9",
+       "role": "control",
+       "value": 13.74
+      },
+      {
+       "label": "Elbow, floor",
+       "role": "alt",
+       "value": 5.505
+      },
+      {
+       "label": "Wrist, ships",
+       "role": "ours",
+       "value": 8.862
+      },
+      {
+       "label": "Wrist, before D9",
+       "role": "control",
+       "value": 14.674
+      },
+      {
+       "label": "Wrist, floor",
+       "role": "alt",
+       "value": 7.271
+      }
+     ]
+    },
+    {
+     "title": "D9: the same check on performer 1",
+     "plain": "Same reference, same unit, lower is better. This performer's arms start further out and come back the same way. The floor is higher here, and the delivered arm sits on it: on the left elbow the floor is 8.8 mm and the delivery reads 9.1, which is as close as a fixed-length bone can get.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Elbow, ships",
+       "role": "ours",
+       "value": 9.109
+      },
+      {
+       "label": "Elbow, before D9",
+       "role": "control",
+       "value": 13.439
+      },
+      {
+       "label": "Elbow, floor",
+       "role": "alt",
+       "value": 8.766
+      },
+      {
+       "label": "Wrist, ships",
+       "role": "ours",
+       "value": 10.901
+      },
+      {
+       "label": "Wrist, before D9",
+       "role": "control",
+       "value": 17.591
+      },
+      {
+       "label": "Wrist, floor",
+       "role": "alt",
+       "value": 10.407
+      }
+     ]
+    },
+    {
+     "title": "D9: the right arm, both performers",
+     "plain": "Same reference, lower is better. Both arms are changed the same way and both land on their own floor, which is the point: this is one rule applied twice, not a fit to one arm.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Elbow, ships, performer 0",
+       "role": "ours",
+       "value": 6.812
+      },
+      {
+       "label": "Elbow, before D9, performer 0",
+       "role": "control",
+       "value": 13.914
+      },
+      {
+       "label": "Elbow, ships, performer 1",
+       "role": "ours",
+       "value": 8.088
+      },
+      {
+       "label": "Elbow, before D9, performer 1",
+       "role": "control",
+       "value": 15.086
+      },
+      {
+       "label": "Wrist, ships, performer 1",
+       "role": "ours",
+       "value": 11.866
+      },
+      {
+       "label": "Wrist, before D9, performer 1",
+       "role": "control",
+       "value": 20.091
+      }
+     ]
+    },
+    {
+     "title": "D9: the shoulder, the neck and the knee, which this step must not touch",
+     "plain": "Same reference, same unit, lower is better. This step aims two bones in each arm and nothing else, so every pair of bars here has to be identical -- and they are, float for float, read from the delivered files. The shoulder is still 10-13 mm from the measured shoulder, and that miss is not this step's: it comes from the collarbone having one fixed length, and it is a later step's to close.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Shoulder, ships",
+       "role": "ours",
+       "value": 10.933
+      },
+      {
+       "label": "Shoulder, before D9",
+       "role": "control",
+       "value": 10.933
+      },
+      {
+       "label": "Neck, ships",
+       "role": "ours",
+       "value": 18.589
+      },
+      {
+       "label": "Neck, before D9",
+       "role": "control",
+       "value": 18.589
+      },
+      {
+       "label": "Knee, ships",
+       "role": "ours",
+       "value": 8.521
+      },
+      {
+       "label": "Knee, before D9",
+       "role": "control",
+       "value": 8.521
+      }
+     ]
+    },
     {
      "title": "D7b: how far the delivered neck sits from the neck we measured, performer 0",
      "plain": "Our own measured neck is the reference, at zero; lower is better. Blue is what this step delivers. The hatched bar is the build before it, which moved the neck off its landmark. The aqua bars are the build before THAT and the floor -- the part of the miss that a straight, rigid spine can never remove whatever it is aimed at. Blue sits on the floor, so there is nothing left here for an aim to fix; the rest is a bendable spine, and that is a later step.",
@@ -970,12 +1188,12 @@
       {
        "label": "Arms before, performer 0",
        "role": "alt",
-       "value": 12.28
+       "value": 8.03
       },
       {
        "label": "Arms after, performer 0",
        "role": "ours",
-       "value": 25.55
+       "value": 8.03
       },
       {
        "label": "Legs before, performer 0",
@@ -985,17 +1203,17 @@
       {
        "label": "Legs after, performer 0",
        "role": "ours",
-       "value": 19.54
+       "value": 5.13
       },
       {
        "label": "Arms before, performer 1",
        "role": "alt",
-       "value": 14.22
+       "value": 9.8
       },
       {
        "label": "Arms after, performer 1",
        "role": "ours",
-       "value": 21.84
+       "value": 9.8
       },
       {
        "label": "Legs before, performer 1",
@@ -1005,7 +1223,7 @@
       {
        "label": "Legs after, performer 1",
        "role": "ours",
-       "value": 15.96
+       "value": 11.48
       }
      ]
     },
@@ -1046,32 +1264,32 @@
       {
        "label": "Fixed rig, performer 0",
        "role": "ours",
-       "value": 53.74
+       "value": 26.5
       },
       {
        "label": "Rig sized to performer 0",
        "role": "alt",
-       "value": 15.28
+       "value": 10.27
       },
       {
        "label": "Converter floor, performer 0",
        "role": "control",
-       "value": 0.05
+       "value": 0.02
       },
       {
        "label": "Fixed rig, performer 1",
        "role": "ours",
-       "value": 25.45
+       "value": 22.22
       },
       {
        "label": "Rig sized to performer 1",
        "role": "alt",
-       "value": 19.71
+       "value": 12.71
       },
       {
        "label": "Converter floor, performer 1",
        "role": "control",
-       "value": 0.03
+       "value": 0.02
       }
      ]
     },
