@@ -294,6 +294,66 @@ def raw_identity_and_leg_counts(builds: dict[str, Path]) -> dict:
     }
 
 
+# --------------------------------------------------------------------------------- B5
+def d3_closure(builds: dict[str, Path]) -> dict:
+    """D3's closure clause, computed here rather than by rebuilding a second delivery.
+
+    The clause that MATTERS is the one D3 calls closure: does the delivered GLB agree with
+    forward kinematics of the track it carries? It is a within-build check, so it is
+    unaffected by D8 and is a real check on this build. Computing it directly reads the
+    same two things `d3_skeleton_gate.closure_block` reads -- the GLB's own bytes through
+    `glb_joint_positions`, and `forward_kinematics_positions` on `skeleton_for_track` --
+    without rebuilding a third delivery into a committed instrument's own directory.
+
+    D3's SAME-DENOMINATOR clause is the one the card says will report CHANGED. It compares
+    two builds' triangulated landmarks, and D8 moves them. That is answered below from the
+    arrays themselves, and a CHANGED there is the step working.
+    """
+
+    import d3_skeleton_gate as d3  # noqa: E402
+    from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_track
+    from autoanim_gnm.body import BodyTrack
+
+    out: dict = {
+        "band": "the delivered GLB agrees with forward kinematics of the track it carries, "
+                "<= 1e-6 m. A WITHIN-build check, so D8 cannot excuse a failure of it.",
+        "builds": {},
+        "same_denominator_clause": {
+            "what": "D3's same-denominator clause compares two builds' triangulated "
+                    "landmarks byte for byte",
+            "expected": "CHANGED -- D8 moves the smoothed landmarks by construction",
+        },
+    }
+    for label, delivery in builds.items():
+        rows = {}
+        for subject in (0, 1):
+            track = BodyTrack.from_dict(json.loads(
+                (delivery / f"subject-{subject:02d}.body-track.json").read_text()))
+            skeleton = skeleton_for_track(track)
+            _names, glb_positions, _rest = d3.glb_joint_positions(
+                delivery / f"subject-{subject:02d}.glb")
+            truth = forward_kinematics_positions(
+                np.asarray(track.root_translation_m, np.float64),
+                np.asarray(track.local_rotations_xyzw, np.float64),
+                skeleton=skeleton).astype(np.float64)
+            worst = float(np.linalg.norm(glb_positions - truth, axis=2).max())
+            rows[f"subject_{subject:02d}"] = {"closure_max_m": worst,
+                                              "within_1e-6_m": bool(worst <= 1e-6)}
+        out["builds"][label] = rows
+    smoothed_changed = {}
+    for subject in (0, 1):
+        smoothed_changed[f"subject_{subject:02d}"] = not bool(np.array_equal(
+            arrays(builds["D7b"], subject)["smoothed"],
+            arrays(builds["D8"], subject)["smoothed"]))
+    out["same_denominator_clause"]["smoothed_landmarks_changed"] = smoothed_changed
+    out["same_denominator_clause"]["verdict"] = (
+        "CHANGED as expected" if all(smoothed_changed.values())
+        else "UNCHANGED -- which would mean the step did nothing")
+    out["verdict"] = ("PASS" if all(row["within_1e-6_m"] for build in out["builds"].values()
+                                    for row in build.values()) else "FAIL")
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=REPORT)
@@ -426,9 +486,17 @@ def main() -> int:
             "of the track it carries -- that clause is unaffected and is a real check. Its "
             "SAME-DENOMINATOR clause compares the two builds' triangulated landmarks and "
             "will report CHANGED, because D8 moves them. That is the step working."),
-        "scoreboard": load(OUT_DIR / "scoreboard-d8.json"),
-        "head_gate": load(OUT_DIR / "head-gate-d8.json"),
-        "d3_closure": load(OUT_DIR / "d3-closure-d8.json"),
+        "scoreboard": load(ROOT / "artifacts/compare/scoreboard-d8-occlusion.json"),
+        "head_gate_note": (
+            "`tools/head/head_gate.py` scores `artifacts/head-lane/head-solve-shipped.npz`, "
+            "a HEAD-LANE artifact this build does not write, so rerunning it reproduces its "
+            "own figures unchanged and it is STRUCTURALLY BLIND to D8's effect on the "
+            "delivered head. That is worth stating rather than quoting as reassurance: "
+            "`_solve_head_for_subject` and `_thorax_frames` both read the SMOOTHED "
+            "positions, so on a D8 build the head SOLVE itself changes. The figure that "
+            "would see it is the delivered head's world orientation read from the two GLBs' "
+            "own bytes, and it is not in the card."),
+        "d3_closure": d3_closure(builds),
         "delivered_vs_capture_smoothed": load(
             OUT_DIR / "delivered-vs-capture-smoothed.json"),
         "verdict": "REPORTED",
