@@ -1421,6 +1421,207 @@ LANDMARK_PARENT = {
 }
 
 
+# D8b. PROVENANCE: OWN-CAPTURE SEED, confirmed on synthetic truth by
+# `tools/compare/d8b_length_synthetic.py`. A captured segment whose length departs from the
+# performer's OWN take median by more than this fraction did not happen: a bone does not
+# change length, and a shoulder line does not narrow by two thirds and widen again in
+# thirteen frames.
+#
+# WHY THIS RULE EXISTS AND WHY NO GEOMETRIC GATE REPLACES IT. Measured on the shipped D9
+# delivery (`tools/compare/captured_limb_stability.py`, frames 110-122, performer 1): the
+# captured shoulder line reads 122-274 mm against that performer's own 364, and cameras
+# A001 and C001 support both shoulders on all thirteen frames, D001 on twelve, all three
+# agreeing with the collapsed point to 0.5-6.9 px. That is a WELL-CONDITIONED triangulation
+# of a point the 2D detector places wrongly in every view as the performer twists and bends.
+# D8's conditioning gate correctly does not fire (three supporting views), the epipolar and
+# reprojection gates are satisfied by construction, and the ray-pair angle says nothing.
+# The performer's own bone lengths are the only evidence that can see it.
+#
+# WHERE THE NUMBER COMES FROM. It is a REAL-TAKE SEED and is registered as own-capture, not
+# as a synthetic-truth selection. On the reference take the eight leg segments hold their
+# length to -5.1 % / +6.2 % at p5-p95 on both performers, with 0 frames off their own median
+# by more than 15 % on 8 of 8 -- so 15 % is the smallest ceiling that the honest motion in
+# this take demonstrably clears, and the value is that measurement rounded to nothing.
+# `tools/compare/d8b_length_synthetic.py` was to CONFIRM it rather than choose it, and it
+# DID NOT. Both of the card's honest-motion clauses fail on that fixture at this ceiling and
+# at every ceiling swept up to 0.30: the fixture's own honest triangulation is far noisier
+# than the reference take's, so its uncollapsed frames and its legs cross the ceiling on
+# their own. The sweep, the fixture's own measured segment spread beside the take's, and the
+# truth error of every fired cell are in that report; the failure is recorded in
+# docs/reviews/segment-length-2026-09-06.md and the band was NOT moved to accommodate it.
+# What the fixture DOES show is that the rule sees the fault it is for: on the injected
+# collapse the shoulders go from 96.4 mm of 3D error to 30.0 against exact truth.
+SEGMENT_LENGTH_CEILING_FRACTION = 0.15
+
+# The segments the rule measures, and the landmark(s) a departure is charged to. The CHILD
+# carries the claim, because the parent is fixed by the segment above it -- except the
+# shoulder line, which has no parent, so both of its endpoints are marked. Named here
+# rather than derived from `RIGID_LIMBS` because the two are different things: `RIGID_LIMBS`
+# is what the sequence solve regularises, and this is what a captured frame is judged on.
+SEGMENT_LENGTH_RULES = (
+    ("shoulder_line", "left_shoulder", "right_shoulder",
+     ("left_shoulder", "right_shoulder")),
+    ("left_upper_arm", "left_shoulder", "left_elbow", ("left_elbow",)),
+    ("right_upper_arm", "right_shoulder", "right_elbow", ("right_elbow",)),
+    ("left_forearm", "left_elbow", "left_wrist", ("left_wrist",)),
+    ("right_forearm", "right_elbow", "right_wrist", ("right_wrist",)),
+    ("left_thigh", "left_hip", "left_knee", ("left_knee",)),
+    ("right_thigh", "right_hip", "right_knee", ("right_knee",)),
+    ("left_shin", "left_knee", "left_ankle", ("left_ankle",)),
+    ("right_shin", "right_knee", "right_ankle", ("right_ankle",)),
+)
+
+# What happens to the RAYS of a slot the length rule marks. SELECTED ON SYNTHETIC TRUTH by
+# `tools/compare/d8b_length_synthetic.py` -- "demote", on the injected collapse, under both
+# readings of the score (the pooled six-landmark median and the card's own per-group table).
+# The three are not variations on a theme; they hand the slot to three different recovery
+# mechanisms.
+#
+#   "demote"    the point is withheld and the rays are KEPT -- D8's path. The sequence solve
+#               sees a slot to recover and resolves it from those same rays plus the
+#               performer's own limb lengths and temporal continuity. The risk this mode
+#               carries, and the reason the other two exist: on this defect the rays are
+#               CONSISTENTLY wrong in every view, so the reprojection term may out-vote the
+#               length term and put the point back where it was.
+#   "reject"    the point AND the rays are withheld. With no ray the slot is not a candidate
+#               for `solve_sequence_positions` at all (it refuses to invent evidence), so it
+#               falls to `_fill_and_smooth_positions` -- and a run longer than
+#               MAXIMUM_INTERPOLATED_GAP_FRAMES is then HELD on its parent. On a run of 8-15
+#               frames that is a limb carried rigidly on the joint above it, which is the
+#               frozen-arm must-fail under another name. Kept as an arm so the number is on
+#               the record.
+#   "best_ray"  the point is withheld and every ray but the highest-confidence camera's is
+#               withheld with it, so the slot becomes exactly the single-ray case
+#               `solve_sequence_positions` already recovers from (ray + the parent distance
+#               + continuity). The camera is chosen by the DETECTOR'S OWN confidence on that
+#               slot, so this mode adds no constant of any kind.
+SEGMENT_LENGTH_MODES = ("demote", "reject", "best_ray")
+
+
+def _reject_inconsistent_segments(
+    world: np.ndarray,
+    *,
+    ceiling_fraction: float,
+    mode: str = "demote",
+    minimum_samples: int = MINIMUM_LIMB_SAMPLES,
+) -> tuple[np.ndarray, dict[str, np.ndarray], dict[str, Any]]:
+    """Withhold the captured slots that break the performer's own segment lengths.
+
+    ``world`` is ``[frame, joint, 3]`` and is NEVER modified: a copy is returned. Every
+    segment's reference length is the MEDIAN over this take of that same performer's own
+    triangulated points -- robust to the fault by construction, since the fault is confined
+    to a minority of frames, and self-referential by construction too, which is the whole of
+    what this rule is blind to (see below).
+
+    Returns ``(values, actions, report)``. ``actions`` carries two ``[frame, joint]``
+    boolean masks the caller applies to the RAYS: ``clear_rays`` (withhold every view's
+    observation of that slot) and ``keep_best_ray`` (withhold every view but the one with
+    the highest confidence). ``demote`` sets neither, so the rays stay exactly as they were.
+
+    WHAT THIS IS BLIND TO, and it is not a small list.
+
+    * **Truth.** A limb welded to its own median passes perfectly. This rule can only say
+      that a frame disagrees with the rest of the take, never which of them is right.
+    * **DIRECTION.** A length invariant cannot score direction (CLAUDE.md): a same-length
+      rotation of the shoulder line is invisible here, and so is a shoulder pair displaced
+      rigidly. It sees exactly one failure mode -- the one measured on this take.
+    * **A take-long error.** If the detector collapsed a segment on every frame, the median
+      would move with it and nothing would fire.
+    * **Which endpoint is wrong.** The rule charges the departure to the CHILD; on a pure
+      shoulder collapse the upper arm reads long as well, so the elbow is marked too and a
+      good point is discarded with a bad one. The report counts those cells
+      (`children_marked_under_a_marked_parent_segment`) rather than leaving them implicit.
+    """
+
+    if mode not in SEGMENT_LENGTH_MODES:
+        raise CommercialMultiviewError(
+            f"segment length mode must be one of {SEGMENT_LENGTH_MODES}")
+    values = np.asarray(world, dtype=np.float64).copy()
+    if values.ndim != 3 or values.shape[2] != 3:
+        raise CommercialMultiviewError("World positions must be [frame,joint,3]")
+    if not math.isfinite(ceiling_fraction) or ceiling_fraction <= 0.0:
+        raise CommercialMultiviewError("The segment-length ceiling must be positive")
+    frames, joints = values.shape[0], values.shape[1]
+    marked = np.zeros((frames, joints), dtype=bool)
+    medians: dict[str, float | None] = {}
+    measured: dict[str, int] = {}
+    fired: dict[str, int] = {}
+    frames_by_segment: dict[str, list[int]] = {}
+
+    for name, parent, child, charged in SEGMENT_LENGTH_RULES:
+        if parent not in JOINT_INDEX or child not in JOINT_INDEX:
+            continue
+        a, b = values[:, JOINT_INDEX[parent]], values[:, JOINT_INDEX[child]]
+        usable = np.isfinite(a).all(axis=1) & np.isfinite(b).all(axis=1)
+        measured[name] = int(usable.sum())
+        if int(usable.sum()) < minimum_samples:
+            # Too few frames to know what this performer's own length IS. A median over a
+            # handful of frames is not a reference, and a rule with no reference does not
+            # get to reject anything.
+            medians[name] = None
+            fired[name] = 0
+            frames_by_segment[name] = []
+            continue
+        lengths = np.full(frames, np.nan, dtype=np.float64)
+        lengths[usable] = np.linalg.norm(a[usable] - b[usable], axis=1)
+        median = float(np.median(lengths[usable]))
+        medians[name] = median
+        if median <= 1e-9:
+            fired[name] = 0
+            frames_by_segment[name] = []
+            continue
+        off = usable & (np.abs(lengths - median) / median > float(ceiling_fraction))
+        fired[name] = int(off.sum())
+        frames_by_segment[name] = np.flatnonzero(off).tolist()
+        for landmark in charged:
+            marked[off, JOINT_INDEX[landmark]] = True
+
+    # Every length is computed on the array as it arrived, before anything is withheld, so
+    # the rule is order-independent within itself: marking a shoulder cannot change what the
+    # upper arm reads.
+    #
+    # THE CASCADE, counted after every segment has had its say. A cell is a cascade when a
+    # segment's CHILD is marked on a frame where that segment's PARENT is also marked -- by
+    # some OTHER segment, which is why the shoulder line is skipped here: it charges its own
+    # two endpoints, so its child is its parent and every fire would count itself. On a pure
+    # shoulder collapse the upper arm reads long because its parent moved, so both elbows
+    # are withheld with the shoulders and two good points go with two bad ones. That is the
+    # price of charging the child, and it is counted rather than described.
+    cascade = 0
+    for _name, parent, child, charged in SEGMENT_LENGTH_RULES:
+        if child not in JOINT_INDEX or parent not in JOINT_INDEX or parent in charged:
+            continue
+        cascade += int(np.count_nonzero(
+            marked[:, JOINT_INDEX[child]] & marked[:, JOINT_INDEX[parent]]))
+
+    values[marked] = np.nan
+    actions = {
+        "marked": marked,
+        "clear_rays": marked.copy() if mode == "reject" else np.zeros_like(marked),
+        "keep_best_ray": marked.copy() if mode == "best_ray" else np.zeros_like(marked),
+    }
+    report = {
+        "segment_length_ceiling_fraction": float(ceiling_fraction),
+        "segment_length_mode": mode,
+        "length_rejected_slots": int(marked.sum()),
+        "length_rejected_by_joint": {JOINT_NAMES[j]: int(marked[:, j].sum())
+                                     for j in range(joints) if marked[:, j].any()},
+        "length_rejected_by_segment": {k: v for k, v in fired.items() if v},
+        "length_rejected_frames_by_segment": {k: v for k, v in frames_by_segment.items()
+                                              if v},
+        "segment_median_m": {k: (None if v is None else round(v, 6))
+                             for k, v in medians.items()},
+        "segment_frames_measured": measured,
+        "children_marked_under_a_marked_parent_segment": cascade,
+        "segment_length_note": (
+                "the reference length is this performer's own take median from the same "
+                "triangulated array; a frame that departs from it by more than the "
+                "ceiling has its CHILD landmark withheld (both endpoints for the shoulder "
+                "line, which has no parent). The raw array is untouched by all of it."),
+    }
+    return values, actions, report
+
+
 def _ray_pair_angles_deg(
     cameras: Sequence[CalibratedCamera],
     point: np.ndarray,
@@ -1584,6 +1785,13 @@ def _repair_occluded_slots(
     reachability: bool,
     reachability_slack_m: float = REACHABILITY_SLACK_M,
     reachability_rule: str = "reachability",
+    # D8b. `None` keeps the pre-D8b behaviour exactly, which is what the callers that
+    # predate this step get and what `tests/test_occlusion_repair.py` asserts. The caller
+    # passes a dict as `ray_actions_out` when it intends to act on the rays; the idiom is
+    # `positions_to_body_track`'s own `pelvis_report_out`.
+    segment_length_ceiling_fraction: float | None = None,
+    segment_length_mode: str = "demote",
+    ray_actions_out: dict[str, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """One subject's triangulated positions, with the unusable slots withheld.
 
@@ -1596,19 +1804,29 @@ def _repair_occluded_slots(
     ``supporting_views`` is ``[frame, joint, camera]`` booleans: which cameras the
     triangulator actually USED for that slot (its inliers), not which cameras could see it.
 
-    Two rules, applied in this order, each of which only ever turns a position into NaN:
+    Three rules, applied in this order, each of which only ever turns a position into NaN:
 
-    * **conditioning** -- a slot whose supporting views number exactly two and whose rays
-      meet outside the well-conditioned band is DEMOTED. The point is withheld; the rays
-      stay in `retained_observations`, so `solve_sequence_positions` sees the slot as one
-      it must recover and resolves it from those same rays plus the performer's own limb
+    * **conditioning** (D8) -- a slot whose supporting views number exactly two and whose
+      rays meet outside the well-conditioned band is DEMOTED. The point is withheld; the
+      rays stay in `retained_observations`, so `solve_sequence_positions` sees the slot as
+      one it must recover and resolves it from those same rays plus the performer's own limb
       lengths and temporal continuity.
-    * **reachability** -- a landmark that cannot have reached its position from its last
-      accepted one inside the anatomical envelope is REJECTED. Applied after the
-      demotions, so "last accepted" means last surviving, and the two rules cannot
-      disagree about what the anchor is.
+    * **segment length** (D8b) -- a frame whose captured segment departs from the
+      performer's own take median by more than the ceiling has the segment's CHILD landmark
+      withheld. It runs AFTER the conditioning gate on purpose, and the order is a band:
+      a slot the conditioning gate has already withheld is NaN, so its segments are not
+      measurable and the length rule cannot fire on the very cells whose triangulation D8
+      already judged unusable. Run first instead, it would fire on every ill-conditioned
+      two-view slot and no clean-input oracle could pass. What is left for it is the class
+      D8 cannot see: a well-supported, well-conditioned triangulation of a point the
+      detector placed wrongly in every view.
+    * **reachability** (D8) -- a landmark that cannot have reached its position from its
+      last accepted one inside the anatomical envelope is REJECTED. Applied after both, so
+      "last accepted" means last surviving and no two rules disagree about the anchor.
 
-    Returns ``(withheld, report)``.
+    Returns ``(withheld, report)``. When ``ray_actions_out`` is given it is filled with the
+    ``[frame, joint]`` boolean masks the caller applies to the rays -- see
+    :func:`_reject_inconsistent_segments`.
     """
 
     values = np.asarray(world, dtype=np.float64).copy()
@@ -1634,6 +1852,16 @@ def _repair_occluded_slots(
                 if angle > float(ray_pair_ceiling_deg) or angle < complement:
                     demoted[frame, joint] = True
         values[demoted] = np.nan
+
+    length_report: dict[str, Any] = {"segment_length_ceiling_fraction": None,
+                                     "segment_length_mode": None,
+                                     "length_rejected_slots": 0}
+    if segment_length_ceiling_fraction is not None:
+        values, actions, length_report = _reject_inconsistent_segments(
+            values, ceiling_fraction=segment_length_ceiling_fraction,
+            mode=segment_length_mode)
+        if ray_actions_out is not None:
+            ray_actions_out.update(actions)
 
     if reachability:
         for joint in range(joints):
@@ -1675,6 +1903,7 @@ def _repair_occluded_slots(
                  "slot to recover; a rejected slot keeps nothing and falls to the solve "
                  "and then the fill. The raw array is untouched by both."),
     }
+    report.update(length_report)
     return values, report
 
 
@@ -3007,6 +3236,13 @@ def reconstruct_multiview(
     reachability_slack_m: float = REACHABILITY_SLACK_M,
     reachability_rule: str = "reachability",
     maximum_interpolated_gap_frames: int | None = MAXIMUM_INTERPOLATED_GAP_FRAMES,
+    # D8b. The segment-length consistency reject, reachable the same way D8's rules are so
+    # an instrument runs every arm through this one function. `None` turns it off, and with
+    # it off the smoothed output is bit-identical to the pre-D8b build -- the "today (D9)"
+    # arm of the synthetic selector and a unit test. The RAW array is unaffected: it is
+    # captured before this runs, exactly as it is before D8's three rules.
+    segment_length_ceiling_fraction: float | None = SEGMENT_LENGTH_CEILING_FRACTION,
+    segment_length_mode: str = "demote",
 ) -> tuple[tuple[BodyTrack, ...], ReconstructionDiagnostics, np.ndarray, np.ndarray]:
     """Reconstruct every subject from calibrated multiview observations.
 
@@ -3224,6 +3460,7 @@ def reconstruct_multiview(
         # the rays it already has plus limb length and continuity. `world` is not touched:
         # what goes in is a copy, and `world.copy()` is still what this function returns as
         # the raw array.
+        ray_actions: dict[str, np.ndarray] = {}
         withheld, repair = _repair_occluded_slots(
             scaled_cameras,
             world[subject],
@@ -3233,11 +3470,42 @@ def reconstruct_multiview(
             reachability=reachability_reject,
             reachability_slack_m=reachability_slack_m,
             reachability_rule=reachability_rule,
+            segment_length_ceiling_fraction=segment_length_ceiling_fraction,
+            segment_length_mode=segment_length_mode,
+            ray_actions_out=ray_actions,
         )
+        # D8b. What the length rule decided about the RAYS. `demote` touches none of them
+        # and this is a no-op; `reject` withholds every view's observation of the slot, so
+        # the solve has no evidence to recover it from and the fill (and the gap clause)
+        # take it; `best_ray` withholds every view but the highest-confidence one, so the
+        # slot becomes the single-ray case the solve already recovers from a ray plus the
+        # parent distance and continuity. `retained_observations` itself is never written
+        # to -- a copy is made for the solve -- so the next subject sees what it always saw.
+        observations_for_solve = retained_observations[subject]
+        clear = ray_actions.get("clear_rays")
+        thin = ray_actions.get("keep_best_ray")
+        if (clear is not None and clear.any()) or (thin is not None and thin.any()):
+            observations_for_solve = observations_for_solve.copy()
+            if clear is not None and clear.any():
+                observations_for_solve[
+                    np.broadcast_to(clear[:, None, :],
+                                    observations_for_solve.shape[:3])] = np.nan
+            if thin is not None and thin.any():
+                for frame_index, joint_index in zip(*np.nonzero(thin)):
+                    column = observations_for_solve[frame_index, :, joint_index]
+                    usable = (np.isfinite(column[:, :2]).all(axis=1)
+                              & (column[:, 2] >= minimum_confidence))
+                    if not usable.any():
+                        continue
+                    confidence = np.where(usable, column[:, 2], -np.inf)
+                    keep = int(np.argmax(confidence))
+                    drop = np.ones(len(column), dtype=bool)
+                    drop[keep] = False
+                    column[drop] = np.nan
         resolved, recovered = solve_sequence_positions(
             scaled_cameras,
             withheld,
-            retained_observations[subject],
+            observations_for_solve,
             pixel_scale=pixel_scale,
             minimum_confidence=minimum_confidence,
             weight_before_loss=weight_before_loss,
