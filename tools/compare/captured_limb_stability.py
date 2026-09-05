@@ -58,6 +58,25 @@ card's window "85-125" and its "frame 100" / "frame 108" are those absolute ids:
 ids 85..125 are array indices 25..65, which is 41 frames, which is the card's denominator.
 Every per-frame row below carries both `frame_id` and `frame_index`.
 
+EXTENDED FOR D8b (2026-09-06), and the default path is unchanged
+---------------------------------------------------------------
+D8b is D8's leftover: after D8 the same instrument still counts performer 1's shoulder line
+off its own width by more than 15 % on frames the card names, and the mechanism there is a
+different one -- three cameras SEE the performer and all three agree with a collapsed
+shoulder, so no conditioning, epipolar or reprojection gate can fire. Two things were added
+and nothing was removed:
+
+* `--reproduce {d8,d8b,none}`. `d8` is the default and is the original behaviour;
+  `--skip-reproduction` is kept as an alias for `none`. `d8b` checks the D8b card's own
+  figures instead of D8's -- the D8 clauses describe the pre-D8 defect and asserting them on
+  a post-D8 build would be asking the repair to leave the defect in place.
+* A PER-CAMERA CLASSIFICATION TABLE over a frame range (`--classify-frames FIRST LAST`,
+  default 110-122, emitted with `--reproduce d8b`): per performer, per landmark, per frame,
+  which cameras supported the slot, each camera's confidence, and each camera's reprojection
+  residual of the RAW point. The D8b card's claim is "cameras A, C and D all see him
+  (confidence 0.4-0.95) and all three agree with the collapsed point to 1-11 px", and this
+  table is that claim in a report rather than in a chat.
+
 WHAT THIS INSTRUMENT IS BLIND TO
 --------------------------------
 * **Truth.** There is none on this take. A segment holding its own median is not a correct
@@ -130,6 +149,13 @@ OFF_MEDIAN_FRACTION = 0.15
 # (parent, child) landmark pairs, grouped. The shoulder line is not a limb; it is the pair
 # the card names as the thing that collapses, and it is kept in its own group so it never
 # shares a summary row with a bone.
+# D8b's own frame range and the landmarks the per-camera classification table covers. The
+# card names frames 110-122 on the falling performer; the shoulders are the segment that
+# collapses and the elbow and wrist are what the collapse drags after it.
+D8B_FIRST_ID, D8B_LAST_ID = 110, 122
+D8B_CLASSIFY_LANDMARKS = ("left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+                          "left_wrist", "right_wrist", "neck")
+
 SEGMENTS = {
     "arms": (
         ("left_shoulder", "left_elbow"),
@@ -323,7 +349,8 @@ def ray_angles(cameras, point: np.ndarray, support: np.ndarray) -> tuple[float, 
 FIRST_FRAME_ID = 60          # set from the observations at run time; this is the fallback
 
 
-def build_report(check_reproduction: bool = True) -> dict:
+def build_report(check_reproduction: bool = True, mode: str = "d8",
+                 classify: tuple[int, int] | None = None) -> dict:
     global FIRST_FRAME_ID
     cameras = cameras_scaled()
     rows = records()
@@ -580,11 +607,11 @@ def build_report(check_reproduction: bool = True) -> dict:
             for subject in (0, 1)},
     }
 
-    if check_reproduction:
-        report["reproduction"] = reproduction(report)
-        report["verdict"] = ("PASS" if all(row["matches"] for row in
-                                           report["reproduction"]["clauses"]) else "FAIL")
-    else:
+    if classify is not None:
+        report["per_camera_classification"] = per_camera_classification(
+            report, classify[0], classify[1])
+
+    if not check_reproduction:
         report["reproduction"] = {
             "skipped": True,
             "why": ("the reproduction clauses describe the DEFECT as it stands in the "
@@ -592,6 +619,16 @@ def build_report(check_reproduction: bool = True) -> dict:
                     "the repair to leave the defect in place."),
         }
         report["verdict"] = "REPORTED"
+    elif mode == "d8b":
+        report["reproduction"] = d8b_reproduction(report)
+        report["reproduction_card"] = "D8b"
+        report["verdict"] = ("PASS" if all(row["matches"] for row in
+                                           report["reproduction"]["clauses"]) else "FAIL")
+    else:
+        report["reproduction"] = reproduction(report)
+        report["reproduction_card"] = "D8"
+        report["verdict"] = ("PASS" if all(row["matches"] for row in
+                                           report["reproduction"]["clauses"]) else "FAIL")
     return report
 
 
@@ -755,6 +792,289 @@ def reproduction(report: dict) -> dict:
     }
 
 
+
+# ------------------------------------------------------------------------------ D8b
+def per_camera_classification(report: dict, first_id: int, last_id: int) -> dict:
+    """Per performer / landmark / frame over a range: who saw it, how sure, how far off.
+
+    Every number here is already computed in `report["per_frame"]`; this block cuts it to
+    the frames the D8b card names and lays it out as a table so the card's per-camera claim
+    can be read rather than reconstructed. Nothing is recomputed and nothing is re-detected.
+
+    The residual is the RAW triangulated point reprojected into each SUPPORTING camera and
+    compared with that camera's own detection, in the pipeline's reference pixel space
+    (`px1280`). A slot whose three supporting views all agree to a few pixels and whose
+    segment length is impossible is the D8b defect: a WELL-CONDITIONED triangulation of a
+    point the detector placed wrongly in every view, which is exactly what no geometric gate
+    can see.
+    """
+
+    out: dict = {
+        "what": ("per performer, per landmark, per frame over the card's own range: the "
+                 "cameras that SUPPORTED the slot, each camera's confidence, and each "
+                 "supporting camera's reprojection residual of the RAW point"),
+        "frame_ids": [first_id, last_id],
+        "cameras": list(CAMERAS),
+        "residual_definition": ("the raw triangulated point projected into that camera and "
+                                "compared with that camera's own detection, px at "
+                                "1280 width. It is NOT a distance to truth: if every camera "
+                                "is wrong the same way it stays small, which is the whole "
+                                "of the D8b defect"),
+        "subjects": {},
+    }
+    for subject_key, rows in report["per_frame"].items():
+        block: dict = {}
+        for name in D8B_CLASSIFY_LANDMARKS:
+            if name not in rows:
+                continue
+            row = rows[name]
+            frames = []
+            for index, frame_id in enumerate(row["frame_ids"]):
+                if not (first_id <= frame_id <= last_id):
+                    continue
+                frames.append({
+                    "frame_id": frame_id,
+                    "supporting_views": row["supporting_views"][index],
+                    "support": row["support"][index],
+                    "confidence": {CAMERAS[c]: row["confidence"][index][c]
+                                   for c in range(len(CAMERAS))},
+                    "raw_reprojection_residual_px1280": {
+                        CAMERAS[c]: row["raw_reprojection_residual_px1280"][index][c]
+                        for c in range(len(CAMERAS))},
+                    "max_pairwise_ray_angle_deg": row["max_pairwise_ray_angle_deg"][index],
+                })
+            counts = {camera: sum(1 for f in frames if camera in f["supporting_views"])
+                      for camera in CAMERAS}
+            # "the cameras that see him there", counted rather than asserted. A camera that
+            # supports EVERY frame and one that supports all but one are different facts and
+            # both are here; the majority reading is the card's and the strict one is beside
+            # it, so neither has to be guessed later.
+            supported = [camera for camera in CAMERAS if counts[camera] > len(frames) // 2]
+            every = [camera for camera in CAMERAS if counts[camera] == len(frames)]
+            confidences = [value for f in frames for camera, value in f["confidence"].items()
+                           if camera in supported and camera in f["supporting_views"]
+                           and value is not None]
+            residuals = [value for f in frames
+                         for camera, value in f["raw_reprojection_residual_px1280"].items()
+                         if camera in supported and value is not None]
+            block[name] = {
+                "frames": frames,
+                "frames_in_range": len(frames),
+                "per_camera_supported_frames_in_range": counts,
+                "cameras_supporting_a_majority_of_the_range": supported,
+                "cameras_supporting_every_frame_in_the_range": every,
+                "confidence_range_on_those_cameras": (
+                    [round(min(confidences), 3), round(max(confidences), 3)]
+                    if confidences else None),
+                "residual_range_on_those_cameras_px1280": (
+                    [round(min(residuals), 3), round(max(residuals), 3)]
+                    if residuals else None),
+            }
+        out["subjects"][subject_key] = block
+    return out
+
+
+def d8b_reproduction(report: dict) -> dict:
+    """The D8b card's figures, recomputed here, with the array each came from named.
+
+    The card, `docs/LADDER_EXECUTION_PLAN.md` section 2, the D8b row, written 2026-09-06:
+    "on frames 110-122 the captured shoulder line reads 122-274 mm against his own 363 (raw
+    122 at frame 110), the captured upper arm 428 -> 280 -> 333 mm against a 277 mm bone";
+    "cameras A, C and D all see him there (confidence 0.4-0.95) and all three agree with the
+    collapsed point to 1-11 px"; "after D8, performer 1's shoulder line is still off its own
+    width by >15 % on 16 frames, the forearm on 4, performer 0's shoulder line on 4; the
+    legs on 0".
+
+    LIKE D8's CARD, THIS ONE QUOTES TWO ARRAYS and does not say so. Measured: the shoulder
+    line's 122-274 mm range is the RAW array; the upper arm's 428 -> 280 -> 333 sequence is
+    the SMOOTHED one; the frame counts are the SMOOTHED array. Every clause below names its
+    array.
+    """
+
+    clauses: list[dict] = []
+
+    def clause(name, expected, measured, matches, array, note=""):
+        clauses.append({"clause": name, "card_says": expected, "measured": measured,
+                        "array": array, "matches": bool(matches), "note": note})
+
+    def segment(subject, array, group, pair):
+        return report["subjects"][f"subject_{subject:02d}"]["segments"][array][group][pair]
+
+    first = report["frames"]["first_frame_id"]
+    lo, hi = D8B_FIRST_ID - first, D8B_LAST_ID - first + 1
+
+    # ---- the collapsed shoulder line, RAW, on the card's own frames
+    raw_line = segment(1, "raw", "shoulder_line", "left_shoulder__right_shoulder")
+    series = np.asarray([np.nan if v is None else v for v in raw_line["series_mm"]])
+    median = raw_line["median_mm"]
+    window_values = series[lo:hi]
+    off = np.abs(window_values - median) / median > OFF_MEDIAN_FRACTION
+    collapsed = window_values[off & np.isfinite(window_values)]
+    clause("performer 1's captured shoulder line reads 122-274 mm on frames 110-122 "
+           "against his own 363",
+           {"range_mm": [122, 274], "own_median_mm": 363},
+           {"collapsed_frames_range_mm": [round(float(collapsed.min()), 2),
+                                          round(float(collapsed.max()), 2)],
+            "collapsed_frame_count": int(off.sum()),
+            "all_frames_in_range_mm": [round(float(np.nanmin(window_values)), 2),
+                                       round(float(np.nanmax(window_values)), 2)],
+            "own_take_median_mm": median},
+           collapsed.size and round(float(collapsed.min())) == 122
+           and round(float(collapsed.max())) == 274 and round(median) == 364,
+           "raw",
+           "THE CARD'S RANGE IS THE COLLAPSED FRAMES' RANGE, not the range over all 13 "
+           "frames: of the 13, nine are off the performer's own median by more than 15 % "
+           "and read 122-274 mm, and the other four read 346-357, near the median. The "
+           "card's '363' is this median; measured it is 364.1 on the raw array and 361.4 "
+           "on the smoothed one")
+
+    clause("raw 122 at frame 110", 122, series[D8B_FIRST_ID - first],
+           round(float(series[D8B_FIRST_ID - first])) == 122, "raw",
+           "the card names this one point value as raw, and it is")
+
+    # ---- the upper arm, SMOOTHED
+    upper = segment(1, "smoothed", "arms", "left_shoulder__left_elbow")
+    smooth_series = [None if v is None else round(float(v), 1) for v in upper["series_mm"]]
+    sampled = {fid: smooth_series[fid - first] for fid in (110, 116, 118)}
+    clause("the captured upper arm 428 -> 280 -> 333 mm against a 277 mm bone",
+           {"110": 428, "116": 280, "118": 333, "own_median_mm": 277},
+           {"sampled": sampled, "own_take_median_mm": upper["median_mm"]},
+           all(abs(sampled[f] - v) < 1.0 for f, v in ((110, 428.0), (116, 280.2),
+                                                      (118, 332.5)))
+           and abs(upper["median_mm"] - 277.0) < 1.0,
+           "smoothed",
+           "the three quoted values are the SMOOTHED array at frames 110, 116 and 118; on "
+           "the raw array the same frames read "
+           f"{[segment(1, 'raw', 'arms', 'left_shoulder__left_elbow')['series_mm'][f - first] for f in (110, 116, 118)]}")
+
+    # ---- the frames-off counts after D8
+    counts = {
+        "performer_1_shoulder_line": segment(
+            1, "smoothed", "shoulder_line", "left_shoulder__right_shoulder"
+        )["frames_off_median_by_more_than_15pct"],
+        "performer_1_forearm_L": segment(
+            1, "smoothed", "arms", "left_elbow__left_wrist"
+        )["frames_off_median_by_more_than_15pct"],
+        "performer_0_shoulder_line": segment(
+            0, "smoothed", "shoulder_line", "left_shoulder__right_shoulder"
+        )["frames_off_median_by_more_than_15pct"],
+    }
+    clause("performer 1's shoulder line off by >15 % on 16 frames after D8",
+           16, counts["performer_1_shoulder_line"],
+           counts["performer_1_shoulder_line"] == 16, "smoothed",
+           "MEASURED 18 ON THE SHIPPED D9 BUILD. D9 is converter-only and moves no "
+           "landmark, and D8's own committed review (docs/reviews/"
+           "occlusion-repair-2026-09-05.md section 5) records this figure as 27 -> 18 after "
+           "D8, so 18 is what the D8 build left and the card's 16 does not reproduce on "
+           "either build. B4's band is on the AFTER value and is not moved by this")
+    clause("performer 1's forearm off by >15 % on 4 frames after D8",
+           4, counts["performer_1_forearm_L"], counts["performer_1_forearm_L"] == 4,
+           "smoothed")
+    clause("performer 0's shoulder line off by >15 % on 4 frames after D8",
+           4, counts["performer_0_shoulder_line"], counts["performer_0_shoulder_line"] == 4,
+           "smoothed")
+
+    leg_off = 0
+    leg_detail = {}
+    for subject in (0, 1):
+        for pair in ("left_hip__left_knee", "left_knee__left_ankle",
+                     "right_hip__right_knee", "right_knee__right_ankle"):
+            row = segment(subject, "smoothed", "legs", pair)
+            leg_off += row["frames_off_median_by_more_than_15pct"]
+            leg_detail[f"subject_{subject:02d}.{pair}"] = {
+                "frames_off": row["frames_off_median_by_more_than_15pct"],
+                "p5_p95_fraction_of_median": row["p5_p95_fraction_of_median"]}
+    clause("the legs are off their own median by more than 15 % on 0 frames",
+           0, leg_off, leg_off == 0, "smoothed",
+           "eight segments, both performers")
+
+    # ---- the per-camera claim, split into the three things the card's one sentence says
+    table = report.get("per_camera_classification", {}).get("subjects", {})
+    shoulders = {name: table.get("subject_01", {}).get(name, {})
+                 for name in ("left_shoulder", "right_shoulder")}
+    supported = sorted({camera for row in shoulders.values()
+                        for camera in row.get(
+                            "cameras_supporting_a_majority_of_the_range", [])})
+    per_camera = {name: row.get("per_camera_supported_frames_in_range")
+                  for name, row in shoulders.items()}
+    clause("cameras A, C and D all see him on frames 110-122",
+           ["A001", "C001", "D001"],
+           {"cameras_supporting_a_majority_of_the_range": supported,
+            "per_camera_supported_frames_of_13": per_camera},
+           supported == ["A001", "C001", "D001"],
+           "observations",
+           "COUNTED, not asserted: over the 13 frames A001 and C001 support both shoulders "
+           "on all 13, D001 on 12 of 13 (absent on frame 113, the one two-view frame in the "
+           "range and the one D8's conditioning gate acts on), and B001 on 4 of 13 -- it is "
+           "sub-floor at 0.13-0.19 on frames 110-118 and only rejoins at 119. That is the "
+           "card's 'A, C and D all see him there', with the single-frame exception named")
+
+    # The population the card's residual figure is quoted on: "all three agree with the
+    # COLLAPSED point". The collapsed frames are the ones whose shoulder line is off the
+    # performer's own median by more than 15 %, and both cuts are reported.
+    collapsed_ids = [D8B_FIRST_ID + index for index in np.flatnonzero(off).tolist()]
+    ranges: dict = {}
+    for cut, wanted in (("collapsed_frames", collapsed_ids),
+                        ("all_frames_110_122", list(range(D8B_FIRST_ID, D8B_LAST_ID + 1))),
+                        ("frames_all_three_support", [
+                            fid for fid in range(D8B_FIRST_ID, D8B_LAST_ID + 1)
+                            if fid not in (113,) and fid < 119])):
+        values_confidence: list[float] = []
+        values_residual: list[float] = []
+        for row in shoulders.values():
+            for entry in row.get("frames", []):
+                if entry["frame_id"] not in wanted:
+                    continue
+                for camera in ("A001", "C001", "D001"):
+                    if camera not in entry["supporting_views"]:
+                        continue
+                    if entry["confidence"][camera] is not None:
+                        values_confidence.append(entry["confidence"][camera])
+                    value = entry["raw_reprojection_residual_px1280"][camera]
+                    if value is not None:
+                        values_residual.append(value)
+        ranges[cut] = {
+            "confidence": ([round(min(values_confidence), 4),
+                            round(max(values_confidence), 4)]
+                           if values_confidence else None),
+            "residual_px1280": ([round(min(values_residual), 3),
+                                 round(max(values_residual), 3)]
+                                if values_residual else None),
+            "frame_ids": wanted,
+        }
+    full = ranges["all_frames_110_122"]["residual_px1280"]
+    clause("all three agree with the collapsed point to 1-11 px",
+           [1, 11], ranges,
+           bool(full) and round(full[1]) == 11 and full[0] < 1.5,
+           "observations + raw point",
+           "the card's 11 is the MAXIMUM over the whole range 110-122 (11.26 px, D001 at "
+           "frame 119) and its 1 is a rounding of the minimum, 0.49 px. On the COLLAPSED "
+           "frames alone -- the nine whose shoulder line is off the performer's own median "
+           "by more than 15 %, which is the population the card's sentence names -- the "
+           "three cameras agree to 0.5-6.9 px. Either reading says the same thing: this is "
+           "a WELL-CONDITIONED triangulation of a point every camera places wrongly, and no "
+           "residual threshold can see one")
+
+    three = ranges["frames_all_three_support"]["confidence"]
+    clause("at confidence 0.4-0.95", [0.4, 0.95], ranges,
+           bool(three) and round(three[0], 2) == 0.40 and three[1] <= 0.99,
+           "observations",
+           "the card's LOWER figure reproduces exactly on the frames all three cameras "
+           "support (110-112 and 114-118): 0.3975, D001 at frame 110. Its upper figure is a "
+           "ROUNDING -- measured 0.9889 (C001). Over the whole range 110-122 the minimum "
+           "falls to 0.2650 (D001 at frame 120, a four-view frame), which is above the "
+           "pipeline's own 0.25 floor and is why that camera still supports the slot. All "
+           "three cuts are in `measured` so none of them has to be guessed again")
+
+    return {
+        "source": "docs/LADDER_EXECUTION_PLAN.md section 2, the D8b card, written 2026-09-06",
+        "clauses": clauses,
+        "frames_off_after_d8": counts,
+        "legs_after_d8": leg_detail,
+        "all_match": all(row["matches"] for row in clauses),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=OUT)
@@ -763,6 +1083,16 @@ def main() -> int:
                              "the landmark arrays. Defaults to the shipped build. The "
                              "observations, rig and association always come from the "
                              "shipped build whatever this is set to.")
+    parser.add_argument("--reproduce", choices=("d8", "d8b", "none"), default="d8",
+                        help="which card's figures to check. `d8` is the original "
+                             "behaviour and the default; `d8b` checks the D8b card's own "
+                             "figures on a POST-D8 build and emits the per-camera "
+                             "classification table beside them; `none` checks nothing.")
+    parser.add_argument("--classify-frames", type=int, nargs=2, default=None,
+                        metavar=("FIRST", "LAST"),
+                        help="emit the per-camera classification table over this inclusive "
+                             "range of absolute frame ids. Defaults to "
+                             f"{D8B_FIRST_ID}-{D8B_LAST_ID} when --reproduce d8b is set.")
     parser.add_argument("--skip-reproduction", action="store_true",
                         help="do not check the card's figures. Set when scoring a build "
                              "OTHER than the shipped one, whose numbers are supposed to "
@@ -775,7 +1105,12 @@ def main() -> int:
                            else ROOT / args.landmarks_from)
         if not LANDMARK_SOURCE.exists():
             raise SystemExit(f"{LANDMARK_SOURCE} does not exist")
-    report = build_report(check_reproduction=not args.skip_reproduction)
+    mode = "none" if args.skip_reproduction else args.reproduce
+    classify = args.classify_frames
+    if classify is None and mode == "d8b":
+        classify = (D8B_FIRST_ID, D8B_LAST_ID)
+    report = build_report(check_reproduction=(mode != "none"), mode=mode,
+                          classify=None if classify is None else tuple(classify))
     out = args.out if args.out.is_absolute() else ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1), encoding="utf-8")
@@ -797,7 +1132,7 @@ def main() -> int:
     if report["reproduction"].get("skipped"):
         print("reproduction: skipped (scoring a build other than the shipped one)")
     else:
-        print("reproduction of the card's figures")
+        print(f"reproduction of the {report.get('reproduction_card', 'D8')} card's figures")
         for row in report["reproduction"]["clauses"]:
             print(f"  [{'ok ' if row['matches'] else 'NO '}] ({row['array']}) {row['clause']}")
     print(f"\nverdict: {report['verdict']}")
