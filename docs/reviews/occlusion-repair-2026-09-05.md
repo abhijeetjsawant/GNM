@@ -191,8 +191,8 @@ rule acts on:
 * `MAXIMUM_INTERPOLATED_GAP_FRAMES` **hits the same artefact and is not selected either.**
   Scored on the cells inside a long no-view run — one fixed population shared by every
   candidate, on the amplified mask, because the replayed mask has *no* such run — the
-  fixture prefers interpolating at every candidate length (56.9 mm at N = 2 through 18,
-  54.6 at N = 24): another monotone curve whose argmin is "never hold". The fixture's
+  fixture prefers interpolating at every candidate length (57.0 mm at N = 2, 56.9 at
+  N = 3 through 18, 54.6 at N = 24): another curve whose argmin is "never hold". The fixture's
   motion is smooth by construction, so a straight line through a gap is nearly exact there.
   The value is a closed-form bound instead: a straight chord across a gap of duration `T`
   departs from a constant-acceleration trajectory by at most `a·T²/8`, and setting that
@@ -227,7 +227,7 @@ oracle fires zero rejections on clean input, and a frozen arm fails.
 | **oracle** | clean fully-seen input → zero demotions, zero rejections, bit-identical | 0, 0, `held_joint_fraction` 0.0, smoothed AND raw bit-identical | **PASS** |
 | **must-fail: frozen arm** | a whole-take hold must score worse | **29.5 mm** against the shipped 22.1 | **FAILS as required** |
 | **must-fail: step test** | a step test in place of reachability | 22.074 mm — **ties**, see §7.5 | **inconclusive at the pipeline level; discriminated in the unit tests** |
-| **B1 photographs, arms, window** | not worse than D7b on either performer with the CI clear | p0 **+0.0025 [0.00003, 0.0294]**; p1 **−0.0065 [−0.0260, 0.0146]** | **PASS on both** |
+| **B1 photographs, arms, window** | not worse than D7b on either performer "with the CI clear" | p0 **+0.0025 [0.00003, 0.0294]**; p1 **−0.0065 [−0.0260, 0.0146]** | **PASS on both** on the reading D7b used; see §6 |
 | **B1 prediction** | a rise predicted on performer 1 | the rise landed on **performer 0** with the interval clear of zero; performer 1's point estimate **falls** | **REFUTED**, §7.7 |
 | **B2 held-out camera** | reprojection into a camera the reconstruction never saw, on frames with a third view | pooled window median of the four fold medians **8.94 → 8.43 px**; better on 3 folds of 4 (A 8.39→7.82, B 8.99→8.28, C 8.89→8.58) and **worse on D001, 10.15 → 14.26** | **REPORTED** |
 | **B3 raw array** | bit-identical between the D7b and D8 builds | **identical on both performers**; observations identical; smoothed differs, as it must | **PASS** |
@@ -290,6 +290,27 @@ so every band shares one denominator. **Nothing was written under
 | B3 | **yes** — the raw array is byte-identical on both performers |
 
 **Outcome: MERGE.** No clause failed and no band was moved.
+
+### The one phrase in the rule that admits two readings, and which was applied
+
+The card's B1 says *"not worse on either performer with the CI clear"*, and that admits two
+readings:
+
+* **"not significantly worse"** — the interval's upper bound is at or above zero. This is
+  the reading **applied here**, and it is `d7b_silhouette_partwise.py`'s own `not_worse`
+  predicate, written for the identical clause text in the D7b card and passed by D7b on
+  arms whose intervals also spanned zero (+0.0044 and −0.0039, both spanning zero, recorded
+  as PASS in `docs/reviews/trunk-resolve-2026-09-05.md` §3). D8 uses the same predicate on
+  the same instrument lineage.
+* **"the interval must exclude negative values"** — a strictly stronger test. Under it
+  performer 1, at [−0.026, +0.015], **fails**, and the merge rule's outcome flips to **DO
+  NOT MERGE**.
+
+The band is not moved and the agent does not choose between the readings. The applied
+reading is stated, the precedent that establishes it is cited, and the outcome under the
+stricter reading is stated too. If the coordinator intends the stricter reading, the same
+sentence in the D7b card would have to be re-read the same way, and D7b would not have
+merged on its arms clause either.
 
 It is not an unqualified pass, and the qualifications are in §7: **three predictions are
 refuted** (B1's direction, the legs' zero demotions, and the card's own selection method for
@@ -452,6 +473,17 @@ The mechanism is visible in the diagnostics: performer 1's `neck` is demoted on 
 and rejected on 1, so on those frames the delivered neck follows a recovered point rather
 than the triangulated one, and the trunk chain D7b aims at the captured neck carries it.
 
+**First, what the number actually is.** D7b aims the trunk chain at the *smoothed* captured
+neck, and the D3 closure clause proves the delivered GLB matches forward kinematics of the
+track it carries to 5e-7 m. So the delivered `Neck` sits on the smoothed neck to within the
+trunk-length floor, and **B4's neck figure is, to that precision, `‖smoothed neck − raw
+neck‖` — the size of the correction the repair applied to the neck**, not a distance by
+which the delivered neck misses a known answer. 452 mm of correction on a 172° pair is
+entirely plausible: the shoulder line on those same frames moved by 386 mm (543 → 157 at
+its worst). Read as "the delivered neck is 452 mm out" it would be alarming; read as what it
+is, it is the repair working at full amplitude on the frames it was built for. The open
+question is only whether it moved it the *right way*.
+
 **B4 cannot say whether this is a regression.** Its reference is the raw triangulated point,
 and on a demoted slot the raw point is *precisely the one the step judged unreliable* — a
 two-view, ill-conditioned estimate at 172°. So on demoted slots B4 is structurally biased
@@ -470,6 +502,17 @@ the same frames, the hands improve substantially: `LeftHand` p95 159 → 120 (pe
 
 ### 7.6 Things this branch did not do
 
+* **`tools/head/head_gate.py` was NOT rerun**, and the reason is §7.3: it scores a
+  head-lane npz this build does not write, so rerunning it would reproduce its own figures
+  and report a verdict about a head this step cannot have moved. The card asked for it to
+  be "rerun and reported"; it is reported as structurally blind instead, with the
+  command unchanged should the coordinator want the figures on the record anyway.
+* **`tools/compare/d3_skeleton_gate.py` was NOT rerun as a whole.** Its closure clause —
+  the one that matters, and a within-build check D8 cannot excuse — was recomputed inline
+  in `d8_occlusion_gate.py` on BOTH builds from the same two sources the gate reads
+  (`glb_joint_positions` and `forward_kinematics_positions` on `skeleton_for_track`).
+  Running the whole gate rebuilds a third delivery into a committed instrument's own
+  output directory, which this branch would not do.
 * **`ladder.py` was not edited and `ladder.py` / `status.py` were not run**, per the brief.
   To register the extractor: `from extractors.d8_occlusion import x_occlusion_repair`,
   routing the `capture_` keys to rung 4, the `placement_` keys to rung 7 and the
