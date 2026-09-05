@@ -219,6 +219,17 @@
           "finished": "2026-09-05",
           "report": "artifacts/compare/d7b-trunk/gate.json",
           "blocked_on": null
+        },
+        {
+          "id": "D8",
+          "title": "The captured limbs under occlusion: fix the yellow where two bodies overlap",
+          "plain": "Where the performers push and one falls, two of the four cameras lose him and the remaining two sit opposite each other, so the captured shoulders and arms stretch and collapse along the line between those cameras, and every later step has faithfully followed them. This step catches those frames from the camera geometry itself and lets the existing sequence solver recover them from the performer's own bone lengths.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-05",
+          "finished": null,
+          "report": null,
+          "blocked_on": null
         }
       ]
     }
@@ -577,6 +588,11 @@
       "date": "2026-09-05",
       "step": "D7b",
       "text": "2026-09-05, D7b post-merge: the placement instrument that saw the D7 neck drift is now committed (tools/compare/delivered_vs_capture.py) and on rung 7; retarget_cost.py stays blind to this class. Rung 11's neck row vs MAMMA worsens (91->96 / 89->98) while the nose row improves (132->74 / 103->69): MAMMA's neck is not SOMA-77's Neck2, a convention disagreement, both shown. Handed to D5: the trunk shortens under flexion, 42 mm left on performer 0's bent frames, of which an equal-split flexion over Spine/Chest/UpperChest recovers 32. Coordinator errors recorded: the brief named commercial-multiview-b2/work as the rebuild source (the right one is commercial-multiview-soma77/work); Sol's 1e-9 deg head band was below the storage floor, the lane's third pre-registration error."
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D8",
+      "text": "card written 2026-09-05 (Sol-reviewed; effect measured and classified per camera before the band: B/D dropout leaves A-C at 172 deg, depth free along their axis); worktree ladder/D8 from 18f6cf8; runs before D6 and D5"
     }
   ]
 }
