@@ -20,8 +20,9 @@ What is asserted here, and why each one exists:
   bit-identical to the same run with the rule off;
 * the three modes do three different things to the RAYS, and are distinguishable at the
   pipeline level rather than only in a docstring;
-* the two blindnesses that matter are asserted rather than described: a take-long collapse
-  is invisible, and a segment with too few measured frames is never judged.
+* the three boundaries that matter are asserted rather than described: a take-long collapse
+  is invisible, a segment with too few measured frames is never judged, and the fault must be
+  a MINORITY of the take or the median moves with it and the whole take is withheld.
 """
 
 from __future__ import annotations
@@ -235,7 +236,14 @@ def test_the_three_modes_do_three_different_things_to_the_rays() -> None:
 
 def test_the_modes_are_distinguishable_at_the_pipeline_level() -> None:
     """Three recovery mechanisms, not three names for one. If two of these agreed bit for
-    bit the selector between them would be measuring nothing."""
+    bit the selector between them would be measuring nothing.
+
+    The collapse is 8 frames of 30 on purpose. The first draft made it 12 of 24 and the run
+    raised inside the fill: at a 50/50 split the take median lands between the honest and the
+    collapsed value, every frame reads off by more than the ceiling, and the rule withholds
+    the whole landmark -- the boundary
+    `test_the_fault_must_be_a_minority_of_the_take_or_the_reference_is_corrupt` now pins.
+    """
 
     records, _truth = d8._records(frames=30)
     stripped = [[dict(row, people=[dict(person, joints={

@@ -89,8 +89,14 @@ frames of a 150-frame take does not have a 122 mm shoulder line on frame 110.
 
 ## 2. The instrument, and the one card figure that does not reproduce
 
-`captured_limb_stability.py` is D8's instrument. Its **default path is untouched** —
-`--reproduce d8` still reproduces D8's ten clauses exactly as committed. Two things were
+`captured_limb_stability.py` is D8's instrument. Its **default path is untouched, and that
+was verified rather than asserted** (`logs/18-limb-stability-d8-default-path.log`):
+`--reproduce d8` emits the SAME ten clauses with the SAME `card_says` values as D8's own
+committed run (`artifacts/compare/d8-occlusion/limb-stability.json`). Five of them now read
+FAIL, and they are exactly the five smoothed post-repair COUNTS that D8 itself moved — its
+review records 27 -> 18 and 18 -> 4 — while every raw and observation clause still passes.
+The code path did not change; the build under it did, which is the whole reason
+`--reproduce d8b` exists. Two things were
 added: `--reproduce d8b`, which checks the D8b card's figures on a post-D8 build instead
 (D8's clauses describe the *pre-D8* defect and asserting them on a repaired build would be
 asking the repair to leave the defect in place), and a **per-camera classification table**
@@ -227,7 +233,8 @@ Measured at the shipped 0.15: 73 rejects outside the run, and **14 leg rejects**
 with nothing injected.
 
 The reason is not the rule. It is that **the fixture's honest triangulation is far noisier
-than the reference take's**, and the ceiling is seeded on the take:
+than the reference take's** — about **9x** on the p95 side of the leg spread, and 6x on the
+worst single honest deviation — and the ceiling is seeded on the take:
 
 | | reference take, raw legs | fixture, raw legs (noisy, uncollapsed) |
 |---|---|---|
@@ -358,9 +365,9 @@ repair, as before it.
 
 This is the finding of the step. The ceiling is a **real-take seed** — the reference take's
 own legs, 0 frames off by more than 15 % on 8 of 8 segments — and the card asked the fixture
-to confirm it. The fixture cannot: its honest legs are three to nine times noisier than the
-take's, and the leg must-fail has no solution at any ceiling that would still catch the
-fault. That is not an argument, it is the swept table in §4.3.
+to confirm it. The fixture cannot: its honest legs spread to +58.2 % at p95 where the
+take's reach +6.2 %, and the leg must-fail has no solution at any ceiling that would still
+catch the fault. That is not an argument, it is the swept table in §4.3.
 
 Three ways forward, none of them a moved band:
 
@@ -373,6 +380,13 @@ Three ways forward, none of them a moved band:
    1.4× worse than the un-fired ones, so the rule is discriminating; it is discriminating on
    a body whose honest triangulation is already 27 mm out.
 3. **Marker data (lane H)**, which would settle both the seed and the confirmation.
+
+**And the reading that points the other way, which is equally consistent with these
+numbers.** The ceiling is a seed from ONE take's legs. A fixture whose honest triangulation
+is worse than that take's is also a preview of what this rule does on a *worse* take — where
+it would withhold far more than 2 leg slots, and where the sequence solve would be recovering
+from a prior rather than from evidence. Both readings fit the measurements; the coordinator
+picks, and this branch does not.
 
 ### 7.2 B2's leg prediction is refuted, and both fires are correct
 
