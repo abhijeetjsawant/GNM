@@ -151,6 +151,13 @@ def x_pelvis_frame(_: dict) -> tuple[list, list]:
                              key=f"silhouette_oracle_torso_{tercile}_{subject}",
                              note="the ceiling this instrument can reach; it reads none of "
                                   "our track and is bit-identical between runs"))
+            ctrls.append(fig(f"D7 CONTROL: a pelvis frozen upright, torso+legs, {tercile}, {t}",
+                             cell.get("torso_iou_WORLD_VERTICAL"), "IoU", REF_MASKS, HIGHER,
+                             key=f"silhouette_control_torso_{tercile}_{subject}",
+                             note="option (c): the degenerate, RENDERED and scored through "
+                                  "the identical pixel path. On performer 1's bent tercile "
+                                  "it costs 0.22 IoU; on performer 0 the masks cannot tell "
+                                  "it from the measured pelvis"))
         arm = row.get("arm_iou_all_frames", {})
         figs.append(fig(f"D7 silhouette, ARMS IoU, all frames, before (D3), {t}",
                         arm.get("D3"), "IoU", REF_MASKS, HIGHER,
@@ -159,6 +166,12 @@ def x_pelvis_frame(_: dict) -> tuple[list, list]:
                         arm.get("D7"), "IoU", REF_MASKS, HIGHER,
                         key=f"silhouette_arms_after_{subject}",
                         note="pre-registered to be UNCHANGED -- the thorax frame is untouched"))
+        ctrls.append(fig(f"D7 CONTROL: a pelvis frozen upright, ARMS IoU, all frames, {t}",
+                         arm.get("WORLD_VERTICAL"), "IoU", REF_MASKS, HIGHER,
+                         key=f"silhouette_control_arms_{subject}",
+                         note="it falls -0.061 on performer 1 -- not the clavicle chain, "
+                              "which nothing here touches, but a root shift translating "
+                              "every skinned vertex"))
     # the whole-person by-camera cut, superseded by the above but kept
     silhouette = r.get("B7_silhouette", {}).get("whole_person_by_camera_cell", {})
     for cell, row in silhouette.items():
@@ -220,8 +233,9 @@ VISUALS = {
              plain="The reference fitter's person masks are the reference; higher is better. This is "
                    "the body and legs only, with the arms taken out. On performer 0 it rises in every "
                    "band and most where they are most bent over, which is what this step was meant to "
-                   "do. The hatched bars are the reference fitter's own mesh through the same "
-                   "rasteriser -- the ceiling, not a target.",
+                   "do -- but a deliberately wrong answer, a pelvis frozen bolt upright, rises almost "
+                   "as much on this performer, so the photographs cannot tell the two apart here. The "
+                   "other hatched bar is the reference fitter's own mesh: the ceiling, not a target.",
              better="higher",
              bars=[dict(label="Upright, before", role="alt", key="silhouette_torso_before_upright_subject_00"),
                    dict(label="Upright, after", role="ours", key="silhouette_torso_after_upright_subject_00"),
@@ -229,11 +243,15 @@ VISUALS = {
                    dict(label="Middle, after", role="ours", key="silhouette_torso_after_middle_subject_00"),
                    dict(label="Most bent, before", role="alt", key="silhouette_torso_before_bent_subject_00"),
                    dict(label="Most bent, after", role="ours", key="silhouette_torso_after_bent_subject_00"),
+                   dict(label="Most bent, pelvis frozen upright", role="control", key="silhouette_control_torso_bent_subject_00"),
                    dict(label="Reference fitter's mesh, most bent", role="control", key="silhouette_oracle_torso_bent_subject_00")]),
         dict(title="D7: the same check on performer 1, where nothing moved",
              plain="Same reference, same three bands, higher is better. On this performer the outline "
                    "did not change in any band -- and this is the same performer whose hip joint did "
-                   "not move either, so the two checks agree about who this step reaches.",
+                   "not move either. The hatched bar is a deliberately wrong answer, a pelvis frozen "
+                   "bolt upright, built and photographed the same way: on this performer, bent over, "
+                   "it loses a fifth of the overlap. So the check has plenty of power here and this "
+                   "step simply costs nothing.",
              better="higher",
              bars=[dict(label="Upright, before", role="alt", key="silhouette_torso_before_upright_subject_01"),
                    dict(label="Upright, after", role="ours", key="silhouette_torso_after_upright_subject_01"),
@@ -241,6 +259,7 @@ VISUALS = {
                    dict(label="Middle, after", role="ours", key="silhouette_torso_after_middle_subject_01"),
                    dict(label="Most bent, before", role="alt", key="silhouette_torso_before_bent_subject_01"),
                    dict(label="Most bent, after", role="ours", key="silhouette_torso_after_bent_subject_01"),
+                   dict(label="Most bent, pelvis frozen upright", role="control", key="silhouette_control_torso_bent_subject_01"),
                    dict(label="Reference fitter's mesh, most bent", role="control", key="silhouette_oracle_torso_bent_subject_01")]),
         dict(title="D7: the arms, which this step does not touch and which did not move",
              plain="Same masks, higher is better, arms only. This step changes the hips and nothing "

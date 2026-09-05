@@ -664,6 +664,42 @@ def silhouette_block(report: dict) -> None:
     block["verdict"] = partwise["verdict"]
     report["B7_silhouette"] = block
 
+    # ---- option (c): fill the pre-registered block's verdict in, never rewrite its text
+    control = report.get("C_world_vertical_delivery")
+    if control is None or "DECISION_RULE" not in partwise:
+        return
+    build = json.loads((OUT_DIR / "world-vertical-build.json").read_text())
+    control["measured"] = {
+        "control_build_hygiene": build["hygiene"],
+        "control_build_verdict": build["verdict"],
+        "head_and_toe_solves_unchanged_in_the_control": {
+            "head_orientation": build["head_orientation_unchanged"],
+            "toe_triangulation": build["toe_triangulation_unchanged"]},
+        "pelvis_frame_diagnostics": build["pelvis_frame_diagnostics"],
+        "three_arm_terciles": partwise["subjects"],
+        "hoist_and_offset": partwise["control_delivery_hoist_and_offset"],
+        "predictions": {
+            "P1_performer_0_controls_rise_within_D7s_CI": partwise[
+                "preregistered_clause_verdicts"]["subject_00"]["option_c_predictions"][
+                    "P1_control_rise_within_D7s_CI_on_performer_0"],
+            "P2_performer_1_control_falls_while_D7_holds": partwise[
+                "preregistered_clause_verdicts"]["subject_01"]["option_c_predictions"][
+                    "P2_control_FALLS_on_performer_1_while_D7_stays_within_CI"],
+            "P3_arms_within_CI_on_every_arm": {
+                "subject_00": partwise["preregistered_clause_verdicts"]["subject_00"][
+                    "option_c_predictions"]["P3_arms_within_CI_on_every_arm"],
+                "subject_01": partwise["preregistered_clause_verdicts"]["subject_01"][
+                    "option_c_predictions"]["P3_arms_within_CI_on_every_arm"]},
+            "P4_mamma_mesh_oracle_bit_identical": partwise[
+                "preregistered_clause_verdicts"]["clause_4_mamma_mesh_oracle"]["verdict"],
+        },
+    }
+    rule = dict(partwise["DECISION_RULE"])
+    control["DECISION_RULE_fixed_by_the_coordinator_before_any_number_existed"][
+        "verdict"] = rule["verdict"]
+    control["DECISION_RULE_fixed_by_the_coordinator_before_any_number_existed"][
+        "evaluated"] = {k: v for k, v in rule.items() if k != "verbatim"}
+
 
 def world_vertical_posthoc(report: dict) -> None:
     """POST-HOC, and NOT pre-registered: is performer 0's gain the PELVIS, or just NOT-THORAX?

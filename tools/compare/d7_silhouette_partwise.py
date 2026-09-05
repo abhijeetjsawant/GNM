@@ -71,6 +71,10 @@ PER_FRAME = OUT_DIR / "silhouette-partwise-per-frame.npz"
 BUILDS = (
     ("D3", ROOT / "artifacts/commercial-multiview-soma77", OUT_DIR / "silhouette-work-d3"),
     ("D7", OUT_DIR / "delivery", OUT_DIR / "silhouette-work"),
+    # Option (c). A CONTROL that never ships: the pelvis frozen bolt upright, built by
+    # `d7_world_vertical_delivery.py` through the converter's identical call site.
+    ("WORLD_VERTICAL", OUT_DIR / "delivery-world-vertical",
+     OUT_DIR / "silhouette-work-world-vertical"),
 )
 MASK_WORK = OUT_DIR / "silhouette-work"          # holds the cached SAM2 masks; read only
 SCALE = 4
@@ -110,6 +114,105 @@ def per_frame_mean(values: np.ndarray, keep: np.ndarray) -> np.ndarray:
     """
     out = np.full(values.shape[-1], np.nan)
     out[keep] = values[:, keep].mean(axis=0)
+    return out
+
+
+def control_figures() -> dict:
+    """The control delivery's own hoist and `Hips`-joint offset, beside section 7b's offline arm.
+
+    Two routes, deliberately, because they answer different questions.
+
+      * THE HOIST is `projected_root - unprojected_root`, and the unprojected root is not on
+        disk -- so it is recomputed with the watcher pattern on each build's own capture
+        positions, WITHOUT the head and toe solves, exactly as review section 7b did. It
+        therefore reproduces 7b by construction, and that is the point: it is the check that
+        7b's offline substitution and this rendered control are the same converter.
+      * THE `Hips`-JOINT OFFSET and the lowest joint's height are read from the REBUILT
+        tracks, head and toe solves included. Those are new numbers, and any difference from
+        7b's offline figures belongs to the head and toe solves and to the projection.
+    """
+    from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_track  # noqa: E402
+    from autoanim_gnm.performer_skeleton import performer_skeleton  # noqa: E402
+    import d7_world_vertical_delivery as wv  # noqa: E402
+    from autoanim_gnm import commercial_multiview as cmv  # noqa: E402
+    import triangulate_soma as ts  # noqa: E402
+
+    ts.OUT = OUT_DIR
+    spine, _support, _used = ts.triangulate([1])
+    shipped = cmv._pelvis_world_frames
+    out: dict = {}
+    for subject in (0, 1):
+        source = np.load(
+            (OUT_DIR / "delivery" / f"subject-{subject:02d}.body-track.npz")
+        )["triangulated_world_positions_z_up_m"].astype(np.float64)
+        skeleton = performer_skeleton(cmv.DETAILED_HUMANOID, source)[0]
+        hip_mid = 0.5 * (source[:, cmv.JOINT_INDEX["left_hip"]]
+                         + source[:, cmv.JOINT_INDEX["right_hip"]])
+        trunk = source[:, cmv.JOINT_INDEX["neck"]] - hip_mid
+        tilt_s = np.degrees(np.arccos(np.clip(
+            trunk[:, 2] / np.linalg.norm(trunk, axis=1), -1.0, 1.0)))
+        bent = tilt_s >= np.percentile(tilt_s, 66.7)
+        row: dict = {}
+        for label, patch, spine_input in (
+            ("D3_no_pelvis_frame", None, None),
+            ("D7", None, spine[subject, :, 0, :]),
+            ("WORLD_VERTICAL", wv.world_vertical_frames, spine[subject, :, 0, :]),
+        ):
+            saved = cmv.project_generated_foot_contacts
+            captured: list = []
+
+            def watcher(track, **kwargs):
+                captured.append(track)
+                return saved(track, **kwargs)
+
+            cmv.project_generated_foot_contacts = watcher
+            if patch is not None:
+                cmv._pelvis_world_frames = patch
+            try:
+                solved = cmv.positions_to_body_track(
+                    source, sample_rate_hz=30, provenance_sha256="0" * 64,
+                    spine_world_z_up_m=spine_input, skeleton=skeleton)
+            finally:
+                cmv.project_generated_foot_contacts = saved
+                cmv._pelvis_world_frames = shipped
+            unprojected = np.asarray(captured[-1].root_translation_m, np.float64)
+            projected = np.asarray(solved.root_translation_m, np.float64)
+            row[label] = {"hoist_median_mm_OFFLINE_no_head_or_toe_solve": round(
+                1000.0 * float(np.median(np.linalg.norm(projected - unprojected, axis=1))), 2)}
+        # and from the REBUILT tracks, head and toe solves included
+        for label, delivery in (("D3", ROOT / "artifacts/commercial-multiview-soma77"),
+                                ("D7", OUT_DIR / "delivery"),
+                                ("WORLD_VERTICAL", OUT_DIR / "delivery-world-vertical")):
+            track = cmv.BodyTrack.from_dict(json.loads(
+                (delivery / f"subject-{subject:02d}.body-track.json").read_text()))
+            base = skeleton_for_track(track)
+            world = forward_kinematics_positions(
+                np.asarray(track.root_translation_m, np.float64),
+                np.asarray(track.local_rotations_xyzw, np.float64), skeleton=base)
+            rig_hips = world[:, track.joint_names.index("Hips")]
+            capture = np.stack([rig_hips[:, 0], -rig_hips[:, 2], rig_hips[:, 1]], axis=-1)
+            horizontal = np.linalg.norm((capture - hip_mid)[:, :2], axis=1) * 1000.0
+            key = "D3_no_pelvis_frame" if label == "D3" else label
+            row.setdefault(key, {}).update({
+                "hips_offset_median_mm_REBUILT": round(float(np.median(horizontal)), 4),
+                "hips_offset_bent_tercile_median_mm_REBUILT": round(
+                    float(np.median(horizontal[bent])), 4),
+                "correlation_with_trunk_tilt_REBUILT": round(
+                    float(np.corrcoef(horizontal, tilt_s)[0, 1]), 4),
+                "lowest_joint_y_m_REBUILT": round(float(np.min(world[..., 1])), 5),
+                "foot_contacts_REBUILT": [int(v) for v in np.sum(track.foot_contacts, axis=0)],
+            })
+        out[f"subject_{subject:02d}"] = row
+    out["section_7b_offline_figures_for_comparison"] = {
+        "hoist_median_mm": {"subject_00": {"before": 72.68, "D7": 25.34, "world_vertical": 20.13},
+                            "subject_01": {"before": 35.54, "D7": 34.11, "world_vertical": 60.15}},
+        "hips_offset_bent_tercile_mm": {
+            "subject_00": {"before": 68.74, "D7": 27.98, "world_vertical": 6.36},
+            "subject_01": {"before": 79.20, "D7": 79.75, "world_vertical": 0.0000001}},
+        "note": ("the OFFLINE hoist here must reproduce these by construction -- same "
+                 "converter, same substitution, same omission of the head and toe solves. "
+                 "The REBUILT offsets need not: those carry the head and toe solves."),
+    }
     return out
 
 
@@ -159,9 +262,11 @@ def main() -> int:
     masks = sil.MaskStore(SCALE, cams)
     meshes = {}
     for label, delivery, work in BUILDS:
-        cache = work / "delivered-mesh.npz"
-        if not cache.exists():
-            raise SystemExit(f"{cache} is missing; run silhouette.py for {label} first")
+        if not delivery.exists():
+            raise SystemExit(f"{delivery} is missing; build the {label} arm first")
+        # `delivered_mesh()` exports through the REAL Blender path (fps 30 before import)
+        # when its cache is absent, which is how the control arm's mesh is made -- the same
+        # code path the other two arms' caches came from.
         sil.DELIVERY, sil.WORK = delivery, work
         meshes[label] = sil.delivered_mesh()
     sil.DELIVERY, sil.WORK = saved_delivery, saved_work
@@ -175,7 +280,7 @@ def main() -> int:
                                 allow_pickle=True)["pred_vertices"] for b in (0, 1)}
 
     arms: dict = {}
-    for label in ("D3", "D7"):
+    for label in [name for name, _, _ in BUILDS]:
         arms[label] = {s: (meshes[label][f"verts_{s:02d}"].astype(np.float32),
                            ours_faces[split["face_is_arm"]],
                            ours_faces[~split["face_is_arm"]]) for s in (0, 1)}
@@ -261,6 +366,10 @@ def main() -> int:
     }
 
     verdicts: dict = {}
+    build_names = [name for name, _, _ in BUILDS]
+    pairs = [("D7", "D3"), ("WORLD_VERTICAL", "D3"), ("D7", "WORLD_VERTICAL"),
+             ("WORLD_VERTICAL", "D7")]
+    pairs = [(a, b) for a, b in pairs if a in build_names and b in build_names]
     for s in (0, 1):
         keep = population[:, s, :].all(axis=0)          # frames EVERY camera scored
         edges = [float(np.percentile(tilt[s][keep], 100 / 3.0)),
@@ -277,49 +386,86 @@ def main() -> int:
                                round(float(tilt[s][keep].max()), 2)],
             "terciles": {},
         }
+        series: dict = {}
         for part in ("torso", "arm", "whole"):
-            a = per_frame_mean(stats["D7"][f"{part}_iou"][:, s, :], keep)
-            b = per_frame_mean(stats["D3"][f"{part}_iou"][:, s, :], keep)
-            oracle = per_frame_mean(stats["ORACLE_mamma_mesh"][f"{part}_iou"][:, s, :], keep)
+            series[part] = {n: per_frame_mean(stats[n][f"{part}_iou"][:, s, :], keep)
+                            for n in build_names}
+            series[part]["ORACLE"] = per_frame_mean(
+                stats["ORACLE_mamma_mesh"][f"{part}_iou"][:, s, :], keep)
             for name, mask_frames in terciles.items():
-                cell = row["terciles"].setdefault(name, {"n": int(mask_frames.sum()),
-                                                         "tilt_deg": [
-                                                             round(float(tilt[s][mask_frames].min()), 2),
-                                                             round(float(tilt[s][mask_frames].max()), 2)]})
-                cell[f"{part}_iou_D3"] = round(float(np.median(b[mask_frames])), 5)
-                cell[f"{part}_iou_D7"] = round(float(np.median(a[mask_frames])), 5)
-                cell[f"{part}_D7_minus_D3"] = pw.paired(a, b, mask_frames, draws)
-                cell[f"{part}_iou_ORACLE"] = round(float(np.median(oracle[mask_frames])), 5)
+                cell = row["terciles"].setdefault(
+                    name, {"n": int(mask_frames.sum()),
+                           "tilt_deg": [round(float(tilt[s][mask_frames].min()), 2),
+                                        round(float(tilt[s][mask_frames].max()), 2)]})
+                for arm_name in build_names + ["ORACLE"]:
+                    cell[f"{part}_iou_{arm_name}"] = round(
+                        float(np.median(series[part][arm_name][mask_frames])), 5)
+                for a, b in pairs:
+                    cell[f"{part}_{a}_minus_{b}"] = pw.paired(
+                        series[part][a], series[part][b], mask_frames, draws)
             row[f"{part}_iou_all_frames"] = {
-                "D3": round(float(np.median(b[keep])), 5),
-                "D7": round(float(np.median(a[keep])), 5),
-                "D7_minus_D3": pw.paired(a, b, keep, draws),
-                "ORACLE": round(float(np.median(oracle[keep])), 5),
+                **{arm_name: round(float(np.median(series[part][arm_name][keep])), 5)
+                   for arm_name in build_names + ["ORACLE"]},
+                **{f"{a}_minus_{b}": pw.paired(series[part][a], series[part][b], keep, draws)
+                   for a, b in pairs},
             }
         report["subjects"][f"subject_{s:02d}"] = row
 
-        bent = row["terciles"]["bent"]["torso_D7_minus_D3"]
-        upright = row["terciles"]["upright"]["whole_D7_minus_D3"]
-        arm = row["arm_iou_all_frames"]["D7_minus_D3"]
+        bent = row["terciles"]["bent"]
+        upright = row["terciles"]["upright"]
+        d7_d3 = bent["torso_D7_minus_D3"]
+        arm_d7 = row["arm_iou_all_frames"]["D7_minus_D3"]
+        up_d7 = upright["whole_D7_minus_D3"]
         verdicts[f"subject_{s:02d}"] = {
             "clause_1_torso_legs_rises_on_the_bent_tercile": {
-                "difference": bent["median_difference"], "ci95": bent["ci95"],
-                "verdict": "PASS" if (bent["ci95"] and bent["ci95"][0] > 0.0) else "FAIL",
+                "difference": d7_d3["median_difference"], "ci95": d7_d3["ci95"],
+                "verdict": "PASS" if (d7_d3["ci95"] and d7_d3["ci95"][0] > 0.0) else "FAIL",
                 "band": "rises, interval clear of zero",
             },
             "clause_2_arms_within_their_CI_of_D3": {
-                "difference": arm["median_difference"], "ci95": arm["ci95"],
-                "verdict": "PASS" if (arm["ci95"] and arm["ci95"][0] <= 0.0 <= arm["ci95"][1])
+                "difference": arm_d7["median_difference"], "ci95": arm_d7["ci95"],
+                "verdict": "PASS" if (arm_d7["ci95"] and arm_d7["ci95"][0] <= 0.0 <= arm_d7["ci95"][1])
                            else "FAIL",
                 "band": "the CI of the difference contains zero",
             },
             "clause_3_upright_tercile_within_its_CI": {
-                "difference": upright["median_difference"], "ci95": upright["ci95"],
-                "verdict": "PASS" if (upright["ci95"] and upright["ci95"][0] <= 0.0 <= upright["ci95"][1])
+                "difference": up_d7["median_difference"], "ci95": up_d7["ci95"],
+                "verdict": "PASS" if (up_d7["ci95"] and up_d7["ci95"][0] <= 0.0 <= up_d7["ci95"][1])
                            else "FAIL",
                 "band": "the CI of the difference contains zero",
             },
         }
+        if "WORLD_VERTICAL" in build_names:
+            control_d3 = bent["torso_WORLD_VERTICAL_minus_D3"]
+            arm_control = row["arm_iou_all_frames"]["WORLD_VERTICAL_minus_D3"]
+            verdicts[f"subject_{s:02d}"]["option_c_predictions"] = {
+                "P1_control_rise_within_D7s_CI_on_performer_0": {
+                    "applies_to": "subject_00",
+                    "control_minus_D3": control_d3["median_difference"],
+                    "control_ci95": control_d3["ci95"],
+                    "D7_minus_D3": d7_d3["median_difference"], "D7_ci95": d7_d3["ci95"],
+                    "control_point_estimate_inside_D7s_CI": bool(
+                        d7_d3["ci95"] and d7_d3["ci95"][0] <= control_d3["median_difference"]
+                        <= d7_d3["ci95"][1]),
+                },
+                "P2_control_FALLS_on_performer_1_while_D7_stays_within_CI": {
+                    "applies_to": "subject_01",
+                    "control_minus_D3": control_d3["median_difference"],
+                    "control_ci95": control_d3["ci95"],
+                    "control_falls_with_ci_clear_of_zero": bool(
+                        control_d3["ci95"] and control_d3["ci95"][1] < 0.0),
+                    "D7_within_its_CI_of_D3": bool(
+                        d7_d3["ci95"] and d7_d3["ci95"][0] <= 0.0 <= d7_d3["ci95"][1]),
+                },
+                "P3_arms_within_CI_on_every_arm": {
+                    "D7_minus_D3": arm_d7["median_difference"], "D7_ci95": arm_d7["ci95"],
+                    "control_minus_D3": arm_control["median_difference"],
+                    "control_ci95": arm_control["ci95"],
+                    "both_contain_zero": bool(
+                        arm_d7["ci95"] and arm_d7["ci95"][0] <= 0.0 <= arm_d7["ci95"][1]
+                        and arm_control["ci95"] and arm_control["ci95"][0] <= 0.0 <= arm_control["ci95"][1]),
+                },
+            }
 
     # ---- clause 4: the oracle reads none of our track
     committed = {}
@@ -349,12 +495,56 @@ def main() -> int:
             "exactly and adds no pixels of its own."),
         "verdict": "PASS" if same_between_runs and worst_split < 1e-9 else "FAIL",
     }
+    # ------------------------------------------------- THE DECISION RULE, fixed before
+    if "WORLD_VERTICAL" in [name for name, _, _ in BUILDS]:
+        rule: dict = {
+            "verbatim": (
+                "On the bent tercile's torso+legs figure with the block bootstrap on "
+                "identical draws: D7 is MERGED with the B2a failure stated (as D2 was) if "
+                "BOTH hold -- (i) on neither performer is the control better than D7 with a "
+                "CI clear of zero, and (ii) on at least one performer D7 is better than the "
+                "control with a CI clear of zero. Otherwise D7 is HELD."),
+            "fixed_by": "the coordinator, before any number in this pass existed",
+            "per_subject": {},
+        }
+        control_better_anywhere = False
+        d7_better_somewhere = False
+        for s in (0, 1):
+            bent = report["subjects"][f"subject_{s:02d}"]["terciles"]["bent"]
+            control_minus_d7 = bent["torso_WORLD_VERTICAL_minus_D7"]
+            d7_minus_control = bent["torso_D7_minus_WORLD_VERTICAL"]
+            control_wins = bool(control_minus_d7["ci95"] and control_minus_d7["ci95"][0] > 0.0)
+            d7_wins = bool(d7_minus_control["ci95"] and d7_minus_control["ci95"][0] > 0.0)
+            control_better_anywhere = control_better_anywhere or control_wins
+            d7_better_somewhere = d7_better_somewhere or d7_wins
+            rule["per_subject"][f"subject_{s:02d}"] = {
+                "torso_legs_bent_tercile": {
+                    "D3": bent["torso_iou_D3"], "D7": bent["torso_iou_D7"],
+                    "WORLD_VERTICAL": bent["torso_iou_WORLD_VERTICAL"],
+                    "ORACLE": bent["torso_iou_ORACLE"]},
+                "control_minus_D7": control_minus_d7,
+                "D7_minus_control": d7_minus_control,
+                "control_better_than_D7_with_CI_clear_of_zero": control_wins,
+                "D7_better_than_control_with_CI_clear_of_zero": d7_wins,
+            }
+        rule["clause_i_no_performer_where_control_beats_D7"] = not control_better_anywhere
+        rule["clause_ii_at_least_one_performer_where_D7_beats_control"] = d7_better_somewhere
+        rule["verdict"] = ("MERGE, with the B2a failure stated"
+                           if (not control_better_anywhere) and d7_better_somewhere
+                           else "HOLD")
+        rule["what_this_verdict_is_NOT"] = (
+            "it is not a finding that D7 is right. A silhouette cannot score orientation "
+            "against truth, and B2a's failure is untouched by it. The rule asks only whether "
+            "the photographs DISTINGUISH the measured pelvis from a frozen one.")
+        report["DECISION_RULE"] = rule
     report["preregistered_clause_verdicts"] = verdicts
     clause_pass = all(
         v["verdict"] == "PASS"
         for subject in ("subject_00", "subject_01")
         for v in verdicts[subject].values()) and verdicts["clause_4_mamma_mesh_oracle"]["verdict"] == "PASS"
     report["verdict"] = "PASS" if clause_pass else "FAIL"
+    if "WORLD_VERTICAL" in [name for name, _, _ in BUILDS]:
+        report["control_delivery_hoist_and_offset"] = control_figures()
     report["blind_to"] = (
         "depth; a left/right mirror of a fore-aft symmetric pose; and, WITHIN each part, "
         "where inside the outline a limb sits -- an arm wrongly placed but still inside the "

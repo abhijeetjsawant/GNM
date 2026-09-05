@@ -293,6 +293,7 @@ on the squat clip) and is a *lumbar* direction, not a pelvis one.
 | **B8 REBUILD hygiene.** 8 observation files byte-identical; triangulation byte-identical | all true | **PASS** |
 | **LEGACY BIT-IDENTITY.** the whole real `reconstruct_multiview` with no spine feed vs the pre-D7 delivery | rotations, root and contacts byte-identical on both subjects | **PASS** |
 | **B7 SILHOUETTE**, part-wise and by trunk tilt. torso+legs rises on the bent tercile; arms within their CI; the upright tercile within its CI; the MAMMA oracle bit-identical | subject 0 **+0.0220** [0.0035, 0.0276] on the bent tercile, arms +0.0022 [−0.0052, 0.0094], **upright +0.0083 [0.0026, 0.0160] — rose, clear of zero**; subject 1 bent **−0.0003** [−0.0047, 0.0074], arms +0.0037 [−0.0018, 0.0062], upright −0.0072 [−0.0166, 0.0124]; oracle **bit-identical in 8/8** | **FAIL on 2 of 7 clauses**, §5 |
+| **OPTION (c) DECISION RULE**, bent tercile, torso+legs, identical draws | (i) on neither performer does the control beat D7 — performer 0 `CONTROL − D7` = −0.0050 [−0.0115, +0.0002], performer 1 −0.2179 [−0.2355, −0.1163]; (ii) on performer 1 `D7 − CONTROL` = **+0.2179** [0.1163, 0.2355] | **MERGE, with the B2a failure stated**, §7d |
 | **HEAD GATE UNCHANGED EXACTLY.** `head_orientation` and `toe_triangulation` diagnostics, before vs after | byte-equal | **PASS** |
 | **FACING (reported).** `Hips` forward-dot > 0.9 and all handedness signs unchanged | 0.972 / 0.962 and 0.984 / 0.979; **0 of 16 signs changed**; `Hips` is the ONLY joint whose forward-dot moved at all | reported, and it holds |
 
@@ -544,6 +545,97 @@ finding that they barely tilt the pelvis. **And it does not re-open B2a**: a sil
 cannot score orientation against truth, so this rule is about whether the photographs
 *distinguish* the two answers, not about which one is right.
 
+## 7d. Option (c), measured — the frozen-upright pelvis, rendered and scored
+
+The control delivery built clean: the 8 observation files byte-identical before and after
+the build and to the delivered build's, the triangulation byte-identical on both subjects
+(**same denominator**), and the head and toe solves byte-identical to the delivery's — the
+control changes the pelvis and nothing else. Its `pelvis_frame` diagnostics say
+`world_vertical_CONTROL_NEVER_SHIPS` on both performers. `artifacts/compare/d7-pelvis-frame/
+world-vertical-build.json`.
+
+### The three arms, torso+legs IoU, by tilt tercile, all on identical draws
+
+**Performer 0** (tercile edges 14.68° / 26.84°; oracle 0.784 / 0.755 / 0.746)
+
+| tercile | D3 | D7 | CONTROL | D7 − D3 | CONTROL − D3 | D7 − CONTROL |
+|---|---:|---:|---:|---|---|---|
+| upright | 0.5705 | 0.5807 | 0.5815 | +0.0102 [0.0055, 0.0145] | +0.0110 [0.0045, 0.0151] | −0.0008 [−0.0051, +0.0029] |
+| middle | 0.5402 | 0.5579 | 0.5564 | +0.0178 [0.0112, 0.0307] | +0.0162 [0.0087, 0.0240] | +0.0016 [−0.0010, +0.0137] |
+| **bent** | 0.4926 | **0.5146** | 0.5096 | **+0.0220** [0.0035, 0.0276] | **+0.0170** [0.0019, 0.0196] | +0.0050 [−0.0002, +0.0115] |
+| arms, all frames | 0.1976 | 0.1999 | 0.1978 | +0.0022 [−0.0052, +0.0094] | +0.0001 [−0.0041, +0.0123] | — |
+
+**Performer 1** (tercile edges 17.35° / 53.06°; oracle 0.783 / 0.710 / 0.714)
+
+| tercile | D3 | D7 | CONTROL | D7 − D3 | CONTROL − D3 | D7 − CONTROL |
+|---|---:|---:|---:|---|---|---|
+| upright | 0.6201 | 0.6164 | 0.5870 | −0.0038 [−0.0110, +0.0039] | **−0.0331** [−0.0398, −0.0239] | **+0.0293** [0.0196, 0.0365] |
+| middle | 0.5431 | 0.5455 | 0.4540 | +0.0024 [−0.0083, +0.0112] | **−0.0892** [−0.1276, −0.0280] | **+0.0916** [0.0337, 0.1279] |
+| **bent** | 0.5356 | **0.5353** | **0.3174** | −0.0003 [−0.0047, +0.0074] | **−0.2182** [−0.2355, −0.1242] | **+0.2179** [0.1163, 0.2355] |
+| arms, all frames | 0.2133 | 0.2169 | 0.1525 | +0.0037 [−0.0018, +0.0062] | **−0.0608** [−0.0958, −0.0241] | — |
+
+### The control's own hoist and offset
+
+The **offline** hoist reproduces §7b's post-hoc arm *exactly* — 72.68 / 25.34 / **20.13** mm
+on performer 0 and 35.54 / 34.11 / **60.15** mm on performer 1 — which is the check that
+§7b's substitution and this rendered control are the same converter. From the **rebuilt**
+tracks, head and toe solves included:
+
+| | D3 | D7 | CONTROL |
+|---|---:|---:|---:|
+| performer 0, `Hips` offset, bent tercile | 65.11 mm | 25.30 mm | **1.09 mm** |
+| performer 0, offset correlation with tilt | +0.979 | +0.876 | +0.033 |
+| performer 0, lowest joint | −0.1308 m | −0.0971 | −0.0894 |
+| performer 1, `Hips` offset, bent tercile | 79.20 mm | 79.75 mm | **0.0001 mm** |
+| performer 1, offset correlation with tilt | +0.977 | +0.856 | −0.337 |
+| performer 1, lowest joint | −0.8253 m | −0.8329 | −0.7442 |
+
+The rebuilt offsets are 2–5 mm below §7b's offline ones (68.74 → 65.11, 27.98 → 25.30,
+6.36 → 1.09). **The difference is named, not excused:** §7b's arm omits the head and toe
+solves and this one does not, and the toe solve changes the foot locals the ground
+projection then rewrites inside contact runs.
+
+### The predictions
+
+| | prediction | outcome |
+|---|---|---|
+| **P1** | performer 0: the control's rise over D3 is **within D7's CI** — the gain is *not the thorax*, not *the measured pelvis* | **MET.** The control rises +0.0170, squarely inside D7's [0.0035, 0.0276], and `D7 − CONTROL` = +0.0050 [−0.0002, +0.0115] spans zero — by 0.0002. On this performer the photographs cannot tell the two apart, and §7b's reading is confirmed rather than overturned. |
+| **P2** | performer 1: the control **falls** with its CI clear of zero, while D7 stays within its CI of D3 | **MET, both halves, and by a margin nobody predicted the size of.** The control falls **−0.2182** [−0.2355, −0.1242] — forty-four times D7's own bent-tercile effect — while D7 reads −0.0003 [−0.0047, +0.0074]. And it is monotone in tilt: −0.033, −0.089, −0.218. |
+| **P3** | the arms are within CI on **every** arm and performer | **REFUTED on one of four.** D7's arms are within CI on both (+0.0022 and +0.0037) and the control's are on performer 0 (+0.0001), but the control's arms on performer 1 fall **−0.0608** [−0.0958, −0.0241], clear of zero. The mechanism is not the clavicle chain, which no arm here touches: the control's hoist nearly doubles on that performer, and a root shift translates **every** skinned vertex, arms included. The prediction was written as though the part split protected the arms from a root move. It does not, and D2b's §14.2 said so. |
+| **P4** | MAMMA's mesh oracle bit-identical | **MET.** Identical in all 8 cells between runs, and the part-split oracle reproduces the unsplit one to **0.0 exactly** — the split partitions the surface and adds no pixels of its own. |
+
+### The decision rule, and which branch fired
+
+> On the bent tercile's torso+legs figure with the block bootstrap on identical draws: D7 is
+> **MERGED** with the B2a failure stated (as D2 was) if **both** hold — (i) on neither
+> performer is the control better than D7 with a CI clear of zero, and (ii) on at least one
+> performer D7 is better than the control with a CI clear of zero. Otherwise D7 is **HELD**.
+
+* **Clause (i) holds.** Performer 0: `CONTROL − D7` = −0.0050 [−0.0115, +0.0002], spanning
+  zero. Performer 1: −0.2179 [−0.2355, −0.1163], clear of zero *in D7's favour*. On neither
+  performer is the control better.
+* **Clause (ii) holds.** Performer 1: `D7 − CONTROL` = **+0.2179** [0.1163, 0.2355], clear
+  of zero.
+
+**Verdict: MERGE, with the B2a failure stated.**
+
+**And what that verdict is not.** It is not a finding that D7 is right. A silhouette cannot
+score orientation against truth, so B2a's failure — a world-vertical pelvis beating every
+candidate on synthetic truth by 2.9° — is entirely untouched by this. The rule asks only
+whether the photographs *distinguish* the measured pelvis from a frozen one, and they do: on
+the performer whose pelvis actually tilts, freezing it costs 0.22 IoU on the bent tercile
+and the measured pelvis costs nothing. The two results are consistent, and reading them
+together is the point: on **synthetic** motion whose pelvis barely leaves vertical, a
+constant is hard to beat; on the **one real performer whose pelvis does leave vertical**, a
+constant is catastrophic. Both are one take's worth of evidence, and lane H is where that
+stops being true.
+
+**One thing this settles that §7b could not, and one it does not.** It settles that
+performer 1's flat silhouette is *not* D7 failing to do anything — a wrong pelvis on that
+performer is visible at 0.22 IoU, so the instrument has ample power there and D7 simply
+costs nothing. It does **not** settle performer 0's rise: P1 was met, so that +0.0220 is
+still not attributed between the measured pelvis and merely-not-the-thorax.
+
 ## 8. Tests
 
 `tests/test_pelvis_frame.py`, **14 tests, all passing**, and every one asserts it imported
@@ -597,11 +689,21 @@ be inferred from a diff.
    (`artifacts/compare/scoreboard-d7-pelvis-frame.json`); it is folded into §4 as REPORTED.
 8. **The world-vertical control on the real take (§7b) is POST-HOC**, added after the
    synthetic band failed, and labelled as such in `gate.json` and here.
-9. **An earlier version of the MAMMA oracle measured `spine3` alone** instead of the composed
+9. **Option (c) added a rendered CONTROL delivery** at
+   `artifacts/compare/d7-pelvis-frame/delivery-world-vertical/`, built by substituting
+   `_pelvis_world_frames` at module level. It never ships, nothing entered `src/`, and its
+   `pelvis_frame` diagnostics carry `world_vertical_CONTROL_NEVER_SHIPS`. Its
+   pre-registration is §7c, committed before it was built.
+10. **The control build was run twice.** The first run reported
+    `head_orientation_unchanged: false`, which was a defect in the wrapper's comparison and
+    not a difference: the delivered run report is flat and the rebuild's nests its
+    diagnostics, and only one side went through the fallback. Fixed and re-run; the head and
+    toe diagnostics are byte-identical.
+11. **An earlier version of the MAMMA oracle measured `spine3` alone** instead of the composed
    `spine1·spine2·spine3` chain, and was corrected before this was written.
-10. **`tools/compare/provenance.py` rewrote the shared `artifacts/compare/provenance.json`.**
+12. **`tools/compare/provenance.py` rewrote the shared `artifacts/compare/provenance.json`.**
    It is regenerable and untracked, but the main tree's copy is now this branch's.
-11. **`tools/compare/provenance.py` was edited** (four new constants). `ladder.py` and
+13. **`tools/compare/provenance.py` was edited** (four new constants). `ladder.py` and
     `status.py` were not touched, no existing test was edited, and nothing was written under
     `artifacts/commercial-multiview-soma77/`.
 
@@ -621,21 +723,36 @@ Everything in §0.8 stands, and the run added three more:
   attributed between the measured pelvis and merely-not-the-thorax, and the world-vertical
   silhouette arm that would separate them was not rendered.
 
-## 10. What needs a decision
+## 10. The decision, and what is still open
 
-**D7 is built, measured, and it fails its own pre-registered band. It should not be merged
-on the strength of this gate.** The three things that would settle it, in order of cost:
+**The coordinator's rule fired MERGE** (§7d): D7 is merged **with the B2a failure stated**,
+exactly as D2 was merged with its silhouette cost stated. Neither performer's photographs
+prefer the frozen-upright control to the measured pelvis, and on the one performer whose
+pelvis actually tilts the control costs **0.22 IoU** on the bent tercile where D7 costs
+nothing. **This session does not merge anything**: the branch is `ladder/D7`, unpushed and
+unmerged, and the merge is the user's.
 
-1. **A motion source with real pelvic tilt.** The world-vertical control wins on synthetic
-   truth because these five clips barely tilt the pelvis, and §7b shows the same control
-   taking most of subject 0's hoist gain on the real take. That is a fixture property, and
-   lane H's owned capture is where it gets fixed.
-2. **A world-vertical delivery, rendered.** One rebuild and one silhouette pass would tell
-   us whether the photographs are seeing the measured pelvis or merely a pelvis that is not
-   the thorax (§7b). It is the cheapest thing on this list that would move the verdict
-   either way.
-3. **A lag/attenuation instrument that works at this noise**, so the window can be selected
-   rather than refused.
+**What must travel with it, in the same breath.**
+
+* **B2a failed and is not repaired.** On synthetic truth a world-vertical pelvis beats every
+  candidate by 2.9°, because those five clips barely tilt the pelvis. §7d does not touch
+  that; a silhouette cannot score orientation against truth.
+* **Performer 0's rise is still unattributed.** P1 was met: the control's rise sits inside
+  D7's CI there, so on that performer the photographs cannot tell the measured pelvis from
+  merely-not-the-thorax.
+* **The shipped rest-pitch is a convention**, chosen from five other people's skeletons, with
+  a 1.75–4.42° spread (§0.3).
+* **The window is a refusal, not a selection** (§5, B2b).
+
+**What would move any of it, in order of cost.**
+
+1. **A motion source with real pelvic tilt.** Performer 1 of this take is the *only* body in
+   evidence whose pelvis leaves vertical enough to separate the two answers, and it separates
+   them by a factor of forty-four. Lane H's owned capture is where that stops being a sample
+   of one.
+2. **A lag/attenuation instrument that works at this noise**, so `PELVIS_SMOOTHING_FRAMES`
+   can be selected rather than refused.
+3. **A real pelvis measurement** to replace the rest-pitch convention — markers, lane H.
 
 ## 11. In plain language
 
