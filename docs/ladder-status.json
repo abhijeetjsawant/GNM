@@ -208,6 +208,17 @@
           "finished": "2026-09-05",
           "report": "artifacts/compare/d7-pelvis-frame/gate.json",
           "blocked_on": null
+        },
+        {
+          "id": "D7b",
+          "title": "Re-solve the trunk chain onto the captured neck after the pelvis frame",
+          "plain": "D7 fixed where the hips sit and, as a side effect, moved the neck off the captured neck by up to six centimetres on bent frames, because the chest chain was still aimed from the old origin. This aims it from where the pelvis now puts it, and commits the instrument that saw the defect: every delivered joint read from the file itself against the captured points.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-05",
+          "finished": null,
+          "report": null,
+          "blocked_on": null
         }
       ]
     }
@@ -551,6 +562,11 @@
       "date": "2026-09-05",
       "step": "D7",
       "text": "2026-09-05, after the merge: drawing each build's DELIVERED skeleton from its own GLB over the footage (a range variant of camera_overlay plus a hand glTF reader, joints scored against the triangulated ones in absolute world) found what no gate reported: D7 moved the neck OFF its landmark, 14 -> 59 mm median on performer 0 (42 upright, 134 bent, r=+0.95 with trunk tilt) and 29 -> 44 on performer 1, while the hips went 19/17 -> 5/5 and the knees/ankles halved. Mechanism: the Spine joint hangs 117 mm off Hips in the PELVIS frame and the chest chain above keeps the thorax frame, so a pelvis pitched away from the trunk line translates the whole upper body and nothing re-solves the chain onto the captured neck -- the standing rule 'after replacing a parent, re-solve the chains below', not applied to the spine. D3 already overshot the neck on bent frames (108 mm past 30 deg on performer 0) because the trunk chain is straight and rigid. The delivered-vs-capture instrument (retarget_cost.py) is BLIND to D7: it re-solves the track through the converter with no spine landmark and reads D3's torso figure (14.46 / 26.21) on the D7 delivery unchanged; against MAMMA the neck 'improved' (112 -> 91) on a different convention. The only figure that saw it was read from the file's own bytes. Follow-up step needed (D7b): re-solve the spine chain to the captured neck after the pelvis frame, and make retarget_cost read the delivered file. Also seen plainly in the mesh videos: the skin, stretched onto the per-performer skeleton with the asset's old weights since D3, balloons at the hips on lying frames and tears at the thigh in the squat; the silhouette's rise hid it (precision fell on performer 1 while recall rose, the dilated-blob pattern). D6 must come before more skeleton work, with a mesh-distortion instrument first."
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D7b",
+      "text": "card written 2026-09-05 (Sol-reviewed; floor and lever measured from the delivered files before the band); worktree ladder/D7b from 4acf170"
     }
   ]
 }
