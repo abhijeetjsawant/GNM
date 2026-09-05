@@ -790,6 +790,10 @@ def main() -> int:
         },
         "preregistration": existing["preregistration"],
     }
+    # Option (c)'s pre-registration was committed on its own, before the control delivery
+    # existed. Carry it forward verbatim; `control_block` fills its verdict in.
+    if "C_world_vertical_delivery" in existing:
+        report["C_world_vertical_delivery"] = existing["C_world_vertical_delivery"]
     for name, function in (
         ("synthetic", synthetic_block), ("rigidity", rigidity_block),
         ("oracle", oracle_block), ("roundtrip", roundtrip_block),

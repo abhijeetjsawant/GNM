@@ -473,6 +473,77 @@ is a world-vertical delivery rendered through the same rasteriser, and it was no
 the photographs establish is that the change is real, tilt-dependent and confined to
 torso+legs; what they do not establish is which of the two changes made it.
 
+## 7c. Option (c) — PRE-REGISTRATION, written and committed before the control was built
+
+Section 7b left one thing unattributed and said so: performer 0's torso+legs rise on the
+bent tercile (+0.0220 IoU [0.0035, 0.0276]) is not separated between *"the pelvis is
+measured"* and *"the pelvis is merely not the thorax"*. **This section was written and
+committed before the control delivery existed and before any number in it did.** Its
+machine-readable twin is `C_world_vertical_delivery` in
+`artifacts/compare/d7-pelvis-frame/gate.json`, written in the same commit. Refuted
+predictions are marked REFUTED in §7d and are not rewritten.
+
+### What is being built, and it never ships
+
+A **CONTROL delivery** with the pelvis frozen bolt upright.
+`tools/compare/d7_world_vertical_delivery.py` imports
+`scripts/build_commercial_multiview_comparison.py` as a module, substitutes
+`commercial_multiview._pelvis_world_frames` at module level — the pattern `_leg_root_offset`
+and `_joint_origin` were made module level *for*, so a control runs through the converter's
+identical call site rather than a re-implementation of it — and runs the **real** build with
+the invocation D7's rebuild used, into
+`artifacts/compare/d7-pelvis-frame/delivery-world-vertical/`. **Nothing enters `src/`, no
+shipped constant moves, and this delivery is never a candidate.** `work/` is **copied**, and
+the build asserts B8's own hygiene: the 8 observation files byte-identical to the delivered
+build's before and after, and the triangulation byte-identical — the same denominator.
+
+### How it is scored
+
+`tools/compare/d7_silhouette_partwise.py`, extended from two arms to **three**: D3 (before),
+D7, WORLD-VERTICAL. One denominator — frames *every* camera scored, IoU averaged over the
+four cameras, so a tilt tercile is a set of frames and all three arms are one population.
+Moving block 15, 2000 draws, seed 20260904, **all three arms on identical draws**. Also
+recorded: the control delivery's own ground hoist and `Hips`-joint offset, read from the
+**rebuilt** track, against §7b's offline figures (hoist 20.13 / 60.15 mm; `Hips` offset on
+the bent tercile 6.36 / 0.0000001 mm). If the rebuilt figures do not reproduce those, the
+difference is **named** — §7b's arm omits the head and toe solves and the rebuild does not.
+
+### Predictions, written before the numbers
+
+* **P1** — performer 0, bent tercile, torso+legs: the **control's** rise over D3 is **within
+  D7's CI**, i.e. performer 0's gain is *not the thorax* rather than *the measured pelvis*.
+  Grounds: §7b, where the control took the hoist to 20.13 mm, past D7's 25.34.
+* **P2** — performer 1, bent tercile, torso+legs: the **control FALLS** against D3 with its
+  CI clear of zero, while **D7 stays within its CI** of D3. Grounds: the control nearly
+  *doubles* performer 1's hoist (35.54 → 60.15 mm), so the mesh floats off the floor.
+* **P3** — the **arms** are within CI on every arm and every performer; nothing here touches
+  the clavicle chain.
+* **P4** — **MAMMA's mesh oracle is bit-identical** across all three arms; it reads none of
+  our track.
+
+### THE DECISION RULE, fixed by the coordinator before any number existed
+
+> On the bent tercile's torso+legs figure with the block bootstrap on identical draws: D7 is
+> **MERGED** with the B2a failure stated (as D2 was) if **both** hold — (i) on neither
+> performer is the control better than D7 with a CI clear of zero, and (ii) on at least one
+> performer D7 is better than the control with a CI clear of zero. Otherwise D7 is **HELD**.
+
+Operationally: the statistic is `median(torso+legs IoU)` of one arm minus another on
+identical drawn frames, restricted to the bent tercile. Clause (i) fails if, for either
+performer, the CI of `(CONTROL − D7)` lies entirely above zero. Clause (ii) requires that,
+for at least one performer, the CI of `(D7 − CONTROL)` lies entirely above zero.
+
+### What this pass will be blind to, whatever it says
+
+Depth; a left/right mirror of a fore-aft symmetric pose; and where *inside* each part a limb
+sits. Whether **either** pelvis is anatomically right — a silhouette scores the mesh, and
+the mesh is bound to an asset whose proportions are not the performer's (the oracle reaches
+0.71–0.88 where we reach 0.49–0.62). Generalisation: one take, two performers, 150
+correlated frames, and rendering one of these clips does not repair the synthetic arm's own
+finding that they barely tilt the pelvis. **And it does not re-open B2a**: a silhouette
+cannot score orientation against truth, so this rule is about whether the photographs
+*distinguish* the two answers, not about which one is right.
+
 ## 8. Tests
 
 `tests/test_pelvis_frame.py`, **14 tests, all passing**, and every one asserts it imported
