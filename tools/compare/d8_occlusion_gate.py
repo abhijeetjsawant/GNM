@@ -280,13 +280,17 @@ def raw_identity_and_leg_counts(builds: dict[str, Path]) -> dict:
         "nan_note": "the ankle and wrist have real missing frames in the raw array, so a "
                     "reject that fires there is not necessarily wrong; the counts are here "
                     "so the two can be told apart",
-        "verdict": ("PASS" if all(same.values())
-                    and not any(row["demoted_legs"] or row["rejected_legs"]
-                                for row in leg_counts)
-                    else "FAIL"),
-        "verdict_note": "PASS requires the raw array identical on both performers AND no "
-                        "leg demoted or rejected; the leg clause was predicted to hold and "
-                        "a failure of it would be reported, not moved",
+        "leg_prediction_held": not any(row["demoted_legs"] or row["rejected_legs"]
+                                       for row in leg_counts),
+        "verdict": "PASS" if all(same.values()) else "FAIL",
+        "verdict_note": (
+            "B3's BAND is the raw array's byte-identity and nothing else. The card puts "
+            "the leg counts in the REPORTED column -- 'legs and root: number of leg "
+            "demotions/rejections REPORTED (predicted 0; the ankle has real NaN frames so "
+            "a correct fire there is not a fail)' -- so a leg that demotes is a refuted "
+            "PREDICTION, recorded in the review, and never a failed band. Reading it as a "
+            "band would let a reported figure decide the merge, which the card does not "
+            "say and the merge rule does not license."),
     }
 
 

@@ -1314,8 +1314,21 @@ def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
 # views": a capacity change rather than evidence, and the thing the card explicitly forbids.
 # Shipping that argmin would be the standing error this lane keeps a rule about, a band the
 # candidate can optimise. What the fixture CAN do, and does, is confirm the closed form --
-# the measured two-view triangulation error rises with 1/|sin theta| across its angle bins.
-# The refuted prediction is recorded in docs/reviews/occlusion-repair-2026-09-05.md.
+# the measured two-view triangulation error is CONSISTENT WITH rising as 1/|sin theta|
+# across its angle bins; the bin table and the coefficient are in the report and in the
+# review, and neither is quoted as a fit.
+#
+# THE EVIDENCE THAT THIS IS A FIXTURE ARTEFACT AND NOT A FINDING is in this file, six
+# hundred lines up: `solve_sequence_positions` deliberately does NOT overwrite slots that
+# already triangulated, because measured on real data the solve moved them 'by a median of
+# 11-14 mm and up to 700 mm -- the temporal and limb terms outvoting good geometry'. Those
+# priors are true on the fixture and false on the footage, which is exactly why the fixture
+# prefers demoting everything and the footage would not.
+#
+# HONESTY ABOUT THE ORDER THIS WAS FOUND IN: 150.0 was in this file before the closed form
+# was written down, as a first guess. k = 2 was RECOGNISED as the factor that yields it,
+# not chosen ahead of it. The value did not move; the justification replaced a worse one.
+# Recorded in docs/reviews/occlusion-repair-2026-09-05.md section 7.
 #
 # A two-view slot whose supporting rays meet at more than this angle -- or at less than its
 # complement, the near-co-located case -- is depth-unconstrained along their common axis
@@ -1358,7 +1371,7 @@ REACHABILITY_SPEED_CEILING_M_S = {
 # with `elapsed` counting the frames since that point, exactly as
 # `_reachable_clavicle_sequence` does -- never a step test against the immediately
 # preceding frame, which accepts the wrong plateau between two big steps (CLAUDE.md).
-REACHABILITY_SLACK_M = 0.10
+REACHABILITY_SLACK_M = 0.09
 
 # PROVENANCE: SYNTHETIC-TRUTH, selected by `tools/compare/d8_occlusion_synthetic.py`.
 # `_fill_and_smooth_positions` interpolates linearly across a gap of any length: on the
@@ -1369,6 +1382,27 @@ REACHABILITY_SLACK_M = 0.10
 # parent at the last accepted frame is carried) and the fraction is REPORTED as
 # `held_joint_fraction` beside `interpolated_joint_fraction`. A whole-take hold is the
 # must-fail control.
+#
+# PROVENANCE, AND A SECOND REFUTED PREDICTION. The card said this would be selected on
+# synthetic truth. It cannot be, and for the SAME reason the ray-angle ceiling cannot: the
+# fixture's motion is smooth by construction, so a straight line through a gap is nearly
+# exact there and the score prefers interpolating at every candidate length -- the
+# monotone curve again, whose argmin is "never hold". `tools/compare/d8_occlusion_
+# synthetic.py` reports that sweep in full and selects nothing from it.
+#
+# The value is instead a closed-form bound, with its sensitivity stated rather than hidden.
+# A straight chord across a gap of duration T departs from a constant-acceleration
+# trajectory by at most a*T^2/8. Setting that equal to REACHABILITY_SLACK_M -- the measured
+# jitter of our own triangulation, so the bound says "the line stops being defensible when
+# it can be wrong by more than the noise" -- gives T = sqrt(8*slack/a). At a limb
+# acceleration of 20 m/s^2 (brisk everyday reaching) that is 5.7 frames at 30 fps; at
+# 50 m/s^2 (fast sport) it is 3.6. THE VALUE BELOW IS THE 20 m/s^2 END AND THAT CHOICE IS
+# DECLARED, NOT DERIVED. It is the conservative end -- a longer permitted gap holds fewer
+# slots and departs less from the pre-D8 behaviour.
+#
+# The clause's value is the DIAGNOSTIC, not an error reduction: it makes the pipeline stop
+# claiming a measurement it does not have, and `held_joint_fraction` says how often. On any
+# fixture whose motion is smooth it will look like a cost, because there it IS one.
 MAXIMUM_INTERPOLATED_GAP_FRAMES = 6
 
 # Which landmark is carried by which when a long gap is held. Parent in the kinematic
