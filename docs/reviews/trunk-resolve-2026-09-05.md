@@ -147,7 +147,7 @@ answers a different question.
 | **B2** | root, `Hips`, `UpperLeg`, `LowerLeg` bit-identical; hips/knees/ankles from the file unchanged | every banded array bit-identical on both performers; all eight from-file medians identical to 1e-9 | **PASS** |
 | **B3** | shoulders/elbows/wrists not worse than D7 with CI; improve on bent frames | not worse on 12 / 12 cells; every bent-tercile point estimate improves (12 / 12), 6 of 12 with the CI clear of zero | **PASS (reported)** |
 | **B4** | torso AND arms not worse than D7 on either performer; improvement predicted on p0's bent torso; MAMMA mesh bit-identical | torso +0.0093 [−0.0053, 0.0172] (p0) and +0.0104 [−0.0026, 0.0140] (p1); arms +0.0044 and −0.0039, both spanning zero; **p0 bent torso +0.0294 [0.0020, 0.0355]**; oracle bit-identical, split-vs-unsplit 0.0 | **PASS** |
-| **B5 head** | `Head` WORLD orientation unchanged to 1e-9 per frame | worst **5.12e-6° / 4.68e-6°** = 8.9e-8 / 8.2e-8 rad — 0.75 / 0.66 of one float32 ULP | **FAIL as written** (§7.1) |
+| **B5 head** | `Head` WORLD orientation unchanged to 1e-9 per frame | worst **5.12e-6° / 4.52e-6°** = 8.9e-8 / 7.9e-8 rad — 0.75 / 0.66 of one float32 ULP | **FAIL as written** (§7.1) |
 | **B5 closure** | D3 closure on the rebuilt GLB from its own bytes ≤ 1e-6 m | 4.16e-7 / 4.45e-7 m | **PASS** |
 | **B5 round trip** | legs 0.00, torso and arms reported | legs 0.00 / 0.00, torso 0.00 / 0.00, arms 0.55 / 0.08 mm | **PASS (reported)** |
 | **B6** | rung 11, facing, 16 signs, 0 frames over 60°/frame | 0 frames over the ceiling on both arms and both performers; 16 of 16 signs unchanged; one forward-dot moved > 0.02 | **REPORTED** |
@@ -264,7 +264,9 @@ builds. `ORACLE_mamma_head_our_thorax` PASS on both subjects; `candidate_multivi
 FAIL on P1 with 7.27 / 7.47° median. Rerun and quoted, not assumed.
 
 **B7, synthetic truth.** Five posed SOMASKEL77 clips, the Kabsch pelvis, and I7's own
-measured heavy-tail pixel noise recovered through the real triangulator. The clean arm
+measured heavy-tail pixel noise recovered through the real triangulator. Three seeds at stride 3 (24 frames per clip),
+against D7's synthetic pass at five seeds and stride 1 — B7 is report-only and this is
+enough to separate the two aims by three-fold on the one clip that bends. The clean arm
 reaches the length floor to **2.16e-7 m**, comfortably inside the 1e-6 band. Two sentences
 are needed to read the absolute numbers: **(a)** four of the five clips are near upright
 (tilt 1.6–16.6° median), where the two aims coincide by construction, so only the squat clip
@@ -297,9 +299,11 @@ nothing is built.
 ### 7.1 B5 failed as written, and the band was pre-registered in an unreachable unit
 
 The card asked for the `Head` **WORLD** orientation "unchanged to 1e-9 on every frame,
-computed from the two tracks". Measured: **5.12e-6° / 4.68e-6°** worst frame, i.e.
-8.9e-8 / 8.2e-8 radians. Against a band of 1e-9 that is a factor of ~85, and the band is
-FAILED. It is not moved.
+computed from the two tracks". Measured, D7 against D7b: **5.12e-6° / 4.52e-6°** worst
+frame, i.e. 8.9e-8 / 7.9e-8 radians. Against a band of 1e-9 that is a factor of ~80–90, and
+the band is FAILED. It is not moved. (The 4.68e-6° that appears in evidence item 3 below is
+a different pairing — D7b against the head-solve oracle — and the two must not be
+confused.)
 
 Why it cannot be met. The delivered track stores every local rotation as **float32**.
 `Head`'s parent is `Neck`, whose world is a slerp involving `torso_world` — the very
@@ -411,8 +415,21 @@ performers, so B1–B4 share one denominator. **Nothing was written under
 ### 7.6 Test suite
 
 `tests/test_trunk_resolve.py` (9 test functions, 10 cases with the parametrised one; new
-file) and `tests/test_pelvis_frame.py` (14 tests, unedited) are green: 24 passed. The wider suite was run with
-`pytest tests/ -q --ignore=…modal…`; one pre-existing failure is unrelated to this change —
-`tests/test_body_compositor.py::test_unified_preview_is_explicitly_diagnostic_and_uses_one_video_clock`
-asserts a string in generated preview HTML and that file is modified-but-uncommitted in the
-main checkout. Nothing in `src` that this step touches is exercised by it.
+file) and `tests/test_pelvis_frame.py` (14 tests, unedited) are green: 24 passed. The wider suite: `pytest tests/ -q --ignore=…modal…` →
+**4 failed, 1138 passed, 16 skipped** in 618 s. All four failures are **pre-existing**, and
+that is shown rather than asserted: the whole `src/` tree at the branch point `c92a9be` was
+extracted to a scratch directory and each failing file run against it, where every one
+fails identically.
+
+| failing test | reproduces at `c92a9be` | what it is |
+|---|---|---|
+| `test_body_compositor.py::test_unified_preview_is_explicitly_diagnostic_and_uses_one_video_clock` | yes | asserts a JS string in generated preview HTML; `body_compositor.py` imports `BodyTrack` and never `commercial_multiview` |
+| `test_body_export.py::test_export_animated_body_glb_is_one_skin_one_timeline_and_hash_bound` | yes | line 145 — the **recorded miss** already in `LADDER_STATUS.md`: it asserts the pre-D3 exporter's root |
+| `test_phase4_app.py::test_home_and_health` | yes | face lane, unrelated |
+| `test_retarget_cost.py::test_converter_rotations_depend_on_bone_lengths_only_through_the_clavicle` | yes | the swap harness's own fixture; it has no spine feed, so it runs the legacy path this step cannot reach |
+
+The only `src` change in this branch is 33 lines inside `positions_to_body_track`
+(`git diff --stat c92a9be..HEAD -- src/` shows one file). `tests/test_retarget_cost.py` is
+worth one extra sentence because it is body-lane: the harness supplies no spine landmark,
+so `pelvis_world` is `None` and the new block never executes — its failure is the same one
+it had before this branch.
