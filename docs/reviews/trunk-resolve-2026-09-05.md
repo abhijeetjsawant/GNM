@@ -410,8 +410,8 @@ performers, so B1–B4 share one denominator. **Nothing was written under
 
 ### 7.6 Test suite
 
-`tests/test_trunk_resolve.py` (9 tests, new file) and `tests/test_pelvis_frame.py`
-(15 tests, unedited) are green: 24 passed. The wider suite was run with
+`tests/test_trunk_resolve.py` (9 test functions, 10 cases with the parametrised one; new
+file) and `tests/test_pelvis_frame.py` (14 tests, unedited) are green: 24 passed. The wider suite was run with
 `pytest tests/ -q --ignore=…modal…`; one pre-existing failure is unrelated to this change —
 `tests/test_body_compositor.py::test_unified_preview_is_explicitly_diagnostic_and_uses_one_video_clock`
 asserts a string in generated preview HTML and that file is modified-but-uncommitted in the
