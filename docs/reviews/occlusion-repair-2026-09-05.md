@@ -156,6 +156,15 @@ change rather than evidence, and exactly what the card forbids. Shipping it woul
 lane's standing error: **a band the candidate can optimise proves nothing about the
 candidate.**
 
+What the fixture *can* do, and does, is show the mechanism is real. Binned by the angle its
+two surviving views make at the true point, the **two-view triangulation's own error** rises
+with the conditioning: 26.9 mm at 60–90°, 21.5 at 90–120°, then 32.4 at 140–155°, **59.6 at
+155–165°** and 55.7 at 165–180°. The correlation with the closed form's `1/|sin θ|` across
+the populated bins is **+0.74** — consistent with it, and quoted as that rather than as a
+fit. What the fixture cannot do is find the crossover, because the *recovery* also beats
+triangulation at 60–120° (19.7 against 26.9), where the pair is well conditioned and there
+is nothing wrong to fix.
+
 That the preference is an artefact is not a hypothesis; it is the codebase's own measurement.
 `solve_sequence_positions` deliberately refuses to overwrite already-triangulated slots,
 with the reason in its comment: measured on real data the solve moved them *"by a median of
@@ -179,8 +188,27 @@ rule acts on:
   of the triangulation's own error on well-supported cells. The score sweep is flat inside
   0.06 mm across 0.02–0.40 m, because at the anatomical speed ceilings a wrist may move
   1.13 m in one frame and the slack is a rounding error on that envelope.
-* `MAXIMUM_INTERPOLATED_GAP_FRAMES` is scored on the cells inside a long no-view run, one
-  fixed population shared by every candidate.
+* `MAXIMUM_INTERPOLATED_GAP_FRAMES` **hits the same artefact and is not selected either.**
+  Scored on the cells inside a long no-view run — one fixed population shared by every
+  candidate, on the amplified mask, because the replayed mask has *no* such run — the
+  fixture prefers interpolating at every candidate length (56.9 mm at N = 2 through 18,
+  54.6 at N = 24): another monotone curve whose argmin is "never hold". The fixture's
+  motion is smooth by construction, so a straight line through a gap is nearly exact there.
+  The value is a closed-form bound instead: a straight chord across a gap of duration `T`
+  departs from a constant-acceleration trajectory by at most `a·T²/8`, and setting that
+  equal to the measured slack gives `T = sqrt(8·slack/a)` — **5.7 frames at a limb
+  acceleration of 20 m/s²**, 3.6 at 50. The shipped 6 is the 20 m/s² end and **that choice
+  is declared, not derived**. The clause's value is the diagnostic it emits, not an error
+  reduction; on a smooth fixture it is a cost, because there it is one.
+
+**Two of the three rules are nearly inert on the fixture, and that is stated rather than
+buried.** The conditioning gate carries the whole gain: today 47.5 mm → conditioning 22.1 →
+both 22.1, on the two-view window cells against exact truth. A moving-block bootstrap on
+identical draws puts `both` against `today` at [20.9, 22.6] vs [43.6, 49.2] mm with
+P(candidate beats control) = 1.000, and `both` against `conditioning` alone at **P = 0.555**
+— indistinguishable. The reachability reject fires on 0–1 slots there and the gap clause
+costs nothing measurable. Whether either matters on the footage is B3's reported figure,
+not the fixture's.
 
 `REACHABILITY_SPEED_CEILING_M_S` is **anatomy** with its sources cited beside the table, and
 is deliberately a physical *impossibility* bound rather than a plausibility one: a ceiling
@@ -204,4 +232,122 @@ oracle fires zero rejections on clean input, and a frozen arm fails.
 
 ## 7. What the coordinator should know
 
-*(filled below)*
+### 7.1 Two of the card's three constants could not be selected the way the card said
+
+Both are in §4 and both are the same class of failure: **the fixture's motion satisfies the
+incumbent's priors exactly**, so the score curve is monotone and its argmin is the
+degenerate. For the ray angle the degenerate is "never trust two views"; for the gap it is
+"never hold". Neither is shipped. The ceiling is a closed-form conditioning bound at a
+declared 2× amplification; the gap is a closed-form chord bound at a declared 20 m/s². Both
+are registered as ENGINEERING LIMITS in `tools/compare/provenance.py`, not as
+synthetic-truth selection, and the audit reports CLEAN. **`REACHABILITY_SLACK_M` is the one
+D8 constant genuinely selected on synthetic truth**, and it is measured rather than scored.
+
+The general lesson is one this lane already has in another form: *a band the candidate can
+optimise proves nothing about the candidate.* Its dual is what bit here — **a fixture that
+satisfies the incumbent's priors cannot adjudicate against the incumbent.** A fixture with
+non-rigid bones and non-smooth motion, or marker data from lane H, would settle both.
+
+### 7.2 What changed from the card, and why
+
+* **The fixture's performer placement.** `temporal.fk_trajectory` places the synthetic
+  performers at the whole-take root medians, which puts the A–C pair at 159–162° — not the
+  window's own geometry. This step places them at the **real window's own median root**,
+  which gives 164° and 171° against the footage's 171–172°. It is a placement for a
+  synthetic body; no real position, length or angle enters any score.
+* **The amplified arm.** The replayed mask contains **no** two-view cell below 140° and
+  **no** run in which all four cameras lose a landmark (0 gap cells). It therefore cannot
+  locate a conditioning threshold and cannot select a gap ceiling. I7's committed
+  `amplified_keep` deals the four most-occluded **measured** (subject, camera) series to
+  the four cameras — every property of the outage is the footage's own, only the assignment
+  changes, and I7 declares it as such — and it supplies cells at 70–178° and 526 gap cells.
+  The four-arm selector table stays on the replayed mask.
+* **The gap sweep's population, corrected mid-pass.** The first version scored the gap
+  ceiling on every two-view window cell, which is almost entirely cells the rule never
+  touches; the axis came out flat inside 0.6 mm for that reason. Recorded rather than
+  quietly fixed.
+* **A tie-break added after a flat sweep.** `AXIS_UNDETERMINED_MM` was written after the
+  first pass came out flat, and is disclosed as a fallback rather than a first choice. In
+  the end no axis was selected through it.
+* **`--reference raw` on `delivered_vs_capture.py`** and `--landmarks-from` /
+  `--skip-reproduction` on the stability instrument. Both defaults are unchanged; the
+  default `delivered_vs_capture` mode was regression-checked figure for figure against the
+  committed D7b report before anything else ran.
+
+### 7.3 Which downstream instruments lost their denominator, and which did not
+
+**This is by design and the card says so.** D8's repair sits between the raw triangulation
+and the smoothed landmarks, so every instrument that compared two builds' *smoothed*
+landmarks byte for byte now reports CHANGED:
+
+| instrument | what it did | what it does now |
+|---|---|---|
+| `delivered_vs_capture.py` default mode | asserted smoothed landmarks identical across arms, exit 1 otherwise | reports `same_denominator: false` and exits 1 — **expected**. B4 uses `--reference raw` instead |
+| the D3 closure gate's same-denominator clause | compared the two builds' triangulated landmarks | reports CHANGED — **expected**. Its real clause, that the delivered GLB agrees with FK of the track it carries, is unaffected and still a check |
+| `d7b_silhouette_partwise.py` | raises if the builds do not share triangulated positions | would raise on a D8 arm. `d8_occlusion_silhouette.py` asserts the **RAW** array instead, and reports the smoothed one as expected-false |
+| the part-wise silhouette's tilt terciles | cut by tilt from the smoothed array | D8 cuts by the **window**, and reports tilt from the RAW array |
+
+**What did NOT move:** the raw array itself (B3), the per-camera observations, the
+association, and therefore every association-derived figure. `real_run_seen_mask` and the
+whole I7 outage description are unaffected.
+
+**One that moves further than it looks.** `_solve_head_for_subject` and `_thorax_frames`
+both read the **smoothed** `positions`, so on a D8 build the head *solve* itself changes,
+not merely its scoring. `tools/head/head_gate.py` does **not** see this: it scores
+`artifacts/head-lane/head-solve-shipped.npz`, a head-lane artifact that this build does not
+write, so rerunning it reproduces its own figures unchanged and is **blind to D8's effect on
+the delivered head**. That is stated here rather than left to be discovered; the head figure
+that would see it is the delivered head world orientation read from the two GLBs' own bytes,
+and it is not in the card.
+
+### 7.4 Legacy callers
+
+`reconstruct_multiview` now applies all three rules **by default**, so every caller gets
+D8's smoothed output unless it passes the new keywords. That is `scripts/build_commercial_
+multiview_comparison.py` (the delivery), `scripts/build_synthetic_truth_fixture.py`,
+`scripts/compare_association_strategies.py`, `measure_detector_outputs.py`,
+`measure_sigma_value.py`, and every instrument under `tools/` that reconstructs. **Every
+committed report under `artifacts/` that quotes a smoothed figure was produced pre-D8 and
+is not comparable to a fresh run** — the I7 temporal report, `oracle_2d`, the D3 and D7
+gates among them. Their raw-array and association figures are unaffected. Nothing was
+re-run to match, because re-running them is the coordinator's call and not a branch's.
+
+With the three rules off the output is bit-identical to the pre-D8 build, which is
+`tests/test_occlusion_repair.py::test_the_oracle_clean_input_is_bit_identical_and_fires_nothing`
+and the selector's `today` arm.
+
+### 7.5 Small things that would otherwise be discovered the hard way
+
+* **"The falling performer" is two different people depending on the figure.** The card's
+  camera classification (B001 20 frames, D001 32) is **performer 0**; the worst limb damage
+  (forearm 18 frames, shoulder line 68–554, delivered left hand 276 mm p95) is **performer
+  1**. Both bodies are in the same overlap and both are degraded; the numbers were taken
+  from different ones and the card reads as though they were one.
+* **The legs' "±5 %" is a rounding.** Measured, six of eight leg segments sit inside ±5 %
+  and two do not: performer 0's left shin reads −5.1 % at p5 and performer 1's right thigh
+  +6.2 % at p95. The card's exact sub-claim — 0 frames off by more than 15 % — holds on 8
+  of 8. The seed registered is the measured spread, not the rounded one.
+* **B2's held-out camera is the right instrument here for a reason worth one sentence.** On
+  the B001 and D001 folds the held-out camera looks roughly *perpendicular* to the A–C axis,
+  so it sees exactly the depth error the A–C pair is blind to. That is why this band is not
+  the I5 pattern applied by habit.
+* **The step test ties the reachability rule at the pipeline level** (22.074 mm both), because
+  at the selected slack the reject fires on 0–1 slots and there is nothing for the two rules
+  to disagree about. The crisp discrimination is in the unit tests, which construct both of
+  the step test's defects directly.
+* **`artifacts/` is gitignored**, so nothing under `artifacts/compare/d8-occlusion/` is in
+  the commits. Every file is regenerated by the commands in the extractor's `REGEN`.
+
+### 7.6 Things this branch did not do
+
+* **`ladder.py` was not edited and `ladder.py` / `status.py` were not run**, per the brief.
+  To register the extractor: `from extractors.d8_occlusion import x_occlusion_repair`,
+  routing the `capture_` keys to rung 4, the `placement_` keys to rung 7 and the
+  `silhouette_` keys to rung 1. `python3 tools/compare/extractors/d8_occlusion.py`
+  self-checks that every `VISUALS` bar key resolves.
+* **`docs/parity-board.html` was not touched** — the board is updated in the same pass as
+  the plan, and neither is a branch's to edit.
+* **Nothing was written under `artifacts/commercial-multiview-soma77/`.** The D8 delivery
+  is at `artifacts/compare/d8-occlusion/delivery/`. If D8 merges it has to be rebuilt in
+  place and checked byte-identical to this branch's build, exactly as D7 and D7b did.
+* **The branch was not pushed and not merged.**
