@@ -214,10 +214,10 @@
           "title": "Re-solve the trunk chain onto the captured neck after the pelvis frame",
           "plain": "D7 fixed where the hips sit and, as a side effect, moved the neck off the captured neck by up to six centimetres on bent frames, because the chest chain was still aimed from the old origin. This aims it from where the pelvis now puts it, and commits the instrument that saw the defect: every delivered joint read from the file itself against the captured points.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-05",
-          "finished": null,
-          "report": null,
+          "finished": "2026-09-05",
+          "report": "artifacts/compare/d7b-trunk/gate.json",
           "blocked_on": null
         }
       ]
@@ -567,6 +567,16 @@
       "date": "2026-09-05",
       "step": "D7b",
       "text": "card written 2026-09-05 (Sol-reviewed; floor and lever measured from the delivered files before the band); worktree ladder/D7b from 4acf170"
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D7b",
+      "text": "merged 2026-09-05 (5b010b5, --no-ff): neck back on its landmark to the trunk-length floor (21.5/18.3 mm whole take, 42.1/11.9 bent tercile; D7 read 58.9/44.0), root and legs bit-identical, photographs not worse on either performer; B5's head clause FAILED against a 1e-9 deg band below the float32 floor (5e-6, the oracle reads the same on D7) and stated; delivery rebuilt in place, 8/8 files byte-identical to the branch build; every instrument rerun"
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D7b",
+      "text": "2026-09-05, D7b post-merge: the placement instrument that saw the D7 neck drift is now committed (tools/compare/delivered_vs_capture.py) and on rung 7; retarget_cost.py stays blind to this class. Rung 11's neck row vs MAMMA worsens (91->96 / 89->98) while the nose row improves (132->74 / 103->69): MAMMA's neck is not SOMA-77's Neck2, a convention disagreement, both shown. Handed to D5: the trunk shortens under flexion, 42 mm left on performer 0's bent frames, of which an equal-split flexion over Spine/Chest/UpperChest recovers 32. Coordinator errors recorded: the brief named commercial-multiview-b2/work as the rebuild source (the right one is commercial-multiview-soma77/work); Sol's 1e-9 deg head band was below the storage floor, the lane's third pre-registration error."
     }
   ]
 }

@@ -232,7 +232,8 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f3, c3 = _d2_figures("masks")
     f4, c4 = _d3_figures("masks")
     f5, c5 = _d7_figures("masks")
-    return figs + f3 + f4 + f5, ctrls + c3 + c4 + c5
+    f6, c6 = _d7b_figures("masks")
+    return figs + f3 + f4 + f5 + f6, ctrls + c3 + c4 + c5 + c6
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -295,7 +296,8 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f3, c3 = _d2_figures("converter")
     f4, c4 = _d3_figures("converter")
     f5, c5 = _d7_figures("converter")
-    return figs + f2 + f3 + f4 + f5, ctrls + c2 + c3 + c4 + c5
+    f6, c6 = _d7b_figures("converter")
+    return figs + f2 + f3 + f4 + f5 + f6, ctrls + c2 + c3 + c4 + c5 + c6
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -311,6 +313,27 @@ def _d7_figures(where: str) -> tuple[list, list]:
     except ImportError:
         return [], []
     figs, ctrls = d7_pelvis_frame.x_pelvis_frame({})
+
+    def dest(key: str) -> str:
+        return "masks" if key.startswith("silhouette_") else "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d7b_figures(where: str) -> tuple[list, list]:
+    """D7b figures from `tools/compare/extractors/d7b_trunk.py` (the agent's stub, wired here by the
+    registry owner): the silhouette figures (`silhouette_`) to rung 1, the masks; the delivered-vs-
+    capture placement figures (`trunk_`), read from each GLB's own bytes against our own triangulated
+    landmarks, to rung 7, the converter. D7b shipped on 2026-09-05: the neck returned to its landmark
+    to within the trunk-length floor (21.5 / 18.3 mm), with B5's head clause FAILED against a band
+    written below the float32 storage floor, and stated. `retarget_cost.py` is BLIND to this class
+    (it re-solves with no spine landmark); the figure that saw it is this one."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d7b_trunk  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d7b_trunk.x_trunk_resolve({})
 
     def dest(key: str) -> str:
         return "masks" if key.startswith("silhouette_") else "converter"
@@ -1371,6 +1394,12 @@ def _splice_d7_visuals() -> None:
     VISUALS["_d7_spliced"] = True
     VISUALS["pose"][0:0] = d7_pelvis_frame.VISUALS.get("converter", [])
     VISUALS["masks"][0:0] = d7_pelvis_frame.VISUALS.get("masks", [])
+    try:
+        from extractors import d7b_trunk  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["pose"][0:0] = d7b_trunk.VISUALS.get("converter", [])
+    VISUALS["masks"][0:0] = d7b_trunk.VISUALS.get("masks", [])
 
 
 

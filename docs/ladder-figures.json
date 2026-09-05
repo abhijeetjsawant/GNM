@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-05T12:50:34",
+ "rendered": "2026-09-05T16:48:54",
  "git": {
-  "sha": "05d4966",
+  "sha": "5b010b5",
   "dirty": true
  },
  "rungs": [
@@ -19,6 +19,120 @@
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
     {
+     "title": "D7b: how well the body's outline covers the person, by how far they are bent over",
+     "plain": "The reference fitter's person masks are the reference; higher is better. Body and legs only, arms taken out, performer 0. It rises in every band and most where they are most bent over, and there the interval is clear of zero. The hatched bars are the build before this one and the reference fitter's own mesh -- the ceiling a body of the wrong proportions can reach, not a target.",
+     "better": "higher",
+     "unit": "IoU",
+     "bars": [
+      {
+       "label": "Upright, ships",
+       "role": "ours",
+       "value": 0.58781
+      },
+      {
+       "label": "Upright, before D7b",
+       "role": "control",
+       "value": 0.58072
+      },
+      {
+       "label": "Middle, ships",
+       "role": "ours",
+       "value": 0.56763
+      },
+      {
+       "label": "Middle, before D7b",
+       "role": "control",
+       "value": 0.55794
+      },
+      {
+       "label": "Most bent, ships",
+       "role": "ours",
+       "value": 0.54391
+      },
+      {
+       "label": "Most bent, before D7b",
+       "role": "control",
+       "value": 0.51456
+      },
+      {
+       "label": "Most bent, reference fitter's mesh",
+       "role": "control",
+       "value": 0.74611
+      }
+     ]
+    },
+    {
+     "title": "D7b: the same photographs on performer 1",
+     "plain": "Same masks, same three bands, higher is better. Nothing falls on this performer either; the gain is smaller because this take's pelvis and trunk disagree less.",
+     "better": "higher",
+     "unit": "IoU",
+     "bars": [
+      {
+       "label": "Upright, ships",
+       "role": "ours",
+       "value": 0.61767
+      },
+      {
+       "label": "Upright, before D7b",
+       "role": "control",
+       "value": 0.61636
+      },
+      {
+       "label": "Middle, ships",
+       "role": "ours",
+       "value": 0.55753
+      },
+      {
+       "label": "Middle, before D7b",
+       "role": "control",
+       "value": 0.54554
+      },
+      {
+       "label": "Most bent, ships",
+       "role": "ours",
+       "value": 0.53794
+      },
+      {
+       "label": "Most bent, before D7b",
+       "role": "control",
+       "value": 0.53528
+      },
+      {
+       "label": "Most bent, reference fitter's mesh",
+       "role": "control",
+       "value": 0.71352
+      }
+     ]
+    },
+    {
+     "title": "D7b: the arms in the photographs",
+     "plain": "Same masks, higher is better, arms only. The arms move here -- they hang off the chest this step turns -- and the check is that they do not get worse. On both performers the change sits inside the range the measurement itself is uncertain by.",
+     "better": "higher",
+     "unit": "IoU",
+     "bars": [
+      {
+       "label": "Ships, performer 0",
+       "role": "ours",
+       "value": 0.20425
+      },
+      {
+       "label": "Before D7b, performer 0",
+       "role": "control",
+       "value": 0.1999
+      },
+      {
+       "label": "Ships, performer 1",
+       "role": "ours",
+       "value": 0.21301
+      },
+      {
+       "label": "Before D7b, performer 1",
+       "role": "control",
+       "value": 0.21693
+      }
+     ]
+    },
+    {
      "title": "D7: how well the body's outline covers the person, by how far they are bent over",
      "plain": "The reference fitter's person masks are the reference; higher is better. This is the body and legs only, with the arms taken out. On performer 0 it rises in every band and most where they are most bent over, which is what this step was meant to do -- but a deliberately wrong answer, a pelvis frozen bolt upright, rises almost as much on this performer, so the photographs cannot tell the two apart here. The other hatched bar is the reference fitter's own mesh: the ceiling, not a target.",
      "better": "higher",
@@ -32,7 +146,7 @@
       {
        "label": "Upright, after",
        "role": "ours",
-       "value": 0.58072
+       "value": 0.58781
       },
       {
        "label": "Middle, before",
@@ -42,7 +156,7 @@
       {
        "label": "Middle, after",
        "role": "ours",
-       "value": 0.55794
+       "value": 0.56763
       },
       {
        "label": "Most bent, before",
@@ -52,7 +166,7 @@
       {
        "label": "Most bent, after",
        "role": "ours",
-       "value": 0.51456
+       "value": 0.54391
       },
       {
        "label": "Most bent, pelvis frozen upright",
@@ -80,7 +194,7 @@
       {
        "label": "Upright, after",
        "role": "ours",
-       "value": 0.61636
+       "value": 0.61767
       },
       {
        "label": "Middle, before",
@@ -90,7 +204,7 @@
       {
        "label": "Middle, after",
        "role": "ours",
-       "value": 0.54554
+       "value": 0.55753
       },
       {
        "label": "Most bent, before",
@@ -100,7 +214,7 @@
       {
        "label": "Most bent, after",
        "role": "ours",
-       "value": 0.53528
+       "value": 0.53794
       },
       {
        "label": "Most bent, pelvis frozen upright",
@@ -128,7 +242,7 @@
       {
        "label": "After D7, performer 0",
        "role": "ours",
-       "value": 0.1999
+       "value": 0.20425
       },
       {
        "label": "Before D7, performer 1",
@@ -138,7 +252,7 @@
       {
        "label": "After D7, performer 1",
        "role": "ours",
-       "value": 0.21693
+       "value": 0.21301
       }
      ]
     },
@@ -217,7 +331,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.6199450482496769
+       "value": 0.6372328967289769
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -232,7 +346,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.42625537968282357
+       "value": 0.4269361417948444
       }
      ]
     },
@@ -245,7 +359,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.7369200133935544
+       "value": 0.7444955618787366
       },
       {
        "label": "MAMMA's mesh",
@@ -487,22 +601,22 @@
       {
        "label": "Worst arms, 6 bodies",
        "role": "ours",
-       "value": 0.69
+       "value": 10.75
       },
       {
        "label": "Worst legs, 6 bodies",
        "role": "ours",
-       "value": 0.0
+       "value": 16.01
       },
       {
        "label": "Arriving canonical, arms",
        "role": "control",
-       "value": 31.41
+       "value": 30.18
       },
       {
        "label": "Arriving canonical, legs",
        "role": "control",
-       "value": 11.44
+       "value": 24.4
       }
      ]
     },
@@ -515,7 +629,7 @@
       {
        "label": "Fixed rig, performer 0",
        "role": "alt",
-       "value": 0.54
+       "value": 0.34643
       },
       {
        "label": "Delivered body, performer 0",
@@ -525,7 +639,7 @@
       {
        "label": "Fixed rig, performer 1",
        "role": "alt",
-       "value": 0.54
+       "value": 0.3631
       },
       {
        "label": "Delivered body, performer 1",
@@ -570,6 +684,156 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D7b: how far the delivered neck sits from the neck we measured, performer 0",
+     "plain": "Our own measured neck is the reference, at zero; lower is better. Blue is what this step delivers. The hatched bar is the build before it, which moved the neck off its landmark. The aqua bars are the build before THAT and the floor -- the part of the miss that a straight, rigid spine can never remove whatever it is aimed at. Blue sits on the floor, so there is nothing left here for an aim to fix; the rest is a bendable spine, and that is a later step.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ships (aim from the spine's own origin)",
+       "role": "ours",
+       "value": 21.545
+      },
+      {
+       "label": "Before D7b: the pelvis frame alone",
+       "role": "control",
+       "value": 58.891
+      },
+      {
+       "label": "Before D7: one rigid trunk",
+       "role": "alt",
+       "value": 14.346
+      },
+      {
+       "label": "Floor: what a rigid straight spine cannot beat",
+       "role": "alt",
+       "value": 20.922
+      }
+     ]
+    },
+    {
+     "title": "D7b: the same check on the third of frames where performer 0 is most bent over",
+     "plain": "Same reference, same unit, lower is better -- but only the frames where the performer is most bent over, which is where a pelvis that disagrees with the trunk does the most damage. The neck comes back from 131 mm to 42, and 42 is the floor.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ships (aim from the spine's own origin)",
+       "role": "ours",
+       "value": 42.088
+      },
+      {
+       "label": "Before D7b: the pelvis frame alone",
+       "role": "control",
+       "value": 131.283
+      },
+      {
+       "label": "Before D7: one rigid trunk",
+       "role": "alt",
+       "value": 105.152
+      },
+      {
+       "label": "Floor: what a rigid straight spine cannot beat",
+       "role": "alt",
+       "value": 41.706
+      }
+     ]
+    },
+    {
+     "title": "D7b: the same check on performer 1",
+     "plain": "Same reference, lower is better. This performer is bent over for most of the take, and the neck returns from 44 mm to 18 -- again exactly the floor.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ships (aim from the spine's own origin)",
+       "role": "ours",
+       "value": 18.321
+      },
+      {
+       "label": "Before D7b: the pelvis frame alone",
+       "role": "control",
+       "value": 44.003
+      },
+      {
+       "label": "Before D7: one rigid trunk",
+       "role": "alt",
+       "value": 28.622
+      },
+      {
+       "label": "Floor: what a rigid straight spine cannot beat",
+       "role": "alt",
+       "value": 18.321
+      }
+     ]
+    },
+    {
+     "title": "D7b: the hips, knees and ankles, which this step must not touch",
+     "plain": "Same reference, same unit, lower is better. This step changes the chain ABOVE the hips and nothing below them, so every pair of bars here has to be identical -- and they are, float for float, read from the delivered files. That is the check that stops a good neck being bought with a worse lower body.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Hip, ships",
+       "role": "ours",
+       "value": 4.607
+      },
+      {
+       "label": "Hip, before D7b",
+       "role": "control",
+       "value": 4.607
+      },
+      {
+       "label": "Knee, ships",
+       "role": "ours",
+       "value": 9.788
+      },
+      {
+       "label": "Knee, before D7b",
+       "role": "control",
+       "value": 9.788
+      },
+      {
+       "label": "Ankle, ships",
+       "role": "ours",
+       "value": 14.041
+      },
+      {
+       "label": "Ankle, before D7b",
+       "role": "control",
+       "value": 14.041
+      }
+     ]
+    },
+    {
+     "title": "D7b: the wrist, on the frames where performer 0 is most bent over",
+     "plain": "Same reference, lower is better. Nothing was aimed at the arms here -- but the arm hangs off the chest, so moving the chest back onto the body carries the whole arm with it and the elbow and wrist are then re-solved onto their own landmarks. This is that, and it was predicted before the numbers.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Ships",
+       "role": "ours",
+       "value": 29.422
+      },
+      {
+       "label": "Before D7b",
+       "role": "control",
+       "value": 56.692
+      },
+      {
+       "label": "Ships, performer 1",
+       "role": "ours",
+       "value": 26.447
+      },
+      {
+       "label": "Before D7b, performer 1",
+       "role": "control",
+       "value": 35.338
+      }
+     ]
+    },
     {
      "title": "D7: how far the delivered pelvis is from the true pelvis, on bent frames",
      "plain": "Exact synthetic truth is the reference, at zero; lower is better. Blue is what ships. Orange is what the code did before -- the pelvis welded to the trunk. The hatched bar is a deliberately wrong answer: a pelvis frozen upright. It was supposed to lose and it did not, which is why this step's own gate says FAIL.",
@@ -668,7 +932,7 @@
       {
        "label": "Arms before, performer 0",
        "role": "alt",
-       "value": 50.79
+       "value": 15.21
       },
       {
        "label": "Arms after, performer 0",
@@ -678,7 +942,7 @@
       {
        "label": "Legs before, performer 0",
        "role": "alt",
-       "value": 32.48
+       "value": 6.89
       },
       {
        "label": "Legs after, performer 0",
@@ -688,7 +952,7 @@
       {
        "label": "Arms before, performer 1",
        "role": "alt",
-       "value": 30.5
+       "value": 14.94
       },
       {
        "label": "Arms after, performer 1",
@@ -698,7 +962,7 @@
       {
        "label": "Legs before, performer 1",
        "role": "alt",
-       "value": 30.03
+       "value": 12.56
       },
       {
        "label": "Legs after, performer 1",
@@ -1315,22 +1579,22 @@
       {
        "label": "Delivered, performer 0's own body",
        "role": "ours",
-       "value": 48.31018921741316
+       "value": 33.055070516979434
       },
       {
        "label": "Replayed on the fixed rig, 0",
        "role": "alt",
-       "value": 95.84002243867887
+       "value": 81.41783598674114
       },
       {
        "label": "Delivered, performer 1's own body",
        "role": "ours",
-       "value": 49.63144178309166
+       "value": 42.36491890464152
       },
       {
        "label": "Replayed on the fixed rig, 1",
        "role": "alt",
-       "value": 125.72354063566682
+       "value": 123.44329965462256
       }
      ]
     },
@@ -1348,12 +1612,12 @@
       {
        "label": "Delivered chest",
        "role": "ours",
-       "value": 0.9932358813925064
+       "value": 0.9834245014125754
       },
       {
        "label": "Delivered head",
        "role": "ours",
-       "value": 0.9158258399740422
+       "value": 0.9158258329042205
       },
       {
        "label": "The delivered mesh's nose",
