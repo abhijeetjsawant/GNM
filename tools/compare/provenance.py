@@ -202,6 +202,74 @@ CURATED: dict[str, dict] = {
                  "MAXIMUM_INTERPOLATED_GAP_FRAMES.",
         remedy="none open.",
     ),
+    # ------------------------------------------------- D8b, the segment-length reject
+    "SEGMENT_LENGTH_CEILING_FRACTION": dict(
+        provenance=OWN_CAPTURE,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-06. A captured "
+                 "segment whose length departs from THAT PERFORMER'S OWN take median by "
+                 "more than this fraction has its child landmark withheld. It is a REAL-TAKE "
+                 "SEED and is registered as own-capture with its source stated: on the "
+                 "reference take the eight leg segments hold their length to -5.1 %/+6.2 % "
+                 "at p5-p95 on both performers, with 0 frames off their own median by more "
+                 "than 15 % on 8 of 8 segments (`tools/compare/captured_limb_stability.py` "
+                 "-> artifacts/compare/d8b-length/limb-stability-d9.json), so 15 % is the "
+                 "smallest ceiling the honest motion in this take demonstrably clears. IT IS "
+                 "OUR OWN CAPTURE AND NEVER MAMMA'S: the arrays are the delivery's own "
+                 "triangulated landmarks. THE CARD SAID SYNTHETIC TRUTH WOULD CONFIRM IT AND "
+                 "IT DID NOT: `tools/compare/d8b_length_synthetic.py` fails both of the "
+                 "card's honest-motion clauses at this ceiling and at every ceiling swept up "
+                 "to 0.30, because the fixture's own honest triangulation is far noisier "
+                 "than the reference take's -- its uncollapsed frames and its legs cross the "
+                 "ceiling without any collapse being injected. That report carries the "
+                 "fixture's own measured segment spread beside the take's and the truth "
+                 "error of every fired cell, so the two failures can be told apart. The "
+                 "value was NOT moved to accommodate them. Recorded in "
+                 "docs/reviews/segment-length-2026-09-06.md.",
+        selected_against="the reference take's own legs (own capture). The synthetic arm "
+                         "reports and did not confirm; nothing was selected on it and "
+                         "nothing was selected on a MAMMA-referenced arm",
+        remedy="OPEN. The ceiling is a seed from ONE take's legs, and the fixture that was "
+               "supposed to confirm it cannot: its honest frames are noisier than the "
+               "take's. Marker data (lane H), or a fixture whose triangulation noise "
+               "matches the detector's on this rig, would settle it. Until then the number "
+               "is a measured seed with a stated source and a stated failed confirmation.",
+    ),
+    "SEGMENT_LENGTH_RULES": dict(
+        provenance=ANATOMY,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-06. Which segments "
+                 "the length rule measures and which landmark a departure is charged to: the "
+                 "CHILD, because the parent is fixed by the segment above it -- except the "
+                 "shoulder line, which has no parent, so both of its endpoints are charged. "
+                 "It is the kinematic chain of a human arm and leg, not a fitted or measured "
+                 "quantity. Deliberately NOT derived from RIGID_LIMBS, which is what the "
+                 "sequence solve regularises rather than what a captured frame is judged on; "
+                 "RIGID_LIMBS also contains the hip line and root-to-neck, which this rule "
+                 "does not act on.",
+        remedy="OPEN, and narrow: the hip line collapses on the reference take too (23 "
+               "frames off by more than 15 % on performer 1, min 140 mm against a 214 mm "
+               "median) and is NOT in this table, because the D8b card's segment list does "
+               "not name it. A later step should decide whether to add it.",
+    ),
+    "SEGMENT_LENGTH_MODES": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-06. The three "
+                 "things that can happen to a marked slot's RAYS: 'demote' keeps them (D8's "
+                 "path, the sequence solve recovers the point from the same rays plus limb "
+                 "length and continuity), 'reject' withholds them all (the slot falls to the "
+                 "fill and, past MAXIMUM_INTERPOLATED_GAP_FRAMES, to a hold on the parent), "
+                 "'best_ray' keeps only the highest-confidence camera's (the single-ray case "
+                 "the solve already recovers). SELECTED ON SYNTHETIC TRUTH by "
+                 "`tools/compare/d8b_length_synthetic.py` on an injected consistent "
+                 "shoulder collapse: 'demote' wins under both readings of the score -- the "
+                 "pooled six-landmark median and the card's own per-group table, where the "
+                 "injected shoulders go 96.4 -> 30.0 mm against exact truth while 'reject' "
+                 "reaches 42.2 and 'best_ray' 57.2. 'best_ray' chooses its camera by the "
+                 "DETECTOR'S OWN confidence and therefore adds no constant.",
+        selected_against="synthetic truth (SOMASKEL77 clips posed through our own FK, this "
+                         "rig, the real seen pattern replayed, our own detector's "
+                         "heavy-tail noise, plus an injected consistent 2D collapse)",
+        remedy="none open for the mode. The ceiling it runs at is a separate entry.",
+    ),
     "PELVIS_FRAME_SOURCE": dict(
         provenance=SYNTHETIC,
         evidence="src/autoanim_gnm/commercial_multiview.py -- 'C_kabsch_pelvis' since 2026-09-04. "
