@@ -102,6 +102,88 @@ CURATED: dict[str, dict] = {
                "camera or anatomy -- never on the MAMMA arm.",
     ),
     # ------------------------------------------------------------------- D7, the pelvis
+    # ------------------------------------------------------------- D8, the occlusion repair
+    "RAY_PAIR_CONDITIONING_CEILING_DEG": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. A two-view slot "
+                 "whose supporting rays meet beyond this angle (or inside its complement) is "
+                 "depth-unconstrained along their common axis and is DEMOTED to the sequence "
+                 "solve. SELECTED ON SYNTHETIC TRUTH ONLY by "
+                 "`tools/compare/d8_occlusion_synthetic.py` -> "
+                 "artifacts/compare/d8-occlusion/synthetic.json, on SOMASKEL77 clips posed "
+                 "through our own FK, projected into this rig with the REAL per-camera seen "
+                 "pattern replayed and our own detector's measured heavy-tail noise. Selected on "
+                 "the axis the constant is a threshold ON -- two-view cells binned by their "
+                 "measured ray-pair angle, triangulation against demotion per bin -- and NOT on "
+                 "the whole-window error score, whose curve falls monotonically as the ceiling "
+                 "drops so that its argmin is always the lowest candidate swept ('never trust "
+                 "two views', a capacity change rather than evidence). Both are in the report "
+                 "and the substitution is stated in docs/reviews/occlusion-repair-2026-09-05.md. "
+                 "The real take was measured first (tools/compare/captured_limb_stability.py) and "
+                 "selected nothing.",
+        selected_against="synthetic truth (SOMASKEL77 clips through our own FK) with our own "
+                         "detector's measured heavy-tail noise and the real seen pattern replayed",
+        remedy="none open. If it moves it must move on synthetic truth, a held-out camera or "
+               "anatomy -- never on the real take and never on the MAMMA arm.",
+    ),
+    "REACHABILITY_SPEED_CEILING_M_S": dict(
+        provenance=ANATOMY,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. Peak LINEAR speed "
+                 "per landmark, used as a physical IMPOSSIBILITY bound and deliberately not a "
+                 "plausibility one -- a ceiling tight enough to refuse what a body merely rarely "
+                 "does would be a smoother wearing a reject's clothes. The table's sources are "
+                 "cited in the comment beside it: elite baseball pitching reaches ~34 m/s at the "
+                 "hand and ~9 m/s at the shoulder (Fleisig et al., kinematic chain studies), "
+                 "competitive boxing 6-9 m/s at the fist, sprinting ~2x ground speed at the foot "
+                 "in swing. Each ceiling sits at or above the published peak for its landmark. "
+                 "NOTHING here is fitted: the synthetic fixture demonstrates that the oracle "
+                 "fires zero rejections on clean input and that a frozen arm fails, and it "
+                 "chooses none of the numbers.",
+        remedy="none open. Marker data (lane H) would let these be measured on owned capture "
+               "rather than cited; until then they are literature and are labelled as such.",
+    ),
+    "REACHABILITY_SLACK_M": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. The constant term "
+                 "of the reachability envelope (slack + ceiling * elapsed_seconds), which exists "
+                 "so a stationary landmark's own jitter cannot trip a rule about motion. MEASURED "
+                 "on the synthetic fixture as the p99 of the frame-to-frame jitter of the "
+                 "triangulation's own error on well-supported cells, rounded up to the "
+                 "centimetre, by `tools/compare/d8_occlusion_synthetic.py`. It is NOT taken from "
+                 "the error score: at the anatomical speed ceilings a wrist may move 1.13 m in "
+                 "one frame, so any slack between 0.02 and 0.40 m is a rounding error on the "
+                 "envelope and the score sweep is flat inside 0.06 mm across that whole range. "
+                 "Both the flat sweep and the measurement are in the report.",
+        selected_against="synthetic truth -- the measured displacement noise of our own "
+                         "triangulation under our own detector's heavy-tail model",
+        remedy="none open.",
+    ),
+    "MAXIMUM_INTERPOLATED_GAP_FRAMES": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. Gaps longer than "
+                 "this are not interpolated through: the landmark is HELD on its parent and the "
+                 "share is reported as `held_joint_fraction` beside "
+                 "`interpolated_joint_fraction`. Selected by "
+                 "`tools/compare/d8_occlusion_synthetic.py` on the population the clause acts on "
+                 "-- the cells inside a no-view run longer than the smallest candidate, one fixed "
+                 "set shared by every candidate. The first pass of that sweep scored it on every "
+                 "two-view window cell instead, which is almost entirely cells the rule never "
+                 "touches, and came out flat; that error is recorded in "
+                 "docs/reviews/occlusion-repair-2026-09-05.md rather than quietly fixed. A "
+                 "whole-take hold is the must-fail control and it fails.",
+        selected_against="synthetic truth, scored on the long-gap cells only",
+        remedy="none open.",
+    ),
+    "LANDMARK_PARENT": dict(
+        provenance=ANATOMY,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. Which landmark "
+                 "carries which when a long gap is held: a wrist follows its elbow, an elbow its "
+                 "shoulder, a shoulder the neck. It is the kinematic chain of a human arm and "
+                 "leg, not a fitted or measured quantity, and `root` has no parent and is never "
+                 "held. It changes nothing unless a gap exceeds "
+                 "MAXIMUM_INTERPOLATED_GAP_FRAMES.",
+        remedy="none open.",
+    ),
     "PELVIS_FRAME_SOURCE": dict(
         provenance=SYNTHETIC,
         evidence="src/autoanim_gnm/commercial_multiview.py -- 'C_kabsch_pelvis' since 2026-09-04. "

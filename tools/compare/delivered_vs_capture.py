@@ -113,9 +113,25 @@ REFERENCE = (
 
 
 # --------------------------------------------------------------------------- the readers
-def capture_positions(directory: Path, subject: int) -> np.ndarray:
+REFERENCE_ARRAY = {"smoothed": "triangulated_world_positions_z_up_m",
+                   "raw": "raw_triangulated_world_positions_z_up_m"}
+REFERENCE_TEXT = {
+    "smoothed": REFERENCE,
+    "raw": (
+        "the delivery's own RAW triangulation "
+        "(`raw_triangulated_world_positions_z_up_m`), NaNs intact -- the pre-fill, "
+        "pre-solve, pre-smoothing points, scored only on the frames where the landmark "
+        "actually triangulated. Added for D8, whose repair moves the SMOOTHED array by "
+        "construction: scoring a D8 delivery against the smoothed landmarks would score "
+        "it against points D8 itself repaired, and the raw array is the one reference "
+        "that is bit-identical across the D7b and D8 builds."),
+}
+
+
+def capture_positions(directory: Path, subject: int,
+                      reference: str = "smoothed") -> np.ndarray:
     with np.load(directory / f"subject-{subject:02d}.body-track.npz") as archive:
-        return np.asarray(archive["triangulated_world_positions_z_up_m"], np.float64)
+        return np.asarray(archive[REFERENCE_ARRAY[reference]], np.float64)
 
 
 def delivered_positions(directory: Path, subject: int) -> tuple[dict[str, int], np.ndarray]:
@@ -178,24 +194,52 @@ def block_starts(frames: int) -> np.ndarray:
 
 
 def bootstrap_median(values: np.ndarray, starts: np.ndarray) -> list[float]:
+    """Block bootstrap of the median. NaN-aware, and identical on a NaN-free array.
+
+    `--reference raw` leaves a NaN wherever the landmark did not triangulate, so a draw
+    can contain them; a draw with nothing finite in it contributes nothing rather than a
+    NaN that would poison the percentile.
+    """
+
     values = np.asarray(values, dtype=np.float64)
     n = len(values)
-    draws = np.asarray([
-        np.median(np.concatenate([values[s:s + BLOCK] for s in row])[:n])
-        for row in starts])
+    if not np.isfinite(values).any():
+        return [float("nan"), float("nan")]
+    draws = []
+    for row in starts:
+        block = np.concatenate([values[s:s + BLOCK] for s in row])[:n]
+        if np.isfinite(block).any():
+            draws.append(float(np.nanmedian(block)))
+    if not draws:
+        return [float("nan"), float("nan")]
+    draws = np.asarray(draws)
     return [round(float(np.percentile(draws, 2.5)), 4),
             round(float(np.percentile(draws, 97.5)), 4)]
 
 
+def _round(value) -> float | None:
+    return None if not np.isfinite(value) else round(float(value), 3)
+
+
 def summarise(error_mm: np.ndarray, masks: dict[str, np.ndarray]) -> dict:
+    finite = np.isfinite(error_mm)
+    if not finite.any():
+        return {"frames_scored": 0}
     out = {
-        "median_mm": round(float(np.median(error_mm)), 3),
-        "p95_mm": round(float(np.percentile(error_mm, 95)), 3),
-        "max_mm": round(float(error_mm.max()), 3),
+        "median_mm": _round(np.nanmedian(error_mm)),
+        "p95_mm": _round(np.nanpercentile(error_mm, 95)),
+        "max_mm": _round(np.nanmax(error_mm)),
     }
+    if not finite.all():
+        # `--reference raw` only. Stated per joint, because a landmark that triangulated
+        # on 140 of 150 frames and one that triangulated on all 150 do not share a
+        # denominator and the report must not let them look as though they do.
+        out["frames_scored"] = int(finite.sum())
+        out["frames_total"] = int(finite.size)
     for name in ("upright", "bent"):
-        out[f"{name}_tercile_median_mm"] = round(
-            float(np.median(error_mm[masks[name]])), 3)
+        subset = error_mm[masks[name]]
+        out[f"{name}_tercile_median_mm"] = (
+            _round(np.nanmedian(subset)) if np.isfinite(subset).any() else None)
     return out
 
 
@@ -291,12 +335,20 @@ def distributed_flexion_recovery(directory: Path, subject: int) -> dict:
 
 
 # ------------------------------------------------------------------------------ the sweep
-def measure(directory: Path) -> dict[int, dict[str, np.ndarray]]:
-    """Per-frame error in mm for every mapped joint, per subject. The raw arrays."""
+def measure(directory: Path, reference: str = "smoothed") -> dict[int, dict[str, np.ndarray]]:
+    """Per-frame error in mm for every mapped joint, per subject. The raw arrays.
+
+    Under `--reference raw` a frame where the landmark did not triangulate carries NaN
+    rather than a number, and every statistic below is NaN-aware. The tilt terciles are
+    still computed from the SMOOTHED array: they are a frame CLASSIFIER, not a score, and
+    the classifier must be the same for every arm and every joint or the terciles stop
+    meaning one thing. It is byte-identical across the arms this instrument compares,
+    which the caller asserts.
+    """
 
     out: dict[int, dict[str, np.ndarray]] = {}
     for subject in (0, 1):
-        capture = capture_positions(directory, subject)
+        capture = capture_positions(directory, subject, reference)
         index, world = delivered_positions(directory, subject)
         rows: dict[str, np.ndarray] = {}
         for rig, landmark in PAIRS:
@@ -309,25 +361,36 @@ def measure(directory: Path) -> dict[int, dict[str, np.ndarray]]:
         rows["leg_root_midpoint_vs_hip_midpoint"] = 1000.0 * np.linalg.norm(
             0.5 * (world[:, index["LeftUpperLeg"]] + world[:, index["RightUpperLeg"]])
             - hip_mid, axis=1)
-        rows["_tilt_deg"] = tilt_degrees(capture)
+        rows["_tilt_deg"] = tilt_degrees(capture_positions(directory, subject, "smoothed"))
         out[subject] = rows
     return out
 
 
-def report(deliveries: dict[str, Path]) -> dict:
+def report(deliveries: dict[str, Path], reference_mode: str = "smoothed") -> dict:
     labels = list(deliveries)
-    arms = {label: measure(path) for label, path in deliveries.items()}
+    arms = {label: measure(path, reference_mode) for label, path in deliveries.items()}
     # SAME DENOMINATOR. Every arm must be scored against the same landmarks, or the
     # difference between two arms is not the delivery.
+    #
+    # WHICH ARRAY CARRIES THAT PROPERTY DEPENDS ON THE STEP. Up to D7b the change lived
+    # inside the converter and could not move a landmark, so the SMOOTHED array was
+    # identical across arms and was the reference. D8 repairs the capture between the raw
+    # triangulation and the smoothed array, so the smoothed array MOVES BY CONSTRUCTION
+    # and can no longer be the shared denominator; the RAW array is captured before the
+    # repair and takes its place. `--reference raw` is that mode, and it also stops the
+    # instrument scoring a D8 delivery against points D8 itself repaired.
     shared = {}
     for subject in (0, 1):
-        reference = capture_positions(deliveries[labels[0]], subject)
+        first = capture_positions(deliveries[labels[0]], subject, reference_mode)
         shared[f"subject_{subject:02d}"] = {
-            label: bool(np.array_equal(reference, capture_positions(path, subject)))
+            label: bool(np.array_equal(first,
+                                       capture_positions(path, subject, reference_mode),
+                                       equal_nan=True))
             for label, path in deliveries.items()}
     payload: dict = {
         "title": "delivered joints, from each GLB's own bytes, against the captured landmarks",
-        "reference": REFERENCE,
+        "reference_mode": reference_mode,
+        "reference": REFERENCE_TEXT[reference_mode],
         "blind_to": [
             "orientation -- a joint on its landmark can still be rotated about it",
             "the MESH bound to the skeleton (that is the silhouette's job)",
@@ -409,6 +472,13 @@ def main() -> int:
     parser.add_argument("--delivery", action="append", required=True,
                         metavar="LABEL=PATH", help="repeatable; order is preserved")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--reference", choices=sorted(REFERENCE_ARRAY), default="smoothed",
+                        help="which of the delivery's own landmark arrays to score "
+                             "against. `smoothed` is the historical default and its "
+                             "output is byte-identical to before this option existed. "
+                             "`raw` is D8's: the pre-fill, pre-solve, pre-smoothing "
+                             "points, NaNs intact, which is the one array a D8 build "
+                             "shares bit for bit with a D7b build.")
     args = parser.parse_args()
     deliveries: dict[str, Path] = {}
     for entry in args.delivery:
@@ -421,21 +491,25 @@ def main() -> int:
         if not resolved.exists():
             raise SystemExit(f"{resolved} does not exist")
         deliveries[label] = resolved
-    payload = report(deliveries)
+    payload = report(deliveries, args.reference)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    print(f"reference: {payload['reference_mode']}")
     for name, subject in payload["subjects"].items():
         print(f"\n{name}  frames {subject['frames']}  tilt median "
               f"{subject['tilt_deg']['median']} deg")
         header = "  ".join(f"{label:>10}" for label in deliveries)
         print(f"  {'joint':<34}{header}")
         for joint, row in subject["joints"].items():
-            cells = "  ".join(f"{row[label]['median_mm']:>10.1f}" for label in deliveries)
+            cells = "  ".join(
+                f"{(row[label].get('median_mm') if row[label].get('median_mm') is not None else float('nan')):>10.1f}"
+                for label in deliveries)
             print(f"  {joint:<34}{cells}")
         print(f"  {'-- bent tercile --':<34}")
         for joint, row in subject["joints"].items():
             cells = "  ".join(
-                f"{row[label]['bent_tercile_median_mm']:>10.1f}" for label in deliveries)
+                f"{(row[label].get('bent_tercile_median_mm') if row[label].get('bent_tercile_median_mm') is not None else float('nan')):>10.1f}"
+                for label in deliveries)
             print(f"  {joint:<34}{cells}")
         print(f"  trunk length floor: {json.dumps(subject['trunk_length_floor'])}")
     print(f"\nsame denominator: {payload['same_denominator']}")
