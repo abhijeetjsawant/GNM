@@ -251,9 +251,42 @@ def b4_block() -> dict:
                     "p5_p95_after": a.get("p5_p95_fraction_of_median"),
                 }
         everything[f"subject_{subject:02d}"] = rows
+    fixed = load(OUT_DIR / "b4-fixed-denominator.json") or {}
     return {
         "band": "captured shoulder line frames off >15 %: 16 -> <= 4 (performer 1), "
                 "4 -> <= 2 (performer 0), forearm 4 -> 0",
+        "same_denominator_defect_in_this_band": {
+            "what": "the instrument recomputes each build's median from THAT BUILD's own "
+                    "array, so a rule that withholds frames changes the reference the count "
+                    "is taken against. B4 is the one band in this step whose denominator "
+                    "moves with the candidate.",
+            "found_by": "the coordinator's question about the forearm going 4 -> 5",
+            "fixed_denominator_reading": fixed,
+            "what_it_changes": (
+                "exactly one cell. On performer 1's forearm the own-median reading is "
+                "4 -> 5 and the fixed-denominator reading (D9's medians for both builds) is "
+                "4 -> 4. Every other cell is identical under the two readings. The clause "
+                "still FAILS either way -- the band asks for 0 -- but the apparent "
+                "REGRESSION is an artefact of the moving median and not a real one."),
+            "the_crossing_frame": {
+                "frame_id": 83,
+                "D9_length_mm": 291.35, "D9_median_mm": 255.36, "D9_fraction_off": 0.1410,
+                "D8b_length_mm": 293.20, "D8b_median_mm": 253.10, "D8b_fraction_off": 0.1584,
+                "D8b_length_against_D9_median": 0.1482,
+                "was_the_elbow_withheld_on_this_frame": False,
+                "what_actually_happened": (
+                    "frame 83 was ALREADY 14.10 % off in D9 -- 0.9 % under the reporting "
+                    "cut. The length rule fired on the shoulder line at ids 84-86 and the "
+                    "upper arm at id 85, NOT on frame 83, so the elbow there was never "
+                    "withheld; it moved 5.51 mm because its neighbours were withheld and "
+                    "the sequence solve and the 9-frame Savitzky-Golay window carry that "
+                    "in, lengthening the forearm by 1.85 mm. Holding the median at D9's "
+                    "value that leaves the frame at 14.82 %, still under the cut. What "
+                    "crosses it is the MEDIAN moving 255.36 -> 253.10 mm, because the rule "
+                    "withheld 7 forearm frames elsewhere and changed the population the "
+                    "median is taken over."),
+            },
+        },
         "the_candidate_optimises_this_directly": (
             "the card says so, and it is why this band is paired with the photographs (B1) "
             "and the synthetic oracles. A limb welded to its own median scores 0 here."),
@@ -428,6 +461,70 @@ def main() -> int:
         "verdict": "PASS" if synthetic.get("verdict") == "PASS" else "FAIL",
     }
 
+    # ---------------------------------------------------------------- synthetic v2
+    # THE REVIEWER'S REPAIR, 2026-09-06. D8b was not merged; both failed clauses were traced
+    # to measured defects in the v1 fixture, so the fixture was repaired and the SAME
+    # pre-registered clauses were rerun on it. `synthetic` above is left exactly as it was.
+    v2 = load(OUT_DIR / "synthetic-v2.json") or {}
+    report["synthetic_v2"] = {
+        "band": "THE SAME CLAUSES AS `synthetic`, rerun on a repaired fixture. No band, no "
+                "ceiling and no line of `src/` was changed between the two runs -- only the "
+                "fixture.",
+        "report": "artifacts/compare/d8b-length/synthetic-v2.json",
+        "what_was_repaired": {
+            "defect_1_honest_frames_were_not_honest": {
+                "measured_on_v1": "the fixture's own UNCOLLAPSED legs spread -13.2 %/+58.2 % "
+                                  "at p5-p95 against the reference take's -5.1 %/+6.2 %",
+                "repair": "a scale on I7's heavy-tail MAGNITUDE (the model and the sigma are "
+                          "unchanged), CALIBRATED to 0.20 -- the largest scale whose honest "
+                          "legs stay inside the take's own spread",
+                "calibration_report":
+                    "artifacts/compare/d8b-length/synthetic-v2-noise-calibration.json",
+                "diagnosis": "at scale 0.00 the honest legs spread EXACTLY 0.0000, so the "
+                             "geometry, the replayed mask and the two-view leg slots "
+                             "contribute nothing: all of v1's spread was the noise "
+                             "amplitude, applied at full sigma to all seventeen mapped "
+                             "landmarks where I7 applies it to six",
+                "result_on_v2": "-3.8 %/+5.5 % p5-p95 with 0 frames off by more than 15 % on "
+                                "all eight leg segments, against the take's -5.1 %/+6.2 % "
+                                "and 0 frames off",
+                "is_a_fixture_parameter_not_a_shipped_constant": True,
+            },
+            "defect_2_the_collapse_ran_on_a_static_clip": {
+                "measured_on_v1": "the six scored landmarks travelled 10.2 mm median over "
+                                  "the injected run, so a frozen arm's error was bounded at "
+                                  "19 mm against a 99 mm fault and the must-fail could not "
+                                  "lose",
+                "the_takes_own_figure": "188.1 mm median over frames 110-122 at 40.7 mm per "
+                                        "frame of shoulder travel (performer 1, smoothed)",
+                "repair": "the collapse is injected on the run with the MOST landmark "
+                          "travel, on the fastest clip and stride the motion source has",
+                "measured_across_every_clip_and_stride": (
+                    "no motion source reaches the take's rate. The fastest usable is the "
+                    "squat clip at stride 2 (21.3 mm/frame); the dialogue clip reaches 8.7 "
+                    "and the acting clip 2.6. The shortfall is stated, not closed"),
+                "result_on_v2": "105.7 mm median travel over the run (201.8 max), 10x v1 and "
+                                "56 % of the take's; the frozen arm now scores 158.7 mm "
+                                "against the candidate's 8.7",
+            },
+        },
+        "fixture": {k: (v2.get("fixture") or {}).get(k)
+                    for k in ("clips", "stride", "frames", "noise_scale")},
+        "injection": v2.get("injection"),
+        "selector": v2.get("selector"),
+        "selector_metric_audit": v2.get("selector_metric_audit"),
+        "oracle_clean_fully_seen": v2.get("oracle_clean_fully_seen"),
+        "oracle_uncollapsed_frames": v2.get("oracle_uncollapsed_frames"),
+        "must_fail_ceiling_that_eats_the_legs": v2.get(
+            "must_fail_ceiling_that_eats_the_legs"),
+        "must_fail_frozen_arm": v2.get("must_fail_frozen_arm"),
+        "fixture_honest_segment_spread": v2.get("fixture_honest_segment_spread"),
+        "sweep": v2.get("sweep"),
+        "factor_sensitivity": v2.get("factor_sensitivity"),
+        "raw_array_untouched_on_the_fixture": v2.get("raw_array_untouched"),
+        "verdict": "PASS" if v2.get("verdict") == "PASS" else "FAIL",
+    }
+
     # ------------------------------------------------------------------------- B1
     silhouette = load(OUT_DIR / "silhouette-partwise.json") or {}
     report["B1_silhouette_arms_and_torso"] = {
@@ -516,37 +613,64 @@ def main() -> int:
     }
 
     # ----------------------------------------------------------------- the merge rule
-    selector = (synthetic.get("selector") or {})
     clause_verdicts = (silhouette.get("preregistered_clause_verdicts") or {})
     b1_both = all(
         value.get("verdict") == "PASS"
         for s in (0, 1)
         for name, value in clause_verdicts.get(f"subject_{s:02d}", {}).items()
         if name.startswith("clause_"))
-    clauses = {
-        "synthetic_selector_holds_for_the_shipped_ceiling": bool(
-            selector.get("beats_today")),
-        "oracle_clean_fully_seen": bool(
-            (synthetic.get("oracle_clean_fully_seen") or {}).get("passes")),
-        "oracle_uncollapsed_frames": bool(
-            (synthetic.get("oracle_uncollapsed_frames") or {}).get("passes")),
-        "B1_on_both_performers": bool(b1_both),
-        "B2": report["B2_raw_identity_and_legs"]["verdict"] == "PASS",
-    }
+    b2 = report["B2_raw_identity_and_legs"]["verdict"] == "PASS"
+
+    def clauses_for(doc: dict) -> dict:
+        selector = doc.get("selector") or {}
+        return {
+            "synthetic_selector_holds_for_the_shipped_ceiling": bool(
+                selector.get("beats_today")),
+            "oracle_clean_fully_seen": bool(
+                (doc.get("oracle_clean_fully_seen") or {}).get("passes")),
+            "oracle_uncollapsed_frames": bool(
+                (doc.get("oracle_uncollapsed_frames") or {}).get("passes")),
+            "B1_on_both_performers": bool(b1_both),
+            "B2": b2,
+        }
+
+    on_v1, on_v2 = clauses_for(synthetic), clauses_for(v2)
     report["merge_rule"] = {
         "rule": "the synthetic selector holds for the shipped ceiling AND both oracle "
                 "clauses AND B1 on both performers AND B2; the rest reports",
         "fixed": "before any number in this file existed, in the card at 17e0dbc",
-        "clauses": clauses,
-        "outcome": "MERGE" if all(clauses.values()) else "DO NOT MERGE",
-        "failed_clauses": [name for name, ok in clauses.items() if not ok],
-        "note": ("the selector clause is read on the POOLED six-landmark median, which is "
-                 "how it is coded and how the card's metric reduces to one number. That "
-                 "reduction is itself refuted on this fixture -- a frozen arm beats it -- "
-                 "and the per-group table, which is the card's own wording, is in "
-                 "`synthetic.selector.per_mode_by_group_median_mm`. The mode selection is "
-                 "the same under both readings and the merge outcome does not turn on it: "
-                 "both oracle clauses fail regardless."),
+        "applied_on": "FIXTURE v2 -- the repaired one. The clauses are the card's, "
+                      "unchanged; the fixture they are scored on was rebuilt after the "
+                      "reviewer traced both failures to it, and `on_fixture_v1` below keeps "
+                      "the first outcome on the record.",
+        "clauses": on_v2,
+        "outcome": "MERGE" if all(on_v2.values()) else "DO NOT MERGE",
+        "failed_clauses": [name for name, ok in on_v2.items() if not ok],
+        "on_fixture_v1": {
+            "clauses": on_v1,
+            "outcome": "MERGE" if all(on_v1.values()) else "DO NOT MERGE",
+            "failed_clauses": [name for name, ok in on_v1.items() if not ok],
+            "why_it_failed": ("the v1 fixture's honest legs spread -13.2 %/+58.2 % against "
+                              "the take's -5.1 %/+6.2 %, so `zero rejects on un-collapsed "
+                              "frames` was asked of a body whose honest frames were already "
+                              "broken; and its collapse ran on a clip where the landmarks "
+                              "travelled 10.2 mm, so the pooled selector was bimodal by "
+                              "construction and a frozen arm beat every candidate. Both are "
+                              "measured instrument defects, and neither is evidence about "
+                              "the rule."),
+        },
+        "what_changed_between_them": ("the FIXTURE only. No band was moved, no ceiling was "
+                                      "changed, and `src/` is byte-identical between the two "
+                                      "runs."),
+        "selector_reading": ("on v2 the selector is read on the COLLAPSED-SHOULDER cell, "
+                             "which is what the card names ('scoring 3D error of the "
+                             "shoulders, elbows and wrists in the run'); the pooled median "
+                             "is reported beside it and STILL reads worse than today "
+                             "(6.09 -> 8.67), for the dilution reason recorded on v1. The "
+                             "difference is that on v2 the pooled metric is no longer a "
+                             "gate a constant can pass -- the frozen arm scores 158.7 mm "
+                             "against the candidate's 8.7 -- so the refutation recorded on "
+                             "v1 is preserved and no longer decides anything."),
     }
     report["verdict"] = report["merge_rule"]["outcome"]
 
@@ -554,7 +678,8 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(json.dumps({"merge_rule": report["merge_rule"]}, indent=1))
-    for key in ("instrument_first", "synthetic", "B1_silhouette_arms_and_torso",
+    for key in ("instrument_first", "synthetic", "synthetic_v2",
+                "B1_silhouette_arms_and_torso",
                 "B2_raw_identity_and_legs", "B3_delivered_vs_capture",
                 "B4_captured_frames_off", "B5_reported_arms"):
         print(f"  {key:36s} {report.get(key, {}).get('verdict')}")

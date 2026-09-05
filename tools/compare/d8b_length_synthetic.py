@@ -97,8 +97,11 @@ if not str(Path(autoanim_gnm.__file__).resolve()).startswith(str(ROOT)):
         f"worktree ({ROOT}). Re-run with PYTHONPATH=$PWD/src.")
 
 import autoanim_gnm.commercial_multiview as cm  # noqa: E402
+import build_synthetic_truth_fixture as fx  # noqa: E402
 import d8_occlusion_synthetic as d8s  # noqa: E402
 import temporal  # noqa: E402
+import thorax_window_sweep as sweep  # noqa: E402
+from soma77_pose import SOMA77_TO_AUTOANIM  # noqa: E402
 
 OUT = ROOT / "artifacts/compare/d8b-length/synthetic.json"
 
@@ -119,6 +122,52 @@ CEILINGS = (0.05, 0.075, 0.10, 0.125, 0.15, 0.20, 0.25, 0.30)
 COLLAPSE_FACTOR = 0.5
 COLLAPSE_FRAMES = 12
 FACTOR_SENSITIVITY = (0.35, 0.5, 0.75)
+
+# ---------------------------------------------------------------------------- FIXTURE v2
+# THE REVIEWER'S REPAIR, 2026-09-06. D8b was not merged, and both failed clauses were traced
+# to defects in THIS fixture rather than to the rule. Neither number below is a shipped
+# constant, neither enters `src/`, and neither is a band: they are fixture parameters, and
+# each is set by a measurement stated beside it.
+#
+# DEFECT 1 -- the honest frames were not honest. On v1 the fixture's own uncollapsed legs
+# spread -13.2 %/+58.2 % at p5-p95 where the reference take's spread -5.1 %/+6.2 %, so
+# "zero rejects on un-collapsed frames" was being asked of a body whose honest triangulation
+# was already broken. The repair is a scale on the heavy-tail draw's MAGNITUDE -- I7's own
+# `sweep.heavy_tail_magnitude` and `sweep.NOISE_SIGMA_PX` are still the model and the sigma;
+# only the amplitude is scaled. The value is SET BY CALIBRATION, not chosen: `--calibrate`
+# sweeps it and picks the smallest scale whose honest legs reproduce the take's p5-p95
+# spread. Run it and read the number out of `noise_calibration` in the report.
+#
+# DEFECT 2 -- the collapse ran on a nearly static clip. On v1 the six scored landmarks
+# travelled 10.2 mm median over the injected run, so a frozen arm's error was bounded at
+# 19 mm against a 99 mm fault and the must-fail could not lose. The take's own figure on
+# frames 110-122 is 188.1 mm median (six landmarks, distance from the run's first frame) at
+# 40.7 mm/frame of shoulder travel. MEASURED ACROSS EVERY FULL-BODY CLIP AND EVERY USABLE
+# STRIDE, no motion source reaches that: the fastest is the squat clip at stride 2, 123.7 mm
+# median travel at 21.3 mm/frame. That is 12x v1 and 66 % of the take, and it is what v2
+# uses. The shortfall is stated rather than closed, because closing it would mean inventing
+# motion the fixture does not have.
+CLIPS_V2 = (fx.FULL_BODY_CLIPS[1], fx.FULL_BODY_CLIPS[0])   # squat first: it is injected
+STRIDE_V2 = 2
+COLLAPSE_FRAMES_V2 = 10
+# SET BY `--calibrate`, and the sweep is committed at
+# `artifacts/compare/d8b-length/synthetic-v2-noise-calibration.json`. At 0.20 the fixture's
+# own honest legs read -3.8 %/+5.5 % at p5-p95 with 0 frames off their median by more than
+# 15 %, inside the take's -5.1 %/+6.2 %; at 0.25 the p95 side reaches +6.9 % and two frames
+# cross. ORDER OF DISCOVERY, disclosed: 0.25 sat here as a placeholder while the calibration
+# mode was being written, and the sweep replaced it with the measured value.
+#
+# AND THE SWEEP DIAGNOSED v1's DEFECT EXACTLY. At scale 0.00 the honest legs spread
+# -0.0000 %/+0.0000 % -- the fixture's geometry, its replayed mask and its two-view leg
+# slots contribute NOTHING to the spread. Every bit of v1's -13.2 %/+58.2 % was the noise
+# amplitude: I7 applies this draw to six thorax joints and v1 applied it at full sigma to
+# all seventeen mapped landmarks. That is the whole of defect 1.
+NOISE_SCALE_V2 = 0.20
+NOISE_SCALES = (0.0, 0.1, 0.15, 0.2, 0.25, 0.35, 0.5, 0.75, 1.0)
+# The reference take's own honest-leg spread, measured by
+# `tools/compare/captured_limb_stability.py` on the shipped D9 delivery's RAW array. The
+# calibration target, and a real-take measurement that selects no shipped constant.
+TAKE_LEG_SPREAD = (-0.051, 0.062)
 
 MODES = ("demote", "reject", "best_ray")
 MODE_LABEL = {"demote": "(a) demote, rays kept",
@@ -244,6 +293,157 @@ def length_rejects_outside(diagnostics, frames: list[int], subject: int) -> dict
     return out
 
 
+# --------------------------------------------------------------------------- fixture v2
+def build_fixture_v2():
+    """I7's own builders, on the clips and stride that carry the most motion.
+
+    `d8_occlusion_synthetic.build_fixture` is not edited and not re-implemented: the same
+    `fx.build_take`, `temporal.truth19_from`, `temporal.working_cameras`,
+    `temporal.build_records` and `temporal.check_person_order` are called, with different
+    clips and a different stride. The performers are placed where the real window's
+    performers stand, exactly as v1 places them.
+    """
+
+    ground = d8s.window_ground()
+    takes = [fx.build_take(clip, None, ground[index % len(ground)], STRIDE_V2)
+             for index, clip in enumerate(CLIPS_V2)]
+    length = min(len(take) for take in takes)
+    soma = np.stack([take[:length] for take in takes])
+    truth19 = temporal.truth19_from(soma, SOMA77_TO_AUTOANIM)
+    names = tuple(SOMA77_TO_AUTOANIM)
+    cameras = temporal.working_cameras()
+    records = temporal.build_records(cameras, "fk_synthetic", soma)
+    temporal.check_person_order(records, 2)
+    return cameras, records, truth19, names, ground, length
+
+
+def scaled_heavy_tail(cameras, frames: int, names, seed: int, scale: float):
+    """I7's heavy-tail draw with its MAGNITUDE scaled. The model and sigma are unchanged.
+
+    `sweep.heavy_tail_magnitude` and `sweep.NOISE_SIGMA_PX` are imported and called, so this
+    is the same mixture with the same tail; `scale` multiplies the drawn magnitude and
+    nothing else. It exists because v1's honest frames were not honest (see the block on
+    NOISE_SCALE_V2) and the scale is CALIBRATED against the reference take's own leg spread.
+    """
+
+    rng = np.random.default_rng(seed)
+    displacement: dict = {}
+    magnitudes: list[float] = []
+    for subject in (0, 1):
+        for camera in range(len(cameras)):
+            for name in names:
+                joint = cm.JOINT_INDEX[name]
+                for frame in range(frames):
+                    angle = rng.uniform(0.0, 2.0 * np.pi)
+                    magnitude = float(scale) * sweep.heavy_tail_magnitude(
+                        rng, sweep.NOISE_SIGMA_PX)
+                    displacement[(subject, frame, camera, joint)] = (
+                        float(magnitude * np.cos(angle)), float(magnitude * np.sin(angle)))
+                    magnitudes.append(magnitude)
+    return displacement, {
+        "model": "heavy_tail (tools/head/thorax_window_sweep.py), MAGNITUDE SCALED",
+        "sigma_px1280": sweep.NOISE_SIGMA_PX,
+        "scale": float(scale),
+        "sigma_provenance": "tools/head/thorax_window_sweep.py NOISE_SIGMA_PX -- two "
+                            "independent readings of OUR OWN detector that agree at 3.13 "
+                            "and 3.26 px. Never MAMMA's residual.",
+        "why_scaled": ("v1 applied this draw at full amplitude to all seventeen mapped "
+                       "landmarks, where I7 applies it to six, and the fixture's own "
+                       "UNCOLLAPSED legs then spread -13.2 %/+58.2 % at p5-p95 against the "
+                       "reference take's -5.1 %/+6.2 %. A clause about honest motion cannot "
+                       "be scored on a body whose honest frames are broken. The scale is "
+                       "calibrated, not chosen."),
+        "landmarks_noised": list(names),
+        "observations_displaced": len(displacement),
+        "displacement_median_px1280": round(float(np.median(magnitudes)), 3),
+        "displacement_p99_px1280": round(float(np.percentile(magnitudes, 99)), 3),
+    }
+
+
+def honest_leg_spread(raw: np.ndarray) -> dict:
+    """The fixture's own uncollapsed segment lengths against their own take medians.
+
+    The same statistic `tools/compare/captured_limb_stability.py` reports on the reference
+    take, so the two are directly comparable and the calibration target is a real-take
+    measurement rather than a guess.
+    """
+
+    out: dict = {}
+    worst_low, worst_high, off_total = 0.0, 0.0, 0
+    for name, parent, child, _charged in cm.SEGMENT_LENGTH_RULES:
+        rows = {}
+        for slot in range(raw.shape[0]):
+            a = raw[slot, :, cm.JOINT_INDEX[parent]]
+            b = raw[slot, :, cm.JOINT_INDEX[child]]
+            usable = np.isfinite(a).all(axis=1) & np.isfinite(b).all(axis=1)
+            if int(usable.sum()) < 10:
+                rows[f"subject_{slot:02d}"] = {"frames_measured": int(usable.sum())}
+                continue
+            lengths = np.linalg.norm(a[usable] - b[usable], axis=1) * 1000.0
+            median = float(np.median(lengths))
+            low = float(np.percentile(lengths, 5) / median - 1.0)
+            high = float(np.percentile(lengths, 95) / median - 1.0)
+            off = int((np.abs(lengths - median) / median > 0.15).sum())
+            rows[f"subject_{slot:02d}"] = {
+                "frames_measured": int(usable.sum()),
+                "median_mm": round(median, 2),
+                "p5_p95_fraction_of_median": [round(low, 4), round(high, 4)],
+                "frames_off_median_by_more_than_15pct": off,
+                "worst_fraction_off": round(
+                    float(np.max(np.abs(lengths - median) / median)), 4)}
+            if child in {"left_knee", "right_knee", "left_ankle", "right_ankle"}:
+                worst_low, worst_high = min(worst_low, low), max(worst_high, high)
+                off_total += off
+        out[name] = rows
+    return {"per_segment": out,
+            "legs_worst_p5_fraction": round(worst_low, 4),
+            "legs_worst_p95_fraction": round(worst_high, 4),
+            "legs_frames_off_by_more_than_15pct": off_total}
+
+
+def collapse_run_v2(keep: np.ndarray, truth19: np.ndarray, person: int, length: int):
+    """The run with the MOST landmark travel among those the conditioning gate leaves alone.
+
+    v1 took the middle of the longest well-supported run and got a nearly static one. This
+    scores every eligible window by the quantity the frozen-arm control's strength actually
+    depends on -- how far the six landmarks move from the window's first frame -- and takes
+    the best. Eligibility is unchanged: both shoulders must keep three or more supporting
+    views on every frame of the window, or D8's conditioning gate would eat the collapse
+    before the length rule saw it.
+    """
+
+    columns = [cm.JOINT_INDEX[name] for name in COLLAPSED]
+    support = keep[person][:, :, columns].sum(axis=1)
+    good = (support >= 3).all(axis=1)
+    scored = [cm.JOINT_INDEX[name] for name in SCORED_LANDMARKS]
+    best = (-1.0, None, None)
+    for start in range(0, len(good) - length + 1):
+        if not good[start:start + length].all():
+            continue
+        travel = []
+        for joint in scored:
+            anchor = truth19[person, start, joint]
+            for frame in range(start, start + length):
+                point = truth19[person, frame, joint]
+                if np.isfinite(anchor).all() and np.isfinite(point).all():
+                    travel.append(float(np.linalg.norm(point - anchor)) * 1000.0)
+        if travel and float(np.median(travel)) > best[0]:
+            best = (float(np.median(travel)), start, float(np.max(travel)))
+    if best[1] is None:
+        raise SystemExit(
+            f"no window of {length} frames keeps three or more views on both shoulders. "
+            "Refusing to inject a collapse on cells D8's conditioning gate would eat.")
+    return list(range(best[1], best[1] + length)), {
+        "travel_from_the_runs_first_frame_median_mm": round(best[0], 2),
+        "travel_from_the_runs_first_frame_max_mm": round(best[2], 2),
+        "the_takes_own_figure_mm": 188.1,
+        "v1_figure_mm": 10.21,
+        "what": "distance from the window's first frame to each frame, over the six scored "
+                "landmarks, from TRUTH. It is the bound on a frozen arm's error, so it is "
+                "the number that says whether the frozen must-fail can lose at all",
+    }
+
+
 def fired_cell_truth_error(raw: np.ndarray, truth19: np.ndarray, mapping,
                            diagnostics, exclude: dict[int, set[int]]) -> dict:
     """Were the cells this rule FIRED on actually bad, or was the rule over-firing?
@@ -313,14 +513,93 @@ def fired_cell_truth_error(raw: np.ndarray, truth19: np.ndarray, mapping,
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--fixture", choices=("v1", "v2"), default="v1",
+                        help="v1 is the fixture this step first ran on and its committed "
+                             "report is left as it is. v2 is the REVIEWER'S REPAIR: the "
+                             "honest-frame noise calibrated against the reference take's "
+                             "own leg spread, and the collapse injected on the run with the "
+                             "most landmark travel the motion source can supply.")
+    parser.add_argument("--calibrate", action="store_true",
+                        help="sweep the fixture's noise scale, report the honest leg spread "
+                             "at each, and select the one that reproduces the take's. "
+                             "Writes the sweep and exits without running the selector.")
+    parser.add_argument("--noise-scale", type=float, default=None,
+                        help="override the fixture noise scale (v2 only)")
     args = parser.parse_args()
+    version = args.fixture
 
-    cameras, records, truth19, names, ground, frames = d8s.build_fixture()
+    if version == "v2":
+        cameras, records, truth19, names, ground, frames = build_fixture_v2()
+        injected_person, collapse_frames = 0, COLLAPSE_FRAMES_V2
+        clips, stride = list(CLIPS_V2), STRIDE_V2
+    else:
+        cameras, records, truth19, names, ground, frames = d8s.build_fixture()
+        injected_person, collapse_frames = 1, COLLAPSE_FRAMES
+        clips, stride = list(d8s.CLIPS), d8s.STRIDE
     seen = d8s.real_seen()
     keep = temporal.replayed_keep(seen, frames, names, offset=0)
     offenders = temporal.mask_is_runnable(keep, names)
-    noise_displacement, noise = d8s.heavy_tail_displacements(
-        cameras, frames, names, d8s.NOISE_SEED)
+
+    # ------------------------------------------------------------- the noise calibration
+    scale = (args.noise_scale if args.noise_scale is not None
+             else (NOISE_SCALE_V2 if version == "v2" else 1.0))
+    if args.calibrate:
+        rows = []
+        for candidate in NOISE_SCALES:
+            displacement, _ = scaled_heavy_tail(cameras, frames, names, d8s.NOISE_SEED,
+                                                candidate)
+            masked_clean = temporal.apply_keep_mask(
+                temporal.apply_displacements(records, displacement), keep)
+            _positions, raw, _diag = d8s.run(
+                cameras, masked_clean, segment_length_ceiling_fraction=None)
+            spread = honest_leg_spread(raw)
+            rows.append({"scale": candidate,
+                         "legs_worst_p5_fraction": spread["legs_worst_p5_fraction"],
+                         "legs_worst_p95_fraction": spread["legs_worst_p95_fraction"],
+                         "legs_frames_off_by_more_than_15pct": spread[
+                             "legs_frames_off_by_more_than_15pct"],
+                         "per_segment": spread["per_segment"]})
+            print(f"  scale {candidate:5.2f}: legs p5/p95 "
+                  f"{rows[-1]['legs_worst_p5_fraction']:+.4f}/"
+                  f"{rows[-1]['legs_worst_p95_fraction']:+.4f}  "
+                  f"frames off {rows[-1]['legs_frames_off_by_more_than_15pct']}")
+        # The LARGEST scale whose honest legs stay inside the take's own spread: the most
+        # noise the fixture may carry while its honest frames are as honest as the take's.
+        # Largest rather than smallest, because a quieter fixture is an easier one and the
+        # rule should be tested against as much honest noise as the take actually has.
+        inside = [row for row in rows
+                  if row["legs_worst_p5_fraction"] >= TAKE_LEG_SPREAD[0]
+                  and row["legs_worst_p95_fraction"] <= TAKE_LEG_SPREAD[1]]
+        selected = max((row["scale"] for row in inside), default=None)
+        payload = {
+            "what": "the fixture's own UNCOLLAPSED segment lengths against their own take "
+                    "medians, at each candidate noise scale -- the same statistic "
+                    "captured_limb_stability.py reports on the reference take",
+            "target": {"reference_take_leg_p5_p95": list(TAKE_LEG_SPREAD),
+                       "source": "artifacts/compare/d8b-length/limb-stability-d9.json, the "
+                                 "shipped D9 delivery's RAW array"},
+            "rule": "the LARGEST scale whose honest legs stay inside the take's own p5-p95 "
+                    "spread: the most honest noise the fixture may carry while still being "
+                    "as honest as the take. A quieter fixture is an easier one",
+            "fixture": version, "clips": clips, "stride": stride, "frames": frames,
+            "candidates": rows,
+            "selected_scale": selected,
+            "in_src": False,
+            "note": "a FIXTURE parameter. It is not in `src/`, it is not a band, and it "
+                    "selects no shipped constant.",
+        }
+        out = args.out if args.out.is_absolute() else ROOT / args.out
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+        print(f"\nselected noise scale: {selected}\nwrote {out}")
+        return 0 if selected is not None else 1
+
+    if version == "v2":
+        noise_displacement, noise = scaled_heavy_tail(
+            cameras, frames, names, d8s.NOISE_SEED, scale)
+    else:
+        noise_displacement, noise = d8s.heavy_tail_displacements(
+            cameras, frames, names, d8s.NOISE_SEED)
 
     # Which synthetic performer to break, in the FIXTURE's own person order. The pipeline's
     # association decides which output slot that body ends up in, and it is not necessarily
@@ -328,8 +607,12 @@ def main() -> int:
     # diagnostic row and every control is indexed by OUR slot from that point on. Scoring
     # the injected cells on the wrong slot would measure the performer nobody broke, and it
     # would look like a small honest error rather than a bug.
-    injected_person = 1
-    run_frames = collapse_run(keep, injected_person, COLLAPSE_FRAMES)
+    if version == "v2":
+        run_frames, travel = collapse_run_v2(keep, truth19, injected_person,
+                                             collapse_frames)
+    else:
+        run_frames = collapse_run(keep, injected_person, collapse_frames)
+        travel = None
 
     noisy = temporal.apply_displacements(records, noise_displacement)
     clean_masked = temporal.apply_keep_mask(noisy, keep)
@@ -340,7 +623,9 @@ def main() -> int:
     collapsed_masked = temporal.apply_keep_mask(collapsed_records, keep)
 
     report: dict = {
-        "title": "D8b selector -- the segment-length reject against synthetic truth",
+        "title": ("D8b selector -- the segment-length reject against synthetic truth"
+                  + (" (FIXTURE v2: the reviewer's repair)" if version == "v2" else "")),
+        "fixture_version": version,
         "selects": ["the MODE: (a) demote with rays kept, (b) reject the rays, "
                     "(c) keep the best ray"],
         "confirms_but_does_not_select": {
@@ -355,9 +640,10 @@ def main() -> int:
             "wrapped": "tools/compare/d8_occlusion_synthetic.py -- its build_fixture, "
                        "real_seen and heavy_tail_displacements are imported and called; "
                        "that file is not edited",
-            "clips": list(d8s.CLIPS),
-            "stride": d8s.STRIDE,
+            "clips": clips,
+            "stride": stride,
             "frames": frames,
+            "noise_scale": scale,
             "placement_xy_m": [[round(float(v), 3) for v in row] for row in ground],
             "keep_mask": "temporal.replayed_keep over temporal.real_run_seen_mask",
             "mask_offenders": offenders,
@@ -382,10 +668,13 @@ def main() -> int:
             "factor": COLLAPSE_FACTOR,
             "frames": run_frames,
             "frame_count": len(run_frames),
-            "why_these_frames": "the longest run in which BOTH shoulders keep three or "
-                                "more supporting views under the replayed mask. A collapse "
-                                "on a two-view slot would be demoted by D8's conditioning "
-                                "gate before the length rule saw it",
+            "why_these_frames": (
+                "the run with the MOST landmark travel among those in which both shoulders "
+                "keep three or more supporting views under the replayed mask" if travel
+                else "the longest run in which BOTH shoulders keep three or more supporting "
+                     "views under the replayed mask") + ". A collapse on a two-view slot "
+                "would be demoted by D8's conditioning gate before the length rule saw it",
+            "landmark_travel_over_the_run": travel,
             "the_other_performer_is_a_control": "the other body is not injected; a length "
                                                 "reject on its shoulders is a false fire",
         },
@@ -502,6 +791,19 @@ def main() -> int:
     best_mode = min(MODES, key=lambda m: at_shipped[m].get("median_mm", 1e9))
     best_on_shoulders = min(
         MODES, key=lambda m: at_shipped[m]["shoulders"].get("median_mm", 1e9))
+    # THE CARD NAMES THE COLLAPSED-SHOULDER CELL, and on v2 that is what the selector reads.
+    # On v1 the clause was read on the pooled median, which is how it was coded and how it
+    # is recorded; the pooled figure is reported beside it here and the metric refutation
+    # that condemned it is kept exactly as it was written.
+    if version == "v2":
+        selector_mode = best_on_shoulders
+        selector_beats_today = bool(
+            at_shipped[best_on_shoulders]["shoulders"].get("median_mm", 1e9)
+            < today_row["shoulders"].get("median_mm", 0.0))
+    else:
+        selector_mode = best_mode
+        selector_beats_today = bool(at_shipped[best_mode].get("median_mm", 1e9)
+                                    < today_row.get("median_mm", 0.0))
     report["selector"] = {
         "rule": "lowest median 3D error on the injected cells at the SHIPPED ceiling, with "
                 "the paired margins beside it on identical draws",
@@ -517,11 +819,19 @@ def main() -> int:
             "injected; the elbows and wrists move only as far as the solve carries the "
             "fault. The pooled figure is the card's metric and selects; the per-group "
             "figures are beside it so a pooled tie cannot hide a group-level difference"),
-        "selected_mode": best_mode,
+        "selected_mode": selector_mode,
+        "selected_mode_on_the_pooled_median": best_mode,
         "selected_mode_on_the_shoulders_alone": best_on_shoulders,
         "the_two_selections_agree": bool(best_mode == best_on_shoulders),
-        "beats_today": bool(at_shipped[best_mode].get("median_mm", 1e9)
-                            < today_row.get("median_mm", 0.0)),
+        "scored_on": ("the COLLAPSED-SHOULDER cell, which is what the card names; the "
+                      "pooled figure is reported beside it" if version == "v2"
+                      else "the POOLED six-landmark median, as coded"),
+        "beats_today": selector_beats_today,
+        "beats_today_on_the_pooled_median": bool(
+            at_shipped[best_mode].get("median_mm", 1e9) < today_row.get("median_mm", 0.0)),
+        "beats_today_on_the_collapsed_shoulders": bool(
+            at_shipped[best_on_shoulders]["shoulders"].get("median_mm", 1e9)
+            < today_row["shoulders"].get("median_mm", 0.0)),
         "paired_margins": {
             "method": "temporal.block_bootstrap_pair -- I7's own moving-block bootstrap, "
                       "both arms resampled on IDENTICAL frame blocks so the pairing "
@@ -565,7 +875,7 @@ def main() -> int:
         cameras, clean, segment_length_ceiling_fraction=None)
     oracle_candidate, oracle_raw_candidate, oracle_diag = d8s.run(
         cameras, clean, segment_length_ceiling_fraction=shipped,
-        segment_length_mode=best_mode)
+        segment_length_mode=selector_mode)
     counts = repair_rows(oracle_diag)
     report["oracle_clean_fully_seen"] = {
         "what": "every camera sees every landmark on every frame, no noise, no collapse. "
@@ -583,7 +893,7 @@ def main() -> int:
                            and block["raw_bit_identical"])
 
     # ------------------------------------- oracle 2: the collapsed clip's honest frames
-    outside = at_shipped[best_mode]["length_rejects_outside_the_injected_run"]
+    outside = at_shipped[selector_mode]["length_rejects_outside_the_injected_run"]
     outside_run = {subject: set(run_frames)}
     _p, oracle2_raw, oracle2_diag = d8s.run(
         cameras, collapsed_masked, segment_length_ceiling_fraction=shipped,
@@ -592,7 +902,7 @@ def main() -> int:
         "what": "on the SAME collapsed clip, the frames outside the injected run must draw "
                 "zero length rejects -- a ceiling that fires on honest motion is a smoother "
                 "wearing a reject's clothes",
-        "mode": best_mode,
+        "mode": selector_mode,
         "ceiling_fraction": shipped,
         "rejects_outside_the_run": outside,
         "run_frames": run_frames,
@@ -642,7 +952,7 @@ def main() -> int:
 
     # ------------------------------------------------ must-fail 2: the whole-take hold
     candidate_positions = None
-    for row_mode, row_ceiling in ((best_mode, shipped),):
+    for row_mode, row_ceiling in ((selector_mode, shipped),):
         candidate_positions, _raw, _diag = d8s.run(
             cameras, collapsed_masked, segment_length_ceiling_fraction=row_ceiling,
             segment_length_mode=row_mode)
@@ -665,7 +975,7 @@ def main() -> int:
         "what": "every arm landmark held at its own first frame for the whole take -- the "
                 "degenerate any hold-based recovery must never become",
         "score": score(frozen),
-        "shipped_score": at_shipped[best_mode],
+        "shipped_score": at_shipped[selector_mode],
         "how_far_the_landmarks_actually_travel_over_the_run_mm": {
             "median": round(float(np.median(travel)), 2) if travel else None,
             "max": round(float(np.max(travel)), 2) if travel else None,
@@ -676,10 +986,10 @@ def main() -> int:
     }
     report["must_fail_frozen_arm"]["fails_as_required"] = bool(
         report["must_fail_frozen_arm"]["score"].get("median_mm", 0.0)
-        > at_shipped[best_mode].get("median_mm", 1e9))
+        > at_shipped[selector_mode].get("median_mm", 1e9))
     report["must_fail_frozen_arm"]["fails_as_required_on_the_shoulders"] = bool(
         report["must_fail_frozen_arm"]["score"]["shoulders"].get("median_mm", 0.0)
-        > at_shipped[best_mode]["shoulders"].get("median_mm", 1e9))
+        > at_shipped[selector_mode]["shoulders"].get("median_mm", 1e9))
 
     # ------------------------------------------------- what the pooled metric is worth
     # Written as its own block because the standing rule is not a matter of taste: NO GATE A
@@ -694,7 +1004,7 @@ def main() -> int:
                 "every cell it is made of improves or holds",
         "frozen_arm_pooled_median_mm": report["must_fail_frozen_arm"]["score"].get(
             "median_mm"),
-        "candidate_pooled_median_mm": at_shipped[best_mode].get("median_mm"),
+        "candidate_pooled_median_mm": at_shipped[selector_mode].get("median_mm"),
         "today_pooled_median_mm": today_row.get("median_mm"),
         "the_pooled_metric_is_a_gate_a_constant_can_pass": not report[
             "must_fail_frozen_arm"]["fails_as_required"],
@@ -707,6 +1017,7 @@ def main() -> int:
             **{mode: at_shipped[mode]["shoulders"].get("median_mm") for mode in MODES},
             "frozen": report["must_fail_frozen_arm"]["score"]["shoulders"].get("median_mm"),
         },
+        "which_reading_the_selector_used": report["selector"]["scored_on"],
     }
 
     # ------------------------------------------------------- the factor's sensitivity

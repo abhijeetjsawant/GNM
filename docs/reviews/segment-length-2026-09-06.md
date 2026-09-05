@@ -7,10 +7,14 @@ first), `d8b_length_synthetic.py`, `d8b_length_delivery.py`, `d8b_length_silhoue
 Tests: `tests/test_segment_length_reject.py` (new; no existing test edited).
 Every instrument's full output is in `artifacts/compare/d8b-length/logs/`.
 
-**Merge rule's mechanical outcome: DO NOT MERGE. See §6.** Two of its five clauses fail,
-and both failures are on the synthetic fixture rather than on the delivery. §4 and §7.1 say
-why, with the measurements that distinguish "the rule is wrong" from "the fixture cannot
-host this band" — and the second is what the numbers say.
+**Merge rule's mechanical outcome: DO NOT MERGE on the fixture this step first ran on
+(v1); MERGE on the repaired fixture (v2). Both are on the record; see §6.** The reviewer
+did not merge on an override: he read §4 and §7.1, agreed that both failed clauses were
+measured defects in the instrument rather than evidence about the rule, and sent the
+fixture back to be repaired and the SAME pre-registered clauses rerun on it. §8 is that
+repair — what was wrong, how each defect was measured, what was changed, and the reruns.
+**No band was moved, no ceiling was changed, and `src/` is byte-identical between the two
+runs.**
 
 ---
 
@@ -276,17 +280,17 @@ arrays — the src change is exactly inert when off.
 | band | what it asked | measured | verdict |
 |---|---|---|---|
 | **instrument first** | reproduce the card's figures before any src change | **9 of 10** clauses, first run; the miss is the card's 16 against a measured 18, contradicted by D8's own committed review | **FAIL as coded**, §2 |
-| **synthetic selector** | a candidate beats today's code | **demote wins among the three** under both readings; on the collapsed shoulders **96.4 → 30.0 mm**. On the POOLED median no candidate beats today (20.3 → 21.7) and a frozen arm beats them all — that metric is refuted | **FAIL as coded**, §4.2 |
-| **oracle 1: clean input** | zero rejects, bit-identical | 0 rejects; smoothed AND raw bit-identical | **PASS** |
-| **oracle 2: honest frames** | zero rejects outside the injected run | **73 rejects**; the fired cells are 1.41× worse than the honest ones against truth | **FAIL**, §4.3 |
-| **must-fail: legs** | any leg reject on the clean fixture = FAIL | **14** at the shipped ceiling; **no swept ceiling gives 0** (2 at 0.30) | **FAIL**, §4.3 |
-| **must-fail: frozen arm** | a whole-take hold must score worse | 16.4 mm pooled / 18.5 on the shoulders, against the candidate's 21.7 / 30.0 — the control WINS, because the fixture's arms travel only 10.2 mm over the run | **UNINFORMATIVE**, §4.2 |
+| **synthetic selector** | a candidate beats today's code | **v1:** demote wins among the three under both readings; on the collapsed shoulders 96.4 → 30.0 mm. On the POOLED median no candidate beats today (20.3 → 21.7) and a frozen arm beats them all — that metric is refuted. **v2:** on the collapsed-shoulder cell the card names, **114.2 → 8.5 mm** | **v1 FAIL as coded** (§4.2) · **v2 PASS** (§8.3) |
+| **oracle 1: clean input** | zero rejects, bit-identical | 0 rejects; smoothed AND raw bit-identical, on both fixtures | **PASS on both** |
+| **oracle 2: honest frames** | zero rejects outside the injected run | **v1: 73 rejects** (the fired cells 1.41× worse than the honest ones against truth). **v2: 0 rejects**, both performers | **v1 FAIL** (§4.3) · **v2 PASS** (§8.3) |
+| **must-fail: legs** | any leg reject on the clean fixture = FAIL | **v1: 14** at the shipped ceiling, no swept ceiling giving 0. **v2: 0** at the shipped ceiling, with 0.05 and 0.075 still firing — the degenerate is still demonstrated | **v1 FAIL** (§4.3) · **v2 PASS** (§8.3) |
+| **must-fail: frozen arm** | a whole-take hold must score worse | **v1:** 16.4 mm pooled / 18.5 on the shoulders against the candidate's 21.7 / 30.0 — the control WINS, because the fixture's arms travel only 10.2 mm over the run. **v2:** **158.7 mm** against the candidate's 8.7 | **v1 UNINFORMATIVE** (§4.2) · **v2 FAILS as required** (§8.3) |
 | **B1 photographs, arms AND torso, both cuts** | not worse on either performer, CI upper bound ≥ 0 | 8 of 8 cells PASS. p0 arms +0.00006 / +0.00009, torso +0.00109 / −0.00010; p1 arms −0.00013 / −0.00193, torso +0.00030 / −0.00050 | **PASS on both** |
 | **B1 prediction** | a rise predicted on performer 1's window | arms **−0.0019** and torso **−0.0005**, both point estimates DOWN, both intervals spanning zero | **REFUTED**, §7.3 |
 | **B2 raw array** | byte-identical between the D9 and D8b builds | **identical on both performers**; observations identical; smoothed differs, as it must | **PASS** |
 | **B2 legs (reported)** | leg rejects, predicted 0 | **NOT 0** — performer 1 `right_knee` 1, `right_ankle` 1; performer 0 none. Both are CORRECT fires: the raw right thigh reads 325 mm against a 406 median and the raw right shin 496 against 404 | **prediction REFUTED**, §7.2 |
 | **B3 placement vs RAW** | delivered hands and elbows against the raw finite points | every joint moves by ≤ 1.5 mm at the median. p1 `RightUpperArm` **−0.90 mm** [−0.98, −0.40] and `LeftUpperArm` −0.58 mm; `LeftHand` +0.80 mm. p0 `LeftHand` −0.15 mm | **REPORTED**, and biased against the repair by construction, §7.5 |
-| **B4 captured frames off** | p1 shoulder 16 → ≤ 4; p0 4 → ≤ 2; forearm 4 → 0 | p1 shoulder **18 → 0**; p0 **4 → 1**; p1 forearm **4 → 5** | **2 of 3 PASS, forearm FAILS**, §7.4 |
+| **B4 captured frames off** | p1 shoulder 16 → ≤ 4; p0 4 → ≤ 2; forearm 4 → 0 | p1 shoulder **18 → 0**; p0 **4 → 1**; p1 forearm **4 → 5** on its own median and **4 → 4** on a fixed one | **2 of 3 PASS, forearm FAILS either way**, §7.4 |
 | **B5 MAMMA, reported** | predicted closer on the shoulders and elbows | performer 1: left shoulder **43.7 → 41.6**, left elbow **60.2 → 57.3**, left wrist **29.1 → 26.7**, right wrist 27.5 → 26.4. Performer 0 unchanged to 0.2 mm | **prediction HELD** |
 | **B5 D3 closure** | the delivered GLB agrees with FK of the track it carries, ≤ 1e-6 m | D8b **4.55e-7 / 5.08e-7 m**; D9 4.86e-7 / 4.73e-7 | **PASS** |
 | **B5 same denominator** | expected to report CHANGED | smoothed landmarks changed on both performers | **CHANGED as expected** |
@@ -333,7 +337,20 @@ arm therefore belongs to the src change and to nothing else. **Nothing was writt
 | B1 on both performers | **yes** — 8 of 8 cells, CI upper bound ≥ 0 |
 | B2, the raw array byte-identical | **yes** |
 
-**Outcome: DO NOT MERGE.** No band was moved to change it.
+**Outcome on the v1 fixture: DO NOT MERGE.** No band was moved to change it.
+
+### The same rule, on the repaired fixture (§8)
+
+| clause | v1 | v2 |
+|---|---|---|
+| the synthetic selector holds for the shipped ceiling | **no** | **yes** — 114.2 → 8.5 mm on the collapsed-shoulder cell |
+| oracle 1, clean fully-seen input | yes | yes |
+| oracle 2, the collapsed clip's honest frames | **no** — 73 rejects | **yes** — 0, both performers |
+| B1 on both performers | yes | yes (unchanged; it does not read the fixture) |
+| B2, the raw array byte-identical | yes | yes (unchanged) |
+
+**Outcome on the v2 fixture: MERGE.** The clauses are the card's, unchanged. What changed
+between the two rows is the fixture and nothing else.
 
 ### What the failures are and are not
 
@@ -412,13 +429,38 @@ for the step, and it is not evidence against it.
 ### 7.4 The forearm gets worse, and that is a real cost
 
 B4's third clause asked for performer 1's forearm to go from 4 frames off to 0. It goes to
-**5**. The mechanism is visible in the diagnostics: the rule withheld his `left_wrist` on 7
-frames (the forearm segment fired) and his `left_elbow` on 7 (the upper arm fired), and the
-sequence solve then re-placed both from the rays plus limb length and continuity. On the
-shoulder line that recovery is unambiguously right — 18 frames off becomes 0. On the forearm
-it lands slightly outside the ±15 % band on one more frame than before. The step trades a
-shoulder line that was collapsing by two thirds for a forearm one frame worse, and the trade
-is stated rather than averaged away.
+**5** — and the coordinator asked which frame, and whether a demoted elbow recovered to a
+place that changed the forearm length. Both are now answered, and the answer is that **the
+extra frame is an artefact of the band's own denominator.**
+
+**The frame is id 83.** D9's off-frames are ids 84, 85, 86, 87; D8b's are 83, 84, 85, 86, 87.
+
+**The elbow on frame 83 was never withheld.** The length rule fired on performer 1's shoulder
+line at ids 84–86 and on his upper arm at id 85; frame 83 drew nothing. The elbow there moved
+**5.51 mm** anyway, because its neighbours were withheld and the sequence solve and the
+9-frame Savitzky–Golay window carry that in. The forearm lengthened by 1.85 mm, 291.35 →
+293.20 mm.
+
+**What crossed the line is the median, not the elbow.** Frame 83 was already **14.10 %** off
+in D9 — 0.9 % under the reporting cut. The rule withheld 7 forearm frames elsewhere in the
+take, which changed the population the instrument's median is computed over, and the median
+fell 255.36 → 253.10 mm. Decomposed on the two moving parts:
+
+| | against D9's median (255.36) | against D8b's own median (253.10) |
+|---|---|---|
+| D9's length, 291.35 mm | 14.10 % — under | 15.11 % — **over** |
+| D8b's length, 293.20 mm | 14.82 % — under | 15.84 % — **over** |
+
+The median's 2.26 mm move is sufficient on its own; the elbow's 1.85 mm is not.
+
+**So B4 is the one band in this step whose denominator moves with the candidate.**
+`captured_limb_stability.py` recomputes each build's median from that build's own array, so
+a rule that withholds frames moves the reference the count is taken against — the lane's
+*same denominator* rule, broken by an instrument rather than by an arm. Recomputed with D9's
+medians held fixed for both builds (`artifacts/compare/d8b-length/b4-fixed-denominator.json`)
+the forearm reads **4 → 4**, and **every other cell in the table is identical under the two
+readings**. The clause still FAILS — the band asks for 0 — but the *regression* is not real,
+and B4's other two clauses are unaffected because their counts do not straddle the cut.
 
 ### 7.5 B3 is structurally biased against the repair, and the numbers are small either way
 
@@ -453,6 +495,9 @@ and is never a comparison between the two.
   self-checks that every `VISUALS` bar key resolves — it does, 11 figures and 20 controls.
 * **`docs/parity-board.html` was not touched** and **`docs/LADDER_EXECUTION_PLAN.md` was not
   edited** — the coordinator amends the card.
+* **The fixture repair is in §8**, and the reviewer's instruction that produced it is
+  quoted there. `artifacts/compare/d8b-length/synthetic.json` was NOT rewritten; v2 is a
+  separate report and a separate `synthetic_v2` block in the gate.
 * **`artifacts/compare/provenance.json` was overwritten once** by a first run before the
   `--out` flag was used; the step's own copy is at
   `artifacts/compare/d8b-length/provenance.json`. Both are regenerable and gitignored.
@@ -527,3 +572,148 @@ green.
   real-take evidence is the seed and the shoulder-line count, and the fixture is being
   fixed in a later step.* That is a decision for the coordinator and this branch does not
   take it.
+
+---
+
+## 8. The fixture repair, and the same clauses rerun on it
+
+**Added 2026-09-06 after the reviewer's decision.** D8b was **not** merged on an override.
+The reviewer read §4 and §7.1, agreed that both failed clauses were **measured defects in
+the instrument** rather than evidence about the rule, and returned the step with an
+instruction: repair the fixture and rerun the same pre-registered clauses on it.
+
+**Nothing about the candidate moved.** `src/autoanim_gnm/commercial_multiview.py` is
+byte-identical between the two runs, `SEGMENT_LENGTH_CEILING_FRACTION` is still 0.15, and
+every band is the card's. `artifacts/compare/d8b-length/synthetic.json` is left exactly as
+it was; v2 is a separate report and a separate `synthetic_v2` block in the gate.
+
+### 8.1 Defect 1 — the honest frames were not honest
+
+**The defect, measured on v1.** The fixture's own *uncollapsed* legs spread −13.2 %/+58.2 %
+at p5–p95 where the reference take's spread −5.1 %/+6.2 %. "Zero rejects on un-collapsed
+frames" was being asked of a body whose honest frames were already broken.
+
+**The repair.** A scale on the magnitude of I7's heavy-tail draw. The model
+(`sweep.heavy_tail_magnitude`) and the sigma (`sweep.NOISE_SIGMA_PX`, our own detector's
+measured 3.13/3.26 px) are unchanged and still imported; only the amplitude is scaled. It is
+a **fixture parameter** — not in `src/`, not a band, and it selects no shipped constant.
+
+**It is calibrated, not chosen.** `--calibrate` sweeps nine scales, measures the fixture's
+honest leg spread at each with the identical statistic
+`captured_limb_stability.py` reports on the take, and takes **the largest scale whose honest
+legs stay inside the take's own spread** — largest rather than smallest, because a quieter
+fixture is an easier one and the rule should face as much honest noise as the take has. The
+sweep is committed at `artifacts/compare/d8b-length/synthetic-v2-noise-calibration.json`:
+
+| scale | legs p5 / p95 | frames off >15 % |
+|---|---|---|
+| 0.00 | **−0.0000 / +0.0000** | 0 |
+| 0.10 | −0.019 / +0.027 | 0 |
+| 0.15 | −0.029 / +0.040 | 0 |
+| **0.20 — selected** | **−0.038 / +0.055** | **0** |
+| 0.25 | −0.049 / +0.069 | 2 |
+| 0.35 | −0.064 / +0.118 | 4 |
+| 0.50 | −0.098 / +0.191 | 11 |
+| 1.00 (v1) | −0.131 / +0.190 | 11 |
+| *the reference take* | *−0.051 / +0.062* | *0* |
+
+**And the sweep diagnosed v1's defect exactly.** At scale **0.00 the honest legs spread
+exactly zero** — the fixture's geometry, its replayed mask and its two-view leg slots
+contribute *nothing*. Every bit of v1's spread was the noise amplitude: I7 applies this draw
+to six thorax joints and v1 applied it at full sigma to all seventeen mapped landmarks. That
+is the whole of defect 1, and it means the repair is a correction rather than a tuning.
+
+On v2 the honest legs read **−3.8 %/+5.5 % with 0 frames off by more than 15 % on all eight
+leg segments**, against the take's −5.1 %/+6.2 % and 0 frames off.
+
+*Order of discovery, disclosed:* 0.25 sat in the file as a placeholder while the calibration
+mode was being written; the sweep replaced it with the measured 0.20.
+
+### 8.2 Defect 2 — the collapse ran on a nearly static clip
+
+**The defect, measured on v1.** The six scored landmarks travelled **10.2 mm median /
+19.2 max** over the injected run, so a frozen arm's error was bounded at 19 mm against a
+99 mm fault: the must-fail could not lose, and the pooled selector was bimodal by
+construction. **The take's own figure** on frames 110–122 (performer 1, smoothed) is
+**188.1 mm median** at **40.7 mm/frame** of shoulder travel — 51.3 mm/frame on the raw array.
+
+**The repair, and its honest limit.** The collapse is now injected on the run with the *most*
+landmark travel, chosen by that quantity rather than by run length, on the fastest clip and
+stride the motion source has. **Measured across every full-body clip and every usable
+stride, no motion source reaches the take's rate:**
+
+| clip | best 12-frame travel, stride 1 → 2 → 3 | shoulder step |
+|---|---|---|
+| `autoanim_squat/research-squat-640` | 88.8 → **123.7** mm | **21.3 mm/frame** |
+| `autoanim_dialogue/amy-cuddy-dialogue-body` | 31.5 → 44.4 → 45.4 mm | 8.7 mm/frame |
+| `autoanim_will_acting/will-stephen-acting-body` | 12.3 → 14.3 → 17.6 mm | 2.6 mm/frame |
+
+v2 therefore runs the **squat clip at stride 2** as the injected performer (35 frames, a
+10-frame collapse — the card's range is 8–15, and 10 keeps the fault well inside the minority
+the median needs, §7.8). The chosen run travels **105.7 mm median / 201.8 max**: **10× v1**
+and **56 % of the take's 188.1**. The shortfall is stated and not closed — closing it would
+mean inventing motion the fixture does not have, and that is the same error as tuning a
+fixture until a band passes.
+
+### 8.3 The same clauses, rerun
+
+The injected fault on v2 is **113.4 mm median** on the raw shoulders against exact truth.
+3D error on the injected cells, by landmark group; lower is better.
+
+| landmark group | today (D9) | **(a) demote** | (b) reject | (c) best_ray | frozen control |
+|---|---|---|---|---|---|
+| **the collapsed shoulders** | **114.2** | **8.5** | 8.5 | 55.2 | **160.8** |
+| the elbows below them | 3.6 | 11.0 | 33.8 | 32.0 | 172.9 |
+| the wrists below those | 5.3 | 5.3 | 5.3 | 5.3 | 148.5 |
+| pooled over all six | 6.1 | 8.7 | 9.3 | 30.2 | **158.7** |
+
+| clause | v1 | v2 |
+|---|---|---|
+| **selector**, on the collapsed-shoulder cell the card names | 96.4 → 30.0 (pooled reading FAILED) | **114.2 → 8.5 mm — PASS** |
+| **oracle 1**, clean fully-seen input | PASS | **PASS** — 0 rejects, smoothed and raw bit-identical |
+| **oracle 2**, honest frames of the collapsed clip | FAIL — 73 rejects | **PASS — 0 rejects, both performers** |
+| **must-fail: legs** | FAIL — 14, and no ceiling gives 0 | **PASS — 0** at 0.15, while 0.05 (7) and 0.075 (1) still fire |
+| **must-fail: frozen arm** | UNINFORMATIVE — the control wins | **FAILS as required — 158.7 mm against 8.7** |
+| **raw array untouched** | PASS | **PASS** |
+
+Three things are worth saying precisely.
+
+**The mode selection did not change, and on v2 the shoulder cell alone does not separate (a)
+from (b).** Both withhold the same points, and on a 10-frame run both reach 8.474 mm on the
+shoulders — a tie broken by iteration order, which would be no selection at all. What
+separates them is the **elbows** (11.0 against 33.8) and the pooled figure (8.7 against 9.3),
+and both prefer `demote`; the moving-block bootstrap on identical draws puts `reject` behind
+`demote` at P = 0.000 and `best_ray` at P = 0.000. So the selection is the same as on v1 and
+is now carried by a different cell, which is stated rather than smoothed over.
+
+**The pooled median is still diluted, and the metric refutation recorded on v1 stands
+unchanged.** On v2 the pooled figure still reads *worse* than today (6.09 → 8.67), for
+exactly the reason §4.2 gives: only two of the six landmarks are injected, and repairing them
+moves the median into the mode made of the other four. What has changed is that the pooled
+metric is **no longer a gate a constant can pass** — the frozen arm scores 158.7 mm against
+the candidate's 8.7 — so the refutation is preserved as a finding and no longer decides
+anything. This is why v2's selector reads the collapsed-shoulder cell, which is what the card
+names ("scoring 3D error of the shoulders, elbows and wrists in the run"), with the pooled
+figure reported beside it.
+
+**The elbow cascade is now visible as a cost.** On a quiet fixture the elbows go 3.6 → 11.0
+mm: withholding a shoulder withholds the elbow under the card's child rule, and the solve
+puts it back 7 mm worse than the triangulation had it. On v1 that cost was invisible inside
+15 mm of fixture noise. It is the synthetic counterpart of the real take's forearm going
+4 → 5 (§7.4), and it is the clearest open question this step leaves behind: **the child rule
+discards good points along with bad ones, and now there is a fixture that can measure it.**
+
+### 8.4 What the repair does and does not license
+
+* Both v1 failures were **instrument defects, and both are now measured rather than argued**:
+  one was entirely the noise amplitude (proved by the scale-0 row), the other entirely the
+  clip's motion (proved by the cross-clip travel table).
+* The merge rule's outcome is **MERGE on v2 and DO NOT MERGE on v1**, and both are in
+  `gate.json` under `merge_rule` and `merge_rule.on_fixture_v1`. The coordinator is not asked
+  to take the second on trust.
+* **v2 is still not the take.** Its landmarks travel 56 % as far, and its bones are exactly
+  rigid where a real body's segment lengths are not. The reading in §7.1 that points the
+  other way survives the repair: the ceiling remains a seed from one take's legs, and a
+  worse take would make this rule withhold more.
+* Nothing here changes what ships. `demote` at 0.15 was selected before the repair and is
+  selected after it.
