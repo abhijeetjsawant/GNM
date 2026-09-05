@@ -1,6 +1,6 @@
 {
   "_about": "Source of truth for where the body lane stands. Edit ONLY through tools/compare/status.py (set / log / render). render writes docs/LADDER_STATUS.md and docs/progress.html from this file. Plan of record: docs/LADDER_EXECUTION_PLAN.md; what is measured and how: docs/SUBSTITUTION_LADDER.md.",
-  "updated": "2026-09-04",
+  "updated": "2026-09-05",
   "goal": "An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.",
   "lanes": [
     {
@@ -203,18 +203,17 @@
           "title": "A pelvis frame of its own (the trunk no longer one rigid block)",
           "plain": "Hips, Spine, Chest and UpperChest currently share one frame built from the hip and shoulder landmarks, so on a bent performer the whole trunk rides the lean. SOMA-77 carries an unmapped pelvis root and two lower-spine joints; give the pelvis its own frame from them, gated on the round trip, the ground hoist and the silhouette. Handed off by D2b and D3; may run before D4 if the user prefers.",
           "owner": "opus-agent",
-          "state": "blocked",
+          "state": "done",
           "started": "2026-09-04",
-          "finished": null,
+          "finished": "2026-09-05",
           "report": "artifacts/compare/d7-pelvis-frame/gate.json",
-          "blocked_on": "user decision: merge with the B2a fail stated, or hold for a fixture with real pelvic tilt (lane H)"
+          "blocked_on": null
         }
       ]
     }
   ],
   "decisions_for_user": [
     "Lane H: decide the rig and book the marker session; performer releases covering ML training use.",
-    "D7 (the pelvis frame) is built on branch ladder/D7 (fccdbb1) and FAILS its primary pre-registered band: on the noisy synthetic selector a pelvis frozen bolt upright (the pre-registered degenerate) scores 7.3 deg where the candidate scores 10.2 and today's shipped code 27.6 -- because on all five synthetic clips the true pelvis sits only 1-13 deg from vertical, so 'always upright' is near-truth on that motion source (a fixture property, unmeasured before the band). The silhouette, part-wise on tilt terciles, rises on performer 0 (+0.022 IoU torso+legs on bent frames, monotonic with tilt) and is flat on performer 1; 2 of 7 clauses fail. Against MAMMA per joint (reported): root 37->22 / 40->23 mm, neck 112->91 / 108->89, nose worse, the 15-joint median 47->48 / 46->50. A post-hoc upright-constant control on the real take beats D7 on performer 0's hoist (20 vs 25 mm, from 73) and zeroes the Hips offset by construction, but nearly doubles performer 1's hoist (36->60), so performer 0's gain is not attributed between 'measured pelvis' and 'not the thorax'. Choose: (a) merge with the failure stated, as D2 was; (b) hold until lane H delivers a take with real pelvic tilt; (c) first render the upright-constant delivery through the silhouette (the cheapest discriminator) and decide on that. Re-gating at the detector's measured noise would still tie at performer 1's level, so it is not a route to a pass.",
     "D3's recorded miss: the exact-skeleton oracle's arm band (0.5 mm) fails by 0.19 mm on one of six synthetic bodies (D2's clavicle residual on a longer lever). Recommendation (2026-09-04): keep it as a standing fail; D5 re-derives the band from the fitted lever. And tests/test_body_export.py:145 (your uncommitted file) asserts the old exporter's root; expect the track root without the asset's 0.8 offset."
   ],
   "log": [
@@ -537,6 +536,21 @@
       "date": "2026-09-04",
       "step": "D7",
       "text": "2026-09-04, later: B7 finished on ladder/D7 (fccdbb1) as a wrapper over the committed silhouette instruments, D3 vs D7 rebuild, tilt terciles, block bootstrap on identical draws: performer 0 torso+legs +0.022 IoU on the bent tercile [0.004, 0.028], monotonic with tilt, arms unchanged; performer 1 flat on every cut; 2 of 7 pre-registered clauses fail (performer 1's bent tercile flat; performer 0's upright tercile rose where it was predicted to hold); MAMMA's mesh bit-identical. Post-hoc world-vertical control on the real take: performer 0 hoist 72.7 -> D7 25.3 -> constant 20.1 mm, Hips offset zeroed by construction; performer 1 hoist 35.5 -> D7 34.1 -> constant 60.2. Rung 11 folded per joint: root and neck improve 15-21 mm on both performers, nose worsens, 8 of 15 improve on each, the median moves the wrong way inside a gap. Overall verdict unchanged: FAIL on B2a. Not merged; the choice is recorded for the user."
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D7",
+      "text": "merged 2026-09-05 (6ea50f4, --no-ff) with the selector band B2a FAILED and stated; shipped on the pre-registered control rule (review section 7c), delivery rebuilt in place"
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D7",
+      "text": "2026-09-05: option (c) run on ladder/D7 (6666412): a pelvis frozen upright was rendered as a CONTROL delivery through the real build (nothing in src, hygiene byte-identical) and scored through the part-wise silhouette beside D3 and D7 on identical draws, with the merge rule fixed before the numbers. Rule: merge if the control beats D7 on neither performer with a CI clear of zero AND D7 beats the control on at least one. Both held: performer 0 D7-control +0.005 [-0.000, 0.012]; performer 1 D7-control +0.218 [0.116, 0.236] on the bent tercile (the control's hoist doubles, 36->60 mm, and its arms fall 0.061 with it -- P3 refuted: a root shift moves every vertex). P1 met (performer 0's gain is not-the-thorax, not the measured pelvis), P2 met, P4 met. The user delegated the call ('do whatever you recommend'); the coordinator took it on the rule; Sol reviewed the completed gate and approved. It is not a pass: B2a stays FAILED, B7 2 of 7 clauses stay failed, the window is 0 by refusal. Blindness recorded: the photographs caught the control's ROOT PLACEMENT through the pelvis frame, not the frame's orientation. Merged 6ea50f4 --no-ff; previous build kept under artifacts/compare/delivered-before-d7-2026-09-05; delivery rebuilt in place and checked byte-identical to the gated branch build."
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D7",
+      "text": "2026-09-05, after the merge: drawing each build's DELIVERED skeleton from its own GLB over the footage (a range variant of camera_overlay plus a hand glTF reader, joints scored against the triangulated ones in absolute world) found what no gate reported: D7 moved the neck OFF its landmark, 14 -> 59 mm median on performer 0 (42 upright, 134 bent, r=+0.95 with trunk tilt) and 29 -> 44 on performer 1, while the hips went 19/17 -> 5/5 and the knees/ankles halved. Mechanism: the Spine joint hangs 117 mm off Hips in the PELVIS frame and the chest chain above keeps the thorax frame, so a pelvis pitched away from the trunk line translates the whole upper body and nothing re-solves the chain onto the captured neck -- the standing rule 'after replacing a parent, re-solve the chains below', not applied to the spine. D3 already overshot the neck on bent frames (108 mm past 30 deg on performer 0) because the trunk chain is straight and rigid. The delivered-vs-capture instrument (retarget_cost.py) is BLIND to D7: it re-solves the track through the converter with no spine landmark and reads D3's torso figure (14.46 / 26.21) on the D7 delivery unchanged; against MAMMA the neck 'improved' (112 -> 91) on a different convention. The only figure that saw it was read from the file's own bytes. Follow-up step needed (D7b): re-solve the spine chain to the captured neck after the pelvis frame, and make retarget_cost read the delivered file. Also seen plainly in the mesh videos: the skin, stretched onto the per-performer skeleton with the asset's old weights since D3, balloons at the hips on lying frames and tears at the thigh in the squat; the silhouette's rise hid it (precision fell on performer 1 while recall rose, the dilated-blob pattern). D6 must come before more skeleton work, with a mesh-distortion instrument first."
     }
   ]
 }

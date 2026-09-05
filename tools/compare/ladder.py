@@ -231,7 +231,8 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     figs, ctrls = _x(spec)
     f3, c3 = _d2_figures("masks")
     f4, c4 = _d3_figures("masks")
-    return figs + f3 + f4, ctrls + c3 + c4
+    f5, c5 = _d7_figures("masks")
+    return figs + f3 + f4 + f5, ctrls + c3 + c4 + c5
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -293,7 +294,28 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f2, c2 = x_retarget(spec)
     f3, c3 = _d2_figures("converter")
     f4, c4 = _d3_figures("converter")
-    return figs + f2 + f3 + f4, ctrls + c2 + c3 + c4
+    f5, c5 = _d7_figures("converter")
+    return figs + f2 + f3 + f4 + f5, ctrls + c2 + c3 + c4 + c5
+
+
+def _d7_figures(where: str) -> tuple[list, list]:
+    """D7 figures from `tools/compare/extractors/d7_pelvis_frame.py` (the agent's stub, wired here by the
+    registry owner), routed by what each figure REFERENCES: the silhouette figures (`silhouette_`,
+    the masks) to rung 1; the synthetic-truth, rigidity and hip-offset figures (`pelvis_`, `rigidity_`)
+    to rung 7, the converter. D7 shipped on 2026-09-05 with its selector band FAILED and stated: a
+    pelvis frozen upright beats it on a fixture whose true pelvis barely leaves vertical, and loses
+    0.22 IoU on the one real performer whose pelvis does. Both facts are on the charts."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d7_pelvis_frame  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d7_pelvis_frame.x_pelvis_frame({})
+
+    def dest(key: str) -> str:
+        return "masks" if key.startswith("silhouette_") else "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
 
 
 def _d2_figures(where: str) -> tuple[list, list]:
@@ -1333,7 +1355,29 @@ def render(rungs: list[dict], state: dict, prev: dict | None, now: str) -> str:
 
 
 # ------------------------------------------------------------------------------- main
+# ---- D7 (2026-09-05): the pelvis frame. Its charts are declared in the extractor stub
+# (`extractors/d7_pelvis_frame.py`, VISUALS) and spliced here so the registry stays the one place
+# that says what is drawn: the synthetic selector with the frozen-upright degenerate that was
+# supposed to lose and did not, the rigidity bar, the hip offset, and the part-wise silhouette
+# per performer with the frozen-upright control beside it.
+def _splice_d7_visuals() -> None:
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d7_pelvis_frame  # noqa: E402
+    except ImportError:
+        return
+    if VISUALS.get("_d7_spliced"):
+        return
+    VISUALS["_d7_spliced"] = True
+    VISUALS["pose"][0:0] = d7_pelvis_frame.VISUALS.get("converter", [])
+    VISUALS["masks"][0:0] = d7_pelvis_frame.VISUALS.get("masks", [])
+
+
+
 def main() -> None:
+    # Spliced HERE and not at import time: the extractor imports `ladder` for `fig`, so a
+    # module-level splice is a circular import when ladder.py runs as __main__.
+    _splice_d7_visuals()
     ap = argparse.ArgumentParser()
     ap.add_argument("--note", default=None, help="record a history line even if nothing changed, with this note")
     ap.add_argument("--no-history", action="store_true")
