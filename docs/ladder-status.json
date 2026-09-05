@@ -230,6 +230,17 @@
           "finished": "2026-09-05",
           "report": "artifacts/compare/d8-occlusion/gate.json",
           "blocked_on": null
+        },
+        {
+          "id": "D9",
+          "title": "Aim the arms from their own origin (the green sticks to the yellow)",
+          "plain": "The delivered arm points the right way but starts from the wrong place: the collarbone has a fixed length and its end misses the captured shoulder, and the whole arm is shifted by that miss. Aiming each arm bone from where it actually starts puts the elbow and wrist back on the captured points, leaving only bone-length differences for a later step.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-05",
+          "finished": null,
+          "report": null,
+          "blocked_on": null
         }
       ]
     }
@@ -603,6 +614,11 @@
       "date": "2026-09-05",
       "step": "D8",
       "text": "2026-09-05, D8 post-merge: the head gate's first measurement on the repaired landmarks -- the shipped head candidate now PASSES its band (median 7.19 -> 6.56 deg, p95 22.19 -> 14.06; it read FAIL on every build since D2), because the head solve reads the smoothed points and the neck/shoulders under it stopped sliding along the A-C axis. The D3 gate's same-denominator clause reads FAIL by design (the smoothed landmarks moved; the raw array is the fixed reference from now on) and needs re-baselining in the next instrument pass. Reviewer's checks before the merge: the trunk-length and shoulder-width restorations are the sequence solve's own prior (weak); MAMMA's joints on the window through subject_map were the discriminating oracle; a right-hand 'regression against raw' on performer 0 was the raw point being wrong. The synthetic fixture could not select the ray-angle ceiling (exactly rigid and smooth, it prefers recovery at every angle) -- refuted prediction on method; the 150 deg and the 6-frame gap are registered as engineering limits. Reachability fired twice on rig landmarks and the gap clause held 0.0004 of slots: two near-inert rules a later step may retire. The MAMMA worker caps custom runs at four cameras (noted during the bear experiment)."
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D9",
+      "text": "card written 2026-09-05 (Sol-reviewed; the floor measured for the actual operation and the leg shift predicted before the band); arms only; worktree ladder/D9 from 26bef65"
     }
   ]
 }
