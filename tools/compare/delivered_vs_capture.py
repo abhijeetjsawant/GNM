@@ -1,0 +1,447 @@
+#!/usr/bin/env python3
+"""Every mapped joint of a DELIVERED GLB against the pipeline's own captured landmarks.
+
+THE FIGURE THAT SAW THE D7 DEFECT, and the reason it exists. Every joint instrument in
+this lane before it re-solved the track through the converter and scored the result:
+`tools/swap-harness/retarget_cost.py` does exactly that, and it has **no spine landmark**,
+so it re-derives `Hips` from the trunk line whatever the delivery carries. It reads D3's
+torso figure (14.46 / 26.21 mm) on the D7 delivery unchanged. It is not wrong; it is
+answering a different question -- *what does the converter do to these landmarks?* -- and
+it is structurally BLIND to a change that only the delivered file carries.
+
+This reads the delivered file **from its own bytes** (D3's lesson,
+`docs/reviews/performer-skeleton-2026-09-03.md`): `d3_skeleton_gate.glb_joint_positions`
+parses the GLB, walks its own `children` hierarchy and its own animation channels exactly
+as a glTF viewer would, and nothing about AutoAnim is assumed. The result is converted
+back into the capture's Z-up metres and scored against
+`triangulated_world_positions_z_up_m` from the SAME delivery directory's
+`subject-XX.body-track.npz`. **Nothing is re-detected and nothing is re-triangulated**:
+the landmarks are the ones that delivery was solved onto, so the only thing that can move
+a figure is the delivery.
+
+WHICH RIG JOINT SCORES WHICH LANDMARK. The converter aims each bone so that its CHILD's
+origin lands on the landmark: `LeftShoulder` is turned until `LeftUpperArm`'s origin
+reaches `left_shoulder`, `LeftUpperLeg` until `LeftLowerLeg`'s origin reaches
+`left_knee`, and so on. So the joint that carries a landmark's claim is the child, and
+`PAIRS` below is that correspondence and not a resemblance of names. `Hips` is scored
+twice -- the rig's `Hips` JOINT against the hip-landmark midpoint, and the LEG-ROOT
+midpoint against it, because D2b's root formula puts the leg roots there and not `Hips`
+(`_leg_root_offset`). `Head` is scored against `nose`, which in the SOMA-77 adapter is
+index 6, the **`Head` skeletal joint** and not a surface nose (CLAUDE.md): it is a
+joint-vs-joint pairing, reported, never banded.
+
+BLIND TO. (a) Orientation: a joint whose origin is on its landmark can still be rotated
+about it, and every finger, toe, eye and the whole head-on-neck rotation is invisible
+here. (b) The mesh: this scores the SKELETON the file carries, and the skin bound to it
+can balloon or tear without moving a number -- that is what the silhouette is for.
+(c) The landmarks themselves: they are our own triangulation, so a common-mode detector
+error is inside the reference and cannot appear as an error. (d) It cannot see whether a
+change is an improvement in the world -- only whether the delivered skeleton sits closer
+to the points the delivery claims to have been solved onto.
+
+    PYTHONPATH=$PWD/src .venv/bin/python tools/compare/delivered_vs_capture.py \
+        --delivery D3=artifacts/compare/delivered-before-d7-2026-09-05 \
+        --delivery D7=artifacts/commercial-multiview-soma77 \
+        --out artifacts/compare/d7b-trunk/delivered-vs-capture.json
+
+Any number of `--delivery LABEL=PATH` arms; every pairwise difference of two arms is
+block-bootstrapped on IDENTICAL draws (block 15, 2000 draws, fixed seed), paired frame by
+frame, so the same denominator holds across arms by construction.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[2]
+for _relative in ("src", "tools/compare"):
+    sys.path.insert(0, str(ROOT / _relative))
+
+import autoanim_gnm  # noqa: E402
+
+if not str(Path(autoanim_gnm.__file__).resolve()).startswith(str(ROOT)):
+    raise SystemExit(
+        f"PYTHONPATH trap: autoanim_gnm resolved to {autoanim_gnm.__file__}, not this "
+        f"worktree ({ROOT}). Re-run with PYTHONPATH=$PWD/src.")
+
+import d3_skeleton_gate as d3  # noqa: E402
+from autoanim_gnm.body import BodyTrack  # noqa: E402
+from autoanim_gnm.commercial_multiview import JOINT_INDEX  # noqa: E402
+
+# The moving-block bootstrap this lane uses everywhere. Per-frame agreement has lag-1
+# autocorrelation 0.99, so ordinary resampling is invalid (CLAUDE.md).
+BLOCK, DRAWS, SEED = 15, 2000, 20260905
+
+# rig joint -> capture landmark. The rig joint is the CHILD whose origin the converter
+# aims onto the landmark; see the module docstring.
+PAIRS: tuple[tuple[str, str], ...] = (
+    ("Neck", "neck"),
+    ("LeftUpperArm", "left_shoulder"),
+    ("RightUpperArm", "right_shoulder"),
+    ("LeftLowerArm", "left_elbow"),
+    ("RightLowerArm", "right_elbow"),
+    ("LeftHand", "left_wrist"),
+    ("RightHand", "right_wrist"),
+    ("LeftUpperLeg", "left_hip"),
+    ("RightUpperLeg", "right_hip"),
+    ("LeftLowerLeg", "left_knee"),
+    ("RightLowerLeg", "right_knee"),
+    ("LeftFoot", "left_ankle"),
+    ("RightFoot", "right_ankle"),
+    ("Head", "nose"),
+)
+# Grouped for the report; the gate reads these names.
+GROUPS = {
+    "trunk": ("Neck",),
+    "hips": ("LeftUpperLeg", "RightUpperLeg", "hips_joint_vs_hip_midpoint",
+             "leg_root_midpoint_vs_hip_midpoint"),
+    "knees_ankles": ("LeftLowerLeg", "RightLowerLeg", "LeftFoot", "RightFoot"),
+    "arms": ("LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+             "LeftHand", "RightHand"),
+    "head_reported_only": ("Head",),
+}
+REFERENCE = (
+    "the delivery's OWN triangulated landmarks "
+    "(`triangulated_world_positions_z_up_m` in its `subject-XX.body-track.npz`), in "
+    "absolute capture Z-up metres. Not MAMMA, not a re-detection, not a re-solve."
+)
+
+
+# --------------------------------------------------------------------------- the readers
+def capture_positions(directory: Path, subject: int) -> np.ndarray:
+    with np.load(directory / f"subject-{subject:02d}.body-track.npz") as archive:
+        return np.asarray(archive["triangulated_world_positions_z_up_m"], np.float64)
+
+
+def delivered_positions(directory: Path, subject: int) -> tuple[dict[str, int], np.ndarray]:
+    """`[frame, joint, 3]` in CAPTURE Z-up metres, forward-kinematicked from the GLB's bytes.
+
+    glTF here is the rig's Y-up world; `positions_to_body_track` built it with
+    ``rig = (cx, cz, -cy)``, so the inverse is ``capture = (rx, -rz, ry)``.
+    """
+
+    names, positions, _rest = d3.glb_joint_positions(
+        directory / f"subject-{subject:02d}.glb")
+    capture = np.stack(
+        [positions[..., 0], -positions[..., 2], positions[..., 1]], axis=-1)
+    return {name: index for index, name in enumerate(names)}, capture
+
+
+def track_rest(directory: Path, subject: int) -> dict[str, np.ndarray]:
+    track = BodyTrack.from_dict(json.loads(
+        (directory / f"subject-{subject:02d}.body-track.json").read_text()))
+    return {name: np.asarray(rest, np.float64)
+            for name, rest in zip(track.joint_names, track.rest_translations_m)}
+
+
+# ------------------------------------------------------------------------- the statistics
+def tilt_degrees(capture: np.ndarray) -> np.ndarray:
+    """Trunk tilt from vertical, per frame, from the CAPTURED landmarks alone.
+
+    Camera-independent and identical for every arm, because every arm is scored against
+    the same triangulated positions -- which the caller asserts byte-identical.
+    """
+
+    hip_mid = 0.5 * (capture[:, JOINT_INDEX["left_hip"]]
+                     + capture[:, JOINT_INDEX["right_hip"]])
+    trunk = capture[:, JOINT_INDEX["neck"]] - hip_mid
+    cosine = trunk[:, 2] / np.linalg.norm(trunk, axis=1)
+    return np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
+
+
+def tercile_masks(tilt: np.ndarray) -> dict[str, np.ndarray]:
+    low, high = np.percentile(tilt, 33.3), np.percentile(tilt, 66.7)
+    return {
+        "whole": np.ones(len(tilt), dtype=bool),
+        "upright": tilt <= low,
+        "middle": (tilt > low) & (tilt < high),
+        "bent": tilt >= high,
+    }
+
+
+def block_starts(frames: int) -> np.ndarray:
+    """The draws. Generated ONCE per frame count and shared by every arm and every joint.
+
+    Same denominator: two arms differing only in the delivery are resampled on the very
+    same block indices, so the paired difference's interval carries no draw noise of its
+    own.
+    """
+
+    rng = np.random.default_rng(SEED)
+    return rng.integers(0, max(frames - BLOCK, 1),
+                        size=(DRAWS, max(frames // BLOCK, 1)))
+
+
+def bootstrap_median(values: np.ndarray, starts: np.ndarray) -> list[float]:
+    values = np.asarray(values, dtype=np.float64)
+    n = len(values)
+    draws = np.asarray([
+        np.median(np.concatenate([values[s:s + BLOCK] for s in row])[:n])
+        for row in starts])
+    return [round(float(np.percentile(draws, 2.5)), 4),
+            round(float(np.percentile(draws, 97.5)), 4)]
+
+
+def summarise(error_mm: np.ndarray, masks: dict[str, np.ndarray]) -> dict:
+    out = {
+        "median_mm": round(float(np.median(error_mm)), 3),
+        "p95_mm": round(float(np.percentile(error_mm, 95)), 3),
+        "max_mm": round(float(error_mm.max()), 3),
+    }
+    for name in ("upright", "bent"):
+        out[f"{name}_tercile_median_mm"] = round(
+            float(np.median(error_mm[masks[name]])), 3)
+    return out
+
+
+# ------------------------------------------------------------------------------ the floor
+def trunk_length_floor(directory: Path, subject: int) -> tuple[np.ndarray, float]:
+    """`| L_rest - ||neck_landmark - Spine_origin|| |` per frame, in mm, and `L_rest` in mm.
+
+    The residual a straight rigid trunk chain CANNOT remove, from THIS delivery's own
+    Spine origin. `Spine`, `Chest` and `UpperChest` share one world rotation, and their
+    rests are collinear +Y with zero X and Z on both performers, so the `Neck` origin is
+    exactly `Spine_origin + R . (rest_Chest + rest_UpperChest + rest_Neck)` and the best
+    any aim can do is put the neck ON the ray -- leaving the LENGTH difference. That share
+    belongs to a flexible spine (D5), not to an aim.
+
+    Note it is read from EACH delivery's own Spine origin. D7's floor is not D7b's: a
+    different pelvis frame puts the Spine origin somewhere else, and carrying one arm's
+    floor onto another would be scoring against a number instead of a construction.
+    """
+
+    rest = track_rest(directory, subject)
+    length = float(sum(np.linalg.norm(rest[name])
+                       for name in ("Chest", "UpperChest", "Neck")))
+    index, world = delivered_positions(directory, subject)
+    capture = capture_positions(directory, subject)
+    chord = np.linalg.norm(
+        capture[:, JOINT_INDEX["neck"]] - world[:, index["Spine"]], axis=1)
+    return 1000.0 * np.abs(length - chord), 1000.0 * length
+
+
+def distributed_flexion_recovery(directory: Path, subject: int) -> dict:
+    """How much of the floor a flexion SPREAD over Spine/Chest/UpperChest would recover.
+
+    ANALYTIC, and it builds nothing. The chord shortens because the trunk is one straight
+    segment of fixed length `L`; a chain of the same three segments hinged at Chest and
+    UpperChest spans a shorter chord for the same total length. Take the pelvis-to-thorax
+    angle `phi` per frame -- the angle between the pelvis's own +Y (the `Hips` world axis
+    the delivery carries) and the aim `neck - Spine_origin` -- split it EQUALLY over the
+    two interior hinges, and the polyline's chord is the recoverable span. The equal split
+    is an assumption and is stated as one: real lumbar and thoracic flexion is not equal,
+    and only spine ratios (D5) can say what it is.
+
+    Reported for D5. It is not a band and nothing here is fitted to it.
+    """
+
+    rest = track_rest(directory, subject)
+    lengths = np.asarray([np.linalg.norm(rest[name])
+                          for name in ("Chest", "UpperChest", "Neck")])
+    total = float(lengths.sum())
+    index, world = delivered_positions(directory, subject)
+    capture = capture_positions(directory, subject)
+    spine_origin = world[:, index["Spine"]]
+    aim = capture[:, JOINT_INDEX["neck"]] - spine_origin
+    chord = np.linalg.norm(aim, axis=1)
+    # The pelvis's own up axis, in capture metres: `Hips` -> `Spine` is the rig's +Y
+    # turned by the Hips world rotation, and it is read from the delivered file.
+    pelvis_up = world[:, index["Spine"]] - world[:, index["Hips"]]
+    unit = lambda v: v / np.linalg.norm(v, axis=1, keepdims=True)
+    phi = np.arccos(np.clip(np.sum(unit(pelvis_up) * unit(aim), axis=1), -1.0, 1.0))
+    # Equal split over the two interior hinges: in the plane of the bend the three
+    # segments sit at -phi/2, 0 and +phi/2 about the mean direction, so the polyline's
+    # chord is the vector sum below and it is shorter than `total` by construction.
+    span = np.zeros((len(phi), 2))
+    for k in range(3):
+        angle = (k - 1.0) * phi / 2.0
+        span[:, 0] += lengths[k] * np.cos(angle)
+        span[:, 1] += lengths[k] * np.sin(angle)
+    curved_chord = np.linalg.norm(span, axis=1)
+    floor = np.abs(total - chord)
+    curved = np.abs(curved_chord - chord)
+    masks = tercile_masks(tilt_degrees(capture))
+    return {
+        "assumption": ("the pelvis-to-thorax angle phi is split EQUALLY over the two "
+                       "interior hinges (Chest and UpperChest). Real lumbar and thoracic "
+                       "flexion is not equal; only spine ratios (D5) can say what it is."),
+        "handed_to": "D5 -- spine ratios and a flexible chain",
+        "segment_lengths_mm": [round(1000.0 * float(v), 2) for v in lengths],
+        "phi_median_deg": round(float(np.degrees(np.median(phi))), 3),
+        "phi_bent_tercile_median_deg": round(
+            float(np.degrees(np.median(phi[masks["bent"]]))), 3),
+        "straight_chain_residual_mm": {
+            "median": round(float(np.median(1000.0 * floor)), 3),
+            "bent_tercile_median": round(
+                float(np.median(1000.0 * floor[masks["bent"]])), 3)},
+        "equal_split_curved_chain_residual_mm": {
+            "median": round(float(np.median(1000.0 * curved)), 3),
+            "bent_tercile_median": round(
+                float(np.median(1000.0 * curved[masks["bent"]])), 3)},
+        "recovered_mm": {
+            "median": round(float(np.median(1000.0 * (floor - curved))), 3),
+            "bent_tercile_median": round(
+                float(np.median(1000.0 * (floor - curved)[masks["bent"]])), 3)},
+    }
+
+
+# ------------------------------------------------------------------------------ the sweep
+def measure(directory: Path) -> dict[int, dict[str, np.ndarray]]:
+    """Per-frame error in mm for every mapped joint, per subject. The raw arrays."""
+
+    out: dict[int, dict[str, np.ndarray]] = {}
+    for subject in (0, 1):
+        capture = capture_positions(directory, subject)
+        index, world = delivered_positions(directory, subject)
+        rows: dict[str, np.ndarray] = {}
+        for rig, landmark in PAIRS:
+            rows[rig] = 1000.0 * np.linalg.norm(
+                world[:, index[rig]] - capture[:, JOINT_INDEX[landmark]], axis=1)
+        hip_mid = 0.5 * (capture[:, JOINT_INDEX["left_hip"]]
+                         + capture[:, JOINT_INDEX["right_hip"]])
+        rows["hips_joint_vs_hip_midpoint"] = 1000.0 * np.linalg.norm(
+            world[:, index["Hips"]] - hip_mid, axis=1)
+        rows["leg_root_midpoint_vs_hip_midpoint"] = 1000.0 * np.linalg.norm(
+            0.5 * (world[:, index["LeftUpperLeg"]] + world[:, index["RightUpperLeg"]])
+            - hip_mid, axis=1)
+        rows["_tilt_deg"] = tilt_degrees(capture)
+        out[subject] = rows
+    return out
+
+
+def report(deliveries: dict[str, Path]) -> dict:
+    labels = list(deliveries)
+    arms = {label: measure(path) for label, path in deliveries.items()}
+    # SAME DENOMINATOR. Every arm must be scored against the same landmarks, or the
+    # difference between two arms is not the delivery.
+    shared = {}
+    for subject in (0, 1):
+        reference = capture_positions(deliveries[labels[0]], subject)
+        shared[f"subject_{subject:02d}"] = {
+            label: bool(np.array_equal(reference, capture_positions(path, subject)))
+            for label, path in deliveries.items()}
+    payload: dict = {
+        "title": "delivered joints, from each GLB's own bytes, against the captured landmarks",
+        "reference": REFERENCE,
+        "blind_to": [
+            "orientation -- a joint on its landmark can still be rotated about it",
+            "the MESH bound to the skeleton (that is the silhouette's job)",
+            "common-mode detector error, which is inside the reference",
+            "whether a change is right in the world; only whether the delivered skeleton "
+            "sits closer to the points that delivery was solved onto",
+        ],
+        "retarget_cost_is_blind_to_this_class": (
+            "tools/swap-harness/retarget_cost.py RE-SOLVES the track through the converter "
+            "with no spine landmark, so it reads D3's torso figure on the D7 delivery "
+            "unchanged. It is kept as it is and labelled."),
+        "bootstrap": {"block": BLOCK, "draws": DRAWS, "seed": SEED,
+                      "paired": "the per-frame DIFFERENCE array is resampled, on draws "
+                                "shared by every arm and every joint"},
+        "deliveries": {label: str(path) for label, path in deliveries.items()},
+        "triangulated_landmarks_byte_identical_across_arms": shared,
+        "subjects": {},
+    }
+    all_shared = all(all(row.values()) for row in shared.values())
+    payload["same_denominator"] = all_shared
+
+    for subject in (0, 1):
+        frames = len(arms[labels[0]][subject]["_tilt_deg"])
+        masks = tercile_masks(arms[labels[0]][subject]["_tilt_deg"])
+        starts = block_starts(frames)
+        joints = [name for name in arms[labels[0]][subject] if not name.startswith("_")]
+        per_joint: dict = {}
+        for joint in joints:
+            row: dict = {label: summarise(arms[label][subject][joint], masks)
+                         for label in labels}
+            differences: dict = {}
+            for i, a in enumerate(labels):
+                for b in labels[i + 1:]:
+                    delta = arms[b][subject][joint] - arms[a][subject][joint]
+                    differences[f"{b}_minus_{a}"] = {
+                        "median_mm": round(float(np.median(delta)), 3),
+                        "ci95_mm": bootstrap_median(delta, starts),
+                        "bent_tercile_median_mm": round(
+                            float(np.median(delta[masks["bent"]])), 3),
+                        "bent_tercile_ci95_mm": bootstrap_median(
+                            delta[masks["bent"]],
+                            block_starts(int(masks["bent"].sum()))),
+                    }
+            row["paired_differences"] = differences
+            per_joint[joint] = row
+        floors = {}
+        for label, path in deliveries.items():
+            residual, length = trunk_length_floor(path, subject)
+            floors[label] = {
+                "L_rest_mm": round(length, 2),
+                "median_mm": round(float(np.median(residual)), 3),
+                "bent_tercile_median_mm": round(
+                    float(np.median(residual[masks["bent"]])), 3),
+                "upright_tercile_median_mm": round(
+                    float(np.median(residual[masks["upright"]])), 3),
+                "p95_mm": round(float(np.percentile(residual, 95)), 3),
+            }
+        payload["subjects"][f"subject_{subject:02d}"] = {
+            "frames": frames,
+            "tilt_deg": {
+                "median": round(float(np.median(arms[labels[0]][subject]["_tilt_deg"])), 2),
+                "tercile_edges": [
+                    round(float(np.percentile(arms[labels[0]][subject]["_tilt_deg"], 33.3)), 2),
+                    round(float(np.percentile(arms[labels[0]][subject]["_tilt_deg"], 66.7)), 2)],
+                "bent_frames": int(masks["bent"].sum()),
+                "upright_frames": int(masks["upright"].sum())},
+            "joints": per_joint,
+            "groups": GROUPS,
+            "trunk_length_floor": floors,
+            "distributed_flexion_would_recover": {
+                label: distributed_flexion_recovery(path, subject)
+                for label, path in deliveries.items()},
+        }
+    return payload
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--delivery", action="append", required=True,
+                        metavar="LABEL=PATH", help="repeatable; order is preserved")
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    deliveries: dict[str, Path] = {}
+    for entry in args.delivery:
+        label, _, path = entry.partition("=")
+        if not path:
+            raise SystemExit(f"--delivery wants LABEL=PATH, got {entry!r}")
+        resolved = Path(path)
+        if not resolved.is_absolute():
+            resolved = ROOT / resolved
+        if not resolved.exists():
+            raise SystemExit(f"{resolved} does not exist")
+        deliveries[label] = resolved
+    payload = report(deliveries)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    for name, subject in payload["subjects"].items():
+        print(f"\n{name}  frames {subject['frames']}  tilt median "
+              f"{subject['tilt_deg']['median']} deg")
+        header = "  ".join(f"{label:>10}" for label in deliveries)
+        print(f"  {'joint':<34}{header}")
+        for joint, row in subject["joints"].items():
+            cells = "  ".join(f"{row[label]['median_mm']:>10.1f}" for label in deliveries)
+            print(f"  {joint:<34}{cells}")
+        print(f"  {'-- bent tercile --':<34}")
+        for joint, row in subject["joints"].items():
+            cells = "  ".join(
+                f"{row[label]['bent_tercile_median_mm']:>10.1f}" for label in deliveries)
+            print(f"  {joint:<34}{cells}")
+        print(f"  trunk length floor: {json.dumps(subject['trunk_length_floor'])}")
+    print(f"\nsame denominator: {payload['same_denominator']}")
+    print(f"wrote {args.out}")
+    return 0 if payload["same_denominator"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
