@@ -220,13 +220,91 @@ oracle fires zero rejections on clean input, and a frozen arm fails.
 
 ## 5. Every band, with its number and its verdict
 
-*(filled from `artifacts/compare/d8-occlusion/gate.json`)*
+| band | what it asked | measured | verdict |
+|---|---|---|---|
+| **instrument first** | reproduce the card's figures before any src change | **10 of 10** clauses, first run | **PASS** |
+| **synthetic selector** | the shipped combination beats today's code on the two-view window cells | **47.5 → 22.1 mm**; block bootstrap on identical draws, [20.9, 22.6] against [43.6, 49.2], P = 1.000 | **PASS** |
+| **oracle** | clean fully-seen input → zero demotions, zero rejections, bit-identical | 0, 0, `held_joint_fraction` 0.0, smoothed AND raw bit-identical | **PASS** |
+| **must-fail: frozen arm** | a whole-take hold must score worse | **29.5 mm** against the shipped 22.1 | **FAILS as required** |
+| **must-fail: step test** | a step test in place of reachability | 22.074 mm — **ties**, see §7.5 | **inconclusive at the pipeline level; discriminated in the unit tests** |
+| **B1 photographs, arms, window** | not worse than D7b on either performer with the CI clear | p0 **+0.0025 [0.00003, 0.0294]**; p1 **−0.0065 [−0.0260, 0.0146]** | **PASS on both** |
+| **B1 prediction** | a rise predicted on performer 1 | the rise landed on **performer 0** with the interval clear of zero; performer 1's point estimate **falls** | **REFUTED**, §7.7 |
+| **B2 held-out camera** | reprojection into a camera the reconstruction never saw, on frames with a third view | pooled window median of the four fold medians **8.94 → 8.43 px**; better on 3 folds of 4 (A 8.39→7.82, B 8.99→8.28, C 8.89→8.58) and **worse on D001, 10.15 → 14.26** | **REPORTED** |
+| **B3 raw array** | bit-identical between the D7b and D8 builds | **identical on both performers**; observations identical; smoothed differs, as it must | **PASS** |
+| **B3 legs (reported)** | leg demotions and rejections, predicted 0 | **NOT 0** — p0 `left_hip` 35, `right_hip` 35, `right_knee` 26; p1 `left_knee` 35, `right_knee` 26, `left_hip` 25, `right_hip` 24, `right_ankle` 5 | **prediction REFUTED**, §7.7 |
+| **B4 placement vs RAW** | delivered hand/elbow against the raw finite points | `LeftHand` p95 **159 → 120** (p0) and **158 → 102** (p1); `LeftLowerArm` p95 261 → 188 (p1); `Neck` p95 **105 → 367** (p1) | **REPORTED**, and see §7.8 |
+| **B5 D3 closure** | the delivered GLB agrees with FK of the track it carries, ≤ 1e-6 m | D8 **4.58e-7 / 5.27e-7 m**; D7b 5.13e-7 / 4.71e-7 | **PASS** |
+| **B5 same denominator** | expected to report CHANGED | smoothed landmarks changed on both performers | **CHANGED as expected** |
+| **hygiene** | today's code on the same inputs byte-identical to the shipped delivery | **all 8 delivered files identical**, run BEFORE any src change | **PASS** |
+
+### The capture itself, before and after
+
+The measure the defect was stated in, rerun on the repaired build through the same
+instrument. Lower is better; the count is frames off that performer's own take median by
+more than 15 %.
+
+| | performer 0 | performer 1 |
+|---|---|---|
+| shoulder line | **22 → 4** | **27 → 18** |
+| shoulder line, min/max mm | 194/380 → **267/378** | 102/543 → **155/395** |
+| forearm L | **7 → 0** | **18 → 4** |
+| upper arm L | 0 → 0 | **12 → 7** |
+| every leg segment | 0 → 0 | 0 → 0 |
+| thigh spread p5/p95 | −4.4 %/+3.5 % → −4.8 %/+3.1 % | −4.2 %/+3.4 % → −3.9 %/+3.7 % |
+
+The 554 mm shoulder line is gone and the 68 mm collapse with it. **The legs are unmoved on
+every segment**, which matters because the legs *were* demoted (§7.7): a demotion that
+changed nothing measurable is what a correctly-scoped rule looks like.
+
+### The hygiene arm, run first with `src` unchanged
+
+```
+subject-00.glb              40e2563445fabdd0…  identical
+subject-00.body-track.json  eb5d635a4e5a776b…  identical
+subject-00.body-track.npz   0b64277adc474dc1…  identical
+subject-00.mapping.npz      6632f33571fae013…  identical
+subject-01.glb              9f864d67cf1800c0…  identical
+subject-01.body-track.json  f85dc266ccdd7bdf…  identical
+subject-01.body-track.npz   7073475fb78c8473…  identical
+subject-01.mapping.npz      d11c72c17b482ca2…  identical
+```
+
+Every difference in the D8 arm therefore belongs to the src change and to nothing else. The
+D8 build's own **raw** landmarks are byte-identical to the shipped ones on both performers,
+so every band shares one denominator. **Nothing was written under
+`artifacts/commercial-multiview-soma77/`** by any instrument in this step.
 
 ---
 
 ## 6. The merge rule, applied mechanically
 
-*(filled from the gate)*
+> **merge rule, fixed before numbers:** synthetic selector holds for the shipped
+> combination AND the oracle passes AND B1 on both performers AND B3; everything else
+> reports
+
+| clause | holds |
+|---|---|
+| synthetic selector holds for the shipped combination | **yes** — 47.5 → 22.1 mm, P = 1.000 on identical draws |
+| the oracle passes | **yes** — 0 demotions, 0 rejections, bit-identical |
+| B1 on both performers | **yes** — +0.0025 [0.00003, 0.0294] and −0.0065 [−0.0260, 0.0146] |
+| B3 | **yes** — the raw array is byte-identical on both performers |
+
+**Outcome: MERGE.** No clause failed and no band was moved.
+
+It is not an unqualified pass, and the qualifications are in §7: **three predictions are
+refuted** (B1's direction, the legs' zero demotions, and the card's own selection method for
+two of the three constants), and **one figure is a possible real cost** — performer 1's
+delivered neck moves further from the raw captured point on 19 window frames, which B4 is
+structurally unable to adjudicate because its reference is the point the step discarded
+(§7.8). The merge rule does not depend on any of them, which is what fixing it before the
+numbers was for.
+
+**Two of the three shipped rules are nearly inert.** On the fixture the conditioning gate
+carries the whole gain (`both` vs `conditioning` alone: P = 0.555, indistinguishable). On
+the real take the reachability reject fires 5 and 17 times and the gap clause holds
+0.00035 and 0.0 of slots. They ship because the card ships them and because each removes a
+claim the pipeline could not support; neither is doing measurable work here, and that is
+stated rather than implied.
 
 ---
 
@@ -337,6 +415,58 @@ and the selector's `today` arm.
   the step test's defects directly.
 * **`artifacts/` is gitignored**, so nothing under `artifacts/compare/d8-occlusion/` is in
   the commits. Every file is regenerated by the commands in the extractor's `REGEN`.
+
+### 7.7 The three refuted predictions
+
+**(a) B1's predicted direction.** The card predicted the arms would rise on **performer 1**.
+They rise on **performer 0** — +0.0025 IoU with the interval clear of zero, [0.00003,
+0.0294] — and on performer 1 the point estimate **falls**, −0.0065 [−0.0260, 0.0146],
+spanning zero. The band as written ("not worse on either performer") passes on both; the
+*prediction* is refuted and the band is not moved. Performer 0's precision and recall on the
+arms **both** rise (0.785 → 0.826, 0.1146 → 0.1165), so it is not the dilated-blob pattern;
+on performer 1 both fall (0.751 → 0.708, 0.1772 → 0.1693). On a 41-frame window a block of
+15 gives about three blocks per draw, and that width was stated before the numbers.
+
+**(b) The legs demote.** The card predicted 0 leg demotions and there are many: performer 0
+`left_hip` 35, `right_hip` 35, `right_knee` 26; performer 1 `left_knee` 35, `right_knee` 26,
+`left_hip` 25, `right_hip` 24, `right_ankle` 5. The cause is not a defect in the rule — the
+hips' A–C ray pair sits at 154–156° median through the window, which is past the 150°
+ceiling, so the rule is firing on exactly the geometry it describes. **B3's band is raw
+byte-identity alone**; the card puts the leg counts in the reported column, so this is a
+refuted prediction and never a failed band. What matters is whether the demotions harmed
+the legs, and they did not: every leg segment is 0 → 0 frames off by more than 15 %, the
+spreads are unchanged to a few tenths of a per cent, and the delivered leg placement moves
+by ≤ 0.9 mm at the median with intervals spanning zero.
+
+**(c) `MAXIMUM_INTERPOLATED_GAP_FRAMES` and `RAY_PAIR_CONDITIONING_CEILING_DEG` could not be
+selected on synthetic truth**, §4. Both are the card's own selection method refuted by
+measurement, not bands moved.
+
+### 7.8 The one real regression, and why B4 cannot settle it
+
+**Performer 1's delivered `Neck` moves further from the RAW captured neck**: p95 105 → 367
+mm, max 291 → 452, and 9 → 19 frames over 100 mm. Every one of those frames is inside the
+window (ids 89–113). The median *improves* (22.9 → 20.5 mm); it is purely a tail.
+
+The mechanism is visible in the diagnostics: performer 1's `neck` is demoted on 20 frames
+and rejected on 1, so on those frames the delivered neck follows a recovered point rather
+than the triangulated one, and the trunk chain D7b aims at the captured neck carries it.
+
+**B4 cannot say whether this is a regression.** Its reference is the raw triangulated point,
+and on a demoted slot the raw point is *precisely the one the step judged unreliable* — a
+two-view, ill-conditioned estimate at 172°. So on demoted slots B4 is structurally biased
+**against** the repair: agreeing with the discarded point scores well and disagreeing scores
+badly, whatever the truth is. That is a blindness of the instrument, not a result, and it is
+the reason the card lists B4 as REPORTED. The photographs are the arm that is not
+so biased, and there performer 1's torso on the window reads −0.0054 [−0.0296, 0.0166] —
+spanning zero, so they do not settle it either.
+
+**What would settle it** is not in the card: the delivered neck against a neck the A–C pair
+did not determine — a held-out-camera neck, or marker data. The coordinator should treat
+this as open. It is the single figure in this step that could be a real cost, and it is
+stated rather than absorbed into a favourable average. Against it, on the same reference and
+the same frames, the hands improve substantially: `LeftHand` p95 159 → 120 (performer 0) and
+158 → 102 (performer 1), and `LeftLowerArm` 261 → 188 on performer 1.
 
 ### 7.6 Things this branch did not do
 

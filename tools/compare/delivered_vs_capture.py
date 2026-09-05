@@ -426,10 +426,16 @@ def report(deliveries: dict[str, Path], reference_mode: str = "smoothed") -> dic
                 for b in labels[i + 1:]:
                     delta = arms[b][subject][joint] - arms[a][subject][joint]
                     differences[f"{b}_minus_{a}"] = {
-                        "median_mm": round(float(np.median(delta)), 3),
+                        # NaN-aware: under `--reference raw` a frame where the landmark
+                        # did not triangulate carries NaN in BOTH arms and drops out of
+                        # the pairing. Identical to np.median on the NaN-free default.
+                        "median_mm": _round(np.nanmedian(delta))
+                        if np.isfinite(delta).any() else None,
+                        "frames_paired": int(np.isfinite(delta).sum()),
                         "ci95_mm": bootstrap_median(delta, starts),
-                        "bent_tercile_median_mm": round(
-                            float(np.median(delta[masks["bent"]])), 3),
+                        "bent_tercile_median_mm": (
+                            _round(np.nanmedian(delta[masks["bent"]]))
+                            if np.isfinite(delta[masks["bent"]]).any() else None),
                         "bent_tercile_ci95_mm": bootstrap_median(
                             delta[masks["bent"]],
                             block_starts(int(masks["bent"].sum()))),
