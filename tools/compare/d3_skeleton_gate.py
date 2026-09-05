@@ -451,7 +451,6 @@ def oracle_block(report: dict) -> None:
         toe_low = float(min(truth[:, skeleton.index("LeftToes"), 1].min(),
                             truth[:, skeleton.index("RightToes"), 1].min()))
         truth = truth.copy(); truth[..., 1] -= toe_low
-        roots_grounded = roots.copy(); roots_grounded[:, 1] -= toe_low
         landmarks = rc.landmarks_from_fk(truth, skeleton)
         # 2026-09-06: and the SPINE landmark, the way the delivery gets it (SOMA-77's
         # Spine1 through the toe/head feed): with no spine landmark the converter takes

@@ -117,7 +117,7 @@ def test_converter_rotations_depend_on_bone_lengths_only_through_the_clavicle(sy
         roots_mid = 0.5 * (fk[:, skeleton.index("LeftUpperLeg")] + fk[:, skeleton.index("RightUpperLeg")])
         # the foot-contact projection may hoist the root vertically after the solve;
         # horizontally the leg roots must sit on the captured hips on both skeletons
-        assert np.allclose(roots_mid[:, [0, 2]], hip_mid[:, [0, 2]], atol=2e-3), (
+        assert np.allclose(roots_mid[:, [0, 2]], hip_mid[:, [0, 2]], atol=1e-6), (
             "the leg-root midpoint left the captured hip midpoint on this skeleton")
 
 
