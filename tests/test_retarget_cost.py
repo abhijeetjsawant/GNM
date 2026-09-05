@@ -101,8 +101,24 @@ def test_converter_rotations_depend_on_bone_lengths_only_through_the_clavicle(sy
     assert np.allclose(a[:, others], b[:, others], atol=1e-12)
     assert not np.allclose(a[:, sorted(chain)], b[:, sorted(chain)], atol=1e-6), (
         "the clavicle chain must move with the skeleton it is solved on since D2")
-    assert np.allclose(np.asarray(canonical.root_translation_m),
-                       np.asarray(sized.root_translation_m), atol=1e-12)
+    # Until D3 (2026-09-03) this asserted the root translation was independent of the
+    # skeleton. D3 put the per-performer rest into the root formula
+    # (`pelvis - rest["Hips"] - R_hips . mid(leg rests)`), so the ROOT moves with the
+    # rest by construction and the invariant is one level down: D2b's claim that the
+    # LEG-ROOT MIDPOINT sits on the captured hip midpoint, on whichever skeleton the
+    # track is solved. (Rewritten 2026-09-06; it had been red since D3.)
+    from autoanim_gnm.body import forward_kinematics_positions
+    ref_y = rc.Y_UP_FROM_Z_UP(synthetic_observations)
+    hip_mid = 0.5 * (ref_y[:, rc.cm.JOINT_INDEX["left_hip"]] + ref_y[:, rc.cm.JOINT_INDEX["right_hip"]])
+    for track, skeleton in ((canonical, DETAILED_HUMANOID), (sized, skel)):
+        fk = forward_kinematics_positions(
+            np.asarray(track.root_translation_m, np.float64),
+            np.asarray(track.local_rotations_xyzw, np.float64), skeleton=skeleton)
+        roots_mid = 0.5 * (fk[:, skeleton.index("LeftUpperLeg")] + fk[:, skeleton.index("RightUpperLeg")])
+        # the foot-contact projection may hoist the root vertically after the solve;
+        # horizontally the leg roots must sit on the captured hips on both skeletons
+        assert np.allclose(roots_mid[:, [0, 2]], hip_mid[:, [0, 2]], atol=2e-3), (
+            "the leg-root midpoint left the captured hip midpoint on this skeleton")
 
 
 def test_copy_through_passes_the_position_score_and_fails_integrity(synthetic_observations, solved):

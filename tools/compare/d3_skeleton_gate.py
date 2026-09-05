@@ -441,11 +441,45 @@ def oracle_block(report: dict) -> None:
         truth = forward_kinematics_positions(
             roots, rotations, skeleton=skeleton
         ).astype(np.float64)
+        # 2026-09-06: GROUND the truth. The donor root belongs to the real performer's rest;
+        # on a perturbed rest (hips_height down to 0.70) the same root puts the toes up to
+        # 30 cm under the floor, and the converter's `project_generated_foot_contacts` then
+        # hoists the track by a frame-varying amount that the root-aligned score reads as
+        # 12.8-16.0 mm on every leg joint (all six by the same amount: a translation). One
+        # constant per seed keeps the truth exact and physical: the lowest toe of the take
+        # sits on the floor, as the delivery's does.
+        toe_low = float(min(truth[:, skeleton.index("LeftToes"), 1].min(),
+                            truth[:, skeleton.index("RightToes"), 1].min()))
+        truth = truth.copy(); truth[..., 1] -= toe_low
+        roots_grounded = roots.copy(); roots_grounded[:, 1] -= toe_low
         landmarks = rc.landmarks_from_fk(truth, skeleton)
+        # 2026-09-06: and the SPINE landmark, the way the delivery gets it (SOMA-77's
+        # Spine1 through the toe/head feed): with no spine landmark the converter takes
+        # the legacy trunk-line hips frame, whose orthogonalised hip line leaves the hip
+        # landmarks whenever the trunk is not perpendicular to it -- 6.4 deg median,
+        # 16.9 p95 on this donor since D7b moved the delivered neck -- and every leg
+        # joint reads the same 12.77 mm, a rotation of the roots about the trunk. Fed the
+        # spine, the pelvis path runs and the legs read 0.07 mm; what remains is the D7
+        # rest-pelvis convention (SOMA-derived constants, not this rig's own rest).
+        spine_truth = truth[:, skeleton.index("Spine")]
+        # 2026-09-06: the oracle hands the converter the TOE positions of its own truth,
+        # [frame, 2, 3] (left, right), the way the delivery does (SOMA-77 carries toes).
+        # Without them the feet fall back to the torso frame, and since D7b that frame is
+        # aimed from the Spine origin -- which the perturbed rest moves -- so the fallback
+        # feet turn, the lowest toe drops, and `project_generated_foot_contacts` hoists
+        # the whole body by it: the legs read 12.8-16.0 mm on every seed from the D7b
+        # close-out on, all six leg joints by the same amount, a rigid translation. That
+        # was the oracle exercising a path the delivery never takes. With the toes given,
+        # the feet are solved like the delivery's and the band means what it says.
+        toes = np.stack([
+            truth[:, skeleton.index("LeftToes")], truth[:, skeleton.index("RightToes")]
+        ], axis=1)
         track = cm.positions_to_body_track(
             rc.Z_UP_FROM_Y_UP(landmarks),
             sample_rate_hz=30,
             provenance_sha256="0" * 64,
+            toe_world_z_up_m=rc.Z_UP_FROM_Y_UP(toes),
+            spine_world_z_up_m=rc.Z_UP_FROM_Y_UP(spine_truth),
             skeleton=skeleton,
         )
         path = export(track, SCRATCH / f"oracle-{seed}.glb")
@@ -471,6 +505,8 @@ def oracle_block(report: dict) -> None:
             rc.Z_UP_FROM_Y_UP(landmarks),
             sample_rate_hz=30,
             provenance_sha256="0" * 64,
+            toe_world_z_up_m=rc.Z_UP_FROM_Y_UP(toes),
+            spine_world_z_up_m=rc.Z_UP_FROM_Y_UP(spine_truth),
             skeleton=global_skeleton,
         )
         global_error = rc.score(

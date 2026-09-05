@@ -650,6 +650,11 @@
       "date": "2026-09-06",
       "step": "D8b",
       "text": "card written 2026-09-06 (Sol-reviewed; effect measured and classified per camera: three cameras agree on the collapsed shoulder, a detector bias no geometric gate can see); worktree ladder/D8b from 82749e7"
+    },
+    {
+      "date": "2026-09-06",
+      "step": "D9",
+      "text": "2026-09-06, instrument repairs (Fable, coordinator): (1) the D3 gate's exact-skeleton ORACLE now feeds the converter its own truth's SPINE landmark and TOE positions, the way the delivery gets them; without the spine it exercised the legacy trunk-line hips frame the delivery left at D7, whose orthogonalised hip line leaves the hip landmarks whenever the trunk is not perpendicular to it (6.4 deg median on the D7b+ donor) -- every leg joint 12.77 mm by the same amount. Fed the spine: legs 0.05-0.07 mm on all six seeds (the D7 rest-pelvis convention's cost: SOMA-derived constants, not this rig's own rest), arms 0.82-1.18 (band 0.5: the standing miss, now larger than D3's 0.19 and stated), torso 8-11 mm unbanded (hypothesis, unverified: THORAX_SMOOTHING_FRAMES moves the smoothed neck off an exact landmark on a moving trunk). Two theories were tried and refuted on the way (a feet-fallback hoist; an underground truth needing grounding): the toe feed and the grounding are kept because both are physically right and neither moved a number. (2) tests/test_retarget_cost.py's root-translation assertion, red since D3, now asserts D2b's invariant (the leg-root midpoint on the captured hip midpoint, horizontally, on either skeleton) -- 10/10 pass. (3) tools/compare/post_merge.sh is committed: archive, rebuild in place, byte-check, every instrument with EVERY line logged under artifacts/compare/post-merge-<ID>/. Not repaired: the gate's 'CANONICAL UNCHANGED' and 'round trip = D2c figures' clauses still compare against frozen references that later steps moved by design; re-pin owed."
     }
   ]
 }
