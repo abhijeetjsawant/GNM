@@ -673,18 +673,37 @@ The injected fault on v2 is **113.4 mm median** on the raw shoulders against exa
 | **oracle 1**, clean fully-seen input | PASS | **PASS** — 0 rejects, smoothed and raw bit-identical |
 | **oracle 2**, honest frames of the collapsed clip | FAIL — 73 rejects | **PASS — 0 rejects, both performers** |
 | **must-fail: legs** | FAIL — 14, and no ceiling gives 0 | **PASS — 0** at 0.15, while 0.05 (7) and 0.075 (1) still fire |
-| **must-fail: frozen arm** | UNINFORMATIVE — the control wins | **FAILS as required — 158.7 mm against 8.7** |
+| **must-fail: frozen arm** | UNINFORMATIVE — the control wins | **FAILS as required — 158.7 mm against 8.7** (bound 155.1 mm, below) |
 | **raw array untouched** | PASS | **PASS** |
 
 Three things are worth saying precisely.
 
-**The mode selection did not change, and on v2 the shoulder cell alone does not separate (a)
-from (b).** Both withhold the same points, and on a 10-frame run both reach 8.474 mm on the
-shoulders — a tie broken by iteration order, which would be no selection at all. What
-separates them is the **elbows** (11.0 against 33.8) and the pooled figure (8.7 against 9.3),
-and both prefer `demote`; the moving-block bootstrap on identical draws puts `reject` behind
-`demote` at P = 0.000 and `best_ray` at P = 0.000. So the selection is the same as on v1 and
-is now carried by a different cell, which is stated rather than smoothed over.
+**The mode selection did not change, and on v2 the shoulder cell does not separate (a) from
+(b) at all — the two are BIT-IDENTICAL there.** Measured directly: on the injected run the
+`demote` and `reject` arms' shoulder positions differ by **0.0 mm**, while their elbows
+differ by up to **45.3 mm**. So the shoulder tie is not a coincidence to be broken by
+iteration order; it is a statement about the mechanism, and the mechanism is this:
+
+* Under `demote` the shoulder keeps its rays, but those rays point at the **collapsed**
+  point. `solve_sequence_positions` only reports a slot recovered if the solved point
+  reprojects onto its own observations within `robust`; a point that satisfies limb length
+  and continuity cannot also reproject onto a collapsed detection, so the recovery is
+  refused and the slot stays NaN — exactly where `reject` leaves it. The rays are kept and
+  then not used.
+* **What places the shoulders is D8's gap clause, not D8b's ray handling.** The run is 10
+  frames and `MAXIMUM_INTERPOLATED_GAP_FRAMES` is 6, so `_hold_long_gaps_on_parent` carries
+  each shoulder on the **neck** at its pre-run offset. Turning that clause off and changing
+  nothing else moves the shoulders from **8.5 mm to 33.9 mm** from truth, and the
+  shoulder-minus-neck offset over the run goes from 10.4 mm of variation to 55.9. On this
+  fixture D8b's contribution to the collapsed shoulders is the **marking**; the placement is
+  a D8 rule that was reported as nearly inert at D8 and is doing the work here.
+
+What separates `demote` from `reject` is therefore the **cascade-marked elbows** (11.0
+against 33.8 mm) and the pooled figure (8.7 against 9.3); the moving-block bootstrap on
+identical draws puts `reject` behind `demote` at P = 0.000 and `best_ray` at P = 0.000. The
+selection is the same as on v1 and is now carried by a different cell, which is stated rather
+than smoothed over. On v1 the shoulders *did* separate the two (30.0 against 42.2), because
+there the collapse ran long enough and noisy enough for the two recovery paths to diverge.
 
 **The pooled median is still diluted, and the metric refutation recorded on v1 stands
 unchanged.** On v2 the pooled figure still reads *worse* than today (6.09 → 8.67), for
@@ -695,6 +714,14 @@ the candidate's 8.7 — so the refutation is preserved as a finding and no longe
 anything. This is why v2's selector reads the collapsed-shoulder cell, which is what the card
 names ("scoring 3D error of the shoulders, elbows and wrists in the run"), with the pooled
 figure reported beside it.
+
+**Two travel figures, and they are not the same one.** The run's own travel is **105.7 mm**
+(distance from the *run's* first frame, which is take frame 6). The frozen control freezes at
+take frame **0**, six frames earlier, so the bound on its error is **155.1 mm** — and it
+scores 158.7, at its bound. A reader comparing 158.7 against 105.7 would think the control
+exceeded what it could lose; it did not, and both numbers are in the report
+(`injection.landmark_travel_over_the_run` and
+`must_fail_frozen_arm.how_far_the_landmarks_actually_travel_over_the_run_mm`).
 
 **The elbow cascade is now visible as a cost.** On a quiet fixture the elbows go 3.6 → 11.0
 mm: withholding a shoulder withholds the elbow under the card's child rule, and the solve

@@ -506,6 +506,20 @@ def main() -> int:
                 "result_on_v2": "105.7 mm median travel over the run (201.8 max), 10x v1 and "
                                 "56 % of the take's; the frozen arm now scores 158.7 mm "
                                 "against the candidate's 8.7",
+                "two_travel_figures_and_they_differ": (
+                    "105.7 mm is measured from the RUN's first frame (take frame 6); the "
+                    "frozen control freezes at take frame 0, six frames earlier, so ITS "
+                    "bound is 155.1 mm and it scores 158.7 -- at its bound, not beyond it. "
+                    "Both numbers are in the v2 report and they answer different questions."),
+                "what_actually_places_the_shoulders_on_v2": (
+                    "D8's GAP CLAUSE, not D8b's ray handling. `demote` and `reject` produce "
+                    "BIT-IDENTICAL shoulders on the run (0.0 mm) because the kept rays point "
+                    "at the collapsed point and the solve's own reprojection gate refuses "
+                    "the recovery, so the slot falls to `_hold_long_gaps_on_parent` under "
+                    "both. Turning that clause off moves the shoulders 8.5 -> 33.9 mm from "
+                    "truth. On this fixture D8b marks the slots and a D8 rule places them; "
+                    "the two modes differ only at the cascade-marked elbows, by up to "
+                    "45.3 mm."),
             },
         },
         "fixture": {k: (v2.get("fixture") or {}).get(k)
