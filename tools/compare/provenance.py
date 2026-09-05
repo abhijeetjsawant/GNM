@@ -101,6 +101,86 @@ CURATED: dict[str, dict] = {
         remedy="none open. If the value moves again it must move on synthetic truth, a held-out "
                "camera or anatomy -- never on the MAMMA arm.",
     ),
+    # ------------------------------------------------------------------- D7, the pelvis
+    "PELVIS_FRAME_SOURCE": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py -- 'C_kabsch_pelvis' since 2026-09-04. "
+                 "Which construction turns the triangulated pelvis landmarks into `Hips`' world "
+                 "rotation. SELECTED ON SYNTHETIC TRUTH ONLY, on the NOISY arm of "
+                 "`tools/compare/d7_pelvis_synthetic.py` -> "
+                 "artifacts/compare/d7-pelvis-frame/synthetic.json: the CLEAN arm cannot select, "
+                 "because a Kabsch fit of the rest offsets of Hips' three rigid children recovers "
+                 "the pelvis rotation EXACTLY (4.2e-8 m residual) for every rigid candidate. The "
+                 "selection rule was fixed in docs/reviews/pelvis-frame-2026-09-04.md section 0.4 "
+                 "before any number existed. The MAMMA arm reported beside it and selected nothing.",
+        selected_against="synthetic truth (GEM-X SOMASKEL77 clips posed through our own FK), "
+                         "with our own detector's measured heavy-tail noise",
+        remedy="none open. If it moves again it must move on synthetic truth, a held-out camera "
+               "or anatomy -- never on the MAMMA arm.",
+    ),
+    "PELVIS_SMOOTHING_FRAMES": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py -- 0 (no rotation smoothing) since "
+                 "2026-09-04. Swept over (0, 3, 5, 9, 15, 21, 31) on the same synthetic arm. The "
+                 "pre-registered protocol was I8's own -- interior optimum, plus lag and "
+                 "attenuation, with an over-smoothed window required to FAIL on the fast clip. "
+                 "It could NOT be executed: at this noise the lag estimator reads -2.4 to -8.1 "
+                 "frames and the attenuation 1.2-7.3 (amplification) at EVERY window, window 0 "
+                 "included, so neither instrument discriminates. The pre-registered fallback -- "
+                 "'if no window beats 0 while holding lag <= 1 frame and attenuation >= 0.9, the "
+                 "selection is 0' -- therefore selects 0. The p95 improvement with wider windows "
+                 "(33.2 -> 17.2 deg) is REPORTED and selects nothing: a window optimises exactly "
+                 "the quantity that arm measures.",
+        selected_against="synthetic truth; the sweep and its refusal are in "
+                         "artifacts/compare/d7-pelvis-frame/synthetic.json",
+        remedy="the window sweep needs a lag/attenuation instrument that works at this noise "
+               "before any non-zero window may be selected.",
+    ),
+    "PELVIS_MINIMUM_RESOLVED_FRACTION": dict(
+        provenance=ENGINEERING,
+        evidence="src/autoanim_gnm/commercial_multiview.py -- 0.5. Below this fraction of frames "
+                 "with a resolved Spine1 the WHOLE subject falls back to the torso frame with a "
+                 "diagnostics status. Deliberately a whole-subject decision: a per-frame flip "
+                 "between a spine-derived and a trunk-derived pelvis moves `R_hips . mid` by tens "
+                 "of millimetres in one frame and spikes the root. Nothing is fitted to it; on the "
+                 "delivered take both subjects resolve at 1.000.",
+        selected_against="nothing -- it is a refusal threshold, not a tuned value",
+    ),
+    "SOMA77_REST_PELVIS_TEMPLATE_M": dict(
+        provenance=THIRD_PARTY,
+        evidence="src/autoanim_gnm/commercial_multiview.py -- the rest pelvis the measured one is "
+                 "aligned onto. A CONVENTION, and the module comment says so: "
+                 "src/autoanim_gnm/data/somaskel77-v1.json carries NO rest geometry (the plan card "
+                 "is wrong about that); the rest lives per clip in "
+                 ".cache/autoanim_gnm/gem-x/outputs/*/soma_motion.npz and is PER PERFORMER -- five "
+                 "full-body clips' pelvis source frames differ by up to 10.03 deg. These are the "
+                 "component-wise MEDIAN over those five GEM-X/Kimodo somaskel77 rests, "
+                 "re-normalised (artifacts/compare/d7-pelvis-frame/rest-pelvis-constants.json). "
+                 "MAMMA-FREE: no MAMMA file, ma_cap output, SMPL-X fit or report computed from one "
+                 "enters them. Cost of a residual: a leftover pitch delta moves the root fore/aft "
+                 "by |mid| . sin(delta) with |mid| ~ 80 mm, on every frame.",
+        selected_against="third-party skeleton geometry; never the take, never MAMMA",
+        remedy="lane H's owned marker session can measure a real pelvis and replace the "
+               "convention with a measurement.",
+    ),
+    "SOMA77_REST_PELVIS_UP": dict(
+        provenance=THIRD_PARTY,
+        evidence="as SOMA77_REST_PELVIS_TEMPLATE_M -- the root->Spine1 rest direction, used by the "
+                 "A_root_to_spine1 construction, which is measured and NOT the one that ships.",
+        selected_against="third-party skeleton geometry",
+    ),
+    "SOMA77_REST_HIPMID_TO_SPINE1": dict(
+        provenance=THIRD_PARTY,
+        evidence="as SOMA77_REST_PELVIS_TEMPLATE_M -- the mid(hips)->Spine1 rest direction, used by "
+                 "the B_hipmid_to_spine1 construction, which is measured and NOT the one that ships.",
+        selected_against="third-party skeleton geometry",
+    ),
+    "SOMA77_REST_HIP_ACROSS": dict(
+        provenance=THIRD_PARTY,
+        evidence="as SOMA77_REST_PELVIS_TEMPLATE_M -- the rest hip line, the secondary axis of the "
+                 "A and B constructions.",
+        selected_against="third-party skeleton geometry",
+    ),
     # ---------------------------------------------------------------- anatomy / literature
     "MAXIMUM_FRAME_TRAVEL_DEG": dict(
         provenance=ANATOMY,
