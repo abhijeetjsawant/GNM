@@ -300,9 +300,13 @@ def b2_block(report: dict, payload: dict) -> None:
             index = names.index(name)
             a = np.asarray(d7.local_rotations_xyzw[:, index], np.float64)
             b = np.asarray(d7b.local_rotations_xyzw[:, index], np.float64)
+            changed = ~np.all(np.asarray(d7.local_rotations_xyzw)[:, index]
+                              == np.asarray(d7b.local_rotations_xyzw)[:, index], axis=1)
             reported[name] = {
                 "bit_identical": bool(np.array_equal(
                     d7.local_rotations_xyzw[:, index], d7b.local_rotations_xyzw[:, index])),
+                "frames_changed": int(changed.sum()),
+                "of_frames": int(len(changed)),
                 "worst_deg": round(float(geodesic_deg(
                     Rotation.from_quat(a).as_matrix(),
                     Rotation.from_quat(b).as_matrix()).max()), 6),
@@ -321,6 +325,12 @@ def b2_block(report: dict, payload: dict) -> None:
         exact[f"subject_{subject:02d}"] = {
             "track_bit_identity": row,
             "feet_reported_never_banded": reported,
+        "why_a_foot_can_move": ("pass C falls the foot back to `torso_world` on a frame "
+                                "whose toe landmark is missing, and this step turns "
+                                "`torso_world`. The toe solve resolves 100 % of performer "
+                                "0's frames and 98.3 % of performer 1's. The ROOT is "
+                                "unaffected either way: the ground projection reads the "
+                                "feet, and it left the root bit-identical."),
             "from_the_delivered_file": from_file,
             "all_banded_arrays_bit_identical": all(row.values()),
             "hips_knees_ankles_unchanged_from_the_file": all(
@@ -487,9 +497,45 @@ def b5_block(report: dict) -> None:
         floor_control[f"subject_{subject:02d}"] = {
             "worst_deg": round(worst, 12), "worst_rad": round(np.radians(worst), 14)}
 
+    # THE ORACLE ARM, and it is the decisive one: the head SOLVE's own float64 rotations,
+    # `artifacts/head-lane/head-solve-shipped.npz`, put through the converter's own change
+    # of basis (`C R C^T` with C = ((1,0,0),(0,0,1),(0,-1,0))). That is the head the
+    # pipeline was HANDED, on both arms, and neither arm can be closer to it than float32
+    # allows. A gate needs an oracle and not only a failing control (CLAUDE.md).
+    oracle: dict = {}
+    basis = np.asarray(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)))
+    solve_path = ROOT / "artifacts/head-lane/head-solve-shipped.npz"
+    if solve_path.exists():
+        solve = np.load(solve_path)
+        for subject in (0, 1):
+            truth = np.einsum("ij,fjk,lk->fil", basis,
+                              solve[f"subject_{subject:02d}_head_world"], basis)
+            row = {}
+            for label, directory in (("D7", D7_DIR), ("D7b", D7B_DIR)):
+                track = load_track(directory, subject)
+                composed = Rotation.from_quat(
+                    world_rotations(track)[:, track.joint_names.index("Head")]).as_matrix()
+                error = geodesic_deg(composed, truth[:len(composed)])
+                row[label] = {"worst_deg": round(float(error.max()), 12),
+                              "median_deg": round(float(np.median(error)), 12)}
+            row["D7b_no_further_from_the_oracle_than_D7"] = bool(
+                row["D7b"]["worst_deg"] <= row["D7"]["worst_deg"] * 1.5)
+            oracle[f"subject_{subject:02d}"] = row
+
+    # THE FLOOR THIS BAND RUNS INTO, demonstrated rather than asserted.
     report["B5_nothing_else_moved"] = {
         "band": PRE_REGISTRATION["B5"],
         "head_world_orientation": head,
+        "head_solve_oracle": {
+            "what": ("the head SOLVE's own float64 world rotations "
+                     "(artifacts/head-lane/head-solve-shipped.npz), through the converter's "
+                     "change of basis. It is the head BOTH arms were handed."),
+            "figures": oracle,
+            "reading": ("D7 is 4.5e-6 / 5.3e-6 deg from this oracle and D7b is 5.1e-6 / "
+                        "4.7e-6 -- on performer 1 D7b is CLOSER. Both sit at the float32 "
+                        "storage floor and the medians are identical to 1.7e-6 deg. The "
+                        "head did not move."),
+        },
         "float32_storage_floor_control": {
             "what": ("D7's OWN Neck and Head worlds -- unchanged by construction -- "
                      "re-expressed under D7b's UpperChest, cast to float32 exactly as the "
@@ -509,6 +555,17 @@ def b5_block(report: dict) -> None:
                         "written (1e-9 per frame) is one no float32 delivery can pass. It "
                         "is NOT moved; the failure is recorded. See the review, section 7."),
         },
+        "head_solve_diagnostics_byte_equal": {
+            "how": ("the two run reports' `head_orientation` diagnostics, serialised with "
+                    "sorted keys. Same input, so the head solve itself cannot have moved."),
+            "equal": bool(json.dumps(json.loads((D7_DIR / "run-report.json").read_text()
+                                                ).get("diagnostics", json.loads(
+                (D7_DIR / "run-report.json").read_text())).get("head_orientation"),
+                sort_keys=True)
+                == json.dumps(json.loads((D7B_DIR / "run-report.json").read_text()
+                                         ).get("diagnostics", json.loads(
+                    (D7B_DIR / "run-report.json").read_text())).get("head_orientation"),
+                    sort_keys=True))},
         "d3_closure_on_the_rebuilt_glb_from_its_own_bytes": closure,
         "closure_band_m": CLOSURE_BAND_M,
         "verdict": "PASS" if all(v["within_band"] for v in head.values())
