@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-05T16:48:54",
+ "rendered": "2026-09-05T22:29:35",
  "git": {
-  "sha": "5b010b5",
+  "sha": "23dbfee",
   "dirty": true
  },
  "rungs": [
@@ -18,6 +18,44 @@
    "title": "Person masks and per-view identity",
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
+    {
+     "title": "D8: how well the arms cover the person in the photographs, on the frames where it went wrong",
+     "plain": "The reference fitter's person masks are the reference; higher is better. Arms only, and only the 41 frames where two of the four cameras have lost a performer -- the frames this step is about. The hatched bars are the build before this one and the reference fitter's own mesh, which is the ceiling a body of the wrong proportions can reach rather than a target. A short window gives a wide margin of uncertainty and that is stated on the technical page.",
+     "better": "higher",
+     "unit": "IoU median",
+     "bars": [
+      {
+       "label": "Ships, performer 1",
+       "role": "ours",
+       "value": 0.15716
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "control",
+       "value": 0.16368
+      },
+      {
+       "label": "Reference fitter's mesh, performer 1",
+       "role": "control",
+       "value": 0.2224
+      },
+      {
+       "label": "Ships, performer 0",
+       "role": "ours",
+       "value": 0.11282
+      },
+      {
+       "label": "Before, performer 0",
+       "role": "control",
+       "value": 0.11035
+      },
+      {
+       "label": "Reference fitter's mesh, performer 0",
+       "role": "control",
+       "value": 0.15055
+      }
+     ]
+    },
     {
      "title": "D7b: how well the body's outline covers the person, by how far they are bent over",
      "plain": "The reference fitter's person masks are the reference; higher is better. Body and legs only, arms taken out, performer 0. It rises in every band and most where they are most bent over, and there the interval is clear of zero. The hatched bars are the build before this one and the reference fitter's own mesh -- the ceiling a body of the wrong proportions can reach, not a target.",
@@ -331,7 +369,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.6372328967289769
+       "value": 0.647297135422295
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -346,7 +384,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.4269361417948444
+       "value": 0.4218373247232737
       }
      ]
     },
@@ -359,7 +397,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.7444955618787366
+       "value": 0.7498641595047633
       },
       {
        "label": "MAMMA's mesh",
@@ -601,22 +639,22 @@
       {
        "label": "Worst arms, 6 bodies",
        "role": "ours",
-       "value": 10.75
+       "value": 5.24
       },
       {
        "label": "Worst legs, 6 bodies",
        "role": "ours",
-       "value": 16.01
+       "value": 12.77
       },
       {
        "label": "Arriving canonical, arms",
        "role": "control",
-       "value": 30.18
+       "value": 30.89
       },
       {
        "label": "Arriving canonical, legs",
        "role": "control",
-       "value": 24.4
+       "value": 21.66
       }
      ]
     },
@@ -629,7 +667,7 @@
       {
        "label": "Fixed rig, performer 0",
        "role": "alt",
-       "value": 0.34643
+       "value": 0.35041
       },
       {
        "label": "Delivered body, performer 0",
@@ -639,7 +677,7 @@
       {
        "label": "Fixed rig, performer 1",
        "role": "alt",
-       "value": 0.3631
+       "value": 0.36137
       },
       {
        "label": "Delivered body, performer 1",
@@ -932,7 +970,7 @@
       {
        "label": "Arms before, performer 0",
        "role": "alt",
-       "value": 15.21
+       "value": 12.28
       },
       {
        "label": "Arms after, performer 0",
@@ -942,7 +980,7 @@
       {
        "label": "Legs before, performer 0",
        "role": "alt",
-       "value": 6.89
+       "value": 5.13
       },
       {
        "label": "Legs after, performer 0",
@@ -952,7 +990,7 @@
       {
        "label": "Arms before, performer 1",
        "role": "alt",
-       "value": 14.94
+       "value": 14.22
       },
       {
        "label": "Arms after, performer 1",
@@ -962,7 +1000,7 @@
       {
        "label": "Legs before, performer 1",
        "role": "alt",
-       "value": 12.56
+       "value": 11.48
       },
       {
        "label": "Legs after, performer 1",
@@ -980,22 +1018,22 @@
       {
        "label": "Our capture, performer 0",
        "role": "ours",
-       "value": 36.11694619758818
+       "value": 36.658746623002074
       },
       {
        "label": "Capture driving a fitted body, 0",
        "role": "alt",
-       "value": 27.7
+       "value": 28.6
       },
       {
        "label": "Our capture, performer 1",
        "role": "ours",
-       "value": 41.29665970596726
+       "value": 42.1731740784341
       },
       {
        "label": "Capture driving a fitted body, 1",
        "role": "alt",
-       "value": 40.1
+       "value": 39.8
       }
      ]
     },
@@ -1008,32 +1046,32 @@
       {
        "label": "Fixed rig, performer 0",
        "role": "ours",
-       "value": 50.79
+       "value": 53.74
       },
       {
        "label": "Rig sized to performer 0",
        "role": "alt",
-       "value": 25.55
+       "value": 15.28
       },
       {
        "label": "Converter floor, performer 0",
        "role": "control",
-       "value": 0.06
+       "value": 0.05
       },
       {
        "label": "Fixed rig, performer 1",
        "role": "ours",
-       "value": 30.5
+       "value": 25.45
       },
       {
        "label": "Rig sized to performer 1",
        "role": "alt",
-       "value": 21.84
+       "value": 19.71
       },
       {
        "label": "Converter floor, performer 1",
        "role": "control",
-       "value": 0.04
+       "value": 0.03
       }
      ]
     },
@@ -1353,12 +1391,12 @@
       {
        "label": "Ours, performer 0",
        "role": "ours",
-       "value": 5.52027564645114
+       "value": 4.9841831809286345
       },
       {
        "label": "MAMMA through our frames, 0",
        "role": "mamma",
-       "value": 4.272005605650526
+       "value": 3.6303950277974066
       },
       {
        "label": "A head that never moves, 0",
@@ -1368,12 +1406,12 @@
       {
        "label": "Ours, performer 1",
        "role": "ours",
-       "value": 7.1874202113228165
+       "value": 6.558211970634495
       },
       {
        "label": "MAMMA through our frames, 1",
        "role": "mamma",
-       "value": 4.312137895230447
+       "value": 3.7958909029761037
       },
       {
        "label": "A head that never moves, 1",
@@ -1391,12 +1429,12 @@
       {
        "label": "Ours, performer 0",
        "role": "ours",
-       "value": 1.8326611268337238
+       "value": 4.9236251857134015
       },
       {
        "label": "Ours, performer 1",
        "role": "ours",
-       "value": 5.3381473535469475
+       "value": 2.363605868266214
       }
      ]
     }
@@ -1579,22 +1617,22 @@
       {
        "label": "Delivered, performer 0's own body",
        "role": "ours",
-       "value": 33.055070516979434
+       "value": 30.84041198694393
       },
       {
        "label": "Replayed on the fixed rig, 0",
        "role": "alt",
-       "value": 81.41783598674114
+       "value": 78.61934805829159
       },
       {
        "label": "Delivered, performer 1's own body",
        "role": "ours",
-       "value": 42.36491890464152
+       "value": 40.997449729589825
       },
       {
        "label": "Replayed on the fixed rig, 1",
        "role": "alt",
-       "value": 123.44329965462256
+       "value": 123.05794304547251
       }
      ]
     },
@@ -1607,37 +1645,37 @@
       {
        "label": "Delivered pelvis",
        "role": "ours",
-       "value": 0.9782254514067114
+       "value": 0.9787800468504209
       },
       {
        "label": "Delivered chest",
        "role": "ours",
-       "value": 0.9834245014125754
+       "value": 0.9829285136637759
       },
       {
        "label": "Delivered head",
        "role": "ours",
-       "value": 0.9158258329042205
+       "value": 0.9214130910865272
       },
       {
        "label": "The delivered mesh's nose",
        "role": "ours",
-       "value": 0.8132469111511756
+       "value": 0.8242116075361163
       },
       {
        "label": "Delivered feet (solved from the toes)",
        "role": "alt",
-       "value": 0.9428341678338313
+       "value": 0.9545590643744868
       },
       {
        "label": "MAMMA's reading of the performers",
        "role": "mamma",
-       "value": 0.9924851301821289
+       "value": 0.9923882310435177
       },
       {
        "label": "Our capture turned 180 degrees",
        "role": "control",
-       "value": -0.8266672635686012
+       "value": -0.850061957192416
       }
      ]
     }

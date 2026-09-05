@@ -233,7 +233,8 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f4, c4 = _d3_figures("masks")
     f5, c5 = _d7_figures("masks")
     f6, c6 = _d7b_figures("masks")
-    return figs + f3 + f4 + f5 + f6, ctrls + c3 + c4 + c5 + c6
+    f7, c7 = _d8_figures("masks")
+    return figs + f3 + f4 + f5 + f6 + f7, ctrls + c3 + c4 + c5 + c6 + c7
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -272,7 +273,8 @@ def x_sequence_and_oracle(spec: dict) -> tuple[list, list]:
     from extractors.i7_temporal import x_temporal  # noqa: E402
     f2, c2 = x_oracle_2d(spec)
     f3, c3 = x_temporal(spec)
-    return figs + f2 + f3, ctrls + c2 + c3
+    f8, c8 = _d8_figures("capture")
+    return figs + f2 + f3 + f8, ctrls + c2 + c3 + c8
 
 
 def x_feet_bar(spec: dict) -> tuple[list, list]:
@@ -297,7 +299,8 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f4, c4 = _d3_figures("converter")
     f5, c5 = _d7_figures("converter")
     f6, c6 = _d7b_figures("converter")
-    return figs + f2 + f3 + f4 + f5 + f6, ctrls + c2 + c3 + c4 + c5 + c6
+    f7, c7 = _d8_figures("converter")
+    return figs + f2 + f3 + f4 + f5 + f6 + f7, ctrls + c2 + c3 + c4 + c5 + c6 + c7
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -337,6 +340,33 @@ def _d7b_figures(where: str) -> tuple[list, list]:
 
     def dest(key: str) -> str:
         return "masks" if key.startswith("silhouette_") else "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d8_figures(where: str) -> tuple[list, list]:
+    """D8 figures from `tools/compare/extractors/d8_occlusion.py` (the agent's stub, wired here by the
+    registry owner), routed by what each figure REFERENCES: `silhouette_` (the masks) to rung 1;
+    `capture_` and `synthetic_` (the captured landmarks against the performer's own bone lengths and
+    against synthetic truth -- the YELLOW) to the sequence rung; `placement_` (the delivered file
+    against the RAW captured points) to rung 7, the converter. D8 shipped on 2026-09-05: where two
+    bodies overlap, cameras B and D drop the falling performer and the remaining pair sits 172 deg
+    apart, so depth along their axis is free; near-collinear two-view slots are now demoted to the
+    sequence solve. The raw triangulation is byte-identical; every smoothed-landmark figure on the
+    ladder moved by design, and the D7b neck chart now reads against a different yellow."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d8_occlusion  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d8_occlusion.x_occlusion_repair({})
+
+    def dest(key: str) -> str:
+        if key.startswith("silhouette_"):
+            return "masks"
+        if key.startswith("placement_"):
+            return "converter"
+        return "capture"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
 
@@ -1400,6 +1430,12 @@ def _splice_d7_visuals() -> None:
         return
     VISUALS["pose"][0:0] = d7b_trunk.VISUALS.get("converter", [])
     VISUALS["masks"][0:0] = d7b_trunk.VISUALS.get("masks", [])
+    try:
+        from extractors import d8_occlusion  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["triangulation"][0:0] = d8_occlusion.VISUALS.get("capture", [])
+    VISUALS["masks"][0:0] = d8_occlusion.VISUALS.get("masks", [])
 
 
 

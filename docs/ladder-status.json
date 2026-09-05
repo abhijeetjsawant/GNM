@@ -225,10 +225,10 @@
           "title": "The captured limbs under occlusion: fix the yellow where two bodies overlap",
           "plain": "Where the performers push and one falls, two of the four cameras lose him and the remaining two sit opposite each other, so the captured shoulders and arms stretch and collapse along the line between those cameras, and every later step has faithfully followed them. This step catches those frames from the camera geometry itself and lets the existing sequence solver recover them from the performer's own bone lengths.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-05",
-          "finished": null,
-          "report": null,
+          "finished": "2026-09-05",
+          "report": "artifacts/compare/d8-occlusion/gate.json",
           "blocked_on": null
         }
       ]
@@ -593,6 +593,16 @@
       "date": "2026-09-05",
       "step": "D8",
       "text": "card written 2026-09-05 (Sol-reviewed; effect measured and classified per camera before the band: B/D dropout leaves A-C at 172 deg, depth free along their axis); worktree ladder/D8 from 18f6cf8; runs before D6 and D5"
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D8",
+      "text": "merged 2026-09-05 (23dbfee, --no-ff): the yellow repaired where two bodies overlap -- B/D drop the falling performer and the A-C pair at 172 deg cannot fix depth along its axis, so near-collinear two-view slots are demoted to the sequence solve; captured shoulder line off the performer's own width 22->4 / 27->16 frames, forearm 18->4, legs 0->0, raw triangulation byte-identical; MAMMA's four-camera body closer on neck and both hands for both performers (report only); delivery rebuilt in place, 8/8 byte-identical to the branch build; every instrument rerun"
+    },
+    {
+      "date": "2026-09-05",
+      "step": "D8",
+      "text": "2026-09-05, D8 post-merge: the head gate's first measurement on the repaired landmarks -- the shipped head candidate now PASSES its band (median 7.19 -> 6.56 deg, p95 22.19 -> 14.06; it read FAIL on every build since D2), because the head solve reads the smoothed points and the neck/shoulders under it stopped sliding along the A-C axis. The D3 gate's same-denominator clause reads FAIL by design (the smoothed landmarks moved; the raw array is the fixed reference from now on) and needs re-baselining in the next instrument pass. Reviewer's checks before the merge: the trunk-length and shoulder-width restorations are the sequence solve's own prior (weak); MAMMA's joints on the window through subject_map were the discriminating oracle; a right-hand 'regression against raw' on performer 0 was the raw point being wrong. The synthetic fixture could not select the ray-angle ceiling (exactly rigid and smooth, it prefers recovery at every angle) -- refuted prediction on method; the 150 deg and the 6-frame gap are registered as engineering limits. Reachability fired twice on rig landmarks and the gap clause held 0.0004 of slots: two near-inert rules a later step may retire. The MAMMA worker caps custom runs at four cameras (noted during the bear experiment)."
     }
   ]
 }
