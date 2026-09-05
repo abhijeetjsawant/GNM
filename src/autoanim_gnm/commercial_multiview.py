@@ -238,6 +238,17 @@ class ReconstructionDiagnostics:
     # root offset riding the lean. It must never be silent.
     spine_triangulation: tuple[dict[str, Any], ...] = ()
     pelvis_frame: tuple[dict[str, Any], ...] = ()
+    # D8. The share of slots whose value was HELD on the parent across a gap too long to
+    # interpolate through, quoted on the same denominator as
+    # `interpolated_joint_fraction` and reported beside it. Interpolation draws a line
+    # through missing evidence; a hold says so. Neither is a measurement and the two must
+    # never be summed into one "valid" number.
+    held_joint_fraction: float = 0.0
+    # D8. Per subject: the conditioning gate's and the reachability reject's own counts,
+    # the ceilings they ran at, and the ray-pair geometry they saw. A demotion is not an
+    # error and a rejection is not a failure -- but an unreported one is, because the
+    # delivered smoothed array carries the consequence of both.
+    occlusion_repair: tuple[dict[str, Any], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -266,6 +277,8 @@ class ReconstructionDiagnostics:
             "toe_triangulation": [dict(value) for value in self.toe_triangulation],
             "spine_triangulation": [dict(value) for value in self.spine_triangulation],
             "pelvis_frame": [dict(value) for value in self.pelvis_frame],
+            "held_joint_fraction": self.held_joint_fraction,
+            "occlusion_repair": [dict(value) for value in self.occlusion_repair],
         }
 
 
@@ -1263,6 +1276,408 @@ def _fill_and_smooth_positions(values: np.ndarray) -> tuple[np.ndarray, float]:
 # 0.5 is the standard rigging split and is deliberately not tuned: there is nothing on this
 # fixture to tune it against, and a value fitted to a reference would be a shipped constant
 # calibrated on MAMMA.
+# ======================================================================================
+# D8 -- the captured limbs under occlusion. Three rules, all of them sitting AFTER the raw
+# triangulation is captured and BEFORE the sequence solve and the fill, so
+# `raw_triangulated_world_positions_z_up_m` is bit-identical across the D7b and D8 builds
+# and is the one unchanged reference every D8 band shares.
+#
+# THE DEFECT. In the reference take's push-and-fall window (frame ids 85-125) cameras B001
+# and D001 lose one performer entirely -- B001 on 20 of the 41 frames, D001 on 32, at
+# sub-floor confidences whose p10-p90 is 0.05-0.13 -- leaving A001 and C001, which sit
+# 171-172 degrees apart at that subject. Two near-collinear rays fix a point across their
+# common axis and not along it, so the shoulder line collapses and stretches (68 mm at
+# frame 108, 554 at frame 100) while every epipolar and reprojection gate stays satisfied.
+# `maximum_epipolar_px` and `inlier_threshold_px` measure agreement, and the two views
+# AGREE, to 3-5 px, on the wrong point. It is a CONDITIONING failure, not a noise one, and
+# no residual threshold can see it. Measured in `tools/compare/captured_limb_stability.py`
+# and recorded in `docs/reviews/occlusion-repair-2026-09-05.md`.
+# ======================================================================================
+
+# PROVENANCE: ENGINEERING-LIMIT, derived in closed form, and NOT selected on any take --
+# including the synthetic one. The derivation, in one line: two rays meeting at an angle
+# theta determine a point ACROSS their common axis and only weakly ALONG it, and the
+# along-axis error is amplified by 1/|sin theta| relative to a right-angled pair. 90 deg is
+# 1.0x, 150 deg is 2.0x, 172 deg (which is what A001 and C001 make at the falling performer
+# in the reference window) is 7.2x. The ceiling below is the angle at which that
+# amplification reaches **2x**, and 2x is the declared choice. The complement clause falls
+# out of the same expression: 180 - 150 = 30 deg is where |sin theta| passes 0.5 from the
+# other side, so the rule is exactly "demote when |sin theta| < 0.5".
+#
+# WHY IT IS NOT SELECTED ON SYNTHETIC TRUTH, WHICH IS WHAT THE D8 CARD SAID IT WOULD BE.
+# `tools/compare/d8_occlusion_synthetic.py` tried and could not, and the reason is a
+# property of the fixture rather than of this rule: the fixture's bodies have exactly rigid
+# bones and exactly smooth motion, which are precisely the sequence solve's own priors. A
+# recovery whose priors are true by construction beats a noisy two-view triangulation at
+# EVERY angle -- including a well-conditioned right-angled pair -- so the score curve has no
+# crossover and its argmin is always the lowest candidate swept, which is "never trust two
+# views": a capacity change rather than evidence, and the thing the card explicitly forbids.
+# Shipping that argmin would be the standing error this lane keeps a rule about, a band the
+# candidate can optimise. What the fixture CAN do, and does, is confirm the closed form --
+# the measured two-view triangulation error is CONSISTENT WITH rising as 1/|sin theta|
+# across its angle bins; the bin table and the coefficient are in the report and in the
+# review, and neither is quoted as a fit.
+#
+# THE EVIDENCE THAT THIS IS A FIXTURE ARTEFACT AND NOT A FINDING is in this file, six
+# hundred lines up: `solve_sequence_positions` deliberately does NOT overwrite slots that
+# already triangulated, because measured on real data the solve moved them 'by a median of
+# 11-14 mm and up to 700 mm -- the temporal and limb terms outvoting good geometry'. Those
+# priors are true on the fixture and false on the footage, which is exactly why the fixture
+# prefers demoting everything and the footage would not.
+#
+# HONESTY ABOUT THE ORDER THIS WAS FOUND IN: 150.0 was in this file before the closed form
+# was written down, as a first guess. k = 2 was RECOGNISED as the factor that yields it,
+# not chosen ahead of it. The value did not move; the justification replaced a worse one.
+# Recorded in docs/reviews/occlusion-repair-2026-09-05.md section 7.
+#
+# A two-view slot whose supporting rays meet at more than this angle -- or at less than its
+# complement, the near-co-located case -- is depth-unconstrained along their common axis
+# and is DEMOTED: its triangulated position is withheld from the sequence solve, whose
+# existing single-ray recovery (ray + the performer's own parent distance + temporal
+# continuity) then resolves it from the same rays plus evidence the triangulation never
+# used. Nothing is invented and no prior is added; the rays are the ones already there.
+# A slot with THREE or more supporting views is never demoted: the third view fixes the
+# depth the pair cannot.
+RAY_PAIR_CONDITIONING_CEILING_DEG = 150.0
+
+# PROVENANCE: ANATOMY. Peak LINEAR speed of each landmark, metres per second, as a
+# physical impossibility bound and deliberately not a plausibility one: the rule exists to
+# refuse what a body cannot do, and a ceiling tight enough to refuse what a body merely
+# rarely does would be a smoother wearing a reject's clothes. Sources, in the units they
+# are published in: elite baseball pitching reaches ~34 m/s at the hand and ~9 m/s at the
+# shoulder (Fleisig et al., kinematic chain studies); competitive boxing punches reach
+# 6-9 m/s at the fist; sprinting reaches ~2x running speed at the foot during swing, so
+# ~12 m/s at 6 m/s ground speed. Each ceiling below sits at or above the published peak
+# for that landmark, so the rule fires only on motion no measured human has produced.
+# The ENVELOPE these are turned into (below) is what synthetic truth selects; these
+# numbers are anatomy and are not selected on any take.
+REACHABILITY_SPEED_CEILING_M_S = {
+    "nose": 8.0, "left_eye": 8.0, "right_eye": 8.0, "left_ear": 8.0, "right_ear": 8.0,
+    "neck": 6.0, "root": 6.0,
+    "left_shoulder": 9.0, "right_shoulder": 9.0,
+    "left_elbow": 18.0, "right_elbow": 18.0,
+    "left_wrist": 34.0, "right_wrist": 34.0,
+    "left_hip": 6.0, "right_hip": 6.0,
+    "left_knee": 10.0, "right_knee": 10.0,
+    "left_ankle": 14.0, "right_ankle": 14.0,
+}
+
+# PROVENANCE: SYNTHETIC-TRUTH, selected with the ceiling above by
+# `tools/compare/d8_occlusion_synthetic.py`. The constant term of the reachability
+# envelope, in metres: what the landmark may move by beyond its speed budget before the
+# frame is refused. It absorbs the triangulation's own noise, so a stationary joint's
+# jitter cannot trip a rule about motion. The envelope is
+# ``slack + ceiling * elapsed_seconds`` and it is measured from the LAST ACCEPTED point
+# with `elapsed` counting the frames since that point, exactly as
+# `_reachable_clavicle_sequence` does -- never a step test against the immediately
+# preceding frame, which accepts the wrong plateau between two big steps (CLAUDE.md).
+REACHABILITY_SLACK_M = 0.09
+
+# PROVENANCE: SYNTHETIC-TRUTH, selected by `tools/compare/d8_occlusion_synthetic.py`.
+# `_fill_and_smooth_positions` interpolates linearly across a gap of any length: on the
+# reference take the real per-camera miss runs have median 2, p90 28 and max 40 frames, so
+# a straight line can be drawn through more than a second of missing evidence and then
+# Savitzky-Golay filtered into something that looks measured. Gaps LONGER than this are
+# not interpolated through; the landmark is held on its parent (its world offset from the
+# parent at the last accepted frame is carried) and the fraction is REPORTED as
+# `held_joint_fraction` beside `interpolated_joint_fraction`. A whole-take hold is the
+# must-fail control.
+#
+# PROVENANCE, AND A SECOND REFUTED PREDICTION. The card said this would be selected on
+# synthetic truth. It cannot be, and for the SAME reason the ray-angle ceiling cannot: the
+# fixture's motion is smooth by construction, so a straight line through a gap is nearly
+# exact there and the score prefers interpolating at every candidate length -- the
+# monotone curve again, whose argmin is "never hold". `tools/compare/d8_occlusion_
+# synthetic.py` reports that sweep in full and selects nothing from it.
+#
+# The value is instead a closed-form bound, with its sensitivity stated rather than hidden.
+# A straight chord across a gap of duration T departs from a constant-acceleration
+# trajectory by at most a*T^2/8. Setting that equal to REACHABILITY_SLACK_M -- the measured
+# jitter of our own triangulation, so the bound says "the line stops being defensible when
+# it can be wrong by more than the noise" -- gives T = sqrt(8*slack/a). At a limb
+# acceleration of 20 m/s^2 (brisk everyday reaching) that is 5.7 frames at 30 fps; at
+# 50 m/s^2 (fast sport) it is 3.6. THE VALUE BELOW IS THE 20 m/s^2 END AND THAT CHOICE IS
+# DECLARED, NOT DERIVED. It is the conservative end -- a longer permitted gap holds fewer
+# slots and departs less from the pre-D8 behaviour.
+#
+# The clause's value is the DIAGNOSTIC, not an error reduction: it makes the pipeline stop
+# claiming a measurement it does not have, and `held_joint_fraction` says how often. On any
+# fixture whose motion is smooth it will look like a cost, because there it IS one.
+MAXIMUM_INTERPOLATED_GAP_FRAMES = 6
+
+# Which landmark is carried by which when a long gap is held. Parent in the kinematic
+# sense, not the detector's: a wrist follows its elbow, an elbow its shoulder, a shoulder
+# the neck. `root` has no parent and is never held (it is also never missing on this take).
+LANDMARK_PARENT = {
+    "left_wrist": "left_elbow", "right_wrist": "right_elbow",
+    "left_elbow": "left_shoulder", "right_elbow": "right_shoulder",
+    "left_shoulder": "neck", "right_shoulder": "neck",
+    "left_ankle": "left_knee", "right_ankle": "right_knee",
+    "left_knee": "left_hip", "right_knee": "right_hip",
+    "left_hip": "root", "right_hip": "root",
+    "neck": "root",
+    "nose": "neck", "left_eye": "nose", "right_eye": "nose",
+    "left_ear": "nose", "right_ear": "nose",
+}
+
+
+def _ray_pair_angles_deg(
+    cameras: Sequence[CalibratedCamera],
+    point: np.ndarray,
+    view_indices: Sequence[int],
+) -> float:
+    """Largest angle, in degrees, between any two supporting views' rays to ``point``.
+
+    The conditioning number of a two-view triangulation, expressed as the one geometric
+    quantity that says whether depth along the pair's common axis is determined. Near 90
+    degrees the pair is well conditioned; near 0 or 180 it is not, and the point slides
+    freely along the axis while both reprojections stay perfect.
+    """
+
+    directions: list[np.ndarray] = []
+    for index in view_indices:
+        vector = np.asarray(point, dtype=np.float64) - cameras[index].camera_center_world_m
+        norm = float(np.linalg.norm(vector))
+        if norm > 1e-9:
+            directions.append(vector / norm)
+    worst = 0.0
+    for position, first in enumerate(directions):
+        for second in directions[position + 1:]:
+            cosine = float(np.dot(first, second))
+            worst = max(worst, math.degrees(math.acos(min(1.0, max(-1.0, cosine)))))
+    return worst
+
+
+def _reachable_landmark_sequence(
+    points: np.ndarray,
+    ceiling_m_per_s: float,
+    slack_m: float,
+    sample_rate_hz: int,
+    rule: str = "reachability",
+) -> np.ndarray:
+    """Which frames of ONE landmark's position series a body could have reached.
+
+    ``points`` is ``[frame, 3]``, NaN where the landmark did not triangulate. Returns a
+    boolean ``accepted`` of the same length; a non-finite frame is never accepted and never
+    becomes the anchor the next frame is measured from.
+
+    The rule is `_reachable_clavicle_sequence`'s, one dimension down: the budget is
+    measured from the LAST ACCEPTED point and widened by the frames elapsed since it, so a
+    landmark that has been missing for a while may legitimately have travelled further.
+
+    ``rule`` is in the signature on purpose and is the reason this function is module level
+    and called by bare name, like :func:`_reachable_clavicle_sequence`, :func:`_joint_origin`
+    and :func:`_leg_root_offset`. ``"step"`` is the MUST-FAIL control and it must run
+    through this identical call site rather than a re-implementation of it. The two rules
+    differ in exactly two things, and each difference is a defect:
+
+    * the step test measures from the last PRESENT sample, accepted or not, so a run of
+      rejected frames becomes its own reference and **the wrong plateau between two big
+      steps is accepted** -- each frame inside the plateau is a small step from the last
+      one (CLAUDE.md);
+    * the step test's budget is one frame's worth whatever the gap, so a landmark that
+      legitimately travelled while unobserved is **rejected for having moved**, where the
+      reachability envelope widens with the frames elapsed and accepts it.
+
+    Both are demonstrated in `tests/test_occlusion_repair.py`.
+    """
+
+    values = np.asarray(points, dtype=np.float64)
+    frames = len(values)
+    accepted = np.zeros(frames, dtype=bool)
+    finite = np.isfinite(values).all(axis=1)
+    if not finite.any():
+        return accepted
+    first = int(np.flatnonzero(finite)[0])
+    accepted[first] = True
+    anchor = first
+    previous_present = first
+    for frame in range(first + 1, frames):
+        if not finite[frame]:
+            continue
+        if rule == "reachability":
+            reference = anchor
+            elapsed = max(1, frame - reference) / float(sample_rate_hz)
+        else:
+            reference = previous_present
+            elapsed = 1.0 / float(sample_rate_hz)
+        previous_present = frame
+        envelope = slack_m + ceiling_m_per_s * elapsed
+        if float(np.linalg.norm(values[frame] - values[reference])) <= envelope:
+            accepted[frame] = True
+            anchor = frame
+    return accepted
+
+
+def _hold_long_gaps_on_parent(
+    values: np.ndarray,
+    maximum_gap_frames: int,
+) -> tuple[np.ndarray, float]:
+    """Carry a landmark on its parent across a gap too long to interpolate through.
+
+    ``values`` is ``[frame, joint, 3]`` with NaN where nothing is known. A run of missing
+    frames LONGER than ``maximum_gap_frames`` is not left for `_fill_and_smooth_positions`
+    to draw a straight line through: the landmark's world offset from its parent at the
+    last known frame before the run is held, and translated by the parent's own motion. A
+    run that trails off either end is held on the nearest known frame's offset.
+
+    Returns ``(filled, held_fraction)``. Anything this does not fill stays NaN and the
+    caller's existing fill handles it, so a short gap behaves exactly as it always has.
+
+    WHY BETWEEN THE SOLVE AND THE FILL, and not inside the fill. `solve_sequence_positions`
+    calls `_fill_and_smooth_positions` itself to build its starting point; changing that
+    function's behaviour would change the solver's initialisation and the clean oracle
+    would stop being bit-identical. This is a separate pass applied after the solve has had
+    its chance to recover a slot from evidence -- a hold is what happens when there is no
+    evidence at all, and it must never pre-empt a recovery.
+
+    WHAT IT DOES NOT DO. It has no frame to rotate in: at this stage the pipeline holds
+    positions, not orientations, so the offset is carried by TRANSLATION only. A limb that
+    rotates about its parent while unobserved is held straight, and the diagnostics say how
+    many slots that is rather than the result looking measured.
+    """
+
+    output = np.asarray(values, dtype=np.float64).copy()
+    if output.ndim != 3 or output.shape[2] != 3:
+        raise CommercialMultiviewError("World positions must be [frame,joint,3]")
+    if maximum_gap_frames < 0:
+        raise CommercialMultiviewError("The interpolated-gap ceiling must not be negative")
+    held = np.zeros(output.shape[:2], dtype=bool)
+    known = np.isfinite(output).all(axis=2)
+    for name, parent_name in LANDMARK_PARENT.items():
+        if name not in JOINT_INDEX or parent_name not in JOINT_INDEX:
+            continue
+        joint, parent = JOINT_INDEX[name], JOINT_INDEX[parent_name]
+        missing = ~known[:, joint]
+        if not missing.any():
+            continue
+        frame = 0
+        while frame < len(output):
+            if not missing[frame]:
+                frame += 1
+                continue
+            stop = frame
+            while stop < len(output) and missing[stop]:
+                stop += 1
+            if stop - frame > maximum_gap_frames:
+                before = frame - 1 if frame > 0 and known[frame - 1, joint] else -1
+                after = stop if stop < len(output) and known[stop, joint] else -1
+                anchor = before if before >= 0 else after
+                if anchor >= 0 and known[anchor, parent]:
+                    offset = output[anchor, joint] - output[anchor, parent]
+                    for index in range(frame, stop):
+                        if not known[index, parent]:
+                            continue
+                        output[index, joint] = output[index, parent] + offset
+                        held[index, joint] = True
+            frame = stop
+    return output, float(np.mean(held))
+
+
+def _repair_occluded_slots(
+    cameras: Sequence[CalibratedCamera],
+    world: np.ndarray,
+    supporting_views: np.ndarray,
+    *,
+    sample_rate_hz: int,
+    ray_pair_ceiling_deg: float | None,
+    reachability: bool,
+    reachability_slack_m: float = REACHABILITY_SLACK_M,
+    reachability_rule: str = "reachability",
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """One subject's triangulated positions, with the unusable slots withheld.
+
+    ``world`` is ``[frame, joint, 3]`` and is NEVER modified: a copy is returned, and the
+    array the caller passes in is the one it returns to its own caller as
+    ``raw_triangulated_world_positions_z_up_m``. That is the whole reason this function
+    takes a copy rather than repairing in place -- the raw array is D8's fixed reference
+    and every band in the step is scored against it.
+
+    ``supporting_views`` is ``[frame, joint, camera]`` booleans: which cameras the
+    triangulator actually USED for that slot (its inliers), not which cameras could see it.
+
+    Two rules, applied in this order, each of which only ever turns a position into NaN:
+
+    * **conditioning** -- a slot whose supporting views number exactly two and whose rays
+      meet outside the well-conditioned band is DEMOTED. The point is withheld; the rays
+      stay in `retained_observations`, so `solve_sequence_positions` sees the slot as one
+      it must recover and resolves it from those same rays plus the performer's own limb
+      lengths and temporal continuity.
+    * **reachability** -- a landmark that cannot have reached its position from its last
+      accepted one inside the anatomical envelope is REJECTED. Applied after the
+      demotions, so "last accepted" means last surviving, and the two rules cannot
+      disagree about what the anchor is.
+
+    Returns ``(withheld, report)``.
+    """
+
+    values = np.asarray(world, dtype=np.float64).copy()
+    frames, joints = values.shape[0], values.shape[1]
+    finite = np.isfinite(values).all(axis=2)
+    demoted = np.zeros((frames, joints), dtype=bool)
+    rejected = np.zeros((frames, joints), dtype=bool)
+    angles = np.full((frames, joints), np.nan, dtype=np.float64)
+
+    if ray_pair_ceiling_deg is not None:
+        complement = 180.0 - float(ray_pair_ceiling_deg)
+        for frame in range(frames):
+            for joint in range(joints):
+                if not finite[frame, joint]:
+                    continue
+                views = np.flatnonzero(supporting_views[frame, joint]).tolist()
+                if len(views) != 2:
+                    # Three or more supporting views fix the depth a pair cannot; one or
+                    # none never produced a triangulation in the first place.
+                    continue
+                angle = _ray_pair_angles_deg(cameras, values[frame, joint], views)
+                angles[frame, joint] = angle
+                if angle > float(ray_pair_ceiling_deg) or angle < complement:
+                    demoted[frame, joint] = True
+        values[demoted] = np.nan
+
+    if reachability:
+        for joint in range(joints):
+            name = JOINT_NAMES[joint]
+            ceiling = REACHABILITY_SPEED_CEILING_M_S.get(name)
+            if ceiling is None:
+                continue
+            accepted = _reachable_landmark_sequence(
+                values[:, joint], ceiling, reachability_slack_m, sample_rate_hz,
+                rule=reachability_rule)
+            present = np.isfinite(values[:, joint]).all(axis=1)
+            rejected[:, joint] = present & ~accepted
+        values[rejected] = np.nan
+
+    two_view = np.zeros((frames, joints), dtype=bool)
+    for frame in range(frames):
+        for joint in range(joints):
+            two_view[frame, joint] = (
+                finite[frame, joint]
+                and int(supporting_views[frame, joint].sum()) == 2)
+
+    report = {
+        "ray_pair_conditioning_ceiling_deg": (None if ray_pair_ceiling_deg is None
+                                              else float(ray_pair_ceiling_deg)),
+        "reachability_reject": bool(reachability),
+        "reachability_slack_m": float(reachability_slack_m),
+        "reachability_rule": reachability_rule,
+        "triangulated_slots": int(finite.sum()),
+        "two_supporting_view_slots": int(two_view.sum()),
+        "demoted_slots": int(demoted.sum()),
+        "rejected_slots": int(rejected.sum()),
+        "demoted_by_joint": {JOINT_NAMES[j]: int(demoted[:, j].sum())
+                             for j in range(joints) if demoted[:, j].any()},
+        "rejected_by_joint": {JOINT_NAMES[j]: int(rejected[:, j].sum())
+                              for j in range(joints) if rejected[:, j].any()},
+        "two_view_ray_angle_deg_median": (
+            round(float(np.nanmedian(angles)), 3) if np.isfinite(angles).any() else None),
+        "note": ("a demoted slot keeps its rays and is handed to the sequence solve as a "
+                 "slot to recover; a rejected slot keeps nothing and falls to the solve "
+                 "and then the fill. The raw array is untouched by both."),
+    }
+    return values, report
+
+
 NECK_ROTATION_SHARE = 0.5
 
 
@@ -2539,6 +2954,16 @@ def reconstruct_multiview(
     # gives `Hips` its own frame from the pelvis instead of the trunk line; omitting them
     # keeps the previous behaviour bit for bit, and the diagnostics say which happened.
     spine_landmarks_by_camera: Sequence[Sequence[Sequence[np.ndarray]]] | None = None,
+    # D8. The occlusion repair, reachable so an instrument can run every arm through this
+    # one function instead of re-implementing it. `None`/`False` turns a rule off, and with
+    # all three off the smoothed output is bit-identical to the pre-D8 build -- which is
+    # the "today's code" arm of the synthetic selector and a unit test.
+    # The RAW array is unaffected by any of them: it is captured before they run.
+    ray_pair_conditioning_ceiling_deg: float | None = RAY_PAIR_CONDITIONING_CEILING_DEG,
+    reachability_reject: bool = True,
+    reachability_slack_m: float = REACHABILITY_SLACK_M,
+    reachability_rule: str = "reachability",
+    maximum_interpolated_gap_frames: int | None = MAXIMUM_INTERPOLATED_GAP_FRAMES,
 ) -> tuple[tuple[BodyTrack, ...], ReconstructionDiagnostics, np.ndarray, np.ndarray]:
     """Reconstruct every subject from calibrated multiview observations.
 
@@ -2580,6 +3005,12 @@ def reconstruct_multiview(
     world = np.full((subject_count, frames, len(JOINT_NAMES), 3), np.nan, dtype=np.float64)
     retained_observations = np.full(
         (subject_count, frames, len(cameras), len(JOINT_NAMES), 3), np.nan, dtype=np.float64
+    )
+    # D8. Which cameras the triangulator actually USED for each retained slot -- its
+    # inliers, not the views that could see it. Recorded alongside `world` and never fed
+    # back into it, so the raw array is exactly what it was before this step.
+    supporting_views = np.zeros(
+        (subject_count, frames, len(JOINT_NAMES), len(cameras)), dtype=bool
     )
     deferred_frames = 0
     reprojection: list[float] = []
@@ -2647,6 +3078,9 @@ def reconstruct_multiview(
         candidate_world = np.full(
             (subject_count, len(JOINT_NAMES), 3), np.nan, dtype=np.float64
         )
+        candidate_views = np.zeros(
+            (subject_count, len(JOINT_NAMES), len(cameras)), dtype=bool
+        )
         candidate_errors: list[list[float]] = [[] for _ in range(subject_count)]
         for subject in range(subject_count):
             for joint in range(len(JOINT_NAMES)):
@@ -2660,6 +3094,7 @@ def reconstruct_multiview(
                 if result is None:
                     continue
                 candidate_world[subject, joint] = result.position_world_m
+                candidate_views[subject, joint, list(result.used_camera_indices)] = True
                 candidate_errors[subject].extend(
                     result.reprojection_errors_px[list(result.used_camera_indices)]
                 )
@@ -2706,6 +3141,7 @@ def reconstruct_multiview(
                 continue
             world[subject, frame] = candidate_world[subject]
             retained_observations[subject, frame] = associated[subject]
+            supporting_views[subject, frame] = candidate_views[subject]
             reprojection.extend(candidate_errors[subject])
             if last_good_frame[subject] >= 0:
                 elapsed = (frame - int(last_good_frame[subject])) / sample_rate_hz
@@ -2730,6 +3166,8 @@ def reconstruct_multiview(
     source_hash = provenance.hexdigest()
     contacts: list[tuple[int, int]] = []
     recovered_counts: list[float] = []
+    held_fractions: list[float] = []
+    repair_reports: list[dict[str, Any]] = []
     head_reports: list[dict[str, Any]] = []
     toe_reports: list[dict[str, Any]] = []
     spine_reports: list[dict[str, Any]] = []
@@ -2738,15 +3176,42 @@ def reconstruct_multiview(
         # Recover single-ray joints from limb-length and temporal constraints
         # before falling back to interpolation, so an evidence-based estimate is
         # preferred to a drawn line wherever one is available.
-        resolved, recovered = solve_sequence_positions(
+        # D8. Withhold the slots two near-collinear rays cannot fix and the ones no body
+        # could have reached, BEFORE the sequence solve, so the solve recovers them from
+        # the rays it already has plus limb length and continuity. `world` is not touched:
+        # what goes in is a copy, and `world.copy()` is still what this function returns as
+        # the raw array.
+        withheld, repair = _repair_occluded_slots(
             scaled_cameras,
             world[subject],
+            supporting_views[subject],
+            sample_rate_hz=sample_rate_hz,
+            ray_pair_ceiling_deg=ray_pair_conditioning_ceiling_deg,
+            reachability=reachability_reject,
+            reachability_slack_m=reachability_slack_m,
+            reachability_rule=reachability_rule,
+        )
+        resolved, recovered = solve_sequence_positions(
+            scaled_cameras,
+            withheld,
             retained_observations[subject],
             pixel_scale=pixel_scale,
             minimum_confidence=minimum_confidence,
             weight_before_loss=weight_before_loss,
         )
         recovered_counts.append(float(np.mean(recovered)))
+        # D8. A gap longer than the ceiling is held on the parent instead of having a
+        # straight line drawn through it. Reported, never silent.
+        if maximum_interpolated_gap_frames is None:
+            held_fraction = 0.0
+        else:
+            resolved, held_fraction = _hold_long_gaps_on_parent(
+                resolved, maximum_interpolated_gap_frames)
+        repair["held_joint_fraction"] = held_fraction
+        repair["maximum_interpolated_gap_frames"] = maximum_interpolated_gap_frames
+        repair["recovered_after_repair_joint_fraction"] = float(np.mean(recovered))
+        held_fractions.append(held_fraction)
+        repair_reports.append(repair)
         positions, fraction = _fill_and_smooth_positions(resolved)
         smoothed.append(positions)
         interpolated.append(fraction)
@@ -2831,6 +3296,8 @@ def reconstruct_multiview(
         toe_triangulation=tuple(toe_reports),
         spine_triangulation=tuple(spine_reports),
         pelvis_frame=tuple(pelvis_reports),
+        held_joint_fraction=float(np.mean(held_fractions)) if held_fractions else 0.0,
+        occlusion_repair=tuple(repair_reports),
     )
     # `smoothed` is post-interpolation and Savitzky-Golay filtered, so it cannot
     # measure raw triangulation noise. `world` is what triangulation actually

@@ -102,6 +102,106 @@ CURATED: dict[str, dict] = {
                "camera or anatomy -- never on the MAMMA arm.",
     ),
     # ------------------------------------------------------------------- D7, the pelvis
+    # ------------------------------------------------------------- D8, the occlusion repair
+    "RAY_PAIR_CONDITIONING_CEILING_DEG": dict(
+        provenance=ENGINEERING,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. A two-view slot "
+                 "whose supporting rays meet beyond this angle (or inside its complement) is "
+                 "depth-unconstrained along their common axis and is DEMOTED to the sequence "
+                 "solve. DERIVED IN CLOSED FORM AND SELECTED ON NO TAKE, synthetic or real: two "
+                 "rays meeting at theta determine a point across their common axis and only "
+                 "weakly along it, with the along-axis error amplified by 1/|sin theta| "
+                 "relative to a right-angled pair (90 deg = 1.0x, 150 deg = 2.0x, 172 deg = "
+                 "7.2x). The value is the angle at which that amplification reaches 2x, and 2x "
+                 "is the declared choice; the complement clause is the same expression from the "
+                 "other side, so the rule is exactly |sin theta| < 0.5. THE D8 CARD SAID THIS "
+                 "WOULD BE SELECTED ON SYNTHETIC TRUTH AND IT COULD NOT BE: "
+                 "`tools/compare/d8_occlusion_synthetic.py` finds the sequence solve beating a "
+                 "two-view triangulation at EVERY angle bin, including well-conditioned ones, "
+                 "because the fixture's bones are exactly rigid and its motion exactly smooth "
+                 "-- the recovery's own priors -- so the score's argmin is always 'never trust "
+                 "two views', a capacity change rather than evidence. That refuted prediction is "
+                 "recorded in docs/reviews/occlusion-repair-2026-09-05.md. The fixture DOES "
+                 "confirm the closed form: measured two-view error rises with 1/|sin theta| "
+                 "across its bins -- consistent with, and not quoted as a fit. That the fixture's "
+                 "preference for demoting everything is an ARTEFACT is the codebase's own "
+                 "measurement: `solve_sequence_positions` refuses to overwrite already-"
+                 "triangulated slots because on real data the solve moved them by a median of "
+                 "11-14 mm and up to 700 mm, the temporal and limb terms outvoting good "
+                 "geometry. Those priors are true on the fixture and false on the footage. "
+                 "ORDER OF DISCOVERY, disclosed: 150.0 was in src as a first guess before the "
+                 "closed form was written down; k = 2 was recognised as the factor that yields "
+                 "it, not chosen ahead of it.",
+        remedy="none open. If it moves it must move on the closed form with a different "
+               "declared amplification factor, or on a fixture whose limb lengths and motion "
+               "do NOT satisfy the sequence solve's priors -- never on the real take and never "
+               "on the MAMMA arm.",
+    ),
+    "REACHABILITY_SPEED_CEILING_M_S": dict(
+        provenance=ANATOMY,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. Peak LINEAR speed "
+                 "per landmark, used as a physical IMPOSSIBILITY bound and deliberately not a "
+                 "plausibility one -- a ceiling tight enough to refuse what a body merely rarely "
+                 "does would be a smoother wearing a reject's clothes. The table's sources are "
+                 "cited in the comment beside it: elite baseball pitching reaches ~34 m/s at the "
+                 "hand and ~9 m/s at the shoulder (Fleisig et al., kinematic chain studies), "
+                 "competitive boxing 6-9 m/s at the fist, sprinting ~2x ground speed at the foot "
+                 "in swing. Each ceiling sits at or above the published peak for its landmark. "
+                 "NOTHING here is fitted: the synthetic fixture demonstrates that the oracle "
+                 "fires zero rejections on clean input and that a frozen arm fails, and it "
+                 "chooses none of the numbers.",
+        remedy="none open. Marker data (lane H) would let these be measured on owned capture "
+               "rather than cited; until then they are literature and are labelled as such.",
+    ),
+    "REACHABILITY_SLACK_M": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. The constant term "
+                 "of the reachability envelope (slack + ceiling * elapsed_seconds), which exists "
+                 "so a stationary landmark's own jitter cannot trip a rule about motion. MEASURED "
+                 "on the synthetic fixture as the p99 of the frame-to-frame jitter of the "
+                 "triangulation's own error on well-supported cells, rounded up to the "
+                 "centimetre, by `tools/compare/d8_occlusion_synthetic.py`. It is NOT taken from "
+                 "the error score: at the anatomical speed ceilings a wrist may move 1.13 m in "
+                 "one frame, so any slack between 0.02 and 0.40 m is a rounding error on the "
+                 "envelope and the score sweep is flat inside 0.06 mm across that whole range. "
+                 "Both the flat sweep and the measurement are in the report.",
+        selected_against="synthetic truth -- the measured displacement noise of our own "
+                         "triangulation under our own detector's heavy-tail model",
+        remedy="none open.",
+    ),
+    "MAXIMUM_INTERPOLATED_GAP_FRAMES": dict(
+        provenance=ENGINEERING,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. Gaps longer than "
+                 "this are not interpolated through: the landmark is HELD on its parent and the "
+                 "share is reported as `held_joint_fraction` beside "
+                 "`interpolated_joint_fraction`. THE CARD SAID THIS WOULD BE SELECTED ON "
+                 "SYNTHETIC TRUTH AND IT COULD NOT BE, for the same reason the ray-angle ceiling "
+                 "could not: the fixture's motion is smooth by construction, so a straight line "
+                 "through a gap is nearly exact there and the score prefers interpolating at "
+                 "every candidate -- a monotone curve whose argmin is 'never hold'. "
+                 "`tools/compare/d8_occlusion_synthetic.py` reports that sweep in full, on the "
+                 "population the rule acts on, and selects nothing from it. The value is a "
+                 "closed-form bound instead: a straight chord across a gap of duration T departs "
+                 "from a constant-acceleration trajectory by at most a*T^2/8, and setting that "
+                 "equal to REACHABILITY_SLACK_M (the measured jitter of our own triangulation) "
+                 "gives T = sqrt(8*slack/a) -- 5.7 frames at a limb acceleration of 20 m/s^2, "
+                 "3.6 at 50. The shipped value is the 20 m/s^2 end and THAT CHOICE IS DECLARED, "
+                 "NOT DERIVED. Recorded in docs/reviews/occlusion-repair-2026-09-05.md.",
+        remedy="OPEN. A fixture whose motion is NOT smooth -- or marker data (lane H) -- could "
+               "select this properly. Until then the bound is closed-form with a declared "
+               "acceleration, and the clause's value is the diagnostic it emits rather than an "
+               "error reduction.",
+    ),
+    "LANDMARK_PARENT": dict(
+        provenance=ANATOMY,
+        evidence="src/autoanim_gnm/commercial_multiview.py, since 2026-09-05. Which landmark "
+                 "carries which when a long gap is held: a wrist follows its elbow, an elbow its "
+                 "shoulder, a shoulder the neck. It is the kinematic chain of a human arm and "
+                 "leg, not a fitted or measured quantity, and `root` has no parent and is never "
+                 "held. It changes nothing unless a gap exceeds "
+                 "MAXIMUM_INTERPOLATED_GAP_FRAMES.",
+        remedy="none open.",
+    ),
     "PELVIS_FRAME_SOURCE": dict(
         provenance=SYNTHETIC,
         evidence="src/autoanim_gnm/commercial_multiview.py -- 'C_kabsch_pelvis' since 2026-09-04. "
