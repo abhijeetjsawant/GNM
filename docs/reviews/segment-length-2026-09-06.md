@@ -479,7 +479,26 @@ rather than the ways it works:
   and the test that caught it asserted `> 0`. The counter and the test are both fixed; the
   synthetic and the delivery were rebuilt afterwards so no report carries the wrong number.)*
 
-### 7.9 For the next agent
+### 7.9 The test suite
+
+`tests/test_segment_length_reject.py` is new and all **18** of its tests pass. The full
+suite reads **1181 passed, 16 skipped, 4 failed** (`logs/15-pytest-full.log`), and **none of
+the four failures is reachable from this change** — not one of them calls
+`reconstruct_multiview`, and each is a pre-existing item the ladder status log already
+records:
+
+| test | why it is red |
+|---|---|
+| `test_retarget_cost.py::test_converter_rotations_depend_on_bone_lengths_only_through_the_clavicle` | red on main and on the D7/D8/D9 code: its last clause asserts the root translation is independent of sizing, which stopped being true when D3 put the per-performer rest into the root formula. A pre-D3 contract |
+| `test_body_export.py::test_export_animated_body_glb_is_one_skin_one_timeline_and_hash_bound` | asserts the old exporter's root — the 0.8 offset the track root no longer carries. Listed in the status log as an uncommitted-test item |
+| `test_body_compositor.py::test_unified_preview_is_explicitly_diagnostic_and_uses_one_video_clock` | the compositor's HTML, nothing to do with capture |
+| `test_phase4_app.py::test_home_and_health` | the app's health endpoint reports `degraded` in this environment |
+
+`tests/test_occlusion_repair.py`, `tests/test_pelvis_frame.py`, `tests/test_trunk_resolve.py`
+and `tests/test_arm_origin.py` — the four that guard the steps D8b sits between — are all
+green.
+
+### 7.10 For the next agent
 
 * The shipped mode is `demote` and it is the *only* one of the three that keeps evidence in
   play; `best_ray` was the coordinator's own suggestion and it scores worst on the fault
