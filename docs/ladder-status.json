@@ -252,6 +252,17 @@
           "finished": "2026-09-06",
           "report": "artifacts/compare/d8b-length/gate.json",
           "blocked_on": null
+        },
+        {
+          "id": "D8c",
+          "title": "The hip line: captured hips that break the performer's own width",
+          "plain": "The same fault as D8b one segment lower: on the falling performer the detector puts both hips too close together in three agreeing cameras, and later, when he lies on the floor with his hips pointing at the only two cameras that see him, the two views stretch the hip line apart. His own hip width is the evidence for both. The rule D8b built gains the hip line; since the rig's root stands on the hip midpoint, what the root does is written down before it is measured.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
+          "finished": null,
+          "report": null,
+          "blocked_on": null
         }
       ]
     }
@@ -680,6 +691,11 @@
       "date": "2026-09-06",
       "step": null,
       "text": "2026-09-06: the bear side experiments are PARKED (page https://claude.ai/code/artifact/0cc6e2fc-c544-4514-a80d-68dd99855b4e, eleven tabs; workers bullettime/sv4d/videodepth/prompthmr/mocapanything/sam3d_body; rules in CLAUDE.md). Back to the humans on the fixture. Queue, in order: D8c hip line; foot-contact hoist re-aim; D7c pelvis on the rig's own rest; D9-legs; instrument debts (re-pin D3 references, --median-from, D8 headline recheck); D6; D5; D4. Every delivery step since D7 is merged and pushed; The Solve So Far carries v2-v6."
+    },
+    {
+      "date": "2026-09-06",
+      "step": "D8c",
+      "text": "D8c card written and reviewed by Grok 4.6 (Cursor) in Sol's place (docs/reviews/hip-line-grok-review-2026-09-06.md). Measured before the card: performer 1's hip line fails in three runs and two classes -- 110-119 and 84-86 an inward collapse along the hip line in three agreeing cameras (D8b's class; frame 113 an outward raw spike; 84-86 one hip at a time), 158-168 a two-view stretch along the A-C baseline while he lies on the floor with his hips pointed at the only two cameras that see him (six of eleven frames over the ceiling, the other five at +9-13 % stay). Decided on data after the review: a per-hip root->hip rule is refused (the pelvis landmark spreads +25 % on honest frames and would fire 35/17 times), both hips charged, 84-86 registered as a known over-charge. The root's dependence on the hip midpoint is pre-registered as reports R1-R4 (hoist-removed, Savitzky-Golay +-4 envelope, R_hips delta), the synthetic injects the MEASURED mode (along the hip line toward its midpoint, knees untouched) and scores through the converter, and B4 on D8b's fixed medians is in the merge rule paired with the photographs as the guard against a recovery that lets the agreeing rays win."
     }
   ]
 }
