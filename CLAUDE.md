@@ -244,6 +244,21 @@
   Four SEPARATE video-model generations of one prompt are not one scene; a multi-view solver "failing" on them is
   detecting that. Workers: `workers/{bullettime,sv4d,videodepth,prompthmr,mocapanything}`; page
   <https://claude.ai/code/artifact/0cc6e2fc-c544-4514-a80d-68dd99855b4e>. Parked 2026-09-06.
+- **The delivered file is whole-take-coupled (D8c, 2026-09-06).** D3 sizes the per-performer rest over the whole take, so a
+  change to 18 frames of landmarks moved 16 of 55 rest bones (< 1 mm) and every frame's joints with them (54 frames at 1–2 mm,
+  5–41 frames from any fire). Pre-register locality at the CAPTURE stage (there it held exactly: 0 frames outside the
+  Savitzky–Golay ±4 envelope); never predict a DELIVERED change to be local, and subtract each frame's hoist before reading a
+  root move. The continuity horizon for a demoted slot is the smoother's window (`SMOOTHING_WINDOW_FRAMES` = 9), not the
+  6-frame gap clause (that is the hold for slots the solve never saw).
+- **MAMMA cannot referee a width.** Its hip line is a constant 117.6 / 114.8 mm on every frame (a rigid SMPL-X pelvis) against
+  this performer's 215, so a collapsed hip line scored CLOSER to it and the repair scored worse. Its joints are conventions;
+  a length comparison against them says which convention you are nearer, not which is right.
+- **Sol unavailable → Cursor's Grok 4.6 in its place** (2026-09-06, D8c card and merge): `cursor-agent -p --trust --mode ask
+  --model cursor-grok-4.6-medium "$(cat brief.md)" > review.md` (~5 min; without `--trust` it exits 1 asking for workspace
+  trust). Same brief shape (state, code excerpts, the measurement, the card, numbered adversarial questions); verify every
+  code claim against the source before adopting it. Records under `docs/reviews/*-grok-*.md`.
+- **"The Solve So Far" is at the page cap** (9.30 of ~9.5 MB after v7): a v8 player needs an older tab's frames shrunk or
+  dropped first. v2's JPEGs were already recompressed to q60 to pay for v7.
 - **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
   script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
   and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
