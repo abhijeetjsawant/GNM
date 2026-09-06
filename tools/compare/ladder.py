@@ -237,7 +237,9 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f8, c8 = _d9_figures("masks")
     f9, c9 = _d8b_figures("masks")
     f10, c10 = _d8c_figures("masks")
-    return figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10, ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10
+    f11, c11 = _d9b_figures("masks")
+    return (figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11,
+            ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11)
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -309,7 +311,9 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f8, c8 = _d9_figures("converter")
     f9, c9 = _d8b_figures("converter")
     f10, c10 = _d8c_figures("converter")
-    return figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10, ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10
+    f11, c11 = _d9b_figures("converter")
+    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11,
+            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11)
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -424,6 +428,32 @@ def _d8c_figures(where: str) -> tuple[list, list]:
         if key.startswith("placement_"):
             return "converter"
         return "capture"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d9b_figures(where: str) -> tuple[list, list]:
+    """D9b figures from `tools/compare/extractors/d9b_hoist.py` (the agent's stub, wired here by the
+    registry owner): `silhouette_` to rung 1; `placement_` (every root-dependent bone's ray miss from the
+    DELIVERED origin, and the per-frame excess over the aim floor, from the two GLBs' own bytes) and
+    `oracle_` (the same on six exact synthetic bodies, in the absolute frame and in the D3 gate's
+    leg-root-aligned frame) to rung 7. D9b shipped on 2026-09-07: the foot-contact step moves the root
+    after every aim, so the trunk, clavicles and arms pointed from where the root used to be on 67 / 22
+    of 150 frames; the root-dependent chain is now re-solved from the hoisted root (the D2c rule), the
+    ray miss 3.7-6.3 mm -> 0.0003 mm, root / contacts / legs / feet byte-identical. Stated: the D3 gate's
+    aligned score subtracts the hoist, so it reads the correct fix WORSE (1.17 -> 2.70 mm) -- the gauge,
+    not the candidate; its band was not moved and the absolute companion row improves on every seed."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d9b_hoist  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d9b_hoist.x_hoist_reaim({})
+
+    def dest(key: str) -> str:
+        if key.startswith("silhouette_"):
+            return "masks"
+        return "converter"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
 
@@ -1540,6 +1570,13 @@ def _splice_d7_visuals() -> None:
                                      + d8c_hip.VISUALS.get("synthetic", []))
     VISUALS["pose"][0:0] = d8c_hip.VISUALS.get("placement", [])
     VISUALS["masks"][0:0] = d8c_hip.VISUALS.get("masks", [])
+    try:
+        from extractors import d9b_hoist  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["pose"][0:0] = (d9b_hoist.VISUALS.get("placement", [])
+                            + d9b_hoist.VISUALS.get("oracle", []))
+    VISUALS["masks"][0:0] = d9b_hoist.VISUALS.get("masks", [])
 
 
 

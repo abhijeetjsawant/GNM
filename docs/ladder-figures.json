@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-06T20:38:06",
+ "rendered": "2026-09-07T02:16:58",
  "git": {
-  "sha": "4c1c6e2",
+  "sha": "060d091",
   "dirty": true
  },
  "rungs": [
@@ -18,6 +18,44 @@
    "title": "Person masks and per-view identity",
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
+    {
+     "title": "D9b: how well the character covers the person in the photographs",
+     "plain": "The reference fitter's person masks are the reference; higher is better, on the frames this step changes. It is LEVEL, and level is the honest answer: the bones move three to six millimetres on a character rasterised at a quarter of the footage's resolution, which is under a pixel on most of the four cameras. This chart is here to catch a regression, not to show the gain -- the gain is in the two charts above. The hatched bars are the build before this step and the reference fitter's own mesh, which is the ceiling a body of the wrong proportions can reach rather than a target.",
+     "better": "higher",
+     "unit": "IoU median",
+     "bars": [
+      {
+       "label": "After, performer 0",
+       "role": "ours",
+       "value": 0.64703
+      },
+      {
+       "label": "Before, performer 0",
+       "role": "control",
+       "value": 0.64089
+      },
+      {
+       "label": "Reference fitter's mesh, performer 0",
+       "role": "control",
+       "value": 0.8728
+      },
+      {
+       "label": "After, performer 1",
+       "role": "ours",
+       "value": 0.75582
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "control",
+       "value": 0.75505
+      },
+      {
+       "label": "Reference fitter's mesh, performer 1",
+       "role": "control",
+       "value": 0.8894
+      }
+     ]
+    },
     {
      "title": "D8c: how well the body and legs cover the person in the photographs",
      "plain": "The reference fitter's person masks are the reference; higher is better. Torso, legs and head, on the two runs where the hips are wrong. On the collapse run -- three cameras agreeing on hips that are too close together -- the mesh covers measurably more of the person after the repair, and the margin of uncertainty is clear of zero. On the stretch run it does not move at all, and that is expected rather than disappointing: the performer is lying down, only two cameras can see him, and the error is along the one direction those two cameras cannot resolve -- correcting it barely changes any pixel. The hatched bars are the build before this one and the reference fitter's own mesh, which is the ceiling a body of the wrong proportions can reach rather than a target.",
@@ -511,7 +549,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.6505873886177094
+       "value": 0.6534750338436808
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -526,7 +564,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.42095170887018174
+       "value": 0.42082966234467417
       }
      ]
     },
@@ -539,7 +577,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.7523375087845801
+       "value": 0.7538477718562528
       },
       {
        "label": "MAMMA's mesh",
@@ -686,7 +724,7 @@
       {
        "label": "Ours with MAMMA-grade 2D noise added",
        "role": "alt",
-       "value": 4.684
+       "value": 4.666
       },
       {
        "label": "One camera shifted a frame",
@@ -781,7 +819,7 @@
       {
        "label": "Worst arms, 6 bodies",
        "role": "ours",
-       "value": 1.17
+       "value": 2.72
       },
       {
        "label": "Worst legs, 6 bodies",
@@ -791,7 +829,7 @@
       {
        "label": "Arriving canonical, arms",
        "role": "control",
-       "value": 31.86
+       "value": 31.94
       },
       {
        "label": "Arriving canonical, legs",
@@ -819,7 +857,7 @@
       {
        "label": "Fixed rig, performer 1",
        "role": "alt",
-       "value": 0.36391
+       "value": 0.36387
       },
       {
        "label": "Delivered body, performer 1",
@@ -864,6 +902,138 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D9b: does each bone point where it was told to point?",
+     "plain": "After every bone had been aimed, the automatic floor-contact step slid the whole character sideways to plant a foot -- and the bones kept pointing along the lines they were aimed along from where they used to be. This chart measures, on the frames that slide happens, how far each bone's target sits off the line the bone actually points along. Lower is better and zero is achievable exactly. The hatched bars are the build before this step.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Arms after, performer 0",
+       "role": "ours",
+       "value": 0.0001
+      },
+      {
+       "label": "Arms before, performer 0",
+       "role": "control",
+       "value": 5.287
+      },
+      {
+       "label": "Shoulders after, performer 0",
+       "role": "ours",
+       "value": 0.0001
+      },
+      {
+       "label": "Shoulders before, performer 0",
+       "role": "control",
+       "value": 6.0657
+      },
+      {
+       "label": "Trunk after, performer 0",
+       "role": "ours",
+       "value": 0.0001
+      },
+      {
+       "label": "Trunk before, performer 0",
+       "role": "control",
+       "value": 4.7913
+      }
+     ]
+    },
+    {
+     "title": "D9b: the same question on the other performer",
+     "plain": "The second performer's feet are planted on far fewer frames -- 22 of 150 against 67 -- so the change touches less of his take, and on the frames it does touch the picture is the same. Lower is better.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Arms after, performer 1",
+       "role": "ours",
+       "value": 0.0001
+      },
+      {
+       "label": "Arms before, performer 1",
+       "role": "control",
+       "value": 6.1328
+      },
+      {
+       "label": "Shoulders after, performer 1",
+       "role": "ours",
+       "value": 0.0001
+      },
+      {
+       "label": "Shoulders before, performer 1",
+       "role": "control",
+       "value": 6.3162
+      },
+      {
+       "label": "Trunk after, performer 1",
+       "role": "ours",
+       "value": 0.0001
+      },
+      {
+       "label": "Trunk before, performer 1",
+       "role": "control",
+       "value": 5.4567
+      }
+     ]
+    },
+    {
+     "title": "D9b: the worst single frame in the whole take",
+     "plain": "Medians hide the bad frames, so this is the worst frame of 150 rather than the middle one, and it counts only the part an aim can actually fix -- a bone can be too short for its target, and no amount of aiming cures that. Lower is better. After the change the worst frame of the take is three ten-thousandths of a millimetre, which is the storage precision of the delivered file itself.",
+     "better": "lower",
+     "unit": "mm, worst frame",
+     "bars": [
+      {
+       "label": "After, performer 0",
+       "role": "ours",
+       "value": 0.0001
+      },
+      {
+       "label": "Before, performer 0",
+       "role": "control",
+       "value": 18.0715
+      },
+      {
+       "label": "After, performer 1",
+       "role": "ours",
+       "value": 0.0003
+      },
+      {
+       "label": "Before, performer 1",
+       "role": "control",
+       "value": 6.1337
+      }
+     ]
+    },
+    {
+     "title": "D9b: measured against a known answer, and against a gauge that cannot see the fix",
+     "plain": "Six synthetic bodies of known proportions, posed through our own maths and put back through the real pipeline, so the right answer is known exactly. Lower is better. The solid bars are the arms measured where they really are in the world. The first hatched bar is the SAME delivered bodies scored through the older gauge, which lines each frame up on the hips before measuring -- that removes exactly the sideways slide this step is about, so it reports the corrected arms as worse. Both readings are honest and they answer different questions; the older band is left where it is. The last hatched bar is the legs, which this step does not touch: their error is the cost of planting a foot the truth is still moving, and it is handed to the step that owns it.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Arms, hoisted frames",
+       "role": "ours",
+       "value": 1.38
+      },
+      {
+       "label": "Arms, whole take, p95",
+       "role": "ours",
+       "value": 7.98
+      },
+      {
+       "label": "The alignment-blind gauge, arms",
+       "role": "control",
+       "value": 8.88
+      },
+      {
+       "label": "Legs (not this step's)",
+       "role": "control",
+       "value": 8.71
+      }
+     ]
+    },
     {
      "title": "D8c: how far the delivered character actually moved",
      "plain": "Read from the delivered files themselves, with the automatic floor-hoist taken out so a re-levelling is not counted as the body moving. This is NOT an error -- there is no correct answer to compare against on this footage. It is the size of the change: on the frames the rule acts on, the character's root moves about three millimetres on the falling performer and not at all on the other, whose hips were never withheld.",
@@ -1282,7 +1452,7 @@
       {
        "label": "Arms before, performer 0",
        "role": "alt",
-       "value": 7.84
+       "value": 10.04
       },
       {
        "label": "Arms after, performer 0",
@@ -1302,7 +1472,7 @@
       {
        "label": "Arms before, performer 1",
        "role": "alt",
-       "value": 8.85
+       "value": 9.92
       },
       {
        "label": "Arms after, performer 1",
@@ -1312,7 +1482,7 @@
       {
        "label": "Legs before, performer 1",
        "role": "alt",
-       "value": 11.39
+       "value": 7.84
       },
       {
        "label": "Legs after, performer 1",
@@ -1358,32 +1528,32 @@
       {
        "label": "Fixed rig, performer 0",
        "role": "ours",
-       "value": 26.93
+       "value": 64.29
       },
       {
        "label": "Rig sized to performer 0",
        "role": "alt",
-       "value": 10.22
+       "value": 59.1
       },
       {
        "label": "Converter floor, performer 0",
        "role": "control",
-       "value": 0.02
+       "value": 0.06
       },
       {
        "label": "Fixed rig, performer 1",
        "role": "ours",
-       "value": 20.95
+       "value": 39.71
       },
       {
        "label": "Rig sized to performer 1",
        "role": "alt",
-       "value": 11.81
+       "value": 33.17
       },
       {
        "label": "Converter floor, performer 1",
        "role": "control",
-       "value": 0.01
+       "value": 0.04
       }
      ]
     },
@@ -1718,12 +1888,12 @@
       {
        "label": "Ours, performer 1",
        "role": "ours",
-       "value": 6.619851050327948
+       "value": 6.621153078748554
       },
       {
        "label": "MAMMA through our frames, 1",
        "role": "mamma",
-       "value": 3.6896335033629564
+       "value": 3.6710114265285974
       },
       {
        "label": "A head that never moves, 1",
@@ -1746,7 +1916,7 @@
       {
        "label": "Ours, performer 1",
        "role": "ours",
-       "value": 5.080109838565944
+       "value": 5.086514684827327
       }
      ]
     }
@@ -1929,22 +2099,22 @@
       {
        "label": "Delivered, performer 0's own body",
        "role": "ours",
-       "value": 30.87697365550378
+       "value": 31.627868950030404
       },
       {
        "label": "Replayed on the fixed rig, 0",
        "role": "alt",
-       "value": 77.78069705046737
+       "value": 79.17561096841969
       },
       {
        "label": "Delivered, performer 1's own body",
        "role": "ours",
-       "value": 40.987330985765375
+       "value": 41.850374360266684
       },
       {
        "label": "Replayed on the fixed rig, 1",
        "role": "alt",
-       "value": 123.38667381462228
+       "value": 125.52164826960593
       }
      ]
     },
@@ -1957,37 +2127,37 @@
       {
        "label": "Delivered pelvis",
        "role": "ours",
-       "value": 0.9788052313042449
+       "value": 0.9802969371218608
       },
       {
        "label": "Delivered chest",
        "role": "ours",
-       "value": 0.9833779075418458
+       "value": 0.9837599938792003
       },
       {
        "label": "Delivered head",
        "role": "ours",
-       "value": 0.9244697369924119
+       "value": 0.9229890546368057
       },
       {
        "label": "The delivered mesh's nose",
        "role": "ours",
-       "value": 0.8242116075361163
+       "value": 0.8239115456603583
       },
       {
        "label": "Delivered feet (solved from the toes)",
        "role": "alt",
-       "value": 0.9545463198569434
+       "value": 0.9553615885947747
       },
       {
        "label": "MAMMA's reading of the performers",
        "role": "mamma",
-       "value": 0.9923882310435177
+       "value": 0.9920395490598257
       },
       {
        "label": "Our capture turned 180 degrees",
        "role": "control",
-       "value": -0.8508276185741707
+       "value": -0.8546816845478535
       }
      ]
     }

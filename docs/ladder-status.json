@@ -269,10 +269,10 @@
           "title": "The foot-contact hoist: the bones re-aimed from where the root actually is",
           "plain": "After every bone has been aimed, the foot-contact step slides the whole skeleton so a planted foot stays put. It moves the root and leaves every rotation alone, so on those frames the arms, shoulders and trunk still point from where the root used to be: 4-6 mm off on 67 of 150 frames of one performer and 22 of the other. This step re-aims them from where the root actually is, and touches nothing else. Found on the way: the synthetic oracle's score subtracts exactly this slide, so it cannot see the defect and will read the fix as worse; that is written down before the fix is built.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-07",
-          "finished": null,
-          "report": null,
+          "finished": "2026-09-07",
+          "report": "artifacts/compare/d9b-hoist/gate.json",
           "blocked_on": null
         }
       ]
@@ -727,6 +727,11 @@
       "date": "2026-09-07",
       "step": "D9b",
       "text": "worktree .claude/worktrees/ladder-D9b on ladder/D9b, one Opus agent; hygiene, instrument first (and the oracle audit reproduced), the tripwire, then the one-block src change"
+    },
+    {
+      "date": "2026-09-07",
+      "step": "D9b",
+      "text": "2026-09-07, D9b merged (9cab14b, --no-ff) on all eight pre-registered conjuncts: the root-dependent chain (trunk, neck, clavicles with pass B rerun, arms, hands) re-solved from the hoisted root after the foot-contact projection; every such bone on its ray from the DELIVERED origin to 0.0003 mm (was 3.7-6.3 mm median on the 67 / 22 hoisted frames, 18 mm at worst); root, contacts, hips, legs, feet, toes byte-identical, everything byte-identical on the 83 / 128 unhoisted frames; the tripwire (hoist forced to zero, old src vs new) 8 of 8 byte-identical; photographs level within 0.001 IoU on 8 of 8 cells; pass B's accepted set unchanged. Prediction FAILED and attributed: the D3 gate's aligned oracle median did not hold (arms 1.17 -> 2.70, close-out reads 2.72) because retarget_cost.score subtracts the leg-root offset per frame -- the gauge, band untouched, an absolute-frame companion row improves on every seed. Grok 4.6 reviewed the merge in Sol's place (MERGE stands; the skip-second-pass-B hole is untestable on this take). Close-out: rebuilt in place 8/8 byte-identical, every instrument logged under artifacts/compare/post-merge-D9b; D3 gate lines as predicted (legs 0.07, arms 2.72, the frozen D2c/D3 references still moved-by-design); head gate line-identical to D8c's close-out. Two structural test pins re-pinned in place (the sequence rule runs twice per clavicle; the _joint_origin pin follows the aims into the helpers). Handed forward: the legs' 4.6-9.2 mm ray miss on hoisted frames (D9-legs); the plant's own cost on exact truth, p95 10-14 mm on a third of the frames; the D3 gate's translation-aligned gauge (instrument debt); D8c's head-gate log predates its own rebuild. Next: D7c."
     }
   ]
 }
