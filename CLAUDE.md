@@ -268,3 +268,16 @@
 ## Verification
 - Each exporter writes a JSON report beside its output with input SHAs and gate results. Check the SHA chain rather than assuming a build used current inputs.
 - Confirm a suspected defect with a second, independent measurement before acting. Several "defects" this session were artefacts of the metric, not the rig.
+- **The D3 gate's oracle score is translation-aligned (D9b, 2026-09-07).** `retarget_cost.score` subtracts the leg-root midpoint
+  per frame, so the exact-skeleton oracle cannot see a root move: it read identical before and after the foot-contact projection
+  on all six bodies, and it reads the CORRECT re-aim WORSE (arms 1.17 → 2.72 mm since D9b; legs 0.05–0.07 unchanged). That is the
+  gauge; the band is untouched. For any arm claim on the oracle read the ABSOLUTE-frame row in `tools/compare/d9b_hoist_gate.py`
+  and say which gauge a number is on. Contacts fire on every D3 body (34–67 of 150 frames hoisted): there is no "exact rig without
+  ground contact", and the plant's own cost on exact truth (p95 10–14 mm on those frames) is measured and unowned.
+- **After the projection, never re-run pass C or pass A's root line.** Pass C rewrites the legs, feet and toes and would overwrite
+  `project_generated_foot_contacts`' `candidate_local` foot locks; the root line would wipe the hoist. The converter's quaternion
+  hemisphere walk runs BEFORE the projection, so a re-solved local must be signed against the delivered local of its own frame or
+  the bits of an unhoisted frame flip. The re-solve runs on every frame; 0.5 mm is a report cut, never control flow. A refactor
+  that lifts converter code into a helper is proved by the tripwire: hoist forced to zero, old src vs new, 8/8 byte-identical.
+- **D8c's head-gate log predates D8c's own in-place rebuild** (written 19:46, the rebuild 20:42); D9b's close-out head gate is
+  line-identical to D8c's close-out log, and the drift the D9b agent measured against the earlier log is D8c's, not D9b's.
