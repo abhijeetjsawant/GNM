@@ -424,6 +424,106 @@ def b6() -> dict:
     }
 
 
+# -------------------------------------------------- the synthetic's own src-hygiene check
+def synthetic_src_hygiene() -> dict:
+    """The selector ran BEFORE the src change. Does the same file give the same numbers after?
+
+    `d8c_hip_synthetic.py` defines `TODAY_RULES` by REMOVING any hip row from the module's
+    own tuple and `CANDIDATE_RULES` as those nine plus the hip row, then rebinds
+    `cm.SEGMENT_LENGTH_RULES` around each run. That is what let the selector be run and
+    committed with `src/` untouched -- and it is only VALID EVIDENCE ABOUT THE SHIPPED CODE
+    if the same file produces the SAME numbers once the row is really in `src/`.
+
+    Asserted, not assumed, which is this step's whole discipline. Both scales are re-run
+    after the src change and each report is compared leaf by leaf against its pre-change
+    twin, with the `rules` block excluded -- that block is EXPECTED to differ, and how it
+    differs is the check: `src_already_carries_the_row` goes false -> true and
+    `src_tuple_equals_the_candidate_exactly` must read true.
+    """
+
+    def walk(a, b, path=""):
+        diffs = []
+        if type(a) is not type(b):
+            return [f"{path}: TYPE {type(a).__name__} -> {type(b).__name__}"]
+        if isinstance(a, dict):
+            for key in sorted(set(a) | set(b)):
+                if key not in a or key not in b:
+                    diffs.append(f"{path}/{key}: ONLY IN ONE")
+                else:
+                    diffs += walk(a[key], b[key], f"{path}/{key}")
+        elif isinstance(a, list):
+            if len(a) != len(b):
+                diffs.append(f"{path}: LEN {len(a)} -> {len(b)}")
+            else:
+                for index, (x, y) in enumerate(zip(a, b)):
+                    diffs += walk(x, y, f"{path}[{index}]")
+        elif a != b:
+            diffs.append(f"{path}: {a!r} -> {b!r}")
+        return diffs
+
+    # THE ONE LEAF THAT IS ALLOWED TO DIFFER, and it is evidence rather than an exception.
+    # `S0_fixture_honest_hip_line.legs_for_comparison` calls D8b's `honest_leg_spread`,
+    # which iterates the MODULE's `SEGMENT_LENGTH_RULES` -- outside the context manager,
+    # because it runs after the pipeline call returns. Before the src change that tuple had
+    # nine rows and the table had no `hip_line` key; after it, ten and it does. So the ONE
+    # place the two reports differ is a REPORTING table that now lists one more segment,
+    # and its appearance is a direct demonstration that the module tuple really changed.
+    # Every scored number -- every selector cell, every oracle, every must-fail, every
+    # variant, every margin -- is identical. Named as a path rather than waved at.
+    ALLOWED = ("/S0_fixture_honest_hip_line/legs_for_comparison/per_segment/hip_line: "
+               "ONLY IN ONE",)
+    out: dict = {
+        "band": ("the selector was committed BEFORE the src change; the same file must "
+                 "produce the same numbers after it, or the pre-change run is not evidence "
+                 "about the shipped code"),
+        "the_one_leaf_allowed_to_differ": {
+            "path": ALLOWED[0],
+            "why": ("`honest_leg_spread` iterates the MODULE's rule tuple, outside the "
+                    "context manager, so its REPORTING table gains a `hip_line` row once "
+                    "the row is in `src/`. Its appearance is a demonstration that the "
+                    "tuple really changed; no scored number moves with it."),
+        },
+        "arms": {},
+    }
+    passes = True
+    for label, before_name, after_name in (
+            ("calibrated_0.15", "synthetic.json", "synthetic-post-src.json"),
+            ("d8b_scale_0.20", "synthetic-noise-0.20.json",
+             "synthetic-noise-0.20-post-src.json")):
+        before, after = load(OUT_DIR / before_name), load(OUT_DIR / after_name)
+        if not before or not after:
+            out["arms"][label] = {"available": False}
+            passes = False
+            continue
+        rules_before = before.pop("rules", {})
+        rules_after = after.pop("rules", {})
+        diffs = walk(before, after)
+        unexplained = [line for line in diffs if line not in ALLOWED]
+        row = {
+            "available": True,
+            "before": before_name, "after": after_name,
+            "differing_leaves_outside_the_rules_block": len(diffs),
+            "unexplained_differences": len(unexplained),
+            "the_differences": diffs[:20],
+            "rules_src_already_carries_the_row": {
+                "before": rules_before.get("src_already_carries_the_row"),
+                "after": rules_after.get("src_already_carries_the_row")},
+            "rules_src_tuple_equals_the_candidate_exactly":
+                rules_after.get("src_tuple_equals_the_candidate_exactly"),
+            "the_one_row_added": rules_after.get("the_one_row_added"),
+        }
+        row["passes"] = bool(
+            not unexplained
+            and rules_before.get("src_already_carries_the_row") is False
+            and rules_after.get("src_already_carries_the_row") is True
+            and rules_after.get("src_tuple_equals_the_candidate_exactly") is True)
+        passes = passes and row["passes"]
+        out["arms"][label] = row
+    out["verdict"] = "PASS" if passes else "FAIL"
+    out["log"] = ["logs/29-synthetic-post-src.log", "logs/30-synthetic-post-src-0.20.log"]
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=REPORT)
@@ -625,6 +725,8 @@ def main() -> int:
                               and m2.get("fails_as_required_on_the_hips")) else "FAIL",
     }
 
+    report["synthetic_src_hygiene"] = synthetic_src_hygiene()
+
     # ------------------------------------------------------------------------------ B1
     verdicts = silhouette.get("preregistered_clause_verdicts") or {}
     banded = [row for subject in ("subject_00", "subject_01")
@@ -770,6 +872,11 @@ def main() -> int:
             report["B4_the_frames_off_on_a_fixed_denominator"]["verdict"],
         "B6": report["B6_the_d3_gate_src_hygiene_tripwire"]["verdict"],
     }
+    # NOT a conjunct -- the card's merge rule names seven and this is not one of them. It is
+    # a precondition on whether S1 is evidence at all, reported beside them and read by a
+    # human before the mechanical outcome is trusted.
+    report["merge_rule_precondition_synthetic_src_hygiene"] = report[
+        "synthetic_src_hygiene"]["verdict"]
     report["merge_rule"] = {
         "fixed_before_numbers": ("S1 selects `demote` at 0.15 on the hips' own geometry AND "
                                  "S2 both clauses AND S3 AND B1 on both performers AND B2 "
@@ -793,7 +900,8 @@ def main() -> int:
     print("D8c gate\n" + "=" * 78)
     for key in ("hygiene_before_any_src_change", "instrument_first",
                 "S0_the_fixtures_own_honest_hip_line", "S1_the_selector",
-                "S2_the_two_oracles", "S3_the_two_must_fails", "B1_the_photographs",
+                "S2_the_two_oracles", "S3_the_two_must_fails", "synthetic_src_hygiene",
+                "B1_the_photographs",
                 "B2_the_raw_array_and_every_other_segments_fires",
                 "B4_the_frames_off_on_a_fixed_denominator",
                 "B6_the_d3_gate_src_hygiene_tripwire"):
