@@ -1469,6 +1469,20 @@ SEGMENT_LENGTH_RULES = (
     ("right_thigh", "right_hip", "right_knee", ("right_knee",)),
     ("left_shin", "left_knee", "left_ankle", ("left_ankle",)),
     ("right_shin", "right_knee", "right_ankle", ("right_ankle",)),
+    # D8c, 2026-09-06. The hip line, both endpoints charged as the shoulder line's are.
+    # The hips DO have a parent (`root`), so a per-hip `root->hip` rule was the more precise
+    # candidate and it was measured rather than dismissed: on the SAME honest mask the hip
+    # line's own margin is quoted on, `root->left_hip` spreads -9.0 %/+25.5 % at p5-p95 on
+    # the falling performer (right -9.4/+9.2; the other performer +/-9-10) and at this
+    # ceiling it would fire on 35 and 17 frames of him and 9 and 4 of her, most of them on
+    # frames whose hip line is honest. The pelvis landmark is too loose to be a length
+    # reference, so `root->hip` is NOT added and the hip line charges both endpoints.
+    # THE COST OF THAT CONVENTION IS REGISTERED, not hidden: on frames 84-86 of the
+    # reference take one hip moves per frame (frame 84 reads 84 mm from the root against a
+    # 127 mm right; frame 85 reads 138 against 103), so a femoral head that matched the take
+    # is withheld with the one that did not. Three frames, counted in
+    # docs/reviews/hip-line-2026-09-06.md.
+    ("hip_line", "left_hip", "right_hip", ("left_hip", "right_hip")),
 )
 
 # What happens to the RAYS of a slot the length rule marks. SELECTED ON SYNTHETIC TRUTH by

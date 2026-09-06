@@ -156,6 +156,32 @@ D8B_FIRST_ID, D8B_LAST_ID = 110, 122
 D8B_CLASSIFY_LANDMARKS = ("left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
                           "left_wrist", "right_wrist", "neck")
 
+# D8c. The hip line's own two runs on the falling performer, and the landmarks the card's
+# classification is read on. THE CARD'S REVIEWER ASKED FOR THESE TO BE A FLAG RATHER THAN A
+# CONSTANT (`--classify-landmarks`, `--classify-frames` repeated): the ranges below are
+# DEFAULTS for `--reproduce d8c` and nothing selects on them -- they are where the card says
+# to look, and any other range can be asked for on the command line.
+#
+#   110-119  class (i), the INWARD COLLAPSE in agreeing views: A, C and D support both hips
+#            and the length is impossible anyway.
+#   158-168  class (ii), the OUTWARD STRETCH along the A-C baseline: only two cameras see
+#            him, at a ray angle UNDER D8's 150 degree ceiling, so the conditioning gate is
+#            silent and the depth along the pair's common axis is loose.
+#    84-86   the ONE-HIP-AT-A-TIME frames, reported with 110-119 as class (i)'s second run
+#            and registered by the card as a KNOWN OVER-CHARGE of the both-endpoints rule.
+# 109-119 and not 110-119: the card's per-camera sentence counts "9 of 11 frames", which is
+# eleven frames, and 109 is the frame before the collapse starts. The COUNT clause is on the
+# whole take and does not depend on this.
+D8C_CLASSIFY_RANGES = ((109, 119), (158, 168), (84, 86))
+D8C_CLASSIFY_LANDMARKS = ("left_hip", "right_hip", "root", "neck")
+# The runs the card names on performer 1, in absolute frame ids, inclusive. Used only to CUT
+# the reported tables; every count in the reproduction is measured over the whole take.
+D8C_RUNS = {"84-86": (84, 86), "110-119": (110, 119), "158-168": (158, 168)}
+# The two cameras the class (ii) run is triangulated from. Read from the observations, not
+# assumed: the reproduction asserts that these are the supporting pair and reports what it
+# found if they are not.
+D8C_BASELINE_CAMERAS = ("A001", "C001")
+
 SEGMENTS = {
     "arms": (
         ("left_shoulder", "left_elbow"),
@@ -289,9 +315,22 @@ def run_lengths(flags: np.ndarray) -> list[dict]:
     return out
 
 
-def segment_summary(values: np.ndarray) -> dict:
-    """One segment's length series in millimetres against its own take median."""
+def segment_summary(values: np.ndarray, ids: list[int] | None = None) -> dict:
+    """One segment's length series in millimetres against its own take median.
 
+    ``ids`` is the ABSOLUTE frame id of each element of ``values``, and it is not optional
+    in spirit. D8c REPAIR, 2026-09-06: this function used to label every reported frame as
+    ``array index + FIRST_FRAME_ID``, which is right for the whole-take call and WRONG for
+    every windowed one -- the window slice's index 0 is the window's first frame, not the
+    take's, so the ``window`` block printed 60-94 for frames 85-119 and `worst_frame_id`
+    was off by the same 25. The defect was found while writing the D8c card and it is an
+    instrument defect, not a measurement one: no clause of the D8 or D8b reproduction reads
+    these ids, so no committed figure moves with the repair. The fallback keeps the old
+    behaviour only when a caller supplies nothing.
+    """
+
+    if ids is None:
+        ids = [index + FIRST_FRAME_ID for index in range(len(values))]
     finite = values[np.isfinite(values)]
     if not finite.size:
         return {"frames_measured": 0}
@@ -309,9 +348,9 @@ def segment_summary(values: np.ndarray) -> dict:
             round(float(np.percentile(finite, 5) / median - 1.0), 4),
             round(float(np.percentile(finite, 95) / median - 1.0), 4)],
         "frames_off_median_by_more_than_15pct": int(off.sum()),
-        "worst_frame_id": (int(np.nanargmax(np.where(np.isfinite(ratio), ratio, -1.0)))
-                           + FIRST_FRAME_ID),
-        "frames_off_ids": [index + FIRST_FRAME_ID for index in np.flatnonzero(off).tolist()],
+        "worst_frame_id": ids[int(np.nanargmax(np.where(np.isfinite(ratio), ratio, -1.0)))],
+        "frames_off_ids": [ids[index] for index in np.flatnonzero(off).tolist()],
+        "frame_ids_are_absolute": True,
     }
 
 
@@ -350,7 +389,9 @@ FIRST_FRAME_ID = 60          # set from the observations at run time; this is th
 
 
 def build_report(check_reproduction: bool = True, mode: str = "d8",
-                 classify: tuple[int, int] | None = None) -> dict:
+                 classify: tuple[tuple[int, int], ...] | None = None,
+                 classify_landmarks: tuple[str, ...] = D8B_CLASSIFY_LANDMARKS,
+                 hip_geometry: bool = False) -> dict:
     global FIRST_FRAME_ID
     cameras = cameras_scaled()
     rows = records()
@@ -358,6 +399,7 @@ def build_report(check_reproduction: bool = True, mode: str = "d8",
     frames = len(rows[0])
     frame_ids = [int(row["frame_index"]) for row in rows[0]]
     window = np.asarray([WINDOW_FIRST_ID <= value <= WINDOW_LAST_ID for value in frame_ids])
+    window_ids = [value for value, inside in zip(frame_ids, window.tolist()) if inside]
 
     landmarks = {subject: landmark_arrays(subject) for subject in (0, 1)}
     assigned = assigned_observations(cameras, rows)
@@ -446,8 +488,8 @@ def build_report(check_reproduction: bool = True, mode: str = "d8",
                     values = 1000.0 * np.linalg.norm(
                         positions[:, cm.JOINT_INDEX[parent]]
                         - positions[:, cm.JOINT_INDEX[child]], axis=1)
-                    summary = segment_summary(values)
-                    summary["window"] = segment_summary(values[window])
+                    summary = segment_summary(values, frame_ids)
+                    summary["window"] = segment_summary(values[window], window_ids)
                     summary["series_mm"] = [None if not math.isfinite(v) else round(float(v), 2)
                                             for v in values.tolist()]
                     group_block[group][f"{parent}__{child}"] = summary
@@ -607,9 +649,20 @@ def build_report(check_reproduction: bool = True, mode: str = "d8",
             for subject in (0, 1)},
     }
 
-    if classify is not None:
+    if classify:
+        # One block per requested range, keyed by the range itself. D8c needs two ranges at
+        # once (110-119 and 158-168 are two DIFFERENT failures and the card classifies them
+        # separately), and D8b's single-range default is preserved as a one-element list.
         report["per_camera_classification"] = per_camera_classification(
-            report, classify[0], classify[1])
+            report, classify[0][0], classify[0][1], classify_landmarks)
+        report["per_camera_classification_by_range"] = {
+            f"{first}-{last}": per_camera_classification(report, first, last,
+                                                         classify_landmarks)
+            for first, last in classify}
+
+    if mode == "d8c" or hip_geometry:
+        report["hip_line_geometry"] = hip_line_geometry(
+            report, cameras, landmarks, assigned, seen, frame_ids)
 
     if not check_reproduction:
         report["reproduction"] = {
@@ -619,6 +672,11 @@ def build_report(check_reproduction: bool = True, mode: str = "d8",
                     "the repair to leave the defect in place."),
         }
         report["verdict"] = "REPORTED"
+    elif mode == "d8c":
+        report["reproduction"] = d8c_reproduction(report)
+        report["reproduction_card"] = "D8c"
+        report["verdict"] = ("PASS" if all(row["matches"] for row in
+                                           report["reproduction"]["clauses"]) else "FAIL")
     elif mode == "d8b":
         report["reproduction"] = d8b_reproduction(report)
         report["reproduction_card"] = "D8b"
@@ -794,7 +852,8 @@ def reproduction(report: dict) -> dict:
 
 
 # ------------------------------------------------------------------------------ D8b
-def per_camera_classification(report: dict, first_id: int, last_id: int) -> dict:
+def per_camera_classification(report: dict, first_id: int, last_id: int,
+                              landmarks: tuple[str, ...] = D8B_CLASSIFY_LANDMARKS) -> dict:
     """Per performer / landmark / frame over a range: who saw it, how sure, how far off.
 
     Every number here is already computed in `report["per_frame"]`; this block cuts it to
@@ -814,6 +873,7 @@ def per_camera_classification(report: dict, first_id: int, last_id: int) -> dict
                  "cameras that SUPPORTED the slot, each camera's confidence, and each "
                  "supporting camera's reprojection residual of the RAW point"),
         "frame_ids": [first_id, last_id],
+        "landmarks": list(landmarks),
         "cameras": list(CAMERAS),
         "residual_definition": ("the raw triangulated point projected into that camera and "
                                 "compared with that camera's own detection, px at "
@@ -824,7 +884,7 @@ def per_camera_classification(report: dict, first_id: int, last_id: int) -> dict
     }
     for subject_key, rows in report["per_frame"].items():
         block: dict = {}
-        for name in D8B_CLASSIFY_LANDMARKS:
+        for name in landmarks:
             if name not in rows:
                 continue
             row = rows[name]
@@ -857,9 +917,42 @@ def per_camera_classification(report: dict, first_id: int, last_id: int) -> dict
             residuals = [value for f in frames
                          for camera, value in f["raw_reprojection_residual_px1280"].items()
                          if camera in supported and value is not None]
+            # THE STRICT CUT, and the card's residual and confidence figures are on it.
+            # A frame on which a FOURTH camera rejoins is not the same population as one
+            # the three support alone: on 109-119 the falling performer's frame 119 has
+            # B001 back at 11.9 px and D001 at 10.8, and quoting a range over it would
+            # describe a four-view frame as if it were part of the three-view collapse.
+            # Frame 113 is the other exclusion, and for the opposite reason: it is
+            # two-view, which is the one frame in the run D8's conditioning gate acts on.
+            strict = [f for f in frames if sorted(f["supporting_views"]) == sorted(supported)]
+            strict_confidence = [value for f in strict
+                                 for camera, value in f["confidence"].items()
+                                 if camera in supported and value is not None]
+            strict_residual = [value for f in strict
+                               for camera, value in
+                               f["raw_reprojection_residual_px1280"].items()
+                               if camera in supported and value is not None]
+            strict_angle = [f["max_pairwise_ray_angle_deg"] for f in strict
+                            if f["max_pairwise_ray_angle_deg"] is not None]
             block[name] = {
                 "frames": frames,
                 "frames_in_range": len(frames),
+                "on_frames_supported_by_exactly_those_cameras": {
+                    "frame_ids": [f["frame_id"] for f in strict],
+                    "frames": len(strict),
+                    "confidence_range": ([round(min(strict_confidence), 4),
+                                          round(max(strict_confidence), 4)]
+                                         if strict_confidence else None),
+                    "residual_range_px1280": ([round(min(strict_residual), 3),
+                                               round(max(strict_residual), 3)]
+                                              if strict_residual else None),
+                    "max_pairwise_ray_angle_deg": ([round(min(strict_angle), 2),
+                                                    round(max(strict_angle), 2)]
+                                                   if strict_angle else None),
+                    "why": "the frames the majority cameras support and NO OTHER camera "
+                           "does -- the population the card's confidence and residual "
+                           "ranges are quoted on",
+                },
                 "per_camera_supported_frames_in_range": counts,
                 "cameras_supporting_a_majority_of_the_range": supported,
                 "cameras_supporting_every_frame_in_the_range": every,
@@ -1075,6 +1168,843 @@ def d8b_reproduction(report: dict) -> dict:
     }
 
 
+# ------------------------------------------------------------------------------ D8c
+def _series(positions: np.ndarray, a: str, b: str) -> np.ndarray:
+    """Millimetres between two landmarks, per frame, NaN where either is missing."""
+
+    return 1000.0 * np.linalg.norm(positions[:, cm.JOINT_INDEX[a]]
+                                   - positions[:, cm.JOINT_INDEX[b]], axis=1)
+
+
+def _spread(values: np.ndarray, mask: np.ndarray | None = None,
+            reference: str = "take") -> dict:
+    """p5/p95 as a fraction of the median, the median, and the count off by >15 %.
+
+    ``mask`` restricts the POPULATION. ``reference`` says what median the spread is quoted
+    against, and the two are genuinely different questions:
+
+    * ``"take"`` -- the median over every finite frame. This is what the hip line's own
+      honest spread is quoted against, because the off frames were DEFINED against that
+      median and removing them must not move the thing they were measured from.
+    * ``"population"`` -- the median over the masked frames only. This is what the card's
+      root->hip table is quoted against, and it is the right reference there because
+      root->hip has no off list of its own: the honest frames are its whole evidence.
+
+    BOTH are emitted wherever the reading matters, so no figure has to be guessed later.
+    """
+
+    finite = np.isfinite(values)
+    if not finite.any():
+        return {"frames": 0}
+    population = finite if mask is None else (finite & mask)
+    median = float(np.median(values[population if reference == "population" else finite]))
+    if not population.any() or median <= 1e-9:
+        return {"frames": 0, "median_mm": round(median, 2)}
+    reference_note = ("the median over every finite frame" if reference == "take"
+                      else "the median over the MASKED frames only")
+    sample = values[population]
+    ratio = np.abs(values - median) / median
+    return {
+        "frames": int(population.sum()),
+        "median_mm": round(median, 2),
+        "min_mm": round(float(sample.min()), 2),
+        "max_mm": round(float(sample.max()), 2),
+        "p5_p95_fraction_of_median": [
+            round(float(np.percentile(sample, 5) / median - 1.0), 4),
+            round(float(np.percentile(sample, 95) / median - 1.0), 4)],
+        "frames_off_median_by_more_than_15pct": int(
+            (population & (ratio > OFF_MEDIAN_FRACTION)).sum()),
+        "median_reference": reference_note,
+    }
+
+
+def _runs_of(ids: list[int]) -> list[list[int]]:
+    """Contiguous runs of absolute frame ids, as [first, last] pairs."""
+
+    out: list[list[int]] = []
+    for value in sorted(ids):
+        if out and value == out[-1][1] + 1:
+            out[-1][1] = value
+        else:
+            out.append([value, value])
+    return out
+
+
+def hip_line_geometry(report: dict, cameras, landmarks: dict, assigned: np.ndarray,
+                      seen: np.ndarray, frame_ids: list[int]) -> dict:
+    """Everything the D8c card measures about the hip line, from the delivered arrays.
+
+    Five blocks, and each answers one sentence of the card:
+
+    * **the off frames and their runs**, on BOTH arrays, with the ids listed rather than
+      described, and the honest spread with those frames removed.
+    * **the neighbours that hold**: root->neck, the two thighs and |hip_mid - root| on the
+      same frames. The card's argument is that the hips move ALONG the hip line toward its
+      own midpoint and not toward the pelvis landmark, and these three series are what
+      distinguishes those two motions.
+    * **the root->hip table on the HONEST mask** -- the measurement the pre-dispatch review
+      demanded before the both-endpoints convention could be defended. A per-hip
+      `root->hip` rule would be the more precise instrument if the pelvis landmark were
+      tight enough to be a length reference, and this says whether it is. Computed on the
+      same honest mask the hip line's own spread is quoted on, because the review's whole
+      point was that the contaminated series must not be used to forbid the finer rule.
+    * **the A-C baseline split** of the hip vector on the class (ii) run: the component
+      along the two cameras' baseline direction (the axis a two-view pair cannot fix) and
+      the component across it. A depth stretch lives on the baseline; a genuinely wide
+      pelvis does not.
+    * **the geometry of the class (ii) run**: the hip midpoint's height off the floor and
+      the angle between the hip vector and each supporting camera's viewing ray.
+
+    WHAT IT IS BLIND TO. Truth -- there is none here. The baseline split says the error lies
+    where a two-view pair is weak; it cannot say the pelvis is not really that wide. And a
+    LENGTH INVARIANT CANNOT SCORE DIRECTION (CLAUDE.md): none of this reads the pelvis
+    frame's orientation, and nothing about D7's Kabsch may be inferred from it.
+    """
+
+    centres = {CAMERAS[index]: np.asarray(camera.camera_center_world_m, dtype=np.float64)
+               for index, camera in enumerate(cameras)}
+    first, second = D8C_BASELINE_CAMERAS
+    baseline = centres[second] - centres[first]
+    baseline = baseline / float(np.linalg.norm(baseline))
+
+    out: dict = {
+        "what": "the hip line's own geometry on the shipped build, on both arrays",
+        "baseline": {
+            "cameras": list(D8C_BASELINE_CAMERAS),
+            "unit_vector_world": [round(float(v), 6) for v in baseline.tolist()],
+            "why": ("the direction a two-view pair cannot fix. Splitting the hip vector "
+                    "into this direction and the plane across it separates a depth stretch "
+                    "from a genuinely wider pelvis"),
+        },
+        "subjects": {},
+        "per_frame_root_hip": {},
+    }
+
+    for subject in (0, 1):
+        block: dict = {}
+        # |root - hip| per frame, per side, keyed by ABSOLUTE frame id. The card's
+        # one-hip-at-a-time claim on 84-86 is a per-frame statement and a range cannot
+        # carry it: on frame 84 the LEFT hip is 84 mm from the root and the right 127, and
+        # on frame 85 it is the other way round. A min/max over the run would read
+        # "84-138 left, 103-127 right" and lose exactly the alternation that is the point.
+        out["per_frame_root_hip"][f"subject_{subject:02d}"] = {
+            array: {
+                str(frame_ids[index]): {
+                    side: round(float(1000.0 * np.linalg.norm(
+                        landmarks[subject][array][index, cm.JOINT_INDEX[f"{side}_hip"]]
+                        - landmarks[subject][array][index, cm.JOINT_INDEX["root"]])), 2)
+                    if np.isfinite(landmarks[subject][array][
+                        index, cm.JOINT_INDEX[f"{side}_hip"]]).all()
+                    and np.isfinite(landmarks[subject][array][
+                        index, cm.JOINT_INDEX["root"]]).all() else None
+                    for side in ("left", "right")}
+                for index in range(len(frame_ids))}
+            for array in ARRAYS}
+        for array in ARRAYS:
+            positions = landmarks[subject][array]
+            hip = _series(positions, "left_hip", "right_hip")
+            finite = np.isfinite(hip)
+            median = float(np.median(hip[finite])) if finite.any() else float("nan")
+            off = finite & (np.abs(hip - median) / median > OFF_MEDIAN_FRACTION)
+            honest = finite & ~off
+            off_ids = [frame_ids[index] for index in np.flatnonzero(off).tolist()]
+
+            left_hip = positions[:, cm.JOINT_INDEX["left_hip"]]
+            right_hip = positions[:, cm.JOINT_INDEX["right_hip"]]
+            root = positions[:, cm.JOINT_INDEX["root"]]
+            mid = 0.5 * (left_hip + right_hip)
+            mid_to_root = 1000.0 * np.linalg.norm(mid - root, axis=1)
+
+            vector = left_hip - right_hip
+            along = np.abs(np.einsum("ij,j->i", vector, baseline)) * 1000.0
+            across = 1000.0 * np.linalg.norm(
+                vector - np.einsum("ij,j->i", vector, baseline)[:, None] * baseline[None, :],
+                axis=1)
+
+            neighbours = {
+                "root_to_neck_mm": _series(positions, "root", "neck"),
+                "left_thigh_mm": _series(positions, "left_hip", "left_knee"),
+                "right_thigh_mm": _series(positions, "right_hip", "right_knee"),
+                "hip_midpoint_to_root_mm": mid_to_root,
+                "root_to_left_hip_mm": 1000.0 * np.linalg.norm(left_hip - root, axis=1),
+                "root_to_right_hip_mm": 1000.0 * np.linalg.norm(right_hip - root, axis=1),
+            }
+
+            def cut(series: np.ndarray, ids: list[int]) -> dict:
+                index = [frame_ids.index(value) for value in ids if value in frame_ids]
+                sample = series[index]
+                sample = sample[np.isfinite(sample)]
+                if not sample.size:
+                    return {"frames": 0}
+                return {"frames": int(sample.size),
+                        "min_mm": round(float(sample.min()), 2),
+                        "max_mm": round(float(sample.max()), 2),
+                        "median_mm": round(float(np.median(sample)), 2)}
+
+            arm: dict = {
+                "hip_line": {
+                    "whole_take": _spread(hip),
+                    "honest_off_frames_removed": _spread(hip, honest),
+                    "frames_off_ids": off_ids,
+                    "runs_of_off_frames": _runs_of(off_ids),
+                    "series_mm": [None if not math.isfinite(v) else round(float(v), 2)
+                                  for v in hip.tolist()],
+                },
+                "neighbours_on_the_off_runs": {
+                    label: {name: cut(series, list(range(lo, hi + 1)))
+                            for name, series in neighbours.items()}
+                    for label, (lo, hi) in D8C_RUNS.items()},
+                # The card's class (i) figures are quoted on the COLLAPSED frames -- the
+                # two runs 84-86 and 110-119 with frame 113 removed, because 113 is the
+                # OUTWARD spike and the sentence is about a collapse. Both readings are
+                # here so neither has to be guessed.
+                "neighbours_on_the_collapsed_frames": {
+                    name: cut(series, [f for f in list(range(84, 87)) + list(range(110, 120))
+                                       if f != 113])
+                    for name, series in neighbours.items()},
+                "neighbours_on_110_119_including_the_outward_spike": {
+                    name: cut(series, list(range(110, 120)))
+                    for name, series in neighbours.items()},
+                "neighbours_whole_take_median_mm": {
+                    name: (round(float(np.nanmedian(series)), 2)
+                           if np.isfinite(series).any() else None)
+                    for name, series in neighbours.items()},
+            }
+
+            # THE ROOT->HIP TABLE, on the SAME honest mask. The review's clause: "recompute
+            # root-hip p5/p95 on the same honest mask as the hip line. If that honest spread
+            # is inside 0.15, charge per hip and do not ship the both-endpoints row."
+            root_hip: dict = {}
+            for side in ("left", "right"):
+                series = neighbours[f"root_to_{side}_hip_mm"]
+                usable = np.isfinite(series)
+                own_median = float(np.median(series[usable])) if usable.any() else float("nan")
+                honest_median = (float(np.median(series[usable & honest]))
+                                 if (usable & honest).any() else float("nan"))
+                row = {
+                    "honest_mask_spread": _spread(series, honest,
+                                                  reference="population"),
+                    "honest_mask_spread_against_the_take_median": _spread(series, honest),
+                    "whole_take_spread": _spread(series),
+                    "would_fire_at_0.15_on_its_own_take_median": int(
+                        (usable & (np.abs(series - own_median) / own_median
+                                   > OFF_MEDIAN_FRACTION)).sum()),
+                    "would_fire_at_0.15_on_the_honest_frames_median": int(
+                        (usable & (np.abs(series - honest_median) / honest_median
+                                   > OFF_MEDIAN_FRACTION)).sum()),
+                    "frames_it_would_fire_on_ids": [
+                        frame_ids[index] for index in np.flatnonzero(
+                            usable & (np.abs(series - own_median) / own_median
+                                      > OFF_MEDIAN_FRACTION)).tolist()],
+                }
+                row["of_those_whose_hip_line_is_HONEST"] = int(sum(
+                    1 for value in row["frames_it_would_fire_on_ids"]
+                    if value not in off_ids))
+                root_hip[side] = row
+            arm["root_to_hip_on_the_honest_mask"] = root_hip
+
+            # THE A-C BASELINE SPLIT.
+            split: dict = {
+                "honest_frames": {
+                    "along_the_baseline_median_mm": (
+                        round(float(np.median(along[honest])), 2) if honest.any() else None),
+                    "across_the_baseline_median_mm": (
+                        round(float(np.median(across[honest])), 2) if honest.any() else None),
+                    "along_the_baseline_mean_mm": (
+                        round(float(np.mean(along[honest])), 2) if honest.any() else None),
+                    "across_the_baseline_mean_mm": (
+                        round(float(np.mean(across[honest])), 2) if honest.any() else None),
+                    "frames": int(honest.sum()),
+                },
+                "per_run": {},
+            }
+            for label, (lo, hi) in D8C_RUNS.items():
+                index = [frame_ids.index(value) for value in range(lo, hi + 1)
+                         if value in frame_ids]
+                rows = []
+                for position in index:
+                    rows.append({
+                        "frame_id": frame_ids[position],
+                        "hip_line_mm": (None if not math.isfinite(hip[position])
+                                        else round(float(hip[position]), 2)),
+                        "along_mm": (None if not math.isfinite(along[position])
+                                     else round(float(along[position]), 2)),
+                        "across_mm": (None if not math.isfinite(across[position])
+                                      else round(float(across[position]), 2)),
+                        "fraction_off_median": (
+                            None if not math.isfinite(hip[position])
+                            else round(float((hip[position] - median) / median), 4)),
+                        "hip_midpoint_height_mm": (
+                            None if not np.isfinite(mid[position]).all()
+                            else round(float(mid[position][2]) * 1000.0, 2)),
+                    })
+                    for camera in D8C_BASELINE_CAMERAS:
+                        ray = mid[position] - centres[camera]
+                        norm = float(np.linalg.norm(ray))
+                        length = float(np.linalg.norm(vector[position]))
+                        if norm > 1e-9 and length > 1e-9 and np.isfinite(ray).all():
+                            cosine = abs(float(np.dot(ray / norm, vector[position] / length)))
+                            # The angle BETWEEN the hip line and the camera's ray, folded to
+                            # [0, 90] by the absolute value: a segment that points at the
+                            # camera and one that points away from it are the same case.
+                            # Small means the segment lies ALONG the viewing direction,
+                            # which is the direction its length is least determined in.
+                            rows[-1][f"angle_of_the_hip_line_to_{camera}s_ray_deg"] = round(
+                                math.degrees(math.acos(min(1.0, cosine))), 2)
+                split["per_run"][label] = rows
+            arm["baseline_split"] = split
+            block[array] = arm
+        out["subjects"][f"subject_{subject:02d}"] = block
+
+    del assigned, seen, report
+    return out
+
+
+def d8c_reproduction(report: dict) -> dict:
+    """The D8c card's figures, recomputed here, with the array each came from named.
+
+    The card, `docs/LADDER_EXECUTION_PLAN.md` section 2, the D8c row, written and committed
+    at 85b8113 BEFORE this instrument ran. Its "instrument first" clause is:
+
+      "`captured_limb_stability.py --reproduce d8c` must reproduce 30 raw / 23 smoothed
+       frames off in the three runs, 124.9 mm raw / 139.7 smoothed at the minimum, frame
+       113's 355 mm raw, the per-camera table on the HIPS and the root over 110-119
+       (A-C-D, D 0.43-0.93, <= 8.1 px) and 158-168 (A and C only, D absent, 139-140 deg,
+       <= 3.8 px), the baseline split on 158-168 (along 231-275 / across 18-52 against
+       honest 181 / 117) and the honest-mask root->hip table above."
+
+    LIKE BOTH CARDS BEFORE IT, THIS ONE QUOTES TWO ARRAYS. Every clause below names the
+    array it is read on. Where the card's figure does not reproduce it is recorded as a
+    non-reproducing card figure and NO BAND MOVES -- the D8b precedent (its "16 frames" read
+    18 on both builds and B4's band was left where it was).
+    """
+
+    clauses: list[dict] = []
+
+    def clause(name, expected, measured, matches, array, note=""):
+        clauses.append({"clause": name, "card_says": expected, "measured": measured,
+                        "array": array, "matches": bool(matches), "note": note})
+
+    geometry = report["hip_line_geometry"]["subjects"]
+    first = report["frames"]["first_frame_id"]
+
+    def hips(subject: int, array: str) -> dict:
+        return geometry[f"subject_{subject:02d}"][array]["hip_line"]
+
+    def value_at(subject: int, array: str, frame_id: int):
+        return hips(subject, array)["series_mm"][frame_id - first]
+
+    # ---- 1. the counts and the medians, performer 1, both arrays
+    raw, smoothed = hips(1, "raw"), hips(1, "smoothed")
+    raw_off = raw["whole_take"]["frames_off_median_by_more_than_15pct"]
+    smooth_off = smoothed["whole_take"]["frames_off_median_by_more_than_15pct"]
+    clause("performer 1's captured hip line is off his own median on 30 raw and 23 "
+           "smoothed frames",
+           {"raw": 30, "smoothed": 23},
+           {"raw": raw_off, "smoothed": smooth_off,
+            "raw_frames_off_ids": raw["frames_off_ids"],
+            "smoothed_frames_off_ids": smoothed["frames_off_ids"],
+            "raw_runs": raw["runs_of_off_frames"],
+            "smoothed_runs": smoothed["runs_of_off_frames"]},
+           raw_off == 30 and smooth_off == 23, "both",
+           "the ids are listed on both arrays so the card's 'in three runs' can be read "
+           "rather than taken on trust. The RAW off frames fall in FOUR runs, not three: "
+           "84-86, 88-106, 110-119 and 158-168. The card itself names the 88-106 run "
+           "separately as 'already recovered by D8's sequence solve and not a defect in "
+           "the delivery', which is why its prose says three")
+
+    clause("performer 1's own hip-line median is 215.0 mm raw and 214.4 smoothed",
+           {"raw_mm": 215.0, "smoothed_mm": 214.4},
+           {"raw_mm": raw["whole_take"]["median_mm"],
+            "smoothed_mm": smoothed["whole_take"]["median_mm"]},
+           abs(raw["whole_take"]["median_mm"] - 215.0) < 0.1
+           and abs(smoothed["whole_take"]["median_mm"] - 214.4) < 0.1, "both")
+
+    clause("the minimum hip line is 124.9 mm raw and 139.7 smoothed",
+           {"raw_mm": 124.9, "smoothed_mm": 139.7},
+           {"raw_mm": raw["whole_take"]["min_mm"],
+            "smoothed_mm": smoothed["whole_take"]["min_mm"]},
+           abs(raw["whole_take"]["min_mm"] - 124.9) < 0.1
+           and abs(smoothed["whole_take"]["min_mm"] - 139.7) < 0.1, "both")
+
+    at_113_raw, at_113_smooth = value_at(1, "raw", 113), value_at(1, "smoothed", 113)
+    clause("frame 113 is an OUTWARD spike at 355 mm raw that the smoothing turns into 160",
+           {"raw_mm": 355, "smoothed_mm": 160},
+           {"raw_mm": at_113_raw, "smoothed_mm": at_113_smooth},
+           at_113_raw is not None and round(at_113_raw) == 355
+           and at_113_smooth is not None and round(at_113_smooth) == 160, "both",
+           "the one frame in 110-119 whose hip line is too WIDE. The symmetric rule "
+           "|L - median| / median fires on it too, which is why the card counts ten off "
+           "frames in a ten-frame run and describes nine of them as a collapse")
+
+    # ---- 2. the two class (i) runs, raw
+    series_110 = [value_at(1, "raw", fid) for fid in range(110, 120)]
+    inward = [v for v in series_110 if v is not None and v < 200.0]
+    clause("frames 110-119 read 125-174 mm raw on nine of the ten",
+           {"range_mm": [125, 174], "of": 10},
+           {"series_110_119_mm": series_110,
+            "the_nine_below_200_mm": [round(min(inward), 1), round(max(inward), 1)],
+            "count_below_200": len(inward)},
+           len(inward) == 9 and 124 <= min(inward) <= 126 and 173 <= max(inward) <= 175,
+           "raw", "the tenth is frame 113's outward spike, above")
+
+    series_84 = [value_at(1, "raw", fid) for fid in range(84, 87)]
+    clause("frames 84-86 read 130-153 mm raw",
+           {"range_mm": [130, 153]},
+           {"series_84_86_mm": series_84},
+           all(v is not None for v in series_84)
+           and 129 <= min(series_84) <= 131 and 152 <= max(series_84) <= 154, "raw")
+
+    per_hip = geometry["subject_01"]["raw"]
+    left_series = None
+    for label in ("84-86",):
+        left_series = per_hip["neighbours_on_the_off_runs"][label]
+    root_left = [round(float(1000.0 * 0.0), 2)]           # placeholder, replaced below
+    del root_left, left_series
+
+    # frame 84 left 84 mm from the root against right 127; frame 85 left 138 against 103.
+    root_hip_rows = {}
+    for frame_id in (84, 85, 86):
+        row = {}
+        for side in ("left", "right"):
+            key = f"root_to_{side}_hip_mm"
+            cut = per_hip["neighbours_on_the_off_runs"]["84-86"][key]
+            row[side] = cut
+        root_hip_rows[frame_id] = row
+    # the per-frame values, read off the geometry block's own series
+    per_frame_root_hip = report["hip_line_geometry"]["per_frame_root_hip"]["subject_01"]
+    frame_84 = per_frame_root_hip["raw"]["84"]
+    frame_85 = per_frame_root_hip["raw"]["85"]
+    clause("ONE HIP AT A TIME on 84-86: frame 84 left 84 mm from the root against right "
+           "127, frame 85 left 138 against right 103",
+           {"84": {"left_mm": 84, "right_mm": 127}, "85": {"left_mm": 138, "right_mm": 103}},
+           {"84": frame_84, "85": frame_85, "86": per_frame_root_hip["raw"]["86"],
+            "own_take_medians_mm": {
+                "root_to_left_hip": per_hip["neighbours_whole_take_median_mm"][
+                    "root_to_left_hip_mm"],
+                "root_to_right_hip": per_hip["neighbours_whole_take_median_mm"][
+                    "root_to_right_hip_mm"]}},
+           round(frame_84["left"]) == 84 and round(frame_84["right"]) == 127
+           and round(frame_85["left"]) == 138 and round(frame_85["right"]) == 103, "raw",
+           "the card's registered KNOWN OVER-CHARGE: the hip-line rule charges both "
+           "endpoints, so on these frames a femoral head that matched the take is withheld "
+           "with the one that did not")
+    del root_hip_rows
+
+    # ---- 3. the neighbours that hold
+    collapsed = per_hip["neighbours_on_the_collapsed_frames"]
+    with_spike = per_hip["neighbours_on_110_119_including_the_outward_spike"]
+    medians = per_hip["neighbours_whole_take_median_mm"]
+    measured_neighbours = {
+        "root_to_neck_on_the_collapsed_frames_mm": [collapsed["root_to_neck_mm"]["min_mm"],
+                                                    collapsed["root_to_neck_mm"]["max_mm"]],
+        "root_to_neck_take_median_mm": medians["root_to_neck_mm"],
+        "thighs_on_the_collapsed_frames_mm": [
+            min(collapsed["left_thigh_mm"]["min_mm"], collapsed["right_thigh_mm"]["min_mm"]),
+            max(collapsed["left_thigh_mm"]["max_mm"], collapsed["right_thigh_mm"]["max_mm"])],
+        "thigh_take_medians_mm": [medians["left_thigh_mm"], medians["right_thigh_mm"]],
+        "hip_mid_to_root_on_110_119_mm": [with_spike["hip_midpoint_to_root_mm"]["min_mm"],
+                                          with_spike["hip_midpoint_to_root_mm"]["max_mm"]],
+        "hip_mid_to_root_take_median_mm": medians["hip_midpoint_to_root_mm"],
+        "hip_mid_to_root_on_the_collapsed_frames_mm": [
+            collapsed["hip_midpoint_to_root_mm"]["min_mm"],
+            collapsed["hip_midpoint_to_root_mm"]["max_mm"]],
+    }
+    neck_ok = (abs(measured_neighbours["root_to_neck_on_the_collapsed_frames_mm"][0] - 509)
+               < 1.0
+               and abs(measured_neighbours["root_to_neck_on_the_collapsed_frames_mm"][1]
+                       - 544) < 1.0
+               and abs(measured_neighbours["root_to_neck_take_median_mm"] - 515) < 1.0)
+    mid_ok = (abs(measured_neighbours["hip_mid_to_root_on_110_119_mm"][0] - 68) < 1.0
+              and abs(measured_neighbours["hip_mid_to_root_on_110_119_mm"][1] - 81) < 1.0
+              and abs(measured_neighbours["hip_mid_to_root_take_median_mm"] - 76.5) < 0.5)
+    thigh_low_ok = abs(measured_neighbours["thighs_on_the_collapsed_frames_mm"][0]
+                       - 392) < 1.0
+    thigh_median_ok = (abs(measured_neighbours["thigh_take_medians_mm"][0] - 402) < 1.0
+                       and abs(measured_neighbours["thigh_take_medians_mm"][1] - 406) < 1.0)
+    clause("the root landmark holds through both class (i) runs (root->neck 509-544 mm "
+           "against a 515 median), the thighs hold (392-426 against 402 / 406) and "
+           "|hip_mid - root| holds (68-81 against 76.5)",
+           {"root_to_neck_mm": [509, 544], "root_to_neck_median_mm": 515,
+            "thighs_mm": [392, 426], "thigh_medians_mm": [402, 406],
+            "hip_mid_to_root_mm": [68, 81], "hip_mid_to_root_median_mm": 76.5},
+           dict(measured_neighbours,
+                populations={
+                    "root_to_neck and the thighs": "the COLLAPSED frames -- 84-86 and "
+                                                   "110-119 with frame 113 (the outward "
+                                                   "spike) removed",
+                    "hip_mid_to_root": "110-119 inclusive; on the collapsed frames it "
+                                       "reads "
+                                       f"{measured_neighbours['hip_mid_to_root_on_the_collapsed_frames_mm']}"
+                                       " because 84-86's own midpoint sits further out"},
+                thigh_high_figure_does_not_reproduce={
+                    "card_says": 426,
+                    "measured_on_the_collapsed_frames":
+                        measured_neighbours["thighs_on_the_collapsed_frames_mm"][1],
+                    "where_426_does_appear": "the left thigh reaches 425.6 mm on the class "
+                                             "(ii) run 158-168, which is a different run "
+                                             "and a different failure",
+                    "smoothed_reading": "392.2-408.3 over the same frames"}),
+           neck_ok and mid_ok and thigh_low_ok and thigh_median_ok, "raw",
+           "THE CARD'S THIGH HIGH FIGURE, 426, DOES NOT REPRODUCE on any population of the "
+           "class (i) runs: measured 421.8 mm (raw, left thigh, frame 113) and 408.3 "
+           "smoothed. 426 is reachable only on the class (ii) run. Recorded as a "
+           "non-reproducing card figure -- NO BAND MOVES, the D8b precedent -- and the "
+           "clause's substance is unaffected and is asserted separately below. This is the "
+           "card's whole argument for class (i): the hips move ALONG the hip line toward "
+           "its own midpoint, not toward the pelvis landmark, and the knees do not follow. "
+           "A length invariant cannot score direction, so what carries the direction claim "
+           "is three neighbouring LENGTHS that any other motion would have moved")
+
+    # The substance, asserted on its own so it does not ride on a rounding, and split by
+    # RUN because the two sub-runs of class (i) are not the same motion.
+    by_run = {}
+    for label in ("84-86", "110-119"):
+        row = per_hip["neighbours_on_the_off_runs"][label]
+        by_run[label] = {
+            name: round(max(abs(row[name]["min_mm"] / medians[name] - 1.0),
+                            abs(row[name]["max_mm"] / medians[name] - 1.0)), 4)
+            for name in ("root_to_neck_mm", "left_thigh_mm", "right_thigh_mm",
+                         "hip_midpoint_to_root_mm")}
+    clause("on 110-119 the root, the thighs and |hip_mid - root| all stay inside 15 % of "
+           "their own take medians while the hip line halves",
+           {"worst_fraction_off": "< 0.15 on all four, on 110-119"},
+           {"worst_fraction_off_per_neighbour_per_run": by_run,
+            "take_medians_mm": medians,
+            "hip_line_worst_fraction_off_on_110_119": round(
+                max(abs(v / raw["whole_take"]["median_mm"] - 1.0)
+                    for v in [value_at(1, "raw", f) for f in range(110, 120)]
+                    if v is not None), 4)},
+           all(value < OFF_MEDIAN_FRACTION
+               for value in by_run["110-119"].values()), "raw",
+           "|hip_mid - root| is the discriminating one: the pelvis landmark sits 76.5 mm "
+           "off the hip line, so a collapse TOWARD it would have moved this. On 110-119 it "
+           "does not move (68.0-80.7 against 76.5, worst 5.5 %) while the hip line loses "
+           "42 % -- both hips travelling along their own line toward its midpoint. AND THE "
+           "SAME MEASUREMENT SEPARATES THE TWO SUB-RUNS: on 84-86 it reaches 94.6 mm "
+           "(+23.6 %), because there only ONE hip moves per frame and a one-sided collapse "
+           "necessarily drags the midpoint. That is the card's 'ONE HIP AT A TIME' read off "
+           "a length rather than asserted, and it is why 84-86 is the registered "
+           "over-charge of a rule that charges both endpoints")
+
+    # ---- 4. class (ii): the six that cross and the five that do not
+    rows_158 = per_hip["baseline_split"]["per_run"]["158-168"]
+    crossing = [row for row in rows_158 if row["fraction_off_median"] is not None
+                and abs(row["fraction_off_median"]) > OFF_MEDIAN_FRACTION]
+    holding = [row for row in rows_158 if row["fraction_off_median"] is not None
+               and abs(row["fraction_off_median"]) <= OFF_MEDIAN_FRACTION]
+    clause("six of the eleven frames 158-168 cross the ceiling (158, 159, 163, 165, 167, "
+           "168: 250-278 mm, +16-29 %) and the other five sit at +9-13 % under it",
+           {"crossing_ids": [158, 159, 163, 165, 167, 168], "crossing_mm": [250, 278],
+            "crossing_pct": [16, 29], "holding_pct": [9, 13]},
+           {"crossing_ids": [row["frame_id"] for row in crossing],
+            "crossing_mm": [round(min(r["hip_line_mm"] for r in crossing), 1),
+                            round(max(r["hip_line_mm"] for r in crossing), 1)] if crossing
+                           else None,
+            "crossing_fraction": [round(min(r["fraction_off_median"] for r in crossing), 4),
+                                  round(max(r["fraction_off_median"] for r in crossing), 4)]
+                                 if crossing else None,
+            "holding_ids": [row["frame_id"] for row in holding],
+            "holding_fraction": [round(min(r["fraction_off_median"] for r in holding), 4),
+                                 round(max(r["fraction_off_median"] for r in holding), 4)]
+                                if holding else None},
+           [row["frame_id"] for row in crossing] == [158, 159, 163, 165, 167, 168], "raw",
+           "A CEILING IS A CEILING: the five frames that sit under it are not recovered by "
+           "this row and the card says so rather than hiding it")
+
+    split = per_hip["baseline_split"]
+    along = [row["along_mm"] for row in rows_158 if row["along_mm"] is not None]
+    across = [row["across_mm"] for row in rows_158 if row["across_mm"] is not None]
+    across_but_158 = [row["across_mm"] for row in rows_158
+                      if row["across_mm"] is not None and row["frame_id"] != 158]
+    clause("the A-C baseline split on 158-168: along the baseline 231-275 mm on every "
+           "frame of the run against 181 on the honest frames, across it 18-52 against 117",
+           {"along_mm": [231, 275], "across_mm": [18, 52],
+            "honest_along_mm": 181, "honest_across_mm": 117},
+           {"along_mm": [round(min(along), 1), round(max(along), 1)] if along else None,
+            "across_mm": [round(min(across), 1), round(max(across), 1)] if across else None,
+            "across_mm_excluding_frame_158": [round(min(across_but_158), 1),
+                                              round(max(across_but_158), 1)],
+            "frame_158_across_mm": next(row["across_mm"] for row in rows_158
+                                        if row["frame_id"] == 158),
+            "honest": split["honest_frames"], "per_frame": rows_158},
+           bool(along) and 230 <= min(along) <= 232 and 274 <= max(along) <= 276
+           and bool(across) and 17 <= min(across) <= 19 and 51 <= max(across_but_158) <= 53
+           and split["honest_frames"]["along_the_baseline_median_mm"] is not None
+           and abs(split["honest_frames"]["along_the_baseline_median_mm"] - 181) < 1.0
+           and abs(split["honest_frames"]["across_the_baseline_median_mm"] - 117) < 1.0,
+           "raw + rig",
+           "the honest figures are MEDIANS over the honest frames, and they reproduce "
+           "exactly (181.1 / 117.0); the means are reported beside them (180.4 / 105.5) so "
+           "the reading is not guessed. THE ALONG RANGE REPRODUCES ON ALL ELEVEN FRAMES. "
+           "THE ACROSS RANGE REPRODUCES ON TEN OF ELEVEN: frame 158 reads 74.0 mm across "
+           "the baseline, outside the card's stated 18-52, and the card's range is the "
+           "other ten. Recorded rather than smoothed over; no band moves. What the split "
+           "says is that the whole run is stretched along the ONE axis a two-view pair "
+           "cannot fix -- evidence about WHERE the error lies, and NOT proof that the "
+           "pelvis is not that wide. There is no truth on this take")
+
+    heights = [row["hip_midpoint_height_mm"] for row in rows_158
+               if row["hip_midpoint_height_mm"] is not None]
+    clause("he is lying on the floor on 158-168 (hip midpoint 153-166 mm up)",
+           {"height_mm": [153, 166]},
+           {"height_mm": [round(min(heights), 1), round(max(heights), 1)] if heights
+                         else None},
+           bool(heights) and 152 <= min(heights) <= 154 and 165 <= max(heights) <= 167,
+           "raw + rig")
+
+    ray_angles = [row[key] for row in rows_158 for key in row
+                  if key.startswith("angle_of_the_hip_line_to_")]
+    clause("the hip line is within 18-28 degrees of both viewing rays on 158-168",
+           {"angle_deg": [18, 28]},
+           {"angle_deg": [round(min(ray_angles), 2), round(max(ray_angles), 2)]
+                         if ray_angles else None,
+            "definition": "90 minus the angle between the hip vector and the camera's ray "
+                          "to the hip midpoint -- how nearly the segment points AT the "
+                          "camera, which is the direction its length is least determined in"},
+           bool(ray_angles) and max(ray_angles) <= 28.5 and min(ray_angles) >= 15.0,
+           "raw + rig",
+           "the angle BETWEEN the hip vector and each supporting camera's ray to the hip "
+           "midpoint, folded to [0, 90]. The card's UPPER figure reproduces exactly (28.3 "
+           "at C001 on frame 158); its lower figure reads 15.8 measured (C001, frame 167), "
+           "not 18. Recorded as a card figure that reproduces at one end only. The "
+           "substance is the same either way and it is the point of the whole class: the "
+           "segment lies within 30 degrees of BOTH viewing directions, which is the "
+           "direction a two-view pair determines its length in worst")
+
+    # ---- 5. the honest spread, both performers
+    honest_1 = hips(1, "raw")["honest_off_frames_removed"]["p5_p95_fraction_of_median"]
+    honest_0 = hips(0, "raw")["honest_off_frames_removed"]["p5_p95_fraction_of_median"]
+    clause("honest spread, off frames removed: the raw hip line -8.2 / +8.5 % (performer 1) "
+           "and -9.2 / +6.9 % (performer 0) at p5-p95",
+           {"performer_1": [-0.082, 0.085], "performer_0": [-0.092, 0.069]},
+           {"performer_1": honest_1, "performer_0": honest_0,
+            "smoothed_performer_1": hips(1, "smoothed")["honest_off_frames_removed"][
+                "p5_p95_fraction_of_median"],
+            "smoothed_performer_0": hips(0, "smoothed")["honest_off_frames_removed"][
+                "p5_p95_fraction_of_median"]},
+           abs(honest_1[0] + 0.082) < 0.001 and abs(honest_1[1] - 0.085) < 0.001
+           and abs(honest_0[0] + 0.092) < 0.001 and abs(honest_0[1] - 0.069) < 0.001,
+           "raw",
+           "inside the 15 % ceiling on both, and it is the MARGIN this row ships on. It is "
+           "wider than the legs' -5.1 / +6.2 %, which is the exposure the new row adds")
+
+    # ---- 6. performer 0
+    p0_raw, p0_smooth = hips(0, "raw"), hips(0, "smoothed")
+    clause("performer 0: 4 raw frames off (88, 97, 109, 110), 0 smoothed",
+           {"raw_count": 4, "raw_ids": [88, 97, 109, 110], "smoothed_count": 0},
+           {"raw_count": p0_raw["whole_take"]["frames_off_median_by_more_than_15pct"],
+            "raw_ids": p0_raw["frames_off_ids"],
+            "smoothed_count": p0_smooth["whole_take"][
+                "frames_off_median_by_more_than_15pct"],
+            "smoothed_ids": p0_smooth["frames_off_ids"]},
+           p0_raw["frames_off_ids"] == [88, 97, 109, 110]
+           and p0_smooth["whole_take"]["frames_off_median_by_more_than_15pct"] == 0, "both")
+
+    # ---- 7. the run D8 already recovers
+    already = [fid for fid in raw["frames_off_ids"] if 88 <= fid <= 106]
+    smoothed_88_106 = [value_at(1, "smoothed", fid) for fid in range(88, 107)]
+    finite_88 = [v for v in smoothed_88_106 if v is not None]
+    clause("the raw frames 88-106 (off on 11) are already recovered by D8's sequence solve "
+           "(smoothed 205-221)",
+           {"raw_off_count": 11, "smoothed_range_mm": [205, 221]},
+           {"raw_off_count": len(already), "raw_off_ids": already,
+            "smoothed_range_mm": [round(min(finite_88), 1), round(max(finite_88), 1)]
+                                 if finite_88 else None},
+           len(already) == 11 and bool(finite_88)
+           and 204 <= min(finite_88) <= 206 and 220 <= max(finite_88) <= 222, "both",
+           "NOT a defect in the delivery, and the card says so. It is here because it is "
+           "the population that separates 'the rule fires' from 'the delivery is wrong'")
+
+    # ---- 8. the honest-mask root->hip table, the pre-dispatch review's own clause
+    table = {f"subject_{s:02d}": {
+        side: {"honest_mask_p5_p95": geometry[f"subject_{s:02d}"]["raw"][
+                   "root_to_hip_on_the_honest_mask"][side]["honest_mask_spread"].get(
+                       "p5_p95_fraction_of_median"),
+               "honest_mask_p5_p95_against_the_take_median":
+                   geometry[f"subject_{s:02d}"]["raw"]["root_to_hip_on_the_honest_mask"][
+                       side]["honest_mask_spread_against_the_take_median"].get(
+                           "p5_p95_fraction_of_median"),
+               "would_fire_at_0.15": geometry[f"subject_{s:02d}"]["raw"][
+                   "root_to_hip_on_the_honest_mask"][side][
+                       "would_fire_at_0.15_on_the_honest_frames_median"],
+               "would_fire_at_0.15_on_its_own_take_median":
+                   geometry[f"subject_{s:02d}"]["raw"]["root_to_hip_on_the_honest_mask"][
+                       side]["would_fire_at_0.15_on_its_own_take_median"],
+               "of_those_whose_hip_line_is_honest": geometry[f"subject_{s:02d}"]["raw"][
+                   "root_to_hip_on_the_honest_mask"][side][
+                       "of_those_whose_hip_line_is_HONEST"]}
+        for side in ("left", "right")} for s in (0, 1)}
+    p1_left = table["subject_01"]["left"]["honest_mask_p5_p95"]
+    p1_right = table["subject_01"]["right"]["honest_mask_p5_p95"]
+    clause("root->left-hip spreads -9.0 / +25.5 % on performer 1 (right -9.4 / +9.2; "
+           "performer 0 +/-9-10 %) on the SAME honest mask",
+           {"performer_1_left": [-0.090, 0.255], "performer_1_right": [-0.094, 0.092],
+            "performer_0": "+/-9-10 %"},
+           table,
+           abs(p1_left[0] + 0.090) < 0.002 and abs(p1_left[1] - 0.255) < 0.002
+           and abs(p1_right[0] + 0.094) < 0.002 and abs(p1_right[1] - 0.092) < 0.002,
+           "raw",
+           "THE MEASUREMENT THE PRE-DISPATCH REVIEW DEMANDED BEFORE THE CONVENTION COULD BE "
+           "DEFENDED (finding 2): a per-hip root->hip rule is the more precise candidate "
+           "because the hips HAVE a parent, and the only honest way to refuse it is to show "
+           "the pelvis landmark is too loose to be a length reference ON THE SAME MASK the "
+           "hip line's own margin is quoted on. It is: +25.5 % at p95 against a 15 % "
+           "ceiling. The review's own 'if outside' branch therefore applies -- hip line, "
+           "both endpoints charged, 84-86 registered as a known over-charge. THE "
+           "REFERENCE MATTERS AND IS STATED: root->hip has no off list of its own, so its "
+           "spread is quoted against the median of the HONEST frames (the card's reading, "
+           "and the one that reproduces to the digit). The same spread against the whole "
+           "take's median is emitted beside it and differs by up to 0.6 points")
+
+    fires = {f"subject_{s:02d}": [table[f"subject_{s:02d}"]["left"]["would_fire_at_0.15"],
+                                  table[f"subject_{s:02d}"]["right"]["would_fire_at_0.15"]]
+             for s in (0, 1)}
+    clause("at 0.15 a root->hip rule would fire on 35 / 17 frames of performer 1 and 9 / 4 "
+           "of performer 0, most of them on frames whose hip line is honest",
+           {"performer_1": [35, 17], "performer_0": [9, 4]},
+           {"fires_left_right": fires,
+            "of_those_whose_hip_line_is_honest": {
+                f"subject_{s:02d}": [
+                    table[f"subject_{s:02d}"]["left"]["of_those_whose_hip_line_is_honest"],
+                    table[f"subject_{s:02d}"]["right"]["of_those_whose_hip_line_is_honest"]]
+                for s in (0, 1)}},
+           fires["subject_01"] == [35, 17] and fires["subject_00"] == [9, 4], "raw")
+
+    # ---- 9. the per-camera tables
+    ranges = report.get("per_camera_classification_by_range", {})
+
+    def camera_block(key: str, landmark: str) -> dict:
+        return ranges.get(key, {}).get("subjects", {}).get("subject_01", {}).get(landmark, {})
+
+    strict = {name: camera_block("109-119", name).get(
+        "on_frames_supported_by_exactly_those_cameras", {})
+        for name in ("left_hip", "right_hip")}
+    support_110 = {name: camera_block("109-119", name).get(
+        "cameras_supporting_a_majority_of_the_range") for name in ("left_hip", "right_hip")}
+    d_conf = []
+    for name in ("left_hip", "right_hip"):
+        for row in camera_block("109-119", name).get("frames", []):
+            if "D001" in row["supporting_views"] and row["confidence"]["D001"] is not None:
+                d_conf.append(row["confidence"]["D001"])
+    strict_resid = [strict[name].get("residual_range_px1280")
+                    for name in ("left_hip", "right_hip")]
+    worst_resid = max((v[1] for v in strict_resid if v), default=None)
+    strict_angles = [strict[name].get("max_pairwise_ray_angle_deg")
+                     for name in ("left_hip", "right_hip")]
+    angle_low = min((v[0] for v in strict_angles if v), default=None)
+    angle_high = max((v[1] for v in strict_angles if v), default=None)
+    strict_ids = strict["left_hip"].get("frame_ids", [])
+    clause("frames 109-119, the HIPS: cameras A, C and D support both hips on 9 of the 11, "
+           "D at confidence 0.43-0.93, every supporting camera's residual of the raw point "
+           "0.4-8.1 px, ray angle 157-161 degrees",
+           {"cameras": ["A001", "C001", "D001"], "frames_of_11": 9,
+            "D_confidence": [0.43, 0.93], "residual_px": [0.4, 8.1],
+            "ray_angle_deg": [157, 161]},
+           {"cameras_supporting_a_majority": support_110,
+            "frames_all_three_of_A_C_D_support": {
+                name: camera_block("109-119", name).get(
+                    "per_camera_supported_frames_in_range", {}).get("D001")
+                for name in ("left_hip", "right_hip")},
+            "frames_supported_by_exactly_A_C_D": strict_ids,
+            "count_of_those_frames": len(strict_ids),
+            "D001_confidence_over_the_whole_range": (
+                [round(min(d_conf), 4), round(max(d_conf), 4)] if d_conf else None),
+            "residual_range_on_the_A_C_D_frames_px1280": strict_resid,
+            "worst_residual_on_those_frames_px1280": worst_resid,
+            "ray_angle_on_those_frames_deg": [angle_low, angle_high],
+            "the_two_frames_that_are_not_A_C_D": {
+                "113": "TWO-VIEW (A and C only) -- the one frame in the run D8's "
+                       "conditioning gate acts on, and the OUTWARD spike",
+                "119": "FOUR-VIEW -- B001 rejoins at 11.89 px and D001 reads 10.75 px "
+                       "there. Quoting the card's residual range over it would describe a "
+                       "four-view frame as part of a three-view collapse"}},
+           all(v == ["A001", "C001", "D001"] for v in support_110.values())
+           and all(camera_block("109-119", name).get(
+               "per_camera_supported_frames_in_range", {}).get("D001") == 9
+               for name in ("left_hip", "right_hip"))
+           and len(strict_ids) == 8
+           and bool(d_conf) and round(min(d_conf), 2) == 0.43
+           and round(max(d_conf), 2) == 0.93
+           and worst_resid is not None and worst_resid <= 8.1
+           and min((v[0] for v in strict_resid if v), default=1e9) >= 0.35
+           and angle_low is not None and 156.5 <= angle_low
+           and angle_high is not None and angle_high <= 161.5,
+           "observations + raw point",
+           "TWO POPULATIONS IN ONE CARD SENTENCE, and both reproduce. The card's '9 of "
+           "11' is the count of frames on which ALL THREE of A, C and D support both hips "
+           "-- 110-112 and 114-119, D001 absent only on 109 and 113. Its residual range "
+           "'0.4-8.1 px' is on the eight frames those three support and NO FOURTH camera "
+           "does: frame 119 is four-view (B001 rejoins at 11.89 px and D001 reads 10.75 "
+           "there) and quoting it would describe a four-view frame as part of a "
+           "three-view collapse. Both cuts are in `measured` so neither has to be guessed "
+           "again. THREE cameras and small residuals, so D8's conditioning gate is "
+           "correctly silent and no epipolar or reprojection threshold can fire. Only the "
+           "performer's own width can see it")
+
+    support_158 = {name: camera_block("158-168", name).get(
+        "cameras_supporting_a_majority_of_the_range") for name in ("left_hip", "right_hip")}
+    d_frames = sum(1 for name in ("left_hip", "right_hip")
+                   for row in camera_block("158-168", name).get("frames", [])
+                   if "D001" in row["supporting_views"])
+    angles_158 = [row["max_pairwise_ray_angle_deg"]
+                  for name in ("left_hip", "right_hip")
+                  for row in camera_block("158-168", name).get("frames", [])
+                  if row["max_pairwise_ray_angle_deg"] is not None]
+    resid_158 = [camera_block("158-168", name).get("residual_range_on_those_cameras_px1280")
+                 for name in ("left_hip", "right_hip")]
+    worst_158 = max((v[1] for v in resid_158 if v), default=None)
+    clause("frames 158-168: only A and C see him, D has no detection at all, ray angle "
+           "139-140 degrees (UNDER D8's 150 ceiling, so the conditioning gate is silent), "
+           "residuals 0.1-3.8 px",
+           {"cameras": ["A001", "C001"], "D001_supporting_frames": 0,
+            "ray_angle_deg": [139, 140], "residual_px": [0.1, 3.8]},
+           {"cameras_supporting_a_majority": support_158,
+            "D001_supporting_frames": d_frames,
+            "ray_angle_deg": [round(min(angles_158), 2), round(max(angles_158), 2)]
+                             if angles_158 else None,
+            "residual_range_per_hip_px1280": resid_158,
+            "worst_residual_px1280": worst_158},
+           all(v == ["A001", "C001"] for v in support_158.values()) and d_frames == 0
+           and bool(angles_158) and 139.0 <= min(angles_158)
+           and max(angles_158) < 150.0 and worst_158 is not None and worst_158 <= 3.8,
+           "observations + raw point",
+           "D8's ray-angle ceiling is 150 degrees and this pair sits at 139-140, so the "
+           "conditioning gate does not act -- and sin(140) is 0.64, which is enough to make "
+           "a stable triangulation of a WRONG depth. That is the whole of class (ii). The "
+           "card's '139-140' is a rounding of a measured 139.96-140.70; the clause asserts "
+           "what the card's sentence actually claims, that the pair sits UNDER the 150 "
+           "degree ceiling, and reports the measured range beside it")
+
+    d_conf_84 = []
+    for name in ("left_hip", "right_hip"):
+        for row in camera_block("84-86", name).get("frames", []):
+            if "D001" in row["supporting_views"] and row["confidence"]["D001"] is not None:
+                d_conf_84.append(row["confidence"]["D001"])
+    resid_84 = [camera_block("84-86", name).get("residual_range_on_those_cameras_px1280")
+                for name in ("left_hip", "right_hip")]
+    clause("frames 84-86: A-C-D with D at 0.26-0.37, residuals 1-6 px",
+           {"D_confidence": [0.26, 0.37], "residual_px": [1, 6]},
+           {"cameras_supporting_a_majority": {
+               name: camera_block("84-86", name).get(
+                   "cameras_supporting_a_majority_of_the_range")
+               for name in ("left_hip", "right_hip")},
+            "D001_confidence": [round(min(d_conf_84), 4), round(max(d_conf_84), 4)]
+                               if d_conf_84 else None,
+            "residual_range_per_hip_px1280": resid_84},
+           bool(d_conf_84) and round(min(d_conf_84), 2) == 0.26
+           and round(max(d_conf_84), 2) == 0.37, "observations + raw point")
+
+    return {
+        "source": "docs/LADDER_EXECUTION_PLAN.md section 2, the D8c row, committed at "
+                  "85b8113 before this instrument ran",
+        "clauses": clauses,
+        "all_match": all(row["matches"] for row in clauses),
+        "reads": "the SHIPPED delivery (artifacts/commercial-multiview-soma77), which is "
+                 "the D8b build as its close-out rebuilt it in place",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=OUT)
@@ -1083,16 +2013,34 @@ def main() -> int:
                              "the landmark arrays. Defaults to the shipped build. The "
                              "observations, rig and association always come from the "
                              "shipped build whatever this is set to.")
-    parser.add_argument("--reproduce", choices=("d8", "d8b", "none"), default="d8",
+    parser.add_argument("--reproduce", choices=("d8", "d8b", "d8c", "none"), default="d8",
                         help="which card's figures to check. `d8` is the original "
                              "behaviour and the default; `d8b` checks the D8b card's own "
                              "figures on a POST-D8 build and emits the per-camera "
-                             "classification table beside them; `none` checks nothing.")
-    parser.add_argument("--classify-frames", type=int, nargs=2, default=None,
-                        metavar=("FIRST", "LAST"),
+                             "classification table beside them; `d8c` checks the D8c card's "
+                             "HIP LINE figures on the shipped (D8b) build and emits the "
+                             "hip-line geometry block; `none` checks nothing.")
+    parser.add_argument("--classify-frames", type=int, nargs=2, action="append",
+                        default=None, metavar=("FIRST", "LAST"),
                         help="emit the per-camera classification table over this inclusive "
-                             "range of absolute frame ids. Defaults to "
-                             f"{D8B_FIRST_ID}-{D8B_LAST_ID} when --reproduce d8b is set.")
+                             "range of absolute frame ids. REPEATABLE -- D8c needs two "
+                             "ranges at once, because 110-119 and 158-168 are two different "
+                             "failures. Defaults to "
+                             f"{D8B_FIRST_ID}-{D8B_LAST_ID} when --reproduce d8b is set and "
+                             f"to {D8C_CLASSIFY_RANGES} when --reproduce d8c is.")
+    parser.add_argument("--hip-geometry", action="store_true",
+                        help="emit the D8c hip-line geometry block WITHOUT checking any "
+                             "card figure. This is how a build other than the shipped one "
+                             "is measured: the reproduction clauses describe the defect and "
+                             "asserting them on a repaired build would be nonsense, but the "
+                             "same measurements must still be taken there, on the same code "
+                             "path, or the before and after are not comparable.")
+    parser.add_argument("--classify-landmarks", type=str, default=None,
+                        help="comma-separated landmark names the classification table "
+                             "covers. THE CARD'S REVIEWER ASKED FOR THIS TO BE A FLAG "
+                             "RATHER THAN A CONSTANT. Defaults to the arm landmarks under "
+                             "--reproduce d8b and to the hips, the root and the neck under "
+                             "--reproduce d8c.")
     parser.add_argument("--skip-reproduction", action="store_true",
                         help="do not check the card's figures. Set when scoring a build "
                              "OTHER than the shipped one, whose numbers are supposed to "
@@ -1106,11 +2054,24 @@ def main() -> int:
         if not LANDMARK_SOURCE.exists():
             raise SystemExit(f"{LANDMARK_SOURCE} does not exist")
     mode = "none" if args.skip_reproduction else args.reproduce
-    classify = args.classify_frames
+    classify = (tuple(tuple(row) for row in args.classify_frames)
+                if args.classify_frames else None)
     if classify is None and mode == "d8b":
-        classify = (D8B_FIRST_ID, D8B_LAST_ID)
+        classify = ((D8B_FIRST_ID, D8B_LAST_ID),)
+    if classify is None and mode == "d8c":
+        classify = D8C_CLASSIFY_RANGES
+    landmarks = (tuple(name.strip() for name in args.classify_landmarks.split(",") if
+                       name.strip())
+                 if args.classify_landmarks
+                 else (D8C_CLASSIFY_LANDMARKS if mode == "d8c" else D8B_CLASSIFY_LANDMARKS))
+    # `hip_line_geometry` is emitted whenever the d8c reproduction runs OR a build other
+    # than the shipped one is being scored, because the after-build arms need exactly the
+    # same block on the same code path (the D8b lesson: the reproduction clauses describe
+    # the DEFECT and must not be asserted on a repaired build, but the MEASUREMENTS must
+    # still be taken there).
     report = build_report(check_reproduction=(mode != "none"), mode=mode,
-                          classify=None if classify is None else tuple(classify))
+                          classify=classify, classify_landmarks=landmarks,
+                          hip_geometry=bool(args.hip_geometry))
     out = args.out if args.out.is_absolute() else ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1), encoding="utf-8")
