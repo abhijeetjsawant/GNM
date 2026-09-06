@@ -36,9 +36,19 @@ THE MODES, each a wrapper around the REAL projection and nothing else:
                       must be byte-identical, which is the only way to see a re-solve that
                       reordered float operations (the D7b seven-normalisations lesson --
                       pass A and the re-solve share a helper, so an in-process "the re-solve
-                      is a no-op" check would pass on a refactor that moved BOTH). It is
-                      also the card's lock-without-correction DEGENERATE: it zeroes B1 by
-                      undoing the plant, and must fail B2 (the root) and B4 (the plant).
+                      is a no-op" check would pass on a refactor that moved BOTH).
+
+                      IT ALSO CLEARS `foot_contacts`, AND WHY IT MUST IS A RESULT. The
+                      card's lock-without-correction degenerate -- keep the foot lock and
+                      the contacts, drop `roots += correction` -- CANNOT BE BUILT: with the
+                      contacts asserted and the root not moved, `BodyTrack.__post_init__`
+                      runs `validate_body_track`, which measured "left foot contact moved
+                      0.01245879 m (limit 0.00001000 m)" and raised `BodyValidationError`
+                      before a single file was written. That degenerate is refused by the
+                      shipping path itself, which is stronger than B2 and B4 catching it
+                      after the fact; the tripwire arm clears the contacts only so that the
+                      REFACTOR question can still be asked, and its own root and contacts
+                      are therefore not comparable to the delivery's.
   * `no-correction`-- `maximum_root_correction_m=0`. The card's other degenerate: every run
                       `continue`s before `contacts[...] = True`, so contacts go to (0, 0) and
                       the foot lock never lands. Passes B1 and O1; B4 exposes it.
@@ -118,9 +128,14 @@ def install_watchers(mode: str) -> dict:
             call_kwargs["maximum_root_correction_m"] = 0.0
         projected, diagnostics = real_projection(track, **call_kwargs)
         if mode == "zero-hoist":
+            # The contacts go with the root: see the module docstring. The foot LOCAL lock
+            # the projection wrote into `local_rotations_xyzw` STAYS, which is what "the
+            # re-solve still runs, on the pre-projection root, with the locks in place"
+            # means.
             projected = replace(
                 projected,
-                root_translation_m=np.array(track.root_translation_m, copy=True))
+                root_translation_m=np.array(track.root_translation_m, copy=True),
+                foot_contacts=np.zeros_like(np.asarray(projected.foot_contacts)))
         hoist = (np.asarray(projected.root_translation_m, dtype=np.float64)
                  - np.asarray(track.root_translation_m, dtype=np.float64))
         magnitude = 1e3 * np.linalg.norm(hoist, axis=1)
