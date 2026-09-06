@@ -1,6 +1,6 @@
 {
   "_about": "Source of truth for where the body lane stands. Edit ONLY through tools/compare/status.py (set / log / render). render writes docs/LADDER_STATUS.md and docs/progress.html from this file. Plan of record: docs/LADDER_EXECUTION_PLAN.md; what is measured and how: docs/SUBSTITUTION_LADDER.md.",
-  "updated": "2026-09-06",
+  "updated": "2026-09-07",
   "goal": "An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.",
   "lanes": [
     {
@@ -269,8 +269,8 @@
           "title": "The foot-contact hoist: the bones re-aimed from where the root actually is",
           "plain": "After every bone has been aimed, the foot-contact step slides the whole skeleton so a planted foot stays put. It moves the root and leaves every rotation alone, so on those frames the arms, shoulders and trunk still point from where the root used to be: 4-6 mm off on 67 of 150 frames of one performer and 22 of the other. This step re-aims them from where the root actually is, and touches nothing else. Found on the way: the synthetic oracle's score subtracts exactly this slide, so it cannot see the defect and will read the fix as worse; that is written down before the fix is built.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-07",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -722,6 +722,11 @@
       "date": "2026-09-07",
       "step": "D9b",
       "text": "D9b card written (LADDER_EXECUTION_PLAN section 2, after D8c) and measured before it from the shipped D8c delivery's own bytes: the foot-contact hoist (two recoveries agreeing to 0.0 mm) is p95 12.5 / 8.7 mm on 67 / 22 of 150 frames, and every root-dependent bone -- four arm bones, both clavicles, the Spine->Neck chain -- sits at 0.0 mm on its ray from the PRE-hoist origin and 3.7-6.3 mm off from the delivered one; the legs (landmark-to-landmark) do not and go to D9-legs. Mechanism pre-registered: re-solve the root-dependent chains after the projection (the D2c rule), the projection run once on today's feet, never twice. ORACLE AUDIT: contacts fire on all six D3 gate bodies (34-67 hoisted frames, p95 10-14 mm) and retarget_cost.score aligns each frame on the leg-root midpoint, so the gate reads identical before/after/hoist-removed on every seed, is blind to this defect, and is predicted to read the correct fix WORSE on arms and torso (registered as the gauge, band not moved; an absolute-frame companion row is added). The brief's 'exact rig with no ground contact' clause did not exist and is replaced by O1-O4. Pre-card scripts committed under tools/compare/precard/. Grok 4.6 reviewed the card in Sol's place (docs/reviews/hoist-reaim-grok-review-2026-09-07.md): dispatch after eight patches, all adopted and verified against the source -- a dedicated re-solve (never a pass-C re-run, which would overwrite the projection's foot locks), the quaternion hemisphere pass not re-run globally, O3 stated as the median it is, B1 as the closure quantity merged only with B2/B4/the tripwire, a pass-B accepted-set change is a hold not a pre-scoped exception, the oracle's Head inherits the trunk, the tripwire's meaning, two more must-fails."
+    },
+    {
+      "date": "2026-09-07",
+      "step": "D9b",
+      "text": "worktree .claude/worktrees/ladder-D9b on ladder/D9b, one Opus agent; hygiene, instrument first (and the oracle audit reproduced), the tripwire, then the one-block src change"
     }
   ]
 }
