@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-06T03:10:49",
+ "rendered": "2026-09-06T20:38:06",
  "git": {
-  "sha": "8ec143d",
+  "sha": "4c1c6e2",
   "dirty": true
  },
  "rungs": [
@@ -18,6 +18,44 @@
    "title": "Person masks and per-view identity",
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
+    {
+     "title": "D8c: how well the body and legs cover the person in the photographs",
+     "plain": "The reference fitter's person masks are the reference; higher is better. Torso, legs and head, on the two runs where the hips are wrong. On the collapse run -- three cameras agreeing on hips that are too close together -- the mesh covers measurably more of the person after the repair, and the margin of uncertainty is clear of zero. On the stretch run it does not move at all, and that is expected rather than disappointing: the performer is lying down, only two cameras can see him, and the error is along the one direction those two cameras cannot resolve -- correcting it barely changes any pixel. The hatched bars are the build before this one and the reference fitter's own mesh, which is the ceiling a body of the wrong proportions can reach rather than a target.",
+     "better": "higher",
+     "unit": "IoU median",
+     "bars": [
+      {
+       "label": "After, collapse run, performer 1",
+       "role": "ours",
+       "value": 0.55165
+      },
+      {
+       "label": "Before, collapse run, performer 1",
+       "role": "control",
+       "value": 0.53914
+      },
+      {
+       "label": "Reference fitter's mesh, collapse run",
+       "role": "control",
+       "value": 0.67443
+      },
+      {
+       "label": "After, stretch run, performer 1",
+       "role": "ours",
+       "value": 0.50719
+      },
+      {
+       "label": "Before, stretch run, performer 1",
+       "role": "control",
+       "value": 0.50798
+      },
+      {
+       "label": "Reference fitter's mesh, stretch run",
+       "role": "control",
+       "value": 0.65701
+      }
+     ]
+    },
     {
      "title": "D8b: how well the arms cover the person in the photographs",
      "plain": "The reference fitter's person masks are the reference; higher is better. Arms only, and only the 41 frames where the capture goes wrong. The bars are level: this change moves the pixels by less than this instrument can resolve, and every margin of uncertainty spans zero. That is the honest reading -- the photographs neither support nor contradict the step. The hatched bars are the build before this one and the reference fitter's own mesh, which is the ceiling a body of the wrong proportions can reach rather than a target.",
@@ -826,6 +864,24 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D8c: how far the delivered character actually moved",
+     "plain": "Read from the delivered files themselves, with the automatic floor-hoist taken out so a re-levelling is not counted as the body moving. This is NOT an error -- there is no correct answer to compare against on this footage. It is the size of the change: on the frames the rule acts on, the character's root moves about three millimetres on the falling performer and not at all on the other, whose hips were never withheld.",
+     "better": "lower",
+     "unit": "mm median",
+     "bars": [
+      {
+       "label": "Performer 1, fired frames",
+       "role": "ours",
+       "value": 3.1478
+      },
+      {
+       "label": "Performer 0, fired frames",
+       "role": "ours",
+       "value": 0.0
+      }
+     ]
+    },
     {
      "title": "D9: how far the delivered elbow and wrist sit from the ones we measured, performer 0",
      "plain": "Our own measured elbow and wrist are the reference, at zero; lower is better. Blue is what this step delivers. The hatched bars are the build before it, which aimed each arm bone by the line between two measured points while the bone actually turns about a joint somewhere else -- so the whole arm was carried off by that gap. The aqua bars are the floor: the part of the miss that a bone of fixed length can never remove, whatever it is aimed at. Blue sits on the floor, so there is nothing left here for an aim to fix; the rest is an arm cut to this performer, and that is a later step.",

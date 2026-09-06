@@ -236,7 +236,8 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f7, c7 = _d8_figures("masks")
     f8, c8 = _d9_figures("masks")
     f9, c9 = _d8b_figures("masks")
-    return figs + f3 + f4 + f5 + f6 + f7 + f8 + f9, ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9
+    f10, c10 = _d8c_figures("masks")
+    return figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10, ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -277,7 +278,8 @@ def x_sequence_and_oracle(spec: dict) -> tuple[list, list]:
     f3, c3 = x_temporal(spec)
     f8, c8 = _d8_figures("capture")
     f9, c9 = _d8b_figures("capture")
-    f8, c8 = f8 + f9, c8 + c9
+    f10, c10 = _d8c_figures("capture")
+    f8, c8 = f8 + f9 + f10, c8 + c9 + c10
     return figs + f2 + f3 + f8, ctrls + c2 + c3 + c8
 
 
@@ -306,7 +308,8 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f7, c7 = _d8_figures("converter")
     f8, c8 = _d9_figures("converter")
     f9, c9 = _d8b_figures("converter")
-    return figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9, ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9
+    f10, c10 = _d8c_figures("converter")
+    return figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10, ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -394,6 +397,33 @@ def _d9_figures(where: str) -> tuple[list, list]:
 
     def dest(key: str) -> str:
         return "masks" if key.startswith("silhouette_") else "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d8c_figures(where: str) -> tuple[list, list]:
+    """D8c figures from `tools/compare/extractors/d8c_hip.py` (the agent's stub, wired here by the
+    registry owner): `silhouette_` to rung 1; `placement_` (the delivered root against the D8b file, from
+    both GLBs' own bytes) to rung 7; `capture_` and `synthetic_` (the captured hip line against the
+    performer's own width, and the synthetic collapse) to the sequence rung. D8c shipped on 2026-09-06:
+    the hip line joined the segment-length rule with both hips charged; the falling performer's hips went
+    from 23 frames off his own width to 0 on a fixed reference, the photographs up on his two collapse
+    runs and level on the third, which lies along the two cameras' own baseline where a silhouette is
+    blind. Stated: a per-hip root-to-hip rule was measured and refused (the pelvis landmark spreads
+    +25 % on honest frames), and frames 84-86 over-charge one good hip with the bad one."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d8c_hip  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d8c_hip.x_hip_line_reject({})
+
+    def dest(key: str) -> str:
+        if key.startswith("silhouette_"):
+            return "masks"
+        if key.startswith("placement_"):
+            return "converter"
+        return "capture"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
 
@@ -1502,6 +1532,14 @@ def _splice_d7_visuals() -> None:
         return
     VISUALS["triangulation"][0:0] = d8b_length.VISUALS.get("capture", [])
     VISUALS["masks"][0:0] = d8b_length.VISUALS.get("masks", [])
+    try:
+        from extractors import d8c_hip  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["triangulation"][0:0] = (d8c_hip.VISUALS.get("capture", [])
+                                     + d8c_hip.VISUALS.get("synthetic", []))
+    VISUALS["pose"][0:0] = d8c_hip.VISUALS.get("placement", [])
+    VISUALS["masks"][0:0] = d8c_hip.VISUALS.get("masks", [])
 
 
 

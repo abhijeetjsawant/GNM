@@ -258,10 +258,10 @@
           "title": "The hip line: captured hips that break the performer's own width",
           "plain": "The same fault as D8b one segment lower: on the falling performer the detector puts both hips too close together in three agreeing cameras, and later, when he lies on the floor with his hips pointing at the only two cameras that see him, the two views stretch the hip line apart. His own hip width is the evidence for both. The rule D8b built gains the hip line; since the rig's root stands on the hip midpoint, what the root does is written down before it is measured.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-06",
-          "finished": null,
-          "report": null,
+          "finished": "2026-09-06",
+          "report": "artifacts/compare/d8c-hip/gate.json",
           "blocked_on": null
         }
       ]
@@ -701,6 +701,11 @@
       "date": "2026-09-06",
       "step": "D8c",
       "text": "worktree .claude/worktrees/ladder-D8c on ladder/D8c, one Opus agent; instrument first, then synthetic, then the one-row src change"
+    },
+    {
+      "date": "2026-09-06",
+      "step": "D8c",
+      "text": "merged 2026-09-06 (4c1c6e2, --no-ff) on the pre-registered clauses, all seven conjuncts: the hip line joins the segment-length rule with both hips charged; the synthetic confirmed demote at 0.15 on the hips' own geometry (an injected collapse 50.3 -> 3.9 mm); on the take performer 1's hip line off his own width 23 -> 0 on D8b's fixed medians, every other segment's fires identical frame for frame, raw byte-identical, photographs up +0.021 / +0.013 IoU on the two twisting runs and level on the grass run (the error lies along the two cameras' own line of sight, where a silhouette is blind); the delivered root moved 3 mm median on the repaired frames, 23 at worst, the pelvis frame 2.1 deg. Two predictions FAILED and attributed: MAMMA further (its hip line is a constant 118 mm, so the collapse was accidentally nearer it), and the delivered joints move 1-2 mm far from any fire because D3's per-performer rest is sized over the whole take (16 of 55 rest bones move under 1 mm when 18 frames change) -- a lane finding: no later step may predict a DELIVERED change to be local. Grok 4.6 reviewed the merge in Sol's place (docs/reviews/hip-line-grok-merge-review-2026-09-06.md): MERGE, recording that S0's calibration bound mixed the two performers (-9.2/+8.5 where the card froze -8.2/+8.5; the largest scale inside the frozen bound is 0.10, not 0.15; the ceiling did not move and the mode is demote at every scale run) and that frame 113 was a card error (a two-view slot D8 had already withheld, not a fire). Close-out: delivery rebuilt in place 8/8 byte-identical, every instrument rerun with full logs under artifacts/compare/post-merge-D8c; D3 oracle unchanged (legs 0.07, arms 1.17), same-denominator clauses read moved-by-design, head gate line-identical. Open after this step: the one-hip over-charge (three frames), no fixture realises a two-view depth stretch, the ceiling's own remedy, the window block's frame-id labelling repaired in the instrument."
     }
   ]
 }

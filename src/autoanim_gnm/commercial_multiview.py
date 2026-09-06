@@ -1455,7 +1455,9 @@ SEGMENT_LENGTH_CEILING_FRACTION = 0.15
 
 # The segments the rule measures, and the landmark(s) a departure is charged to. The CHILD
 # carries the claim, because the parent is fixed by the segment above it -- except the
-# shoulder line, which has no parent, so both of its endpoints are marked. Named here
+# shoulder line and (since D8c) the hip line, whose endpoints are both marked: the shoulder
+# line has no parent, and the hips' parent (`root`) is too loose a length reference to
+# charge one hip alone (see the hip-line row below). Named here
 # rather than derived from `RIGID_LIMBS` because the two are different things: `RIGID_LIMBS`
 # is what the sequence solve regularises, and this is what a captured frame is judged on.
 SEGMENT_LENGTH_RULES = (
@@ -1631,7 +1633,8 @@ def _reject_inconsistent_segments(
                 "the reference length is this performer's own take median from the same "
                 "triangulated array; a frame that departs from it by more than the "
                 "ceiling has its CHILD landmark withheld (both endpoints for the shoulder "
-                "line, which has no parent). The raw array is untouched by all of it."),
+                "line, which has no parent, and for the hip line, whose parent is too "
+                "loose to charge one hip). The raw array is untouched by all of it."),
     }
     return values, actions, report
 
