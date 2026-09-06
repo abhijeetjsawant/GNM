@@ -247,10 +247,10 @@
           "title": "Captured segments that break the performer's own bone length",
           "plain": "Where the falling performer twists, the detector puts both his shoulders too close together in every camera at once, so three cameras agree on a shoulder line a third of his real width and nothing geometric can tell. His own bone lengths can. Frames whose captured segment leaves his own length are handed back to the solver to recover from the neighbouring joint.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-06",
-          "finished": null,
-          "report": null,
+          "finished": "2026-09-06",
+          "report": "artifacts/compare/d8b-length/gate.json",
           "blocked_on": null
         }
       ]
@@ -660,6 +660,16 @@
       "date": "2026-09-06",
       "step": "D9",
       "text": "2026-09-06, correction and finding from the oracle repair: the smoothing hypothesis for the oracle's 8-11 mm torso is DEAD (_thorax_frames is called only from the head solve inside reconstruct_multiview, never inside positions_to_body_track). Measured on seed 20260903 with the spine fed: the track's Hips->Spine bone sits 6.86 deg from the truth's, Hips 10.0 mm and Spine 26.6 mm off after hip-midpoint alignment, the chain straight on both (0.000 deg), the Chest->Neck direction 3.09 deg off, and the Neck 10.7 mm off -- the D7b floor mechanism: the trunk is aimed from a displaced Spine origin at the exact neck and lands at rest length along that ray. The displacement is D7's REST-PELVIS CONVENTION: the Kabsch fit uses SOMA-derived rest offsets, and on this rig's exact rest they tilt the pelvis by ~7 deg about the hip line -- invisible to the leg roots (they sit on that line, legs 0.07 mm), visible on everything above the pelvis. The rig carries its own Hips->Spine and Hips->UpperLeg rest offsets; fitting the pelvis to THOSE removes a shipped third-party constant (the head's lesson) and is the next converter item after D8b (candidate name D7c), banded on this oracle (legs AND trunk exact) with the real-take hoist and silhouette as the photographs. The arms' 0.8-1.2 mm on the oracle are downstream of the same 27 mm origin miss through the clavicle pivots; re-read after D7c."
+    },
+    {
+      "date": "2026-09-06",
+      "step": "D8b",
+      "text": "merged 2026-09-06 (8ec143d, --no-ff) on the pre-registered clauses after the synthetic fixture was repaired (honest-frame noise calibrated to the take, the collapse injected on a moving run; src byte-identical across the repair): the falling performer's shoulder line off his own width 18 -> 0 frames, performer 0 4 -> 1, legs 0 -> 0 with two correct fires, raw triangulation byte-identical, photographs level on every cell, MAMMA closer in the window; delivery rebuilt in place, 8/8 byte-identical; every instrument rerun with full logs under artifacts/compare/post-merge-D8b"
+    },
+    {
+      "date": "2026-09-06",
+      "step": "D8b",
+      "text": "2026-09-06, D8b close-out: (1) stated cost: nine arm fires outside the fault window on performer 1; against MAMMA's body five got 4-8 mm worse, three better, one wrist 30 -> 47 -- a 15 % ceiling buys the shoulder at a few millimetres of ordinary arm motion. (2) On the repaired FIXTURE demote and reject give bit-identical shoulders and D8's gap clause places them on the neck; on the REAL take the shoulders are recovered, not held (|shoulder-neck| sd 20-24 mm, 34-37 deg of direction spread over the fired frames, width 353-381 against his 364). (3) Handoffs: the hip line collapses the same way on 23 frames and is not in the segment list; captured_limb_stability recomputes the performer's median per build (B4 read 4 -> 5 on the moving denominator, 4 -> 4 on a fixed one; D8's own 27 -> 18 / 22 -> 4 headline needs a fixed-denominator recheck; --median-from owed). (4) RESOLUTION SWEEP on the same D9 code at detector widths 1280 / 2560 / 3840 (the user asked whether a bigger GPU would help): performer 1's shoulder-line frames off 18 / 20 / 15, hip line 23 / 29 / 24, and 3840 adds leg misses on performer 0 that 1280 lacks -- the collapse is not a crop-resolution symptom, so D8b treats the cause it names; a GPU changes detection time, not detections. (5) The D8 test's 'off' arm now passes segment_length_ceiling_fraction=None so it is pre-D8 code again; provenance rerun on main after the branch overwrote the shared JSON."
     }
   ]
 }

@@ -295,6 +295,7 @@ def clean_runs():
     off = cm.reconstruct_multiview(
         CAMERAS, records, subject_count=2, sample_rate_hz=SAMPLE_RATE_HZ,
         ray_pair_conditioning_ceiling_deg=None, reachability_reject=False,
+        segment_length_ceiling_fraction=None,  # D8b (2026-09-06): the "off" arm is pre-D8 code again
         maximum_interpolated_gap_frames=None)
     on = cm.reconstruct_multiview(
         CAMERAS, records, subject_count=2, sample_rate_hz=SAMPLE_RATE_HZ)
@@ -358,6 +359,7 @@ def test_turning_the_rules_on_changes_the_smoothed_array_when_a_view_is_lost() -
     off = cm.reconstruct_multiview(
         CAMERAS, stripped, subject_count=2, sample_rate_hz=SAMPLE_RATE_HZ,
         ray_pair_conditioning_ceiling_deg=None, reachability_reject=False,
+        segment_length_ceiling_fraction=None,  # D8b (2026-09-06): the "off" arm is pre-D8 code again
         maximum_interpolated_gap_frames=None)
     on = cm.reconstruct_multiview(
         CAMERAS, stripped, subject_count=2, sample_rate_hz=SAMPLE_RATE_HZ)

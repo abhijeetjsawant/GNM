@@ -235,7 +235,8 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f6, c6 = _d7b_figures("masks")
     f7, c7 = _d8_figures("masks")
     f8, c8 = _d9_figures("masks")
-    return figs + f3 + f4 + f5 + f6 + f7 + f8, ctrls + c3 + c4 + c5 + c6 + c7 + c8
+    f9, c9 = _d8b_figures("masks")
+    return figs + f3 + f4 + f5 + f6 + f7 + f8 + f9, ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -275,6 +276,8 @@ def x_sequence_and_oracle(spec: dict) -> tuple[list, list]:
     f2, c2 = x_oracle_2d(spec)
     f3, c3 = x_temporal(spec)
     f8, c8 = _d8_figures("capture")
+    f9, c9 = _d8b_figures("capture")
+    f8, c8 = f8 + f9, c8 + c9
     return figs + f2 + f3 + f8, ctrls + c2 + c3 + c8
 
 
@@ -302,7 +305,8 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f6, c6 = _d7b_figures("converter")
     f7, c7 = _d8_figures("converter")
     f8, c8 = _d9_figures("converter")
-    return figs + f2 + f3 + f4 + f5 + f6 + f7 + f8, ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8
+    f9, c9 = _d8b_figures("converter")
+    return figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9, ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -390,6 +394,33 @@ def _d9_figures(where: str) -> tuple[list, list]:
 
     def dest(key: str) -> str:
         return "masks" if key.startswith("silhouette_") else "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d8b_figures(where: str) -> tuple[list, list]:
+    """D8b figures from `tools/compare/extractors/d8b_length.py` (the agent's stub, wired here by the
+    registry owner): `silhouette_` to rung 1; `placement_` (delivered vs the RAW captured points) to rung 7;
+    `capture_` and `synthetic_` (the captured segments against the performer's own bone length, and the
+    synthetic collapse) to the sequence rung. D8b shipped on 2026-09-06: a captured segment that leaves
+    the performer's own median length by more than 15 % has its child landmark withheld and recovered;
+    the falling performer's shoulder line went from 18 frames off his own width to 0. Merged on the
+    pre-registered clauses after the synthetic fixture was repaired (its honest frames were nine times
+    noisier than the take; its collapse ran on a static clip). Stated cost: nine arm fires outside the
+    fault window, five of them 4-8 mm further from MAMMA's body."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d8b_length  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d8b_length.x_segment_length_reject({})
+
+    def dest(key: str) -> str:
+        if key.startswith("silhouette_"):
+            return "masks"
+        if key.startswith("placement_"):
+            return "converter"
+        return "capture"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
 
@@ -1465,6 +1496,12 @@ def _splice_d7_visuals() -> None:
         return
     VISUALS["pose"][0:0] = d9_arms.VISUALS.get("converter", [])
     VISUALS["masks"][0:0] = d9_arms.VISUALS.get("masks", [])
+    try:
+        from extractors import d8b_length  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["triangulation"][0:0] = d8b_length.VISUALS.get("capture", [])
+    VISUALS["masks"][0:0] = d8b_length.VISUALS.get("masks", [])
 
 
 
