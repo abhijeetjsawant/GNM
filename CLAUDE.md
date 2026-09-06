@@ -218,6 +218,38 @@
   produces may enter a delivered artifact, trained weights, or a shipped calibration
   constant.
 
+- **Close-out protocol (2026-09-06):** `tools/compare/post_merge.sh <ID> <branch-delivery-dir>` archives, rebuilds in
+  place, byte-checks the eight delivered files and reruns every instrument with EVERY line logged under
+  `artifacts/compare/post-merge-<ID>/`. A `tail -4` hid a failing oracle for two close-outs (the D3 gate's
+  exact-skeleton legs read 12.8 mm behind the verdict line from D7b to D9). Read the gate lines, not the verdict.
+- **The D3 gate's exact-skeleton oracle feeds the converter the truth's SPINE and TOES** (as the delivery does);
+  without them it exercises the legacy trunk-line hips frame the delivery left at D7. Its "canonical unchanged" and
+  "round trip = D2c" clauses compare against references frozen at D2c/D3 that later steps moved by design: re-pin owed.
+  Its residual torso (8–11 mm) is D7's SOMA-derived rest-pelvis constants tilting the pelvis ~7° about the hip line
+  on an exact rig — invisible to the leg roots, visible above them ("D7c": fit the pelvis to the rig's own rest).
+- **`captured_limb_stability.py` recomputes the performer's median per build** — a moving denominator; compare builds
+  with a fixed reference (`--median-from`, owed). D8's 27→18 / 22→4 headline needs that recheck.
+- **A step's fixture can fail a pre-registered clause for the fixture's own defects** (D8b: honest-frame noise 9× the
+  take, a static collapse). Measure the discrepancy, repair the FIXTURE as a fixture parameter with src byte-identical
+  across the repair, rerun the same clauses; never merge on an override and never move a band.
+- **SAM 3D Body runs natively on Modal** (`workers/sam3d_body/modal_app.py`, L40S, 0.5–0.9 s/frame; CUDA has the
+  float64 its MHR module needs; GPU/CPU parity 1.5 mm). The Mac CPU path is for development only. Our shipped
+  detection is CPU ONNX and numpy: a bigger GPU changes detection time, not detections (resolution sweep 1280/2560/3840
+  did not move the shoulder collapse).
+- **Synthetic-camera rules (bear experiments, 2026-09-06):** cross-view consistency is NOT evidence when the views
+  descend from one observation — the correspondence-scramble control exposes it (synthetic pairs discriminate 1.1×,
+  real pairs 14–16×); score a synthetic set against a REAL held-out camera only. MAMMA's shape parameters swing
+  0.03–47 on real footage with the camera set alone and are not a verdict. For a single calibrated camera the
+  bottleneck is metric depth (MoGe-2 / VDA fail a floor gate by 0.5–1.5× in scale; TAPIP3D tracking is near-perfect).
+  Four SEPARATE video-model generations of one prompt are not one scene; a multi-view solver "failing" on them is
+  detecting that. Workers: `workers/{bullettime,sv4d,videodepth,prompthmr,mocapanything}`; page
+  <https://claude.ai/code/artifact/0cc6e2fc-c544-4514-a80d-68dd99855b4e>. Parked 2026-09-06.
+- **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
+  script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
+  and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
+  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v6).
+- **zsh does not word-split an unquoted `$VAR`**: pass file lists as `${=VAR}` / an array, or use a glob.
+
 ## Verification
 - Each exporter writes a JSON report beside its output with input SHAs and gate results. Check the SHA chain rather than assuming a build used current inputs.
 - Confirm a suspected defect with a second, independent measurement before acting. Several "defects" this session were artefacts of the metric, not the rig.
