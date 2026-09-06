@@ -580,6 +580,17 @@ CURATED: dict[str, dict] = {
     "CORE_ASSOCIATION_JOINTS": dict(provenance=SCHEMA,
                                     evidence="Which of the 19 joints the associator scores "
                                              "on. A choice of columns, no value fitted."),
+    "_ROOT_DEPENDENT_JOINTS": dict(
+        provenance=SCHEMA,
+        evidence="D9b, 2026-09-07. WHICH joints the hoist re-aim rewrites after "
+                 "`project_generated_foot_contacts` moves the root: the trunk chain, the "
+                 "neck and head, the eyes, the two clavicles, the four arm bones and the "
+                 "two hands. It is read off the SKELETON'S TOPOLOGY -- every joint whose "
+                 "forward-kinematic origin depends on the root translation and is not the "
+                 "projection's own output -- and no number is fitted, selected or tuned. "
+                 "The complement is stated in the same comment: `Root`, `Hips`, the legs, "
+                 "the feet, the toes and the fingers.",
+    ),
     "SOMA77_TO_AUTOANIM": dict(
         provenance=SCHEMA,
         evidence="soma77_pose.py:61 -- the index map from SOMA-77's 77 joints to the "

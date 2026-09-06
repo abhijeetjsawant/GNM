@@ -468,8 +468,18 @@ def tripwire_block(old: Path, new: Path) -> dict:
 
 
 # ----------------------------------------------------------------------------- the oracle
-def oracle_block(tag: str, save: Path, reference: Path | None) -> dict:
-    """The D3 gate's own six bodies, through the D3 gate's own code, under watchers."""
+def oracle_block(tag: str, save: Path, reference: Path | None,
+                 zero_hoist: bool = False) -> dict:
+    """The D3 gate's own six bodies, through the D3 gate's own code, under watchers.
+
+    `zero_hoist` is O4, the refactor tripwire on the oracle: the projection runs in full
+    and the root it returns is replaced by the root that went in, with `foot_contacts`
+    cleared so `validate_body_track`'s 1 e-5 m contact assertion does not refuse a locked
+    foot that was not moved. Under the PREVIOUS src the delivered track of such a run was,
+    definitionally, `replace(projected, root=pre_root, contacts=0)` -- there was no code
+    after the projection -- so the reference is the `post_rotations` and `pre_root` this
+    same instrument recorded on the D8c run, and no second old-src run is needed.
+    """
 
     save.mkdir(parents=True, exist_ok=True)
     calls: list[dict] = []
@@ -496,6 +506,12 @@ def oracle_block(tag: str, save: Path, reference: Path | None) -> dict:
         projected, diagnostics = real_projection(track, **kwargs)
         projections.append({"pre": track, "post": projected,
                             "diagnostics": diagnostics.as_dict()})
+        if zero_hoist:
+            from dataclasses import replace as _replace
+            projected = _replace(
+                projected,
+                root_translation_m=np.array(track.root_translation_m, copy=True),
+                foot_contacts=np.zeros_like(np.asarray(projected.foot_contacts)))
         return projected, diagnostics
 
     def reject(local_rotations, parent_world_rotations, ceiling):
@@ -621,16 +637,20 @@ def oracle_block(tag: str, save: Path, reference: Path | None) -> dict:
         }
         if reference is not None:
             with np.load(reference / f"oracle-{seed_row['seed']}.npz") as before:
+                base_root = before["pre_root"] if zero_hoist else before["root"]
+                base_contacts = (np.zeros_like(before["contacts"]) if zero_hoist
+                                 else before["contacts"])
                 frozen = {
                     "root_bit_identical": bool(np.array_equal(
-                        before["root"], np.asarray(delivered.root_translation_m))),
+                        base_root, np.asarray(delivered.root_translation_m))),
                     "contacts_identical": bool(np.array_equal(
-                        before["contacts"], np.asarray(delivered.foot_contacts))),
+                        base_contacts, np.asarray(delivered.foot_contacts))),
                     "landmarks_identical": bool(np.array_equal(
                         before["landmarks"], landmarks)),
                 }
                 names = list(skeleton.names)
-                base_rot = before["rotations"]
+                base_rot = (before["post_rotations"] if zero_hoist
+                            else before["rotations"])
                 cand_rot = np.asarray(delivered.local_rotations_xyzw)
                 moved = ~np.all(base_rot == cand_rot, axis=2)
                 frozen["frozen_joints_identical"] = bool(all(
@@ -658,6 +678,8 @@ def main() -> int:
     parser.add_argument("--oracle-tag", default="")
     parser.add_argument("--oracle-save", type=Path)
     parser.add_argument("--oracle-reference", type=Path)
+    parser.add_argument("--oracle-zero-hoist", action="store_true",
+                        help="O4: the refactor tripwire on the six oracle bodies")
     parser.add_argument("--degenerate", action="append", default=[],
                         metavar="NAME=DIR")
     parser.add_argument("--out", type=Path, required=True)
@@ -693,7 +715,8 @@ def main() -> int:
         report["oracle"] = oracle_block(
             args.oracle_tag or args.candidate_label,
             args.oracle_save or (OUT_DIR / "oracle"),
-            args.oracle_reference)
+            args.oracle_reference,
+            args.oracle_zero_hoist)
     out = args.out if args.out.is_absolute() else ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1), encoding="utf-8")
