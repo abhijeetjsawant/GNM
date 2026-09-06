@@ -176,7 +176,11 @@ def test_a_reachable_take_is_accepted_whole_and_the_track_is_untouched():
     nudged or renormalised on its way through."""
     take = _breathing_take()
     accepted = _rejected_frames(take)
-    assert len(accepted) == 2, "both clavicles must be treated, independently"
+    # D9b (2026-09-07): the sequence rule runs TWICE per clavicle -- once in pass B and once
+    # more after the foot-contact hoist re-aims the clavicles -- so the recorder sees four
+    # calls. The property is unchanged: every mask all-true, the track bit-identical to a
+    # pass-through. `tests/test_hoist_reaim.py` asserts the rerun saw different locals.
+    assert len(accepted) == 4, "both clavicles, in both passes, must be treated independently"
     for mask in accepted.values():
         assert bool(mask.all()), (
             f"the ceiling fired on true motion: {int((~mask).sum())} frames rejected"

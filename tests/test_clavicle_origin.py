@@ -441,4 +441,17 @@ def test_no_constant_arrived_with_the_fix():
                      if not line.lstrip().startswith("#"))
     assert "0.72 * torso_up" not in live
     assert "torso_up" in live          # still the torso axis for the frames that need it
-    assert "_joint_origin(" in live
+    # D9b (2026-09-07): the aims that call `_joint_origin` were lifted verbatim out of
+    # `positions_to_body_track` into two module-level helpers so the re-solve after the
+    # foot-contact hoist runs the same code; the pin follows them.
+    helpers = ""
+    for name in ("def _aim_trunk_neck_and_clavicles", "def _aim_arms_and_hands"):
+        start = source.index(name)
+        chunk = source[start:]
+        chunk = chunk[:chunk.index("\ndef ", 1)] if "\ndef " in chunk[1:] else chunk
+        helpers += "\n".join(line for line in chunk.splitlines()
+                              if not line.lstrip().startswith("#"))
+    assert "_joint_origin(" in helpers
+    module_live = "\n".join(line for line in source.splitlines()
+                            if not line.lstrip().startswith("#"))
+    assert "0.72 * torso_up" not in module_live
