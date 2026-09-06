@@ -243,12 +243,33 @@ CURATED: dict[str, dict] = {
                  "It is the kinematic chain of a human arm and leg, not a fitted or measured "
                  "quantity. Deliberately NOT derived from RIGID_LIMBS, which is what the "
                  "sequence solve regularises rather than what a captured frame is judged on; "
-                 "RIGID_LIMBS also contains the hip line and root-to-neck, which this rule "
-                 "does not act on.",
-        remedy="OPEN, and narrow: the hip line collapses on the reference take too (23 "
-               "frames off by more than 15 % on performer 1, min 140 mm against a 214 mm "
-               "median) and is NOT in this table, because the D8b card's segment list does "
-               "not name it. A later step should decide whether to add it.",
+                 "RIGID_LIMBS also contains root-to-neck, which this rule does not act on. "
+                 "D8c, 2026-09-06: the HIP LINE was added as a tenth row and charges BOTH of "
+                 "its endpoints. The hips do have a parent (`root`), so a per-hip `root->hip` "
+                 "rule was the more precise candidate and it was MEASURED rather than "
+                 "dismissed -- on the same honest mask the hip line's own margin is quoted "
+                 "on, `root->left_hip` spreads -9.0 %/+25.5 % at p5-p95 on the falling "
+                 "performer (right -9.4/+9.2; the other performer +/-9-10) and at the shipped "
+                 "ceiling it would fire on 35 and 17 of his frames and 9 and 4 of hers, most "
+                 "of them where the hip line is honest. The pelvis landmark is too loose to "
+                 "be a length reference, so `root->hip` was not added. The row is still "
+                 "ANATOMY: a name and two joint ids, no fitted quantity, and the ceiling and "
+                 "the mode it runs at are D8b's and were not re-selected.",
+        remedy="the hip-line half of this entry is CLOSED (D8c, 2026-09-06: the row is in the "
+               "table; `tools/compare/d8c_hip_synthetic.py` confirms D8b's mode and ceiling "
+               "on the hips' own geometry -- an injected 51.0 mm collapse recovers to 3.9 mm "
+               "under `demote` against 50.3 for the nine-row build, with zero fires on the "
+               "clean clip and zero outside the injected run). WHAT REMAINS OPEN AND IS "
+               "REGISTERED HERE: (1) charging both endpoints over-charges the ONE-HIP frames "
+               "-- on the reference take frames 84-86 move one hip at a time and a femoral "
+               "head that matched the take is withheld with the one that did not, three "
+               "frames, and on the synthetic one-hip arm the recovery is the weakest measured "
+               "(20.5 -> 17.0 mm, with the delivered root moving 15.0 mm); (2) a two-view "
+               "DEPTH stretch -- the take's frames 158-168, A and C at 140 degrees with the "
+               "hip line 16-28 degrees off both rays -- is not realised by any fixture in "
+               "this lane, so whether `demote` recovers it is measured only on the real "
+               "take's own photographs. The CEILING's remedy is its own entry and stays "
+               "open.",
     ),
     "SEGMENT_LENGTH_MODES": dict(
         provenance=SYNTHETIC,

@@ -569,6 +569,12 @@ def main() -> int:
                    "before and after the src change -- which the gate checks.",
             "src_already_carries_the_row": bool(
                 any(row[0] == HIP_ROW[0] for row in cm.SEGMENT_LENGTH_RULES)),
+            # Once the row is in `src/` the module's tuple must equal CANDIDATE_RULES
+            # EXACTLY, order included -- the row is appended last, after `right_shin`, so
+            # every report's per-segment key order is the same before and after.
+            "src_tuple_equals_the_candidate_exactly": bool(
+                tuple(cm.SEGMENT_LENGTH_RULES) == CANDIDATE_RULES)
+            if any(row[0] == HIP_ROW[0] for row in cm.SEGMENT_LENGTH_RULES) else None,
         },
         "fixture": {
             "wrapped": "tools/compare/d8b_length_synthetic.py's fixture v2 "
