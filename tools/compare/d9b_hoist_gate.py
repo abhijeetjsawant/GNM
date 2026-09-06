@@ -419,8 +419,27 @@ def excess_block(baseline: Path, candidate: Path, labels: tuple[str, str]) -> di
                             "unhoisted": summary(neck[~hoisted]),
                             "trunk_rest_length_mm": round(trunk_length, 2)}
             excess[label] = rows
+        # THE WHOLE-TAKE MEDIAN DILUTES THIS CHANGE. 83 of 150 frames on performer 0 and
+        # 128 of 150 on performer 1 are byte-identical between the arms, so the paired
+        # median difference over the take is 0.0 by construction on more than half the
+        # draws. The hoisted-frame cut is the one that carries the change, and the
+        # placement difference there is reported beside the excess.
+        hoisted_placement = {}
+        measured = {label: dvc.measure(directory, "smoothed")[subject]
+                    for label, directory in deliveries.items()}
+        for joint in ("Neck", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
+                      "RightLowerArm", "RightHand", "Head", "LeftUpperLeg", "LeftLowerLeg",
+                      "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot"):
+            delta = (measured[labels[1]][joint] - measured[labels[0]][joint])[hoisted]
+            hoisted_placement[joint] = {
+                "median_mm": round(float(np.median(delta)), 4) if delta.size else None,
+                "p05_mm": round(float(np.percentile(delta, 5)), 4) if delta.size else None,
+                "p95_mm": round(float(np.percentile(delta, 95)), 4) if delta.size else None,
+                "frames": int(delta.size),
+                "note": "negative means the candidate sits CLOSER to the landmark"}
         block["subjects"][key] = {
             "frames_hoisted": int(hoisted.sum()),
+            "placement_difference_on_the_hoisted_frames_mm": hoisted_placement,
             "per_frame_excess_over_the_aim_floor_mm": excess,
             "joint_medians_and_paired_differences": {
                 joint: joints[joint] for joint in
@@ -619,6 +638,9 @@ def oracle_block(tag: str, save: Path, reference: Path | None,
                 1e3 * record["diagnostics"]["maximum_root_correction_m"], 4),
             "hoist_mm": summary(magnitude),
             "frames_over_report_cut": int(hoisted.sum()),
+            "frames_under_zero_cut": int((magnitude < ZERO_CUT_MM).sum()),
+            "frames_below_the_report_cut_but_not_zero": int(
+                ((magnitude <= HOIST_REPORT_CUT_MM) & (magnitude >= ZERO_CUT_MM)).sum()),
             "clavicle_rejected": [rejects[i]["rejected"] for i in call["reject_indices"]],
             "clavicle_accepted_sha256": [rejects[i]["sha256"][:16]
                                          for i in call["reject_indices"]],
@@ -664,6 +686,122 @@ def oracle_block(tag: str, save: Path, reference: Path | None,
         block["seeds"].append(row)
     block["tag"] = tag
     return block
+
+
+# ------------------------------------------------------------- the mechanical merge rule
+CLOSURE_BAND_MM = 0.01     # the float32 forward-kinematics floor, measured at 0.0005 mm
+
+
+def merge_rule(report: dict) -> dict:
+    """Every conjunct of the card's merge rule, evaluated from this report and nothing else.
+
+    `hygiene AND the tripwire AND B1 AND B2 AND B3 on both performers AND B4 AND O1 AND O2`.
+    O3 and B5 REPORT. B3 lives in `d9b_hoist_silhouette.py` and is folded in by the caller;
+    hygiene lives in `d9b_hoist_delivery.py`. Both are named here with their file so the
+    verdict can never be read without them.
+    """
+    conjuncts: dict = {}
+    tripwire = report.get("refactor_tripwire")
+    if tripwire is not None:
+        conjuncts["tripwire"] = {
+            "clause": "with the hoist forced to zero, the eight delivered files are "
+                      "byte-identical between the previous src and this one",
+            "measured": tripwire["all_eight_byte_identical"],
+            "verdict": "PASS" if tripwire["passes"] else "FAIL"}
+    b1 = report.get("B1_excess_over_the_aim_floor")
+    if b1 is not None:
+        worst = 0.0
+        for row in b1["subjects"].values():
+            for joint in row["per_frame_excess_over_the_aim_floor_mm"].get("D9b", {}).values():
+                worst = max(worst, float(joint["whole"]["max"]))
+        conjuncts["B1_excess_over_the_aim_floor"] = {
+            "clause": "the per-frame excess over the arm-aim and trunk-length floors is "
+                      f"0 on EVERY frame (max, not median), banded at {CLOSURE_BAND_MM} mm "
+                      "-- the float32 forward-kinematics floor",
+            "worst_max_mm": round(worst, 4),
+            "verdict": "PASS" if worst <= CLOSURE_BAND_MM else "FAIL"}
+        conjuncts["B1_same_denominator"] = {
+            "clause": "the triangulated landmarks are byte-identical across the arms; "
+                      "pre-registered as an expected PASS, CHANGED means the change did "
+                      "more than re-aim",
+            "measured": b1["same_denominator"],
+            "verdict": "PASS" if b1["same_denominator"] else "FAIL"}
+    b2 = report.get("B2_bit_identity")
+    if b2 is not None:
+        rows = b2["subjects"].values()
+        checks = {
+            "root_identical": all(r["root_identical"] for r in rows),
+            "contacts_identical": all(r["contacts_identical"] for r in rows),
+            "landmarks_identical": all(r["smoothed_landmarks_identical"]
+                                       and r["raw_landmarks_identical"] for r in rows),
+            "frozen_joints_identical": all(r["frozen_joints_identical"] for r in rows),
+            "everything_identical_on_unhoisted_frames": all(
+                r["everything_identical_on_unhoisted_frames"] for r in rows),
+            "moved_set_within_the_resolved_set": all(
+                r["moved_set_is_within_the_resolved_set"] for r in rows)}
+        conjuncts["B2_bit_identity"] = {
+            "clause": "root, contacts, Hips, legs, feet and toes identical on every frame; "
+                      "every joint identical on every unhoisted frame; the moved joints "
+                      "only from Spine up and out the arms",
+            "checks": checks,
+            "verdict": "PASS" if all(checks.values()) else "FAIL"}
+    b4 = report.get("B4_contacts_and_the_plant")
+    if b4 is not None and all("identical" in r for r in b4["subjects"].values()):
+        identical = all(r["identical"] for r in b4["subjects"].values())
+        conjuncts["B4_contacts_and_the_plant"] = {
+            "clause": "the contact count, the runs, and the foot travel over each planted "
+                      "run are IDENTICAL by construction",
+            "measured": identical,
+            "verdict": "PASS" if identical else "FAIL"}
+    oracle = report.get("oracle")
+    if oracle is not None:
+        worst_ray = max(
+            float(row["miss_from_delivered_origin_mm"]["hoisted"].get("max", 0.0) or 0.0)
+            for seed in oracle["seeds"] for row in seed["rays"].values())
+        conjuncts["O1_absolute_ray_miss"] = {
+            "clause": "on all six exact-skeleton bodies the absolute ray miss from the "
+                      "DELIVERED origin, on the arms, the clavicles and the trunk, is at "
+                      f"the float32 floor on every hoisted frame (banded {CLOSURE_BAND_MM} "
+                      "mm; the card's weaker form, 'at or below the unhoisted-frame "
+                      "floor', is satisfied a fortiori)",
+            "worst_max_mm": round(worst_ray, 4),
+            "verdict": "PASS" if worst_ray <= CLOSURE_BAND_MM else "FAIL"}
+        frozen = [seed.get("vs_reference") for seed in oracle["seeds"]]
+        if all(frozen):
+            checks = {
+                "root_bit_identical": all(f["root_bit_identical"] for f in frozen),
+                "contacts_identical": all(f["contacts_identical"] for f in frozen),
+                "landmarks_identical": all(f["landmarks_identical"] for f in frozen),
+                "frozen_joints_identical": all(f["frozen_joints_identical"] for f in frozen)}
+            conjuncts["O2_frozen_on_the_oracle"] = {
+                "clause": "the legs' rotations, the root, the contacts and the hoist are "
+                          "bit-identical per seed",
+                "checks": checks,
+                "note": ("`identical_on_unhoisted_frames` is REPORTED and is not this "
+                         "clause: on the oracle the 0.5 mm cut is a report cut and frames "
+                         "carrying a real sub-cut hoist legitimately move, seed 20260906's "
+                         "0.0262 mm whole-take penetration lift among them"),
+                "verdict": "PASS" if all(checks.values()) else "FAIL"}
+    conjuncts["hygiene"] = {
+        "clause": "today's code rebuilds the shipped delivery byte-identically, 8 of 8",
+        "where": "artifacts/compare/d9b-hoist/delivery-hygiene-build.json",
+        "verdict": "SEE THAT FILE"}
+    conjuncts["B3_photographs"] = {
+        "clause": "part-wise silhouette, ARMS and TORSO+LEGS, whole take and the bent "
+                  "tercile, both performers, not worse with the CI's upper bound >= 0",
+        "where": "artifacts/compare/d9b-hoist/silhouette-partwise.json",
+        "verdict": "SEE THAT FILE"}
+    decidable = [row["verdict"] for row in conjuncts.values()
+                 if row["verdict"] in ("PASS", "FAIL")]
+    return {
+        "rule": ("hygiene AND the tripwire AND B1 (excess -> 0 on every frame, same "
+                 "denominator PASS) AND B2 AND B3 on both performers AND B4 AND O1 AND "
+                 "O2. O3 and B5 report."),
+        "conjuncts": conjuncts,
+        "conjuncts_decided_here": "FAIL" if "FAIL" in decidable else "PASS",
+        "outstanding": [name for name, row in conjuncts.items()
+                        if row["verdict"] not in ("PASS", "FAIL")],
+    }
 
 
 # ------------------------------------------------------------------------------- the main
@@ -717,6 +855,7 @@ def main() -> int:
             args.oracle_save or (OUT_DIR / "oracle"),
             args.oracle_reference,
             args.oracle_zero_hoist)
+    report["merge_rule"] = merge_rule(report)
     out = args.out if args.out.is_absolute() else ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1), encoding="utf-8")
