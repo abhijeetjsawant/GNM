@@ -262,7 +262,10 @@ def main() -> int:
         "ranges": [list(pair) for pair in RANGES],
         "frame_ids": ids,
         "files": written,
-        "fps": 30,
+        # TEN, not thirty, and the mp4 below matches it. The panels are dense -- two
+        # builds x two cameras with three rays each -- and at 30 fps a reader cannot see a
+        # frame before the next one replaces it.
+        "fps": 10,
         "hoist_mm": [round(float(hoist_mm[i - FIRST_FRAME_ID]), 3) for i in ids],
         "why_magnified": ("the re-aim moves a joint 3.6-6.4 mm median, about one pixel of "
                           "1280x720 at this distance. The crop box is computed from the "
@@ -272,8 +275,11 @@ def main() -> int:
                  "viewer blocks <video> from data: and blob: URLs (CLAUDE.md)."),
     }, indent=1), encoding="utf-8")
 
+    # THE DURATION AND THE RATE MUST AGREE. `-vsync cfr -r N` DROPS input frames to reach
+    # N, so a 30 fps listing encoded at `-r 10` silently ships every third frame -- measured
+    # at 12 of 30 before this was fixed. Ten frames per second of listing, ten out.
     listing = out / "sequence.txt"
-    listing.write_text("".join(f"file '{name}'\nduration 0.0333333\n"
+    listing.write_text("".join(f"file '{name}'\nduration 0.1\n"
                                for name in written)
                        + f"file '{written[-1]}'\n", encoding="utf-8")
     movie = out.parent / "d9b-hoist-reaim-before-and-after.mp4"

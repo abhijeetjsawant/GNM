@@ -373,9 +373,14 @@ Neither is a behaviour change and neither is edited (the brief forbids it):
   asserts it against those helpers and asserts the 0.72 anchor gone from the WHOLE module,
   which is stronger than the slice.
 
-Baseline before the change: 1194 passed, 4 failed (`test_body_compositor`,
-`test_body_export`, `test_phase4_app` ×2 — pre-existing on this branch and unrelated).
-After: the same set minus one flaky `test_phase4_app` case, plus these two.
+MEASURED on the final tree, `artifacts/compare/d9b-hoist/logs/14-tests-final.log`:
+**1205 passed, 5 failed, 16 skipped** in 11:39. Three of the five are pre-existing on this
+branch and unrelated to this lane (`test_body_compositor`, `test_body_export`,
+`test_phase4_app::test_home_and_health`); the other two are the pins above. The baseline
+taken before any src change, `logs/00-tests-baseline.log`, read 1194 passed and 4 failed --
+the fourth being `test_phase4_app::test_api_and_cli_real_audio_parity`, which passed on both
+runs since and is flaky rather than fixed. The twelve new tests are the difference in the
+pass count, and they run under full collection, not only when their file is selected.
 
 ### 9.5 One name entered the audited surface and is curated, not hidden
 `_ROOT_DEPENDENT_JOINTS` is scanned by `tools/compare/provenance.py` because it is a
@@ -389,6 +394,28 @@ More than half of each performer's frames are byte-identical by construction, so
 whole-take median difference on this step is 0.0 and every whole-take interval is [0, 0].
 The hoisted-frame cut is where the change lives, and every table above that could be
 diluted carries it. A reader given only whole-take medians would conclude nothing happened.
+
+### 9.7 What the close-out will print, predicted here so no reader is surprised
+
+`post_merge.sh` reruns instruments this step did not and could not run, because they write
+outside its directory. Two of them WILL move, by the mechanism §6.4 sets out, and neither is
+a regression:
+
+* **`d3_skeleton_gate.py`'s `exact_skeleton_oracle`** will print `worst_arms_mm` **2.70**
+  where it printed 1.17, and per-seed arms 1.32–2.70 where it printed 0.80–1.17. The verdict
+  line does not change — the 0.5 mm band was already a standing fail — but the standing rule
+  is to read the gate LINES, not the verdict, so the number is stated in advance. The legs
+  stay 0.05–0.07. Measured here on the identical construction:
+  `artifacts/compare/d9b-hoist/gate.json`, `oracle.seeds[*].d3_gate_aligned_glb_vs_truth_mm`.
+* **that gate's `canonical_block`, `canonical_bit_identity` and round-trip clauses**, and
+  `retarget_cost.py`'s canonical round trip if the close-out runs it, compare against
+  references frozen at D2c and D3. If any of those fixtures fires a foot contact, the
+  re-solve moves them too — the same class of stale pin CLAUDE.md already records as owed.
+  It could not be measured on this branch without writing outside this step's directory,
+  which the brief forbids, so it is a PREDICTION and is labelled one.
+
+**The delivered files themselves are the arm that cannot move**: the eight are rebuilt in
+place by the close-out and B1, B2, B3 and B4 above are all read from their bytes.
 
 ---
 
@@ -429,3 +456,6 @@ diluted carries it. A reader given only whole-take medians would conclude nothin
    instrument-debt step, with the re-pin.
 4. **The two test re-pins** in §9.4.
 5. **D8c's head-gate re-run**, owed at its close-out (§6.5).
+6. **The close-out's own moving numbers**, predicted in §9.7: the D3 gate's aligned
+   oracle arms 1.17 → 2.70, and its D2c/D3-frozen reference clauses if their fixtures
+   hoist. Neither could be measured from this branch without writing outside it.
