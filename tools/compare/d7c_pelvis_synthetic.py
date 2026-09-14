@@ -948,9 +948,16 @@ def fixture_attribution(frozen: dict) -> dict:
         "noiseless_deficit_per_body": noiseless,
         "observation_spread_per_body": spread,
         "real_take_measured_midhips_to_spine1_sd_mm": D7_REAL_TAKE_MIDHIPS_TO_SPINE1_SD_MM,
-        "confound": ("the D3 rig is RIGID so the synthetic lever spread is pure observation "
-                     "noise, while the take's mixes noise with real lever variation; "
-                     "matching them would under-noise the fixture in the candidate's favour"),
+        "confound": (
+            "the D3 rig is RIGID, so the synthetic lever spread is pure observation noise, "
+            "while the take's mixes noise with the performer's real lever variation. Under "
+            "an additive, uncorrelated length-error model the take's variance is noise^2 + "
+            "true-variation^2 and the rig's is noise^2 alone, so matching the two puts MORE "
+            "noise in the fixture than the detector has, not less. And a guard-kept sd is a "
+            "CONDITIONAL spread -- selecting by observed length can break that "
+            "decomposition -- so NO harshness claim is made in either direction. Length "
+            "bounds no direction at all. (Astra rounds 5 and 6; an earlier wording here had "
+            "the direction reversed.)"),
         "summary": {
             "noiseless_rig_modes_bent_deg": round(float(np.median(
                 [noiseless[s]["a_kabsch_guarded"]["bent_deg"] for s in noiseless])), 5),

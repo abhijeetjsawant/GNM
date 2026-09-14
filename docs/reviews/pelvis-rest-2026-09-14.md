@@ -165,19 +165,37 @@ true pelvis pitch about the hip line, relative to gravity. Against a winner at 0
 ratio is unbounded. **The fixture's noise is the whole of the compression**: it raises the
 winner to 6.9 – 12.2° and leaves the follower's structural floor where it was.
 
-**The fixture's noise is 1.8 – 3.0× the take's own measured spread.** D7's own report records
-the comparison (`artifacts/compare/d7-pelvis-frame/synthetic.json`,
-`noise_calibration_vs_the_real_take`), and this step reproduces it on the D3 bodies:
+**The fixture's noise is above the take's, and the honest ratio is 1.43×, not the 1.8 – 3.0×
+this section first stated.** The original comparison used D7's rigidity row (6.61 / 11.10 mm),
+which Astra's round 5 established is **not** the matched target: it is a RAW-triangulation,
+common-valid-mask statistic on 150 / 138 frames, a different processing stage. On the MATCHED
+statistic — S's own stage, the 0.15 guard's kept frames, `ddof=0` on both sides (§3A.1):
 
-| | synthetic, this fixture | the real take, D7's measured row |
+| | synthetic, this fixture at σ 1.0 | the take, matched |
 |---|---|---|
-| `midhips → Spine1` spread (sd) | **20.07 mm** (median of six) | 6.61 mm / 11.10 mm |
+| `midhips → Spine1` sd, **guard-kept, ddof=0** | **12.5108 mm** (median of six) | **5.9944** (performer 0) / **8.7636** (performer 1) |
+| ratio against the larger performer | **1.43×** | — |
+| ratio against the smaller performer | 2.09× | — |
+| — the unmatched figures this section first quoted — | 20.07 mm, all frames | 6.61 / 11.10, D7's raw row |
 | per-landmark 3D noise, median | 18 – 23 mm on every landmark | — |
 
-**and the comparison is confounded, in the candidate's favour.** The D3 rig is RIGID, so the
-synthetic lever's spread is *pure observation noise*, while the take's mixes observation noise
-with the performer's real lever variation. Matching the two would therefore UNDER-noise the
-fixture. That is one of the reasons this step does not pick a calibration.
+**The attribution of the follower failure is unchanged by the correction** — the discrimination
+is unbounded without noise and the fixture's noise is what compresses it — but the fixture is
+**less inflated than this section first said**, and the sentence is corrected rather than left
+standing.
+
+**The confound, in the direction Astra corrected.** The D3 rig is RIGID, so the synthetic
+lever's spread is *pure observation noise*, while the take's mixes observation noise with the
+performer's real lever variation. Under an additive, uncorrelated length-error model the take's
+variance is noise² + true-variation² and the rig's is noise² alone, so matching the two puts
+**more** noise in the fixture than the detector has, not less — **the reverse of what this
+section originally argued.** And a guard-kept sd is a **conditional** spread: selecting by
+observed length can break that decomposition, so **no harshness claim is made in either
+direction**, and length bounds no direction at all.
+
+`selector.json`'s own `fixture_attribution.confound` string carries the pre-amendment wording
+and is left exactly as it fell, like the rest of that file; it is superseded by §3A.1 and by
+the corrected string now in `d7c_pelvis_synthetic.py`.
 
 ### 3.3 Why this agent did not repair the fixture ON ITS OWN AUTHORITY
 
@@ -216,8 +234,9 @@ below.
 | 0.35 | 9.13 | (b) worse in 6/6 | `E_rig_rest_kabsch` | 2.93 2.73 2.47 2.75 3.08 2.85 | 0 | PROCEED |
 | 0.25 | 6.57 | (b) worse in 6/6 | `E_rig_rest_kabsch` | 4.03 3.63 3.30 3.62 4.10 3.77 | 0 | PROCEED |
 
-(the take's own measured lever sd is 6.61 / 11.10 mm, so σ ≈ 0.25 – 0.35 is where the fixture
-meets the take on that — confounded — comparison.)
+(this table's σ values were chosen before the calibration existed. On the MATCHED statistic
+the take's target is 8.7636 mm and the fixture meets it at σ = 0.335547 — §3A.3 — so the σ 0.35
+row is very close to the calibrated fixture and the σ 0.25 row is well below it.)
 
 **Two things the sweep establishes, and they are the useful part of it:**
 
@@ -535,8 +554,12 @@ See section 3A.5 for the single question it hands the coordinator.
 * **A length invariant cannot score direction.** The guard's ceiling is a length rule; a
   same-length rotation of the hip line passes it. That is precisely the trade S was built to
   decide, and S decided it — in (a)'s favour, at every noise level.
-* **The fixture's lever-spread comparison is confounded** (§3.2) and confounded in the
-  candidate's favour.
+* **The fixture's lever-spread comparison is confounded, and the direction is the opposite of
+  what this document first claimed** (§3.2, §3A.1): under an additive, uncorrelated
+  length-error model matching a rigid rig's spread to a moving performer's puts MORE noise in
+  the fixture, not less — and a guard-kept sd is a conditional spread, so no harshness claim is
+  made either way. What the calibration matches is a scalar LENGTH spread; it says nothing
+  about the detector's directional behaviour.
 * **Neither the delivered bytes nor the photographs have been looked at on any candidate.**
   No claim in this document is about a delivered file other than the shipped one.
 
