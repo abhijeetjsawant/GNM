@@ -266,3 +266,34 @@ The full-mask shorthand is incorrect, including in the adoption header; my earli
 The frozen-pitch requirement was adopted in intent, but naming it did not finish its specification. The other substantive corrections reviewed here reflect round 1 accurately.
 
 Read-only throughout. I recomputed the mask and sampled the shipped GLBs; I did not execute the still-unimplemented S.
+
+---
+
+# Round 3 — 2026-09-14. Verdict: not dispatchable yet, three blockers (specification)
+
+Verified: `commercial_multiview.py:2248` guarded and unguarded arms share the `np.interp` recovery, so a missing-only trial cannot show superiority (Astra checked all six bodies: bit-identical); 78–81 is a four-frame run in the recorded mask.
+
+| # | blocker | change |
+|---|---|---|
+| 1 | contradictory guard scope | the guard runs under BOTH rig modes, never under A/B/C |
+| 2 | no temporal-pair populations | pairs formed on the full sequence, in a population iff both endpoints are; same for transitions |
+| 3 | the guard experiment had no executable protocol; missing-only cannot be a strict win | G1 missing-only = bit-identity equivalence + reported recovery error; G2 finite-only with a seeded run/donor law, the superiority stop located there, the guard's miss rate reported |
+| — | "one- or two-frame gap" false for 78–81 | corrected |
+
+P1/P2/P3 confirmed as the right split; both controls fail P1 by construction.
+
+---
+
+**Not dispatchable yet. Three blockers remain:**
+
+1. **Contradictory guard scope.** “The guard applies to BOTH rig modes” conflicts with “the guard runs only under `D_rig_rest_hipline`.” Delete the latter restriction; production must use the same guarding S evaluated. This was explicitly [round 2’s requirement](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:185).
+
+2. **S defines frame populations, but not temporal-pair populations.** For the bent tercile, does `(t−1,t)` qualify when **t** is selected, when **both endpoints** are selected, or when either is? The same question applies to corruption/transition scoring. These yield different STEP/root-step medians. Specify the pair masks; never difference successive entries of the filtered 50-frame array. The deciding omission is between “50 frames” and “pooled median over frame pairs” in [the card](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-brief-round3-2026-09-14.md:7).
+
+3. **The guard experiment still lacks an unambiguous executable protocol/verdict.** Specify separate versus combined corruption trials, the finite-run/donor sampling law, and overlap handling if combined. If “beats” applies independently to the missing-only class, it cannot pass: **I checked all six bodies; zero additional finite samples are rejected, and guarded/unguarded interpolated arrays are bit-identical.** Both already use [the same `np.interp` recovery](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2248). Make missing-only recovery an equivalence/error measurement; explicitly locate the superiority stop on finite corruption, or explicitly define a combined experiment.
+
+**S:** The frozen-pitch law and numeric ties are now executable. The 50-frame orientation population is defined; the temporal populations and corruption experiment need the fixes above.
+
+**P:** Yes—the split is right. Both controls fail **P1 by construction**, provided they mutate the downstream candidate while the snapshot stays immutable. Neither must fail P2; P3 correctly remains reporting. That matches [round 2’s deciding assertions](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:255).
+
+**Round-2 adoption:** The missing-only strict-win interpretation overlooks its [explicit interpolation warning](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:234). Also, the complete mask is correct, but “every other rejected frame is a one- or two-frame gap” remains false: **78–81 is four consecutive frames** ([recorded mask](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:191)).
