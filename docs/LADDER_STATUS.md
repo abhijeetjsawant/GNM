@@ -7,11 +7,11 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D7, D7b, D8, D9, D8b, D8c, D9b. In flight: D7c. Blocked: nothing.
+Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D7, D7b, D8, D9, D8b, D8c, D9b, D7c. In flight: nothing. Blocked: nothing.
 
 ## In flight
 
-- **D7c** The pelvis fitted to the rig's own rest offsets, not SOMA-derived constants — an Opus agent, since 2026-09-14
+- nothing in flight
 
 ## Next up (unblocked, not started)
 
@@ -24,16 +24,16 @@ Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D7, D7b, D8, D9, D8b, D8c,
 ## Decisions waiting on the user
 
 - Lane H: decide the rig and book the marker session; performer releases covering ML training use.
-- D3's recorded miss, restated at D9b (2026-09-07): the exact-skeleton oracle's arm band (0.5 mm) reads 2.72 mm since D9b, up from 0.80-1.17, because retarget_cost.score aligns each frame on the leg-root midpoint and so charges a correctly re-aimed arm with the hoist's perpendicular part (the gauge, not the candidate; the absolute-frame companion row in d9b_hoist_gate.py improves on every seed). Recommendation: keep it a standing fail, do not move the band; the instrument-debt step re-pins the gate's gauge and its frozen D2c/D3 references together. And tests/test_body_export.py:145 (your uncommitted file) asserts the old exporter's root; expect the track root without the asset's 0.8 offset.
+- D3's recorded miss, CLOSED at D7c's close-out (2026-09-15): the exact-skeleton oracle's arm band (0.5 mm) PASSES on every seed for the first time (worst arms 0.35 mm, legs 0.00) once the pelvis is exact -- the 2.72 mm since D9b was the D7 convention seen through the leg-root-aligned gauge. The band was never moved. Still owed to the instrument-debt step: the gate's translation-aligned gauge and its frozen D2c/D3 'canonical unchanged' and 'same denominator' clauses (moved by design since D7). And tests/test_body_export.py:145 (your uncommitted file) asserts the old exporter's root; expect the track root without the asset's 0.8 offset.
 
 ## Recent log
 
-- 2026-09-14 [D7c] Astra merge review round 5 at 843bce5: NO MERGE -- six more gate escapes (a stored S aggregate never derived, global summaries and run identities unchecked, missing measurement fields silent) and surviving B6 inversion conclusions. The agent is rebuilding the gate on one rule (derive or cross-check every value, missing is FAIL, sets by identity) and proving it with a leaf-level fuzzer over every input report.
 - 2026-09-14 [D7c] Astra merge review round 6 at e68e06d: NO MERGE -- four leaves the gate should read and does not (the authentication hashes, the follower's denominator, the selector populations, the controls' named channels); the fuzzer's REPORT-only class misclassified 8 enforced control leaves. Sent back to the agent.
 - 2026-09-14 [D7c] Astra merge review round 7 at cffaad3: NO MERGE -- four more stored-summary reads whose constituents are on disk (B2's aggregate, P1's bit_identical, the follower's population, the calibration's accepted median). The fuzzer's unread class is being inverted: every unread measurement leaf under a clause's subtree is a GAP unless justified by name.
 - 2026-09-14 [D7c] Astra merge review round 8 at 17dc09e: NO MERGE -- the coverage audit's exemptions excuse three banded measurements (B1's ci95 constituents and populations, identical draws, the sigma-1 stop's body constituents); the build-provenance check is a path prefix and must become a source fingerprint; contact counts are not mask identity. Sent back to the agent.
 - 2026-09-15 [D7c] Astra merge review round 9 at f56d27d: NO MERGE -- the silhouette's consumed mask cache not required by identity; the build-time fingerprint contract broken (the helper omits stage and build order, the instrument producer emits none, the retrospective stamp overwrites); the sweep checks vocabulary not applicability; stage order read from a duplicated map. Sent back to the agent.
 - 2026-09-15 [D7c] COORDINATOR DECISION (user: 'enough rounds'): D7c merges on the nine Astra merge rounds recorded. The candidate has not changed since round 2; rounds 3-9 were the gate instrument. Round 10 (the bounded question) was sent and stopped before it answered; the residual gate findings and the six retrospective provenance stamps are instrument debt with the fuzz artifact (gate-fuzz.json: 18,934 paths, 5,170 enforced, 0 gaps) as their record. Merging ladder/D7c at 65e3091.
+- 2026-09-15 [D7c] merged 2026-09-15 (53ab3b0, --no-ff) on the nine recorded Astra merge rounds, the user having bounded the review; E_rig_rest_kabsch ships: the pelvis fitted to the rig's own rest offsets about the captured hip midpoint, no constant, SOMA's root landmark no longer read. Oracle: 6.865 deg -> 0.0001 deg, Spine 21-28 -> 0.0001 mm, torso 9-12 -> 0.00, legs within 0.08 mm, contacts identical; the selector stopped twice as pre-registered (sigma-1.0 follower 5 of 6 under 2x; the calibration's first monotonicity wording over a 0.0135 mm dip) and at the calibrated sigma 0.335546875 chose (a) in all six cells with the follower 2.56-3.20x on every body; take: pitch -8.8/-9.2 deg, root 12.4/13.1 mm, photographs not worse 8/8 with three torso cells rising, same denominator PASS, P1/P2 on the take and every oracle body; performer 1's spine lever broken on 29 frames, guarded. Close-out: rebuilt in place 8/8 byte-identical, every instrument logged under artifacts/compare/post-merge-D7c; THE D3 GATE'S EXACT-SKELETON ORACLE PASSES FOR THE FIRST TIME (legs 0.00, arms 0.35 mm worst against the 0.5 band, a standing fail since D3); its frozen D2c/D3 reference clauses still read moved-by-design; D7c's own gate MERGE on fourteen conjuncts with the two stops on their bands. Open: the pelvis convention (lane H); the mesh-deformation proxy and Kavan eq. 17 (D6); performer 1's unattributed torso rise; both amendments post hoc; gate hardening and six retrospective provenance stamps as instrument debt. NEXT, by the user's steer: the body model in the delivery path (D4 on MHR with D5's scaling), the silhouette against MAMMA's mesh pre-registered as the band.
 
 ## How to resume
 

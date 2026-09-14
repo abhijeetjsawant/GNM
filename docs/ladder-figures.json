@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-07T02:16:58",
+ "rendered": "2026-09-15T02:54:15",
  "git": {
-  "sha": "060d091",
+  "sha": "2429506",
   "dirty": true
  },
  "rungs": [
@@ -18,6 +18,34 @@
    "title": "Person masks and per-view identity",
    "status": "measured (surface): ours 0.52-0.63 IoU, oracle 0.71-0.88, recall falls twice as far as precision",
    "visuals": [
+    {
+     "title": "D7c: does the body's outline still cover the person, where they are most bent over?",
+     "plain": "The reference fitter's person masks are the reference; higher is better. This step was NOT expected to improve them, and the reason is worth saying: it rotates the whole trunk about the hip line, and a body can rotate inside its own outline without moving a pixel. The check is here to catch the opposite -- a step that broke something.",
+     "better": "higher",
+     "unit": "IoU",
+     "bars": [
+      {
+       "label": "Body and legs, before, performer 0",
+       "role": "alt",
+       "value": 0.49258
+      },
+      {
+       "label": "Body and legs, after, performer 0",
+       "role": "ours",
+       "value": 0.54391
+      },
+      {
+       "label": "Body and legs, before, performer 1",
+       "role": "alt",
+       "value": 0.5356
+      },
+      {
+       "label": "Body and legs, after, performer 1",
+       "role": "ours",
+       "value": 0.53794
+      }
+     ]
+    },
     {
      "title": "D9b: how well the character covers the person in the photographs",
      "plain": "The reference fitter's person masks are the reference; higher is better, on the frames this step changes. It is LEVEL, and level is the honest answer: the bones move three to six millimetres on a character rasterised at a quarter of the footage's resolution, which is under a pixel on most of the four cameras. This chart is here to catch a regression, not to show the gain -- the gain is in the two charts above. The hatched bars are the build before this step and the reference fitter's own mesh, which is the ceiling a body of the wrong proportions can reach rather than a target.",
@@ -549,7 +577,7 @@
       {
        "label": "Ours, median over 4 cameras",
        "role": "ours",
-       "value": 0.6534750338436808
+       "value": 0.6538935197206447
       },
       {
        "label": "MAMMA's mesh, same renderer",
@@ -564,7 +592,7 @@
       {
        "label": "A flat rectangle over the person",
        "role": "control",
-       "value": 0.42082966234467417
+       "value": 0.42345999395723055
       }
      ]
     },
@@ -577,7 +605,7 @@
       {
        "label": "Ours",
        "role": "ours",
-       "value": 0.7538477718562528
+       "value": 0.7575484497625398
       },
       {
        "label": "MAMMA's mesh",
@@ -819,22 +847,22 @@
       {
        "label": "Worst arms, 6 bodies",
        "role": "ours",
-       "value": 2.72
+       "value": 0.35
       },
       {
        "label": "Worst legs, 6 bodies",
        "role": "ours",
-       "value": 0.07
+       "value": 0.0
       },
       {
        "label": "Arriving canonical, arms",
        "role": "control",
-       "value": 31.94
+       "value": 32.09
       },
       {
        "label": "Arriving canonical, legs",
        "role": "control",
-       "value": 11.4
+       "value": 11.44
       }
      ]
     },
@@ -1452,7 +1480,7 @@
       {
        "label": "Arms before, performer 0",
        "role": "alt",
-       "value": 10.04
+       "value": 8.98
       },
       {
        "label": "Arms after, performer 0",
@@ -1462,7 +1490,7 @@
       {
        "label": "Legs before, performer 0",
        "role": "alt",
-       "value": 5.15
+       "value": 6.94
       },
       {
        "label": "Legs after, performer 0",
@@ -1472,7 +1500,7 @@
       {
        "label": "Arms before, performer 1",
        "role": "alt",
-       "value": 9.92
+       "value": 9.14
       },
       {
        "label": "Arms after, performer 1",
@@ -1482,7 +1510,7 @@
       {
        "label": "Legs before, performer 1",
        "role": "alt",
-       "value": 7.84
+       "value": 9.15
       },
       {
        "label": "Legs after, performer 1",
@@ -2099,22 +2127,22 @@
       {
        "label": "Delivered, performer 0's own body",
        "role": "ours",
-       "value": 31.627868950030404
+       "value": 33.65961781692321
       },
       {
        "label": "Replayed on the fixed rig, 0",
        "role": "alt",
-       "value": 79.17561096841969
+       "value": 68.90694389901518
       },
       {
        "label": "Delivered, performer 1's own body",
        "role": "ours",
-       "value": 41.850374360266684
+       "value": 41.55622299213897
       },
       {
        "label": "Replayed on the fixed rig, 1",
        "role": "alt",
-       "value": 125.52164826960593
+       "value": 111.43362311049731
       }
      ]
     },
@@ -2127,17 +2155,17 @@
       {
        "label": "Delivered pelvis",
        "role": "ours",
-       "value": 0.9802969371218608
+       "value": 0.9401344678988182
       },
       {
        "label": "Delivered chest",
        "role": "ours",
-       "value": 0.9837599938792003
+       "value": 0.9777901922455247
       },
       {
        "label": "Delivered head",
        "role": "ours",
-       "value": 0.9229890546368057
+       "value": 0.9229890693933318
       },
       {
        "label": "The delivered mesh's nose",
@@ -2147,7 +2175,7 @@
       {
        "label": "Delivered feet (solved from the toes)",
        "role": "alt",
-       "value": 0.9553615885947747
+       "value": 0.9549159026398344
       },
       {
        "label": "MAMMA's reading of the performers",
@@ -2157,7 +2185,7 @@
       {
        "label": "Our capture turned 180 degrees",
        "role": "control",
-       "value": -0.8546816845478535
+       "value": -0.8491963766877426
       }
      ]
     }
