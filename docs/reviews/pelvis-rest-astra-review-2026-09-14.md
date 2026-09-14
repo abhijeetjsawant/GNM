@@ -297,3 +297,24 @@ P1/P2/P3 confirmed as the right split; both controls fail P1 by construction.
 **P:** Yes—the split is right. Both controls fail **P1 by construction**, provided they mutate the downstream candidate while the snapshot stays immutable. Neither must fail P2; P3 correctly remains reporting. That matches [round 2’s deciding assertions](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:255).
 
 **Round-2 adoption:** The missing-only strict-win interpretation overlooks its [explicit interpolation warning](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:234). Also, the complete mask is correct, but “every other rejected frame is a one- or two-frame gap” remains false: **78–81 is four consecutive frames** ([recorded mask](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:191)).
+
+---
+
+# Round 4 — 2026-09-14. Verdict: one protocol blocker in G2, with Astra's own executable amendment
+
+| # | blocker | change |
+|---|---|---|
+| 1 | G2's terminal rule and donor source unspecified | adopted verbatim: lengths drawn from `1…min(9, remaining)` among those with a legal placement, starts uniform among legal starts, repeat to exactly 30; donors from the immutable pre-corruption `observe` array |
+| 2 | the stop requires BOTH (i) on corrupted frames and (ii) on transition pairs | adopted; failure of either stops, never ships the unguarded winner |
+
+The amendment is the reviewer's own wording and closes the last open finding; the card is dispatched on it.
+
+---
+
+1. **Not quite: one protocol blocker remains in G2.** “Uniform lengths 1–9 … until exactly 30 frames” leaves the terminal rule unspecified. With 28 frames covered and a draw of 9, do you reject, truncate, or restart? Likewise, what happens when a drawn length has no legal placement? These change the run distribution and interpolation difficulty; a seed alone does not resolve them.
+
+   An executable amendment: draw uniformly from lengths `1…min(9, remaining)` having a legal placement, then uniformly among that length’s legal starts. Repeat to 30. Explicitly read all donors from an **immutable pre-corruption array**, identifying it as exact truth or the frozen [`observe` output](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d7_pelvis_synthetic.py:260); otherwise donor replacement can cascade or silently change the noise treatment. Freeze this before scoring. No fitted correction constant is needed.
+
+2. **The stop is correctly placed on G2.** Require improvement in **both** orientation error on corrupted frames and STEP error on transition pairs, using the stated per-body medians and median across six bodies. Failure of either stops the step; it does not authorize silently shipping the unguarded winner. G1 remains an equivalence check plus recovery-error report, with no superiority requirement.
+
+Read-only; I did not execute S.

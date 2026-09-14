@@ -1,6 +1,6 @@
 {
   "_about": "Source of truth for where the body lane stands. Edit ONLY through tools/compare/status.py (set / log / render). render writes docs/LADDER_STATUS.md and docs/progress.html from this file. Plan of record: docs/LADDER_EXECUTION_PLAN.md; what is measured and how: docs/SUBSTITUTION_LADDER.md.",
-  "updated": "2026-09-07",
+  "updated": "2026-09-14",
   "goal": "An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.",
   "lanes": [
     {
@@ -280,8 +280,8 @@
           "title": "The pelvis fitted to the rig's own rest offsets, not SOMA-derived constants",
           "plain": "The pelvis frame D7 built uses a rest pelvis taken from SOMA-77's proportions rather than from the rig the character is actually built on. On an exact synthetic body that leaves the pelvis tilted about seven degrees about the hip line, the spine's base 27 mm off and the trunk 8 to 11 mm off, invisible to the legs. This step fits the pelvis to the rig's own rest offsets, with the exact bodies as the oracle and the photographs as the band the candidate cannot optimise.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-14",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -748,6 +748,11 @@
       "date": "2026-09-14",
       "step": null,
       "text": "2026-09-14: D7c registered as the next step (planned; card not yet written). Queue after it: D9-legs, then the instrument debts (the D3 gate's translation-aligned oracle gauge and its frozen D2c/D3 references, --median-from, the D8 headline recheck, a two-view depth-stretch fixture, the contact model's own cost on exact truth, D8c's stale head-gate log), then D6, D5, D4. Reviewer of record from today: Astra GPT6, in the seat Sol held (Grok 4.6 via cursor-agent as the fallback)."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "card written 2026-09-14 after a pre-card measurement (tools/compare/precard/d7c_*.py): the D3 oracle's pelvis reads a constant 6.865 deg pitch from the SOMA template, Spine 21-28 mm, torso 9-12 mm, all 0.000 on the rig's own rest; reviewed by Astra GPT6 in four rounds (docs/reviews/pelvis-rest-astra-review-2026-09-14.md) -- do-not-dispatch three times, every finding adopted after verification against the source; worktree .claude/worktrees/ladder-D7c on ladder/D7c, one Opus agent: hygiene, instrument first, S the selector before the src change, two rig modes with S choosing, the guard, the projection-preservation contract"
     }
   ]
 }
