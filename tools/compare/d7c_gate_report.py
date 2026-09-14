@@ -565,6 +565,19 @@ def build(reports: dict) -> dict:
                 f"{min(ours.values())}-{max(ours.values())}", "REPORT")
 
     # ------------------------------------------------------ the two recorded STOPs, derived
+    def sigma1_metric(seed, arm_name, population, metric):
+        """One body's number on the CARD'S OWN FIXTURE, population validated -- the same
+        rule as `body_metric` applies to the reread, because the recorded STOP deserves the
+        denominators the PROCEED gets."""
+        frames, pairs = S_POPULATION[population]
+        base = ("sigma1", "bodies", seed, "arms", arm_name, population)
+        if (int(r.num(*base, "n_frames")) != frames
+                or int(r.num(*base, "n_pairs")) != pairs):
+            raise Missing(f"sigma1/{seed}/{arm_name}/{population} population is "
+                          f"{int(r.num(*base, 'n_frames'))}/{int(r.num(*base, 'n_pairs'))}, "
+                          f"not the frozen {frames}/{pairs}")
+        return r.num(*base, metric)
+
     @clause("S at the CARD'S OWN FIXTURE (sigma 1.0): the frozen-pitch follower >= 2x on EVERY body",
             f">= {FOLLOWER_RATIO}x on all {len(ORACLE_SEEDS)} bodies",
             "the step STOPPED here; `selector.json` is immutable")
@@ -572,12 +585,28 @@ def build(reports: dict) -> dict:
         rows = r.named("sigma1", "frozen_pitch_follower_bent_tercile", expect=ORACLE_SEEDS)
         if r.num("sigma1", "sigma_scale") != 1.0:
             raise Missing("selector.json is not at sigma 1.0")
+        winner_arm = r.text("sigma1", "winner", "arm")
+        if {"a_kabsch_guarded": "E_rig_rest_kabsch",
+                "b_hipline_guarded": "D_rig_rest_hipline"}.get(winner_arm) != r.text(
+                    "sigma1", "winner", "mode"):
+            raise Missing("sigma1 winner/arm and winner/mode disagree")
         ratios = {}
         for seed in ORACLE_SEEDS:
             base = ("sigma1", "frozen_pitch_follower_bent_tercile", seed)
-            follower = r.num(*base, "follower_i_deg")
-            ratios[seed] = follower / r.num(*base, "winner_i_deg")
-            r.checked(*base, "ratio", derived=ratios[seed], tolerance=1e-2)
+            # BOTH TERMS FROM THE BODY ROWS, exactly as the reread's follower is read.
+            # Astra's round 8 set the winner's own bent-tercile error to 1 deg on all six
+            # bodies: the constituent ratios become 15.5-21.1x and clear the stop everywhere,
+            # and the gate -- reading this duplicated table -- kept reporting the STOP. A
+            # recorded stop read off a copy is a recorded copy, not a recorded stop.
+            follower = sigma1_metric(seed, "frozen_pitch_follower", "bent_tercile",
+                                     "i_orientation_deg")
+            winner = sigma1_metric(seed, winner_arm, "bent_tercile", "i_orientation_deg")
+            if winner <= 0.0:
+                raise Missing(f"sigma1/{seed}/{winner_arm}/bent_tercile is not positive")
+            ratios[seed] = follower / winner
+            for label, derived in (("follower_i_deg", follower), ("winner_i_deg", winner),
+                                   ("ratio", ratios[seed])):
+                r.checked(*base, label, derived=derived, tolerance=1e-2)
             r.checked(*base, "ratio_at_least_2x", derived=ratios[seed] >= FOLLOWER_RATIO)
             r.checked(*base, "at_least_2_deg", derived=follower >= FOLLOWER_FLOOR_DEG)
         # EVERY ARM'S POPULATION on the pre-registered fixture too. The stop this clause
@@ -586,12 +615,7 @@ def build(reports: dict) -> dict:
             r.named("sigma1", "bodies", seed, "arms", expect=REREAD_ARMS)
             for arm_name in REREAD_ARMS:
                 for population in POPULATIONS:
-                    frames, pairs = S_POPULATION[population]
-                    base = ("sigma1", "bodies", seed, "arms", arm_name, population)
-                    if (int(r.num(*base, "n_frames")) != frames
-                            or int(r.num(*base, "n_pairs")) != pairs):
-                        raise Missing(f"sigma1/{seed}/{arm_name}/{population} population is "
-                                      f"not the frozen {frames}/{pairs}")
+                    sigma1_metric(seed, arm_name, population, "i_orientation_deg")
         below = [s for s, v in ratios.items() if v < FOLLOWER_RATIO]
         discriminated = not below and all(
             r.num("sigma1", "frozen_pitch_follower_bent_tercile", s, "follower_i_deg")
@@ -1432,26 +1456,59 @@ def build(reports: dict) -> dict:
         # photographs and no constant here was chosen on it.
         if not r.flag("silhouette", "instrument_only"):
             raise Missing("the silhouette report does not declare itself instrument-only")
-        r.named("silhouette", "preregistered_clause_verdicts", expect=(*PERFORMERS,
-                "clause_mamma_mesh_oracle"))
+        # AND THE PHOTOGRAPHS ARE THE SAME PHOTOGRAPHS: the mask cache this run read is the
+        # one the earlier runs read, byte for byte. The MAMMA oracle's own agreement is the
+        # other half of that argument and is banded in the clause below.
+        masks = r.at("silhouette", "masks_copied_never_shared")
+        if not isinstance(masks, dict) or not masks:
+            raise Missing("silhouette/masks_copied_never_shared is empty")
+        for name in sorted(masks):
+            if not r.flag("silhouette", "masks_copied_never_shared", name, "byte_identical"):
+                raise Missing(f"the silhouette read a mask cache that is not byte-identical: "
+                              f"{name}")
+        draws = int(r.num("silhouette", "statistics", "draws"))
+        shortfall = {}
+        r.named("silhouette", "subjects", expect=PERFORMERS)
         for performer in PERFORMERS:
             for name in B1_CELLS:
                 base = ("silhouette", "preregistered_clause_verdicts", performer, name)
-                interval = r.listing(*base, "ci95", minimum=2, elements=True)
-                # EACH CELL'S OWN POPULATION, by the cut it names: the whole take or the
-                # bent tercile. A cell scored over a different number of photographs is a
-                # different measurement whatever its interval says.
                 cut = "whole_take" if "whole_take" in name else "bent_tercile"
-                frames = int(r.num(*base, "cut_frames"))
+                part = "arm" if name.startswith("clause_arm") else "torso"
+                # THE CELL'S OWN MEASUREMENT, not the copy of it beside the verdict. The
+                # producer copies `difference`, `ci95` and `cut_frames` out of
+                # `subjects/<s>/cuts/<cut>/<part>_D7c_minus_D9b`; Astra's round 8 moved the
+                # SOURCE interval's upper bound below zero -- worsening established -- and
+                # the gate, reading the unchanged copy, passed the cell.
+                source = ("silhouette", "subjects", performer, "cuts", cut,
+                          f"{part}_D7c_minus_D9b")
+                interval = r.listing(*source, "ci95", minimum=2, elements=True)
+                difference = r.num(*source, "median_difference")
+                frames = int(r.num("silhouette", "subjects", performer, "cuts", cut, "n"))
                 if frames != B1_CUT_FRAMES[cut]:
                     raise Missing(f"B1/{performer}/{name} is over {frames} photographs, not "
                                   f"the cut's {B1_CUT_FRAMES[cut]}")
-                # the point estimate and the interval that summarises it, and the cell's own
-                # "rose with the interval clear of zero" flag derived from both.
-                difference = r.num(*base, "difference")
+                # THE SAME DRAWS, MEASURED. Every part of a cut must report the same
+                # `draws_used` -- that identity IS the card's identical-draws requirement
+                # made observable -- and it can fall below the requested count when a
+                # resample is degenerate, which is reported rather than banded.
+                used = int(r.num(*source, "draws_used"))
+                siblings = {int(r.num("silhouette", "subjects", performer, "cuts", cut,
+                                      f"{other}_D7c_minus_D9b", "draws_used"))
+                            for other in ("torso", "arm", "whole")}
+                if len(siblings) != 1 or not 1 <= used <= draws:
+                    raise Missing(f"B1/{performer}/{cut} used {sorted(siblings)} draws "
+                                  f"across its parts, against the run's {draws}")
+                shortfall[f"{performer}/{cut}"] = draws - used
                 if not float(interval[0]) <= difference <= float(interval[1]):
                     raise Missing(f"B1/{performer}/{name} difference {difference} is outside "
                                   f"its own interval {interval}")
+                # and the copies beside the verdict must AGREE with the measurement
+                r.checked(*base, "difference", derived=difference, tolerance=1e-9)
+                r.checked(*base, "cut_frames", derived=frames)
+                copy = r.listing(*base, "ci95", minimum=2, elements=True)
+                if [float(x) for x in copy] != [float(x) for x in interval]:
+                    raise Missing(f"B1/{performer}/{name} copies interval {copy} against the "
+                                  f"measurement's {interval}")
                 r.checked(*base, "rose_with_ci_clear_of_zero",
                           derived=difference > 0.0 and float(interval[0]) > 0.0)
                 r.checked(*base, "verdict",
@@ -1459,7 +1516,38 @@ def build(reports: dict) -> dict:
                 ok &= float(interval[1]) >= 0.0
                 seen += 1
         r.checked("silhouette", "verdict", derived="PASS" if ok else "FAIL")
-        return f"{seen} of {len(B1_CELLS) * len(PERFORMERS)} named cells checked", ok
+        return (f"{seen} of {len(B1_CELLS) * len(PERFORMERS)} named cells checked on their "
+                f"own subject/cut measurements; degenerate-draw shortfall "
+                f"{min(shortfall.values())}-{max(shortfall.values())} of {draws}", ok)
+
+    @clause("B1 IDENTICAL DRAWS -- the card's own requirement, enforced",
+            f"every arm on the same {2000} draws, one moving-block bootstrap, one seed",
+            "the card: `d7b_silhouette_partwise` D9b vs candidate ON IDENTICAL DRAWS. An "
+            "exemption may never cover a measurement the card bands, and round 8 set this "
+            "flag false with every clause unchanged")
+    def _():
+        if not r.flag("silhouette", "statistics", "every_arm_on_identical_draws"):
+            raise Missing("the silhouette did not score every arm on identical draws")
+        draws = int(r.num("silhouette", "statistics", "draws"))
+        block = int(r.num("silhouette", "statistics", "moving_block"))
+        seed = int(r.num("silhouette", "statistics", "seed"))
+        lag1 = r.num("silhouette", "statistics", "lag1_autocorrelation_on_this_take")
+        if draws < 1 or block < 1:
+            raise Missing(f"the bootstrap ran {draws} draws with block {block}")
+        # the block bootstrap exists BECAUSE the per-frame series is autocorrelated; a run
+        # that measured no autocorrelation would not need one and would not be this run.
+        if not 0.0 < lag1 <= 1.0:
+            raise Missing(f"lag-1 autocorrelation {lag1} is not a correlation")
+        # B2 is scored on identical draws too, by the same card line. It publishes no flag,
+        # so its three bootstrap parameters are read and the missing boolean is stated.
+        b2_draws = int(r.num("b2", "bootstrap", "draws"))
+        b2_block = int(r.num("b2", "bootstrap", "block"))
+        b2_seed = int(r.num("b2", "bootstrap", "seed"))
+        if b2_draws < 1 or b2_block < 1:
+            raise Missing(f"B2's bootstrap ran {b2_draws} draws with block {b2_block}")
+        return (f"silhouette: {draws} draws, block {block}, seed {seed}, lag-1 {lag1}; "
+                f"B2: {b2_draws} draws, block {b2_block}, seed {b2_seed} (B2 publishes no "
+                f"identical-draws flag -- owed)", True)
 
     @clause("B1 the MAMMA mesh oracle bit-identical", "< 1e-9")
     def _():
@@ -1670,7 +1758,7 @@ CONJUNCTS = (
     ("P2 on every oracle body", ("P2 anchor lock on EVERY ORACLE BODY",)),
     ("S (every stop of the reread, G1 and G2 included)", S_STOPS),
     ("B1 on both performers, oracle included",
-     ("B1 the photographs", "B1 the MAMMA mesh oracle")),
+     ("B1 the photographs", "B1 IDENTICAL DRAWS", "B1 the MAMMA mesh oracle")),
     ("the same denominator (B2 and both landmark arrays)",
      ("B2 `delivered_vs_capture.py", "the delivery: BOTH landmark arrays byte-identical")),
 )
@@ -1699,8 +1787,6 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
     ("b2/subjects/**", "B2's per-joint distances to MAMMA. B2 is a MAMMA-referenced "
                        "instrument: its one banded clause is the same-denominator one, and "
                        "no constant is selected on any of it."),
-    ("b2/bootstrap/**", "the block bootstrap's own parameters, reported beside the "
-                        "intervals they produced."),
     # --- the oracle's controls and diagnostics
     ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/angle/*",
      "the order statistics of an arm's tilt other than the one its clause bands. O1 bands "
@@ -1800,13 +1886,13 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
                                       "block."),
     # --- the sigma-1.0 fixture, an immutable recorded STOP
     # --- the sigma-1.0 fixture: an IMMUTABLE RECORDED STOP, preserved and not re-banded
-    ("sigma1/bodies/<seed>/arms/*/*/i_orientation_deg",
-     "`selector.json` records a STOP. What stopped the step is the follower's separation, "
-     "which the gate reads and re-derives; the per-arm metrics are the frozen evidence "
-     "BEHIND that stop and are preserved, not re-banded -- re-banding a recorded stop on "
-     "the fixture it was recorded at is how a stop gets quietly relitigated. Every arm's "
-     "population IS validated."),
-    ("sigma1/bodies/<seed>/arms/*/*/ii_step_deg", "the same, metric (ii)."),
+    ("sigma1/bodies/<seed>/arms/*/*/ii_step_deg",
+     "`selector.json` records a STOP, and what stopped the step is the follower's "
+     "separation on metric (i) -- which the gate now reads FROM THESE BODY ROWS, follower "
+     "and winner alike, so metric (i) is no longer exempt at all. Metrics (ii) and (iii) "
+     "are the frozen evidence beside that stop: preserved, not re-banded, because "
+     "re-banding a recorded stop on the fixture it was recorded at is how a stop gets "
+     "quietly relitigated. Every arm's population IS validated."),
     ("sigma1/bodies/<seed>/arms/*/*/iii_root_step_mm", "the same, metric (iii)."),
     ("sigma1/bodies/<seed>/arms/*/*/iii_rotational_compensation_step_mm",
      "the same, and a fourth metric the card's three-metric rule does not include."),
@@ -1864,10 +1950,6 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
     ("control2/**", "the built control's remaining fields mirror the delivery report's; its "
                     "channels, its verdicts and its expectation are read."),
     # --- the photographs
-    ("silhouette/statistics/**",
-     "the silhouette's per-frame overlap statistics. B1 is stated on the eight "
-     "pre-registered cells, whose intervals, point estimates and populations are read; the "
-     "underlying per-frame rows are reported."),
     ("silhouette/subjects/**", "the per-subject overlap rows the eight cells summarise."),
     ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/pitch_about_hip_line/*",
      "the tilt decomposed onto the hip line, reported so the DIRECTION of a control's error "
@@ -1990,9 +2072,24 @@ TRUSTED_READ_JUSTIFICATIONS = (
      "the sigma's exact repr, compared against the sigma it spells."),
     ("reread/winner/arm", "compared against `winner/mode` through the named mapping, and "
                           "against the mode the six cells imply."),
+    ("sigma1/winner/arm",
+     "the arm the pre-registered fixture's follower is measured against. Compared against "
+     "`sigma1/winner/mode` through the same named mapping, and the row it selects is read "
+     "from the body constituents rather than from the follower table's copy."),
+    ("sigma1/winner/mode", "the other half of that comparison."),
     ("reread/winner/mode", "the other half of that comparison."),
     ("reread/S_verdict", "S's own verdict string, required to be PROCEED beside the six "
                          "cells the gate recomputes."),
+    ("silhouette/statistics/every_arm_on_identical_draws",
+     "the silhouette's own declaration that every arm was scored on the same bootstrap "
+     "draws. It is not believed on its own: the card BANDS identical draws, so its clause "
+     "also measures the property -- every part of a cut must report the same `draws_used` -- "
+     "and reads the run's block, seed and lag-1 autocorrelation beside it."),
+    ("silhouette/masks_copied_never_shared/mask/*/byte_identical",
+     "a byte comparison of the mask cache this run read against the cache the earlier runs "
+     "read, made by the instrument over files that are not in any report. Required True: B1 "
+     "compares two builds against the SAME photographs, and the MAMMA oracle's own agreement "
+     "to 0.0 is the second, independent half of that argument."),
     ("admissibility/S_status",
      "the amended calibration file's statement of where S stands. It is not believed: it is "
      "REQUIRED to begin PENDING, because calibration REACHED is not S PROCEED and a file "
