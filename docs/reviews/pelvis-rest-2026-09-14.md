@@ -1,7 +1,10 @@
-# D7c — the pelvis on the rig's own rest. **STOPPED at selector S, before any `src/` change.**
+# D7c — the pelvis on the rig's own rest. **STOPPED at selector S, twice, before any `src/` change.**
 
 **Date** 2026-09-14 · **Branch** `ladder/D7c` · **Worktree** `.claude/worktrees/ladder-D7c`
-**Verdict: the step stopped at the pre-registered stop condition in S. `src/` was not touched.**
+**Verdict: the step stopped at the pre-registered stop condition in S at the card's own fixture,
+and then again at the amended card's FIXTURE CALIBRATION, which is UNREACHABLE by its own
+frozen rule. `src/` was not touched at any point, and the instrument-side estimators are frozen
+at `8a82ee4`.**
 Hygiene PASSED (8 of 8). The instrument PASSED, committed before `src/` could have moved, and
 reproduces the pre-card on the shipped build and on all six D3 bodies. S then reached its own
 frozen-pitch-follower clause and failed it on **5 of 6 bodies**, which the card names a STOP —
@@ -21,7 +24,8 @@ it selects nothing.
 |---|---|---|---|
 | 1 | hygiene — today's code rebuilds the shipped delivery byte-identically | **PASS**, 8 of 8 | `d146aa3` |
 | 2 | instrument first, on the SHIPPED build and the six D3 bodies | **PASS**, reproduces the pre-card | `7d5f3a3` |
-| 3 | S, the selector, on synthetic truth, run BEFORE the src change was chosen | **STOP** | this commit |
+| 3 | S, the selector, at the card's own fixture, run BEFORE the src change was chosen | **STOP** | `ee4b71f` |
+| 3A | the amended card's FIXTURE CALIBRATION, and the reread it gates | **UNREACHABLE -> STOP** | this commit |
 | 4 | the src change | **not started** — `git diff 7e35dd0 -- src/` is EMPTY | — |
 | 5 | the delivery and the bands | **not reached** | — |
 | 6 | the gate, the extractor, the tests, the report page | **not reached** | — |
@@ -175,7 +179,10 @@ synthetic lever's spread is *pure observation noise*, while the take's mixes obs
 with the performer's real lever variation. Matching the two would therefore UNDER-noise the
 fixture. That is one of the reasons this step does not pick a calibration.
 
-### 3.3 Why this agent did not repair the fixture, and what it did instead
+### 3.3 Why this agent did not repair the fixture ON ITS OWN AUTHORITY
+
+**Superseded in part by section 3A**: the coordinator and Astra subsequently amended the card to authorise a repair, on a calibration definition frozen by the reviewer before any reread. That is the correct route and it is the one that was taken. What follows is why this agent did not take it unilaterally, and every reason still holds for a repair chosen by the agent after seeing the verdict.
+
 
 CLAUDE.md carries a fixture-repair rule (D8b: *"a step's fixture can fail a pre-registered
 clause for the fixture's own defects … repair the FIXTURE as a fixture parameter with src
@@ -225,17 +232,201 @@ meets the take on that — confounded — comparison.)
 At σ = 0.35 and 0.25 the guard's own experiments were reached, and they are reported here as
 **sensitivity only** because their fixture is not the pre-registered one:
 
-* **G1, missing-only.** The equivalence holds on **5 of 6** bodies, not 6. On seed 20260904 the
-  guard demotes **one additional frame (21)** beyond the injected 29-frame pattern, so the
-  guarded and unguarded interpolated arrays are not bit-identical there. Astra's check was made on a
-  different observation than this fixture's noisy draw; here one frame's lever lands outside
-  the 0.15 ceiling on its own. Recovery error on the missing frames 3.7 – 5.7°
-  against 3.3 – 4.3° elsewhere. **Reported, never banded** — G1 carries no superiority claim.
-* **G2, finite-only.** Decisive: guarded **3.2 – 5.7°** against unguarded **62 – 77°** on the
-  corrupted frames, and 1.6 – 2.6° against 3.6 – 5.8° on the transition pairs, on every body
-  and on the median of six. The guard's miss rate is 0.033 (1 of 30 corrupted frames not
-  rejected). **This is not a pass**: G2's verdict at the pre-registered fixture was never
-  reached, and a G2 run under a repaired fixture is the coordinator's to authorise.
+* **G1, missing-only.** Unconditional identity holds on **5 of 6** bodies at sigma 0.25 (seed
+  20260904, frame 21) and **4 of 6** at sigma 0.35 (additionally seed 20260903 frame 84 and seed
+  20260904 frames 20-22 and 103-104) -- the figures Astra recomputed. Recovery error on the
+  missing frames 3.7 - 5.7 deg against 3.3 - 4.3 deg elsewhere. **Reported, never banded** --
+  G1 carries no superiority claim, and the CLAIM ITSELF is what was wrong: see section 3A.6,
+  where it is amended to the array level.
+* **G2, finite-only.** Decisive. The MEDIAN-OVER-SIX figures, which are what the amended card
+  asks for (the earlier wording here quoted seed-level ranges and is corrected): at sigma 0.35,
+  **7.527 deg guarded against 76.641 deg unguarded** on the corrupted frames and **2.707 deg
+  against 8.829 deg** on the transition pairs; at sigma 0.25, 5.524 against 76.314 and 2.123
+  against 8.241. Both metrics are won on every body at both sigma. The guard's miss rate is
+  0.033 on five bodies and **0.10 on seed 20260906**. **This is not a pass**: G2's verdict at
+  the pre-registered fixture was never reached, and a G2 run under a repaired fixture is the
+  coordinator's to authorise. Full detail in section 3A.7.
+
+---
+
+## 3A. The amended card — the FIXTURE CALIBRATION, and why it is **UNREACHABLE**
+
+After the σ-1.0 STOP the card gained a FIXTURE CALIBRATION amendment (Astra GPT6 rounds 5
+and 6). `selector.json` is untouched and the σ-1.0 verdict stands exactly as it fell; this
+section is `selector-calibrated.json`. `src/` was still never touched, and the instrument-side
+estimators are frozen at `8a82ee4` — `git diff 8a82ee4 -- tools/compare/d7c_pelvis_estimators.py`
+is empty. Only the calibration machinery and the amended G1 test were added.
+
+### 3A.1 The target, measured — not typed
+
+The amendment's target is the take's `|Spine1 − hip midpoint|` sd **at S's own processing
+stage** (the converter inputs the delivery watcher dumped: gap-filled, hips smoothed, Spine1
+unsmoothed, all 150 frames), over the frames the **0.15 guard KEEPS**, `ddof=0`, larger
+performer. `take_calibration_target()` measures it from the hygiene build's own bytes and the
+instrument refuses to run if it does not reproduce the frozen constant:
+
+| | frames | guard-kept | median | sd all frames, ddof=0 | **sd guard-kept, ddof=0** | sd guard-kept, ddof=1 |
+|---|---|---|---|---|---|---|
+| performer 0 | 150 | 150 | 131.5768 mm | 5.9944 | **5.9944** | 6.0145 |
+| performer 1 | 150 | **121** | 125.4928 mm | 24.8646 | **8.7636** | 8.8000 |
+
+**target = 8.7636 mm.** The `ddof` difference against round 5's 6.014 / 8.800 is the SD
+denominator, not rounding. D7's rigidity row (6.61 / 11.10) is a raw-triangulation,
+common-valid-mask statistic on 150 / 138 frames — a different stage, and not the matched
+target. The synthetic side now applies the **same keep-rule** before `np.std(ddof=0)`;
+`fixture_attribution` carries both the all-frames row (which the σ-1.0 report quoted) and the
+matched guard-kept row beside it. S's scoring populations are unchanged by any of this.
+
+**Two qualifications carried, neither softened.** The take's sd bounds its observation noise
+only under an additive, uncorrelated length-error model, and a guard-kept sd is a
+**conditional** spread — selecting by observed length can break that decomposition — so **no
+harshness claim is made in either direction**. And length bounds no direction at all.
+
+### 3A.2 The zero-noise baseline, reported first and never subtracted
+
+σ = 0 through the **same** `observe_body` pipeline — the real cameras, the real
+`triangulate_point`, the real gap fill and Savitzky–Golay smoothing, the identical seeded
+draws. Guard-kept lever sd **1.8131 mm** (median of six). That is the preprocessing floor:
+the 19-contract joints are smoothed and Spine1 is not, so the hip midpoint moves under an
+unsmoothed Spine1 even with no pixel noise at all. It is **never subtracted** from either
+side — the target is the total post-processed observable, and a variance subtraction would
+need a covariance model and would be a different calibration.
+
+### 3A.3 The bisection: a σ was found inside tolerance, and the calibration is still unreachable
+
+One pixel-σ for all six bodies, bracket `[0.10, 1.00]`, tolerance 0.05 mm, ≤ 20 evaluations,
+the original seeded draws preserved at every evaluation (`heavy_tail_magnitude` draws its
+uniform before it multiplies, so the stream is identical at every amplitude).
+
+| σ | median-of-six guard-kept sd |
+|---|---|
+| 0.100000 | 3.0777 |
+| 0.325000 | 8.4760 |
+| 0.332031 | 8.6582 |
+| **0.335547** | **8.7495**  ← inside tolerance (\|Δ\| = 0.0141 ≤ 0.05) |
+| 0.339063 | 8.8410 |
+| 0.353125 | 8.8275  ← **the violation: a 0.0135 mm DECREASE as σ rose** |
+| 0.381250 | 9.3457 |
+| 0.437500 | 10.6170 |
+| 0.550000 | 11.9565 |
+| 1.000000 | 12.5108 |
+
+* the bracket **contains** the target (3.0777 … 12.5108) — PASS;
+* a σ **inside tolerance was found**: **0.335547 → 8.7495 mm** — PASS;
+* the statistic is **not monotone across the evaluations** — **FAIL**, and the frozen rule
+  makes that an **UNREACHABLE** calibration.
+
+**The verdict is UNREACHABLE. No reread of S was performed at 0.335547.** Reading S at a σ the
+frozen rule rejects, and then reporting it, is how a verdict leaks into a rule change; the
+amendment decision has to be made on the calibration, not on what the calibration would have
+produced.
+
+### 3A.4 The violation, diagnosed to the frame
+
+Not six bodies wobbling — two rejections:
+
+| seed | σ 0.339063 | σ 0.353125 | Δ | keep-mask change |
+|---|---|---|---|---|
+| 20260903 | 9.0549 | 9.0353 | **−0.0195** | frame **84** newly rejected (150 → 149 kept) |
+| 20260907 | 8.6272 | 8.6198 | **−0.0074** | frame **21** newly rejected (150 → 149 kept) |
+| 20260904 | 10.9619 | 11.1511 | +0.1892 | unchanged, 150 kept |
+| 20260905 | 9.6138 | 10.0083 | +0.3945 | unchanged, 150 kept |
+| 20260906 | 7.2723 | 7.5603 | +0.2880 | unchanged, 150 kept |
+| 20260908 | 7.9932 | 8.2987 | +0.3055 | unchanged, 150 kept |
+
+At σ 0.339063 the guard rejects **nothing on any body**. At σ 0.353125 it newly rejects exactly
+**one frame on each of two bodies**, and each rejection removes that body's largest-lever
+frame — so those two bodies' guard-kept sd **falls** although the pixel noise rose. Those two
+bodies are precisely the ones sitting at the 3rd and 4th of six, which is what the
+median-of-six is made of; the four bodies that rose are all outside those positions. The
+median therefore fell by 0.0135 mm while every unchanged body rose by 0.19 – 0.39 mm.
+
+**That is the mechanism the card names, realised exactly: the synthetic keep-mask moves with
+σ, so the statistic is taken over a different population at each evaluation and is not a
+smooth function of σ.**
+
+### 3A.5 The one question this hands the coordinator
+
+The frozen rule's *wording* is "the statistic is not monotone in σ **across the evaluations**";
+its stated *rationale* is "a bisection on it is not well posed". Here the bisection's own
+bracket — 0.325 → 0.332031 → 0.335547 → 0.339063 — **is** strictly monotone, and the single
+violation (0.0135 mm, 27 % of the tolerance) lies **above both the accepted σ and the target**,
+outside that bracket. Whether the boolean applies to **all evaluations** (the wording) or to
+**the final bracket** (the rationale) is the one amendment that would change this verdict, and
+it is a rule change only the coordinator and Astra can make. This agent applied the wording,
+stopped, and is not arguing the point.
+
+### 3A.6 G1, amended — and not yet exercised at a calibrated σ
+
+The claim is now the reviewer's: **identical effective masks and retained samples ⇒
+bit-identical INTERPOLATED ARRAYS**, tested on the arrays `np.interp` produces rather than on
+the quaternions downstream of them (`interpolated_array`, which re-executes only the recovery
+path; `rig_rest_pelvis_frames` is frozen and was not modified to expose it). The old,
+overbroad wording — that the two arms' arrays agree whenever the missing pattern is the same —
+is wrong for a stated reason: an additional finite rejection changes the mask, and removing
+the 29 samples also changes the finite median the guard compares against. Every additional
+rejection is now reported with its **lever, the median it is compared against, the 0.15
+threshold, the band in millimetres, and the fraction it is off by**, and none is selected away.
+
+**The amended test has NOT been exercised at a calibrated σ** — the calibration is unreachable,
+so G1 and G2 were not rerun. What is recorded remains the σ-0.25 / σ-0.35 sensitivity runs, and
+their additional rejections are the ones Astra named: σ 0.25, seed 20260904 frame 21; σ 0.35,
+seed 20260903 frame 84 and seed 20260904 frames 20–22 and 103–104.
+
+### 3A.7 G2's sensitivity summary, corrected
+
+The σ-1.0 report quoted seed-level ranges. The recorded **median-over-six** figures, which is
+what the amendment asks for:
+
+| σ | (i) corrupted frames, guarded | unguarded | (ii) transition pairs, guarded | unguarded | miss rate | both metrics won on every body |
+|---|---|---|---|---|---|---|
+| 0.35 | **7.527°** | **76.641°** | **2.707°** | **8.829°** | 0.033, **up to 0.10** on seed 20260906 | yes |
+| 0.25 | 5.524° | 76.314° | 2.123° | 8.241° | 0.033, up to 0.10 on seed 20260906 | yes |
+
+**Sensitivity only.** G2's verdict at the pre-registered fixture was never reached, and a G2
+run under a repaired fixture is the coordinator's to authorise.
+
+### 3A.8 The (a) restatement, prepared from the pre-card's own (a) arm
+
+Recorded here because the card requires it *before* delivery and because it is the substantive
+consequence of (a) having won. Every figure is the pre-card's rebuild of **(a)
+`E_rig_rest_kabsch`, UNGUARDED** (`precard-take-candidate`, `precard-take.json`), against the
+shipped D9b build, on byte-identical landmarks. **These are predictions to revisit, never
+bands**, and the guarded (a) rebuild is still owed.
+
+| quantity, performer 0 / 1 | (a) unguarded | (b) unguarded, the card's original text |
+|---|---|---|
+| pelvis pitch about the hip line, median | **−8.783 / −9.260°** | −8.784 / −9.283° |
+| pelvis change, median (p95) | 8.896 (15.504) / 9.376 (25.516)° | 8.868 (15.454) / 9.311 (23.780)° |
+| root move, hoist-subtracted | **12.403 / 13.057 mm** | 12.367 / 12.984 mm |
+| root move, fore-aft in today's pelvis frame | **−12.214 / −12.839 mm** | −12.217 / −12.906 mm |
+| `Spine` origin move | **30.525 / 30.138 mm** | 30.437 / 29.970 mm |
+| `Neck` move | **12.434 / 10.816 mm** | 12.764 / 10.429 mm |
+| leg-root midpoint on the captured hip midpoint | **0.000 mm** | 0.000 mm |
+| **hip residual, median (p95)** | **4.046 (11.859) / 4.580 (31.853) mm** | 1.185 (4.187) / 1.199 (5.906) mm |
+| delivered +Y vs `Spine1 − hip midpoint` | **1.400 / 2.018°** | 3.166 / 3.887° |
+| hoist p95, D9b → candidate | 12.54 → **13.124** / 8.718 → **7.369** mm | 12.54 → 11.559 / 8.718 → 9.107 |
+| contacts, D9b → candidate | (38, 51) → **(36, 36)** / (11, 18) → **(4, 18)** | (38, 51) → (38, 45) / (11, 18) → (6, 18) |
+
+**What this table settles about the card's (b)-conditional text:**
+
+* **"the leg roots on the captured hips" is NOT (b)-specific.** It reads 0.000 mm under (a)
+  too, and it must: `_leg_root_offset` places the leg-root midpoint on the captured hip
+  midpoint whatever rotation the pelvis frame carries. The card listed it as conditional; it
+  is not.
+* **"zero transverse hip residual" IS (b)-specific and does not carry.** Under (b) the hip
+  line is an exact axis of the frame and the residual left is only the rig-vs-performer WIDTH
+  mismatch (p95 4.2 / 5.9 mm). Under (a) the 197 mm spine lever pulls against the hip line
+  inside one un-centred SVD, and the residual is **11.9 / 31.9 mm at p95** — Astra's figures,
+  reproduced. Under (a) **B2's hip clause is a REPORT**, its same-denominator equality still
+  required, and **no hip-residual band may be manufactured from these numbers.**
+* **(a) sits closer to the captured `Spine1` direction than (b)** (1.4 / 2.0° against 3.2 /
+  3.9°) and further from the captured hip line. That is the same trade S decided, seen on the
+  take: (b) spends its freedom on the hip line, (a) spreads it over all three points.
+* **Contacts and the hoist move more under (a)** — performer 0 loses 15 contact frames against
+  (b)'s 6, and its hoist p95 rises rather than falls. The card already says contacts may move
+  and replaces D9b's identical-contacts clause with P; this is the size of it under (a).
+
 
 ---
 
@@ -292,12 +483,36 @@ delivery under (a) would have failed a clause that was true only of the mode tha
 | B1 … B6 | — | **not reached** | — |
 | G1, G2 at the pre-registered fixture | — | **not reached** | — |
 
+| **THE AMENDED CARD'S FIXTURE CALIBRATION** | | | |
+| the target reproduces the frozen constant | 8.7636 mm | 5.9944 / **8.7636** measured from the hygiene build's own converter inputs | **PASS** |
+| the synthetic statistic applies the same keep-rule, `ddof=0` both sides | matched | `fixture_attribution` carries the guard-kept row beside the all-frames one | **PASS** |
+| the zero-noise baseline reported first, never subtracted | reported | **1.8131 mm** through the same `observe_body` pipeline | **PASS** |
+| the bracket [0.10, 1.00] contains the target | contains | 3.0777 … 12.5108 mm | **PASS** |
+| a σ inside the 0.05 mm tolerance is found in ≤ 20 evaluations | found | **σ 0.335547 → 8.7495 mm**, \|Δ\| = 0.0141, 10 evaluations | **PASS** |
+| the ORIGINAL seeded draws preserved exactly | preserved | two independent runs: all 10 (σ, sd, per-body) triples bit-identical | **PASS** |
+| **the statistic is monotone in σ across the evaluations** | **monotone** | **one violation, 0.0135 mm, σ 0.339063 → 0.353125** | **FAIL** |
+| the calibration | CALIBRATED | **UNREACHABLE** by the frozen rule | **STOP** |
+| the reread of all of S at the calibrated σ | all clauses | **not performed** — reading S at a σ the rule rejects would leak the verdict into the rule change | — |
+| G1's amended array-level test | exercised at the calibrated σ | **written and committed; not exercised** — only the σ-0.25 / 0.35 sensitivity runs exist | — |
+| G2 at the pre-registered or a calibrated fixture | — | **not reached** | — |
+
 **One FAILED prediction, and its attribution:** the frozen-pitch follower's ≥ 2× separation.
 Attributed to the **fixture's noise amplitude**, measured at 1.8 – 3.0× the take's own recorded
 spread, against a discrimination that is unbounded without noise (winner 0.0000° vs follower
 14.401° on the bent tercile). It is **not** attributable to the estimators, to the guard, or to
 the instrument: the same instrument reproduces every pre-card figure exactly, and the (a)/(b)
 selection it produces is stable at every noise level tested.
+
+**A second FAILED prediction, from the amended card:** the calibration's monotonicity
+precondition. Attributed, to the frame, to the **synthetic keep-mask moving with σ** — at
+σ 0.339063 the guard rejects nothing on any body, and at σ 0.353125 it newly rejects one frame
+on seed 20260903 (frame 84) and one on seed 20260907 (frame 21), each the largest-lever frame
+of a body that happens to sit at the 3rd or 4th of six. Those two bodies' guard-kept sd falls
+while the four whose masks did not change all rise by 0.19 – 0.39 mm, so the median-of-six dips
+0.0135 mm. It is **not** attributable to the draws (two runs are bit-identical), to the target
+(it reproduces the frozen constant exactly), or to the bracket (which contains the target and
+whose own final sub-bracket, 0.325 → 0.332031 → 0.335547 → 0.339063, is strictly monotone).
+See section 3A.5 for the single question it hands the coordinator.
 
 ---
 
@@ -329,24 +544,46 @@ selection it produces is stable at every noise level tested.
 
 ## 7. What is open
 
-1. **The fixture's noise amplitude against the 2× follower band — the coordinator's and
-   Astra's call.** Either the band is re-pinned against a fixture measured at 1.8 – 3.0× the
-   take's spread, or the fixture is repaired as a parameter (with `src/` byte-identical across
-   the repair, which it trivially is: `git diff 7e35dd0 -- src/` is empty on this branch) and the SAME clauses rerun.
-   The sweep in §3.4 is the input to that decision and nothing more.
-2. **The card's hip-line-specific predictions must be restated from (a)'s pre-card arm**
-   before any delivery (§4), including B2's hip clause, which is zero by construction only
-   under (b).
-3. **G1's equivalence is 5 of 6, not 6 of 6** on this fixture (one extra demoted frame on seed
-   20260904). Whether that matters depends on the fixture the coordinator settles.
-4. **G2 was never run at the pre-registered fixture.** Its sensitivity result is strong
-   (guarded 3.2 – 5.7° vs unguarded 62 – 77°) and is not a pass.
-5. **Everything from the refactor tripwire onward is unrun**: O1/O2/O3 on a candidate, P1/P2/P3
-   (whose two controls are built and asserted non-degenerate in the delivery script but never
-   executed), B1 – B6, the containment test, the extractor, the tests, the report page.
-6. **The instrument-debt items the card hands on are untouched**: the four `SOMA77_REST_*`
+1. **THE ONE DECISION THAT UNBLOCKS THIS STEP: does the calibration's monotonicity
+   precondition apply to ALL evaluations (its frozen wording) or to the BISECTION'S OWN FINAL
+   BRACKET (its stated rationale, "a bisection on it is not well posed")?** The bracket
+   0.325 → 0.332031 → 0.335547 → 0.339063 is strictly monotone and contains the target; the
+   single violation is 0.0135 mm — 27 % of the tolerance — and sits above both the accepted σ
+   and the target. Under the wording the calibration is unreachable and the σ-1.0 STOP stands,
+   which is what this step recorded. Under the rationale σ = 0.335547 is accepted and all of S
+   is reread at it. **Only the coordinator and Astra can make that amendment**; this agent
+   applied the wording, stopped, and does not argue it. §3A.3–3A.5.
+2. **If the precondition is amended, the reread is the next action and nothing else is:**
+   all of S at σ 0.335547 — both populations, three metrics, ties, the C-on-SOMA comparisons,
+   the every-body follower clause (never normalised per body), the world-vertical report, and
+   G1 (with its new array-level test) and G2 — all six bodies kept. One command:
+   `PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d7c_pelvis_synthetic.py --calibrate`,
+   which will reproduce the identical bisection (proved deterministic over two runs) and then
+   proceed once the precondition passes.
+3. **Even a calibrated reread may fail the 2× follower clause**, and the amended card is
+   explicit about what follows: the failure is recorded, D7c stays undelivered, and there is no
+   second reduction, no band change, and no shipping on the remaining conjuncts.
+4. **The (a) restatement is prepared but not complete.** §3A.8 restates every (b)-conditional
+   prediction from the pre-card's own **unguarded** (a) arm; the card also requires them from a
+   **GUARDED (a) rebuild** before delivery, which needs the src change and is therefore unrun.
+   Two results already settled there: "the leg roots on the captured hips" is **not**
+   (b)-specific (0.000 mm under both), and "zero transverse hip residual" **is** — under (a)
+   the hip residual reads p95 **11.9 / 31.9 mm** against (b)'s 4.2 / 5.9, so **B2's hip clause
+   is a REPORT under (a)** and no hip-residual band may be manufactured from it.
+5. **G1's amended claim is written but not exercised at a calibrated σ**, and G2 has never run
+   at the pre-registered fixture. The recorded G1 rejections are σ 0.25 seed 20260904 frame 21;
+   σ 0.35 seed 20260903 frame 84 and seed 20260904 frames 20–22 and 103–104.
+6. **Everything from the refactor tripwire onward is unrun**: the src change itself, O1/O2/O3
+   on a candidate, P1/P2/P3 (whose two controls are built and assert their own non-degeneracy
+   in the delivery script but have never been executed), B1 – B6, the containment test, the
+   extractor, the tests, the report page.
+7. **The instrument-debt items the card hands on are untouched**: the four `SOMA77_REST_*`
    constants' move to `tools/compare/`, D7's moved-by-design clauses, the D3 gate's frozen
    references and its translation-aligned gauge.
+8. **The confound in the calibration target stands and is not resolved by it.** A guard-kept sd
+   is a conditional spread, and length bounds no direction; the amendment says so and makes no
+   harshness claim in either direction. What the calibration matches is a scalar length spread,
+   not the detector's directional behaviour.
 
 ---
 
@@ -355,15 +592,23 @@ selection it produces is stable at every noise level tested.
 ```
 tools/compare/d7c_pelvis_rest_delivery.py     the rebuild, the watchers, the two P1 controls
 tools/compare/d7c_pelvis_rest_gate.py         the oracle and take instrument
-tools/compare/d7c_pelvis_estimators.py        the two rig estimators, the lever guard, the controls
-tools/compare/d7c_pelvis_synthetic.py         S
+tools/compare/d7c_pelvis_estimators.py        the two rig estimators, the lever guard, the
+                                              controls -- FROZEN at 8a82ee4, unchanged since
+tools/compare/d7c_pelvis_synthetic.py         S, the calibration, the amended G1
 
 artifacts/compare/d7c-pelvis-rest/
   delivery-hygiene-build.json                 PASS, 8 of 8
   delivery-hygiene/                           + projection-snapshots/, converter-inputs/
   instrument-shipped.json                     the pre-card reproduced
   oracle-shipped/                             per arm per seed, O2's baseline
-  selector.json                               S, at the card's own fixture. STOP.
+  selector.json                               S at the card's own fixture. STOP. Untouched by
+                                              the amendment, exactly as it fell.
+  selector-calibrated.json                    the FIXTURE CALIBRATION. UNREACHABLE. No reread.
   selector-sensitivity-sigma{0.5,0.35,0.25}.json   REPORT ONLY
-  logs/01-hygiene.log 02-instrument-shipped.log 03-selector.log 04-sensitivity-sigma*.log
+  logs/01-hygiene.log 02-instrument-shipped.log 03-selector.log
+       04-sensitivity-sigma*.log 05-calibrated.log 06-violation-diagnosis.log
 ```
+
+`git diff 7e35dd0 -- src/` is empty and
+`git diff 8a82ee4 -- tools/compare/d7c_pelvis_estimators.py` is empty: no source file and no
+estimator was touched at any point in this step.

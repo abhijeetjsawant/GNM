@@ -424,12 +424,51 @@ def main() -> int:
                              "seeing the verdict would be selecting on a knob. The sweep "
                              "exists so the coordinator and Astra can see how the a/b "
                              "selection and the follower ratio move with it.")
+    parser.add_argument("--calibrate", action="store_true",
+                        help="the FIXTURE CALIBRATION amendment (Astra rounds 5 and 6): "
+                             "measure the take's guard-kept lever sd at S's own stage, "
+                             "report the zero-noise baseline through the same pipeline, "
+                             "bisect ONE pixel-sigma scale to it on the frozen bracket, "
+                             "then REREAD ALL of S at that sigma into "
+                             "`selector-calibrated.json`. `selector.json` -- the sigma-1.0 "
+                             "STOP -- is never touched.")
     args = parser.parse_args()
     out = args.out if args.out.is_absolute() else ROOT / args.out
-    if args.sigma_scale != 1.0:
+    if args.calibrate:
+        out = out.parent / "selector-calibrated.json"
+    elif args.sigma_scale != 1.0:
         out = out.parent / f"selector-sensitivity-sigma{args.sigma_scale:g}.json"
     rig = load_camera_rig(RIG)
     cameras = tuple(c.scaled(d7s.WORKING_WIDTH, d7s.WORKING_HEIGHT) for c in rig)
+
+    bodies = {seed: body(seed) for seed in d3.SEEDS}
+    calibration: dict | None = None
+    if args.calibrate:
+        target = take_calibration_target()
+        print("calibration target:", json.dumps(target["per_performer"], indent=1))
+        print(f"target_mm = {target['target_mm']}  (frozen constant "
+              f"{CALIBRATION_TARGET_MM})")
+        if abs(target["target_mm"] - CALIBRATION_TARGET_MM) > 1e-4:
+            raise SystemExit(
+                f"the measured target {target['target_mm']} does not reproduce the frozen "
+                f"{CALIBRATION_TARGET_MM}; the calibration is not the one the card froze")
+        baseline = zero_noise_baseline(cameras, bodies)
+        print("zero-noise baseline (reported first, NEVER subtracted): "
+              f"guard-kept lever sd {baseline['median_of_six_guard_kept_lever_sd_mm']} mm")
+        found = calibrate(cameras, bodies, CALIBRATION_TARGET_MM)
+        calibration = {"take_target": target, "zero_noise_baseline": baseline,
+                       "bisection": found}
+        if found["status"] != "CALIBRATED":
+            report = {
+                "title": "D7c selector S -- FIXTURE CALIBRATION, unreachable",
+                "S_verdict": "STOP",
+                "stop": (f"the calibration is {found['status']}: {found['reason']}. The "
+                         "sigma-1.0 STOP stands and no reread was performed."),
+                "calibration": calibration}
+            return finish(report, out, stop=True)
+        args.sigma_scale = found["accepted_sigma_scale"]
+        print(f"CALIBRATED sigma_scale = {args.sigma_scale} "
+              f"({found['accepted_value_mm']} mm against {CALIBRATION_TARGET_MM})")
 
     report: dict = {
         "title": "D7c selector S -- which rig-rest pelvis construction ships",
@@ -462,18 +501,25 @@ def main() -> int:
         },
         "arms": list(ARMS),
         "sigma_scale": args.sigma_scale,
-        "is_the_pre_registered_fixture": args.sigma_scale == 1.0,
-        "sensitivity_note": (None if args.sigma_scale == 1.0 else
-                             "SENSITIVITY ONLY. The card pre-registers the fixture at "
-                             "I7/I8's own amplitude; this file selects nothing and its "
-                             "verdict is not S's verdict."),
+        "is_the_pre_registered_fixture": args.sigma_scale == 1.0 and not args.calibrate,
+        "calibration": calibration,
+        "sensitivity_note": (
+            None if args.sigma_scale == 1.0 and not args.calibrate else
+            ("THE CALIBRATED REREAD, under the card's FIXTURE CALIBRATION amendment "
+             "(Astra rounds 5 and 6). Every S clause is reread at the calibrated sigma "
+             "with all six bodies kept; the sigma-1.0 STOP stays recorded as it fell in "
+             "`selector.json`. If this reread also fails the follower clause the failure "
+             "is recorded and D7c stays undelivered: no second reduction, no band change, "
+             "no shipping on the remaining conjuncts.") if args.calibrate else
+            ("SENSITIVITY ONLY. The card pre-registers the fixture at I7/I8's own "
+             "amplitude; this file selects nothing and its verdict is not S's verdict.")),
         "bodies": {},
     }
 
     per_body: dict = {}
     frozen: dict = {}
     for seed in d3.SEEDS:
-        data = body(seed)
+        data = bodies[seed]
         rng = np.random.default_rng(seed)          # one frozen draw per body
         observation = observe_body(cameras, data, rng, args.sigma_scale)
         frozen[seed] = {"data": data, "observation": observation}
@@ -598,6 +644,237 @@ def main() -> int:
     return finish(report, out, stop=False)
 
 
+# ------------------------------------------------------------------- FIXTURE CALIBRATION
+#
+# A post-hoc amendment under CLAUDE.md's D8b rule, frozen here BEFORE any reread, after S
+# stopped at sigma 1.0. The sigma-1.0 verdict stays recorded exactly as it fell
+# (`selector.json`); this writes `selector-calibrated.json` beside it.
+#
+# THE TARGET is measured, never typed: the take's |Spine1 - hip midpoint| standard deviation
+# at the SAME processing stage S measures -- the converter inputs the delivery's own watcher
+# dumped, gap-filled, hips smoothed, Spine1 unsmoothed -- over the frames the 0.15 guard
+# KEEPS, per performer, taking the larger. Gross failures belong to G2, not to the noise.
+#
+# THE CONVENTION is `ddof=0` on BOTH sides, because the synthetic statistic uses `np.std`
+# and that is what is frozen. (At `ddof=1` the same take figures read 6.014 / 8.800; the
+# difference is the SD denominator, not rounding.)
+#
+# WHAT THE TARGET IS NOT. D7's rigidity row (6.61 / 11.10) is a RAW-triangulation,
+# common-valid-mask statistic on 150 / 138 frames and is a different stage; it is not the
+# matched target. And the take's sd is an upper bound on its observation noise only under an
+# additive, uncorrelated length-error model -- a guard-kept sd is a CONDITIONAL spread, and
+# selecting by observed length can break that decomposition, so NO harshness claim is made in
+# either direction. Length bounds no direction at all.
+#
+# THE ZERO-NOISE BASELINE is reported first and is NEVER subtracted from either side. The
+# target is the total post-processed observable, so the preprocessing belongs on both sides;
+# subtracting variances would need a covariance model and would be a different calibration.
+CALIBRATION_TARGET_MM = 8.7636          # performer 1, guard-kept, ddof=0. Measured below.
+CALIBRATION_TOLERANCE_MM = 0.05
+CALIBRATION_BRACKET = (0.10, 1.00)
+CALIBRATION_MAX_EVALUATIONS = 20
+HYGIENE_BUILD = ROOT / "artifacts/compare/d7c-pelvis-rest/delivery-hygiene"
+
+
+def take_calibration_target(build: Path = HYGIENE_BUILD) -> dict:
+    """The target, measured from the delivery's own retained converter inputs."""
+    rows = {}
+    for subject in (0, 1):
+        with np.load(build / f"converter-inputs/call-{subject:02d}.npz") as archive:
+            positions = np.asarray(archive["positions_world_z_up_m"], np.float64)
+            spine_z_up = np.asarray(archive["spine_world_z_up_m"], np.float64)
+        points = positions[..., (0, 2, 1)].copy()
+        points[..., 2] *= -1.0
+        spine = spine_z_up[..., (0, 2, 1)].copy()
+        spine[..., 2] *= -1.0
+        hip_mid = 0.5 * (points[:, cm.JOINT_INDEX["left_hip"]]
+                         + points[:, cm.JOINT_INDEX["right_hip"]])
+        guard = est.pelvis_lever_guard(spine, hip_mid, cm.SEGMENT_LENGTH_CEILING_FRACTION)
+        keep = guard["finite"] & ~guard["off"]
+        lever = 1e3 * np.linalg.norm(spine - hip_mid, axis=1)
+        rows[f"subject_{subject:02d}"] = {
+            "frames": int(len(lever)), "guard_kept_frames": int(keep.sum()),
+            "median_mm": round(float(1e3 * guard["median_m"]), 4),
+            "sd_all_frames_ddof0_mm": round(float(np.std(lever[guard["finite"]], ddof=0)), 4),
+            "sd_guard_kept_ddof0_mm": round(float(np.std(lever[keep], ddof=0)), 4),
+            "sd_guard_kept_ddof1_mm": round(float(np.std(lever[keep], ddof=1)), 4)}
+    target = max(r["sd_guard_kept_ddof0_mm"] for r in rows.values())
+    return {"per_performer": rows, "target_mm": target,
+            "source": str(build.relative_to(ROOT)) + "/converter-inputs",
+            "stage": ("the converter inputs: gap-filled, hips smoothed, Spine1 unsmoothed, "
+                      "all 150 frames, then the 0.15 lever guard's KEPT frames"),
+            "convention": "ddof=0, matching the synthetic side's `np.std`"}
+
+
+def guard_kept_lever_sd(observation: dict) -> float:
+    """The MATCHED synthetic statistic: the same keep-rule, then `np.std` with ddof=0.
+
+    Each body's own noisy lever against its own median at the 0.15 ceiling -- the identical
+    `pelvis_lever_guard` the estimators run. S's SCORING populations are untouched by this;
+    it is a calibration statistic only.
+    """
+    points, spine = observation["points"], observation["spine"]
+    hip_mid = 0.5 * (points[:, cm.JOINT_INDEX["left_hip"]]
+                     + points[:, cm.JOINT_INDEX["right_hip"]])
+    guard = est.pelvis_lever_guard(spine, hip_mid, cm.SEGMENT_LENGTH_CEILING_FRACTION)
+    keep = guard["finite"] & ~guard["off"]
+    lever = 1e3 * np.linalg.norm(spine - hip_mid, axis=1)
+    return float(np.std(lever[keep], ddof=0))
+
+
+def observe_all(cameras, bodies: dict, sigma_scale: float) -> dict:
+    """Every body observed at one sigma, from its OWN ORIGINAL seeded draw.
+
+    `np.random.default_rng(seed)` is rebuilt per body per evaluation and `observe` consumes
+    the identical stream whatever the scale (`heavy_tail_magnitude` draws its uniform first
+    and multiplies afterwards), so the actual draws -- not merely their distribution -- are
+    preserved across every sigma evaluated, the zero-noise baseline included.
+    """
+    return {seed: observe_body(cameras, data, np.random.default_rng(int(seed)), sigma_scale)
+            for seed, data in bodies.items()}
+
+
+def calibrate(cameras, bodies: dict, target_mm: float) -> dict:
+    """One pixel-sigma scale for all six bodies, by bisection on a frozen bracket.
+
+    The accepted sigma is the LAST evaluated one inside the tolerance. If the bracket does
+    not contain the target, or the statistic is not monotone in sigma across the evaluations
+    (the synthetic keep-mask can itself move with sigma), the calibration is declared
+    UNREACHABLE and the sigma-1.0 STOP stands.
+    """
+    low, high = CALIBRATION_BRACKET
+    evaluations: list[dict] = []
+
+    def evaluate(scale: float) -> float:
+        observed = observe_all(cameras, bodies, scale)
+        per_body = {seed: round(guard_kept_lever_sd(row), 4)
+                    for seed, row in observed.items()}
+        value = float(np.median(list(per_body.values())))
+        evaluations.append({"sigma_scale": round(scale, 6),
+                            "median_of_six_guard_kept_sd_mm": round(value, 4),
+                            "per_body_mm": per_body})
+        print(f"  calibration: sigma {scale:.6f} -> guard-kept lever sd "
+              f"{value:.4f} mm (target {target_mm:.4f})")
+        return value
+
+    low_value, high_value = evaluate(low), evaluate(high)
+    block: dict = {
+        "target_mm": target_mm, "tolerance_mm": CALIBRATION_TOLERANCE_MM,
+        "bracket": list(CALIBRATION_BRACKET),
+        "maximum_evaluations": CALIBRATION_MAX_EVALUATIONS,
+        "rule": ("one pixel-sigma scale for all six bodies; bisection on the frozen "
+                 "bracket until the median-of-six GUARD-KEPT synthetic lever sd is within "
+                 "the tolerance of the target; the accepted sigma is the LAST evaluated one "
+                 "inside it; the ORIGINAL seeded draws are preserved at every evaluation"),
+        "evaluations": evaluations,
+    }
+    if not (low_value - CALIBRATION_TOLERANCE_MM <= target_mm
+            <= high_value + CALIBRATION_TOLERANCE_MM):
+        block["status"] = "UNREACHABLE"
+        block["reason"] = (f"the bracket {CALIBRATION_BRACKET} spans "
+                           f"{low_value:.4f}-{high_value:.4f} mm and does not contain the "
+                           f"target {target_mm:.4f} mm")
+        return block
+    accepted = None
+    for _ in range(CALIBRATION_MAX_EVALUATIONS - len(evaluations)):
+        if abs(low_value - target_mm) <= CALIBRATION_TOLERANCE_MM:
+            accepted = low
+            break
+        if abs(high_value - target_mm) <= CALIBRATION_TOLERANCE_MM:
+            accepted = high
+            break
+        middle = 0.5 * (low + high)
+        value = evaluate(middle)
+        if abs(value - target_mm) <= CALIBRATION_TOLERANCE_MM:
+            accepted = middle
+            break
+        if value < target_mm:
+            low, low_value = middle, value
+        else:
+            high, high_value = middle, value
+    ordered = sorted(evaluations, key=lambda row: row["sigma_scale"])
+    values = [row["median_of_six_guard_kept_sd_mm"] for row in ordered]
+    monotone = all(b >= a for a, b in zip(values, values[1:]))
+    block["monotone_across_the_evaluations"] = monotone
+    block["evaluated_in_sigma_order"] = [
+        [row["sigma_scale"], row["median_of_six_guard_kept_sd_mm"]] for row in ordered]
+    # Every violation with its MAGNITUDE. The frozen rule is a boolean and is applied as a
+    # boolean; the magnitudes are reported so the coordinator can see whether a failure is
+    # a real non-monotonicity or a wiggle far below the 0.05 mm tolerance. Nothing here
+    # softens the rule -- softening it would be moving a band after seeing the numbers.
+    block["monotonicity_violations"] = [
+        {"sigma_lower": ordered[i]["sigma_scale"],
+         "sigma_higher": ordered[i + 1]["sigma_scale"],
+         "sd_lower_mm": ordered[i]["median_of_six_guard_kept_sd_mm"],
+         "sd_higher_mm": ordered[i + 1]["median_of_six_guard_kept_sd_mm"],
+         "decrease_mm": round(ordered[i]["median_of_six_guard_kept_sd_mm"]
+                              - ordered[i + 1]["median_of_six_guard_kept_sd_mm"], 5)}
+        for i in range(len(ordered) - 1)
+        if ordered[i + 1]["median_of_six_guard_kept_sd_mm"]
+        < ordered[i]["median_of_six_guard_kept_sd_mm"]]
+    block["largest_violation_mm"] = (
+        max((v["decrease_mm"] for v in block["monotonicity_violations"]), default=0.0))
+    block["mechanism_if_violated"] = (
+        "the synthetic KEEP-MASK moves with sigma: a different set of frames survives the "
+        "0.15 lever ceiling at each amplitude, so the statistic is taken over a different "
+        "population at each evaluation and is not a smooth function of sigma. That is the "
+        "mechanism the card names when it makes non-monotonicity an unreachable verdict.")
+    if accepted is None:
+        block["status"] = "UNREACHABLE"
+        block["reason"] = (f"{len(evaluations)} evaluations did not bring the statistic "
+                           f"within {CALIBRATION_TOLERANCE_MM} mm of the target")
+        return block
+    if not monotone:
+        block["status"] = "UNREACHABLE"
+        block["reason"] = ("the guard-kept statistic is not monotone in sigma across the "
+                           "evaluations; the synthetic keep-mask moves with sigma and a "
+                           "bisection on it is not well posed")
+        return block
+    block["status"] = "CALIBRATED"
+    block["accepted_sigma_scale"] = round(accepted, 6)
+    block["accepted_value_mm"] = round(
+        [row for row in evaluations
+         if row["sigma_scale"] == round(accepted, 6)][-1]
+        ["median_of_six_guard_kept_sd_mm"], 4)
+    return block
+
+
+def zero_noise_baseline(cameras, bodies: dict) -> dict:
+    """The preprocessing floor, through the SAME `observe_body` pipeline, at sigma 0.
+
+    Reported first and NEVER subtracted from either side of the calibration: the target is
+    the total post-processed observable, so the preprocessing belongs on both sides. Direct
+    truth input is not this baseline -- `observe` gap-fills and Savitzky-Golay smooths the
+    19-contract joints, and those effects survive at zero pixel noise.
+    """
+    observed = observe_all(cameras, bodies, 0.0)
+    rows: dict = {}
+    for seed, data in bodies.items():
+        row = observed[seed]
+        pop = populations(data)
+        bent = pop["bent_tercile"]["frames"]
+        arms = {}
+        for arm in ARMS:
+            quaternions = run_arm(arm, row["points"], row["spine"], data["rest"])
+            error = geodesic_deg(Rotation.from_quat(quaternions), data["truth_pelvis"])
+            arms[arm] = {"whole_deg": round(float(np.median(error)), 5),
+                         "bent_deg": round(float(np.median(error[bent])), 5)}
+        rows[str(seed)] = {
+            "guard_kept_lever_sd_mm": round(guard_kept_lever_sd(row), 4),
+            "estimator_error": arms}
+    return {
+        "what_it_is": ("sigma 0 through the SAME `observe_body` pipeline -- the real "
+                       "cameras, the real `triangulate_point`, the real gap fill and "
+                       "Savitzky-Golay smoothing -- with the identical seeded draws"),
+        "never_subtracted": ("the target is the total post-processed observable; a variance "
+                             "subtraction would need a covariance model and would be a "
+                             "DIFFERENT calibration"),
+        "median_of_six_guard_kept_lever_sd_mm": round(float(np.median(
+            [r["guard_kept_lever_sd_mm"] for r in rows.values()])), 4),
+        "bodies": rows,
+    }
+
+
 # ----------------------------------------------------- what the fixture itself contributes
 # D7's own report records the real take's measured spread of the pelvis lever beside the
 # synthetic's (`artifacts/compare/d7-pelvis-frame/synthetic.json`,
@@ -652,8 +929,18 @@ def fixture_attribution(frozen: dict) -> dict:
             for name in ("root", "left_hip", "right_hip", "neck")}
         per_point["Spine1"] = round(float(np.median(1e3 * np.linalg.norm(
             observation["spine"] - held["data"]["truth_spine"], axis=1))), 3)
+        guard = est.pelvis_lever_guard(
+            observation["spine"], hip_mid, cm.SEGMENT_LENGTH_CEILING_FRACTION)
+        keep = guard["finite"] & ~guard["off"]
         spread[str(seed)] = {
             "midhips_to_spine1_sd_mm": round(float(np.std(lever)), 3),
+            # THE MATCHED STATISTIC (Astra round 6): the same keep-rule the take's target
+            # uses, and `ddof=0` on both sides. The all-frames row above is kept beside it
+            # because the sigma-1.0 report quoted it and the correction should be readable
+            # against what it corrects. S's SCORING populations are unchanged by either.
+            "midhips_to_spine1_sd_guard_kept_ddof0_mm": round(
+                float(np.std(lever[keep], ddof=0)), 3),
+            "guard_kept_frames": int(keep.sum()),
             "truth_lever_sd_mm": round(float(np.std(
                 1e3 * np.linalg.norm(held["data"]["truth_spine"] - truth_mid, axis=1))), 5),
             "per_landmark_3d_noise_median_mm": per_point}
@@ -673,6 +960,9 @@ def fixture_attribution(frozen: dict) -> dict:
                 [noiseless[s]["C_on_SOMA"]["bent_deg"] for s in noiseless])), 5),
             "synthetic_lever_sd_mm_median_of_six": round(float(np.median(
                 [spread[s]["midhips_to_spine1_sd_mm"] for s in spread])), 3),
+            "synthetic_lever_sd_guard_kept_ddof0_mm_median_of_six": round(float(np.median(
+                [spread[s]["midhips_to_spine1_sd_guard_kept_ddof0_mm"] for s in spread])), 3),
+            "take_guard_kept_target_mm": CALIBRATION_TARGET_MM,
             "real_take_lever_sd_mm": list(
                 D7_REAL_TAKE_MIDHIPS_TO_SPINE1_SD_MM.values()),
         },
@@ -705,11 +995,45 @@ def g1(frozen: dict, winner: str) -> dict:
         step_est = Rotation.from_quat(guarded[1:]) * Rotation.from_quat(guarded[:-1]).inv()
         step_truth = truth[1:] * truth[:-1].inv()
         step = geodesic_deg(step_est, step_truth)
+        # THE AMENDED CLAIM (Astra round 5): identical effective masks and retained samples
+        # must produce bit-identical INTERPOLATED ARRAYS. That is what is tested here --
+        # the arrays `np.interp` produces, not the quaternions downstream of them. The
+        # quaternion comparison is kept beside it because the old claim was made on it and
+        # the correction should be readable against what it corrects.
+        guarded_filled, guarded_mask = interpolated_array(spine, points, guard=True)
+        unguarded_filled, unguarded_mask = interpolated_array(spine, points, guard=False)
+        masks_identical = bool(np.array_equal(guarded_mask, unguarded_mask))
+        extra = [f for f in report_guarded["lever_guard"]["demoted_frames"]
+                 if not missing[f]]
+        # Every additional finite rejection, with the three numbers that decide it. An
+        # ordinary noisy sample crossing the stated threshold is the guard working as
+        # implemented, not an implementation error, and the reader should be able to see
+        # which it is without rerunning anything.
+        hip_mid = 0.5 * (points[:, cm.JOINT_INDEX["left_hip"]]
+                         + points[:, cm.JOINT_INDEX["right_hip"]])
+        diagnosis = est.pelvis_lever_guard(spine, hip_mid,
+                                           cm.SEGMENT_LENGTH_CEILING_FRACTION)
+        median_mm = 1e3 * diagnosis["median_m"]
+        rejections = [{
+            "frame": int(f),
+            "lever_mm": round(float(1e3 * diagnosis["lever_m"][f]), 4),
+            "median_mm_over_the_finite_frames": round(float(median_mm), 4),
+            "threshold_fraction": cm.SEGMENT_LENGTH_CEILING_FRACTION,
+            "off_by_fraction": round(float(
+                abs(1e3 * diagnosis["lever_m"][f] / median_mm - 1.0)), 5),
+            "threshold_mm_band": [round(float(median_mm * 0.85), 4),
+                                  round(float(median_mm * 1.15), 4)],
+        } for f in extra]
         block["bodies"][str(seed)] = {
+            "interpolated_arrays_bit_identical": bool(
+                np.array_equal(guarded_filled, unguarded_filled)),
+            "effective_masks_identical": masks_identical,
+            "claim_holds_as_amended": bool(
+                (not masks_identical)
+                or np.array_equal(guarded_filled, unguarded_filled)),
             "quaternions_bit_identical": bool(np.array_equal(guarded, unguarded)),
-            "guard_additionally_demoted": [
-                f for f in report_guarded["lever_guard"]["demoted_frames"]
-                if not missing[f]],
+            "guard_additionally_demoted": extra,
+            "additional_rejections": rejections,
             "guard_demoted_count": report_guarded["lever_guard"]["demoted_count"],
             "recovery_error_on_missing_frames_i_deg": round(
                 float(np.median(error[missing])), 5),
@@ -717,9 +1041,44 @@ def g1(frozen: dict, winner: str) -> dict:
                 float(np.median(step[pairs])), 5),
             "i_deg_elsewhere": round(float(np.median(error[~missing])), 5),
         }
-    block["equivalence_holds_on_every_body"] = all(
-        r["quaternions_bit_identical"] for r in block["bodies"].values())
+    block["amended_claim"] = (
+        "identical effective masks and retained samples => bit-identical INTERPOLATED "
+        "ARRAYS. The original wording -- that the two arms' arrays are bit-identical "
+        "whenever the missing pattern is the same -- was overbroad: an additional finite "
+        "rejection changes the mask, and removing the 29 samples also changes the finite "
+        "median the guard compares against. A rejection is diagnosed by its own lever, "
+        "median and threshold, never selected away, and is not a superiority claim.")
+    block["claim_holds_on_every_body_as_amended"] = all(
+        r["claim_holds_as_amended"] for r in block["bodies"].values())
+    block["unconditional_identity_on_every_body"] = all(
+        r["interpolated_arrays_bit_identical"] for r in block["bodies"].values())
+    block["bodies_with_an_additional_rejection"] = [
+        seed for seed, r in block["bodies"].items() if r["guard_additionally_demoted"]]
     return block
+
+
+def interpolated_array(spine: np.ndarray, points: np.ndarray,
+                       guard: bool) -> tuple[np.ndarray, np.ndarray]:
+    """The array `_pelvis_world_frames` actually interpolates, and the mask it used.
+
+    `rig_rest_pelvis_frames` is FROZEN at 8a82ee4 and is not modified to expose this, so
+    the two lines it runs -- the guard's NaN assignment and the per-component `np.interp`
+    -- are re-executed here from the same frozen `pelvis_lever_guard`. Nothing about the
+    estimator's own arithmetic is re-implemented; this is the recovery path only, and G1
+    is an equivalence check on exactly that path.
+    """
+    spine = np.asarray(spine, dtype=np.float64).copy()
+    if guard:
+        hip_mid = 0.5 * (points[:, cm.JOINT_INDEX["left_hip"]]
+                         + points[:, cm.JOINT_INDEX["right_hip"]])
+        spine[est.pelvis_lever_guard(
+            spine, hip_mid, cm.SEGMENT_LENGTH_CEILING_FRACTION)["off"]] = np.nan
+    valid = np.isfinite(spine).all(axis=1)
+    filled = spine.copy()
+    axis = np.arange(len(spine), dtype=np.float64)
+    for component in range(3):
+        filled[:, component] = np.interp(axis, axis[valid], spine[valid, component])
+    return filled, valid
 
 
 def g2(frozen: dict, winner: str) -> dict:
