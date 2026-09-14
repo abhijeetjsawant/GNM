@@ -773,6 +773,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "Astra round 7: the calibration's monotonicity precondition amended in the reviewer's wording (any-pair decrease > 0.05 mm or a second sign change stops; a diagnosed keep-mask dip within tolerance does not), recorded as post hoc; the agent's stop stays recorded; the agent resumed to reread all of S at the exact evaluated sigma 0.335546875."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "The agent reached MERGE on its own reading at ladder/D7c 9dda9ac (E_rig_rest_kabsch ships; hygiene, tripwire 8/8, O1 exact, O2, S reread PROCEED at the calibrated sigma, P on the take, B1 8/8 with three torso cells RISING unpredicted, B2 same denominator). Astra's merge review: NO MERGE -- oracle P2 never measured and the gate's S conjunct excludes G2 (an injected FAIL still returned MERGE); B6's mesh-deformation, rotational-closure and rest/IBM reports owed; a B1 attribution ablation (D9b's root under the candidate's locals) required; six overclaims corrected. Sent back to the agent."
     }
   ]
 }
