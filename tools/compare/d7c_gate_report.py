@@ -100,6 +100,9 @@ CONTROL_CHANNELS = {
     "control_2_contact_mask_cleared": {"foot_contacts"},
 }
 CONTROL_2_BUILT_CHANNELS = {"root_translation_m", "foot_contacts"}
+# The P1 channel set, BY NAME and in full: the two whole-track channels and the ten protected
+# locals. `channel_preservation` requires the report's `channels` map to BE this set.
+P1_CHANNELS = ("root_translation_m", "foot_contacts", *(f"local::{j}" for j in PROTECTED))
 PROTECTED_CHANNELS = ({"root_translation_m", "foot_contacts"}
                       | {f"local::{j}" for j in (
                           "Root", "Hips", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg",
@@ -349,17 +352,51 @@ def build(reports: dict) -> dict:
         return (f"{min(ratios.values()):.3f}-{max(ratios.values()):.3f}x; {len(below)} of "
                 f"{len(ratios)} below {FOLLOWER_RATIO}x", not below)
 
+    def evaluation_median(index):
+        """One evaluation's statistic, DERIVED from the six bodies it is a median of -- and
+        cross-checked in three places.
+
+        The stored `median_of_six_guard_kept_sd_mm` is what both calibration clauses banded,
+        and Astra's round 7 moved one body's value in evaluation 9 from 8.9585 to 100: the
+        stored aggregate was untouched, the derived median rises to 9.028, and the accepted
+        sigma is then 0.264 mm OUTSIDE the tolerance the admissibility rule requires. The six
+        values are also written independently into the amended file, so the two records must
+        agree as well.
+        """
+        base = ("calibration", "calibration", "bisection", "evaluations", index)
+        sigma = r.num(*base, "sigma_scale")
+        bodies = r.named(*base, "per_body_mm", expect=ORACLE_SEEDS)
+        values = {seed: r.num(*base, "per_body_mm", seed) for seed in ORACLE_SEEDS}
+        mirror = r.at("admissibility", "all_six_body_values_per_evaluation_mm")
+        if not isinstance(mirror, dict):
+            raise Missing("admissibility/all_six_body_values_per_evaluation_mm")
+        keys = [k for k in mirror if abs(float(k) - sigma) <= 5e-7]
+        if len(keys) != 1:
+            raise Missing(f"the amended file records {len(keys)} evaluations at sigma "
+                          f"{sigma}, not exactly one")
+        r.named("admissibility", "all_six_body_values_per_evaluation_mm", keys[0],
+                expect=ORACLE_SEEDS)
+        for seed in ORACLE_SEEDS:
+            twin = r.num("admissibility", "all_six_body_values_per_evaluation_mm", keys[0],
+                         seed)
+            if not agrees(twin, values[seed], 1e-6):
+                raise Missing(f"sigma {sigma} body {seed}: the calibration records "
+                              f"{values[seed]} and the amended file {twin}")
+        derived = median(list(values.values()))
+        stored = r.num(*base, "median_of_six_guard_kept_sd_mm")
+        if not agrees(stored, derived, 1e-3):
+            raise Missing(f"evaluation {index} at sigma {sigma} stores {stored} mm against "
+                          f"{derived} derived from its {len(bodies)} bodies")
+        return sigma, derived
+
     @clause("the amended card's FIXTURE CALIBRATION, under its own frozen monotonicity precondition",
             "monotone across the evaluations",
             "the step STOPPED again; `selector-calibrated.json` is immutable")
     def _():
         evaluations = r.listing("calibration", "calibration", "bisection", "evaluations",
                                 minimum=2)
-        ordered = sorted(range(len(evaluations)),
-                         key=lambda i: r.num("calibration", "calibration", "bisection",
-                                             "evaluations", i, "sigma_scale"))
-        values = [r.num("calibration", "calibration", "bisection", "evaluations", i,
-                        "median_of_six_guard_kept_sd_mm") for i in ordered]
+        pairs = sorted(evaluation_median(i) for i in range(len(evaluations)))
+        values = [value for _sigma, value in pairs]
         worst = max((values[i] - values[j] for i in range(len(values))
                      for j in range(i + 1, len(values)) if values[j] < values[i]), default=0.0)
         return (f"largest earlier-to-later decrease {worst:.4f} mm over {len(values)} "
@@ -374,12 +411,9 @@ def build(reports: dict) -> dict:
                                 minimum=2)
         target = r.num("admissibility", "admissibility", "target_mm")
         bracket = r.listing("admissibility", "admissibility", "bracket", minimum=2)
-        pairs = sorted(
-            (r.num("calibration", "calibration", "bisection", "evaluations", i,
-                   "sigma_scale"),
-             r.num("calibration", "calibration", "bisection", "evaluations", i,
-                   "median_of_six_guard_kept_sd_mm"))
-            for i in range(len(evaluations)))
+        # EVERY evaluation's statistic derived from its own six bodies, because the rule
+        # bands all of them (A and B) and not only the accepted one (C).
+        pairs = sorted(evaluation_median(i) for i in range(len(evaluations)))
         values = [value for _sigma, value in pairs]
         worst = max((values[i] - values[j] for i in range(len(values))
                      for j in range(i + 1, len(values)) if values[j] < values[i]), default=0.0)
@@ -397,26 +431,32 @@ def build(reports: dict) -> dict:
                 and float(bracket[0]) <= accepted <= float(bracket[1]))
 
     # ------------------------------------------------------------------- S, the reread
-    def per_body(arm_name, population, metric):
-        """THE AGGREGATE, DERIVED -- and its POPULATION validated.
+    def body_metric(seed, arm_name, population, metric):
+        """ONE body's number, with its POPULATION validated first. EVERY arm goes through
+        here -- the winner, the loser, C-on-SOMA and the CONTROLS alike.
 
         A median says nothing without the population it is over. Astra's round 6 set one
-        body's `n_frames` to 0 and the medians sailed through, so every body's frame and pair
-        counts must equal the frozen sizes before its number is used.
+        body's `n_frames` to 0 and the medians sailed through, which put the check in
+        `per_body`; round 7 then set the FOLLOWER's `n_frames` and `n_pairs` to 0, and the
+        follower clause -- which reaches into the body rows directly rather than through the
+        aggregate -- never saw it. The check belongs at the single point where a body's
+        number is read, not at one of its callers.
         """
         r.named("reread", "bodies", expect=ORACLE_SEEDS)
         frames, pairs = S_POPULATION[population]
-        out = {}
-        for seed in ORACLE_SEEDS:
-            base = ("reread", "bodies", seed, "arms", arm_name, population)
-            if (int(r.num(*base, "n_frames")) != frames
-                    or int(r.num(*base, "n_pairs")) != pairs):
-                raise Missing(
-                    f"bodies/{seed}/{arm_name}/{population} population is "
-                    f"{int(r.num(*base, 'n_frames'))}/{int(r.num(*base, 'n_pairs'))}, not "
-                    f"the frozen {frames}/{pairs}")
-            out[seed] = r.num(*base, metric)
-        return out
+        base = ("reread", "bodies", seed, "arms", arm_name, population)
+        if (int(r.num(*base, "n_frames")) != frames
+                or int(r.num(*base, "n_pairs")) != pairs):
+            raise Missing(
+                f"bodies/{seed}/{arm_name}/{population} population is "
+                f"{int(r.num(*base, 'n_frames'))}/{int(r.num(*base, 'n_pairs'))}, not "
+                f"the frozen {frames}/{pairs}")
+        return r.num(*base, metric)
+
+    def per_body(arm_name, population, metric):
+        """THE AGGREGATE'S CONSTITUENTS, each with its population validated."""
+        return {seed: body_metric(seed, arm_name, population, metric)
+                for seed in ORACLE_SEEDS}
 
     def aggregate(arm_name, population, metric):
         derived = median(list(per_body(arm_name, population, metric).values()))
@@ -485,10 +525,12 @@ def build(reports: dict) -> dict:
             # Astra's round 6 set the winner's bent-tercile error on one body to 100 deg:
             # the six-body median barely moved, the duplicated `winner_i_deg` was left alone,
             # and that body's true ratio fell to 0.146 unnoticed.
-            follower = r.num("reread", "bodies", seed, "arms", "frozen_pitch_follower",
-                             "bent_tercile", "i_orientation_deg")
-            winner = r.num("reread", "bodies", seed, "arms", winner_arm, "bent_tercile",
-                           "i_orientation_deg")
+            # AND BOTH GO THROUGH THE POPULATION CHECK. Astra's round 7 set the follower's
+            # own `n_frames` and `n_pairs` to 0 on one body: the ratio was unchanged, because
+            # a median over an empty population is still whatever the file says it is.
+            follower = body_metric(seed, "frozen_pitch_follower", "bent_tercile",
+                                   "i_orientation_deg")
+            winner = body_metric(seed, winner_arm, "bent_tercile", "i_orientation_deg")
             if winner <= 0.0:
                 raise Missing(f"bodies/{seed}/{winner_arm}/bent_tercile is not positive")
             ratios[seed] = follower / winner
@@ -580,16 +622,45 @@ def build(reports: dict) -> dict:
                 and [int(c) for c in counts] == demoted)
 
     # --------------------------------------------------------------------------- P
-    def run_identities(*path):
-        """The runs, by (side, start, end), from the FROZEN MASK -- and the measurement rows
-        must BE that set. A duplicated run keeps the count and the maximum; identity is what
-        catches it."""
-        expected = {(int(side), int(start), int(end))
-                    for side, start, end in r.listing(*path, "mask_run_identities")}
-        rows = r.listing(*path, "runs" if path[-1] != "P2_on_the_oracle_bodies"
-                         else "run_measurements", minimum=0) \
-            if False else None
-        return expected
+    def channel_preservation(*path):
+        """Each P1 channel's preservation DERIVED from its own constituents, with the stored
+        `bit_identical` and `failing_channels` cross-checked against what it derives.
+
+        `local::<joint>` carries `frames_that_differ`, `foot_contacts` carries the two
+        per-side contact counts before and after; both are on disk. `root_translation_m`
+        carries only its dtype -- there is NO constituent in the report -- so its boolean is
+        trusted and named in the inventory. Astra's round 7 set `local::LeftFoot`'s
+        `frames_that_differ` to 150 and the left delivered contact count to 0, and this
+        clause, reading only `bit_identical`, passed both.
+        """
+        r.named(*path, "channels", expect=P1_CHANNELS)
+        derived = {}
+        for name in P1_CHANNELS:
+            base = (*path, "channels", name)
+            if name.startswith("local::"):
+                value = r.num(*base, "frames_that_differ") == 0
+            elif name == "foot_contacts":
+                before = [int(x) for x in r.listing(*base, "snapshot_contacts", minimum=2)]
+                after = [int(x) for x in r.listing(*base, "delivered_contacts", minimum=2)]
+                if len(before) != 2 or len(after) != 2:
+                    raise Missing(f"{'/'.join(map(str, base))} contact counts are not "
+                                  f"per-side pairs: {before} and {after}")
+                value = before == after
+            else:
+                value = r.flag(*base, "bit_identical")   # no constituent; see the inventory
+            stored = r.flag(*base, "bit_identical")
+            if stored != value:
+                raise Missing(f"{'/'.join(map(str, base))}/bit_identical stores {stored} "
+                              f"against {value} derived from its own constituents")
+            derived[name] = value
+        failing = {name for name, ok in derived.items() if not ok}
+        # `failing_channels` is CROSS-CHECKED against the per-channel values it summarises: a
+        # list that disagrees with its own constituents is a corrupted report.
+        stored_failing = set(r.at(*path, "failing_channels"))
+        if stored_failing != failing:
+            raise Missing(f"{'/'.join(map(str, path))}/failing_channels "
+                          f"{sorted(stored_failing)} against {sorted(failing)} derived")
+        return derived, failing
 
     def measured_runs(*path, field):
         rows = r.listing(*path, field, minimum=1)
@@ -635,27 +706,10 @@ def build(reports: dict) -> dict:
                 raise Missing(f"P1/{performer}/authenticated stores {saved} against "
                               f"{derived} derived from the two hashes")
             ok &= derived
-            channels = r.at("projection", "subjects", performer, "P1_channel_preservation",
-                            "channels")
-            for name in ("root_translation_m", "foot_contacts", *(f"local::{j}"
-                                                                 for j in PROTECTED)):
-                if name not in channels:
-                    raise Missing(f"P1/{performer}/channels/{name}")
-                ok &= r.flag("projection", "subjects", performer, "P1_channel_preservation",
-                             "channels", name, "bit_identical")
-            # `failing_channels` is CROSS-CHECKED against the per-channel flags it
-            # summarises: a list that disagrees with its own booleans is a corrupted report.
-            derived_failing = {
-                name for name in ("root_translation_m", "foot_contacts",
-                                  *(f"local::{j}" for j in PROTECTED))
-                if not r.flag("projection", "subjects", performer,
-                              "P1_channel_preservation", "channels", name, "bit_identical")}
-            failing[performer] = sorted(r.at("projection", "subjects", performer,
-                                             "P1_channel_preservation", "failing_channels"))
-            if set(failing[performer]) != derived_failing:
-                raise Missing(f"P1/{performer}/failing_channels {failing[performer]} "
-                              f"against {sorted(derived_failing)} derived from the flags")
-            ok &= not failing[performer]
+            preserved, failed = channel_preservation(
+                "projection", "subjects", performer, "P1_channel_preservation")
+            ok &= all(preserved.values()) and not failed
+            failing[performer] = sorted(failed)
         return f"{len(PERFORMERS)} performers; failing {failing}", ok
 
     @clause("P2 anchor lock -- the delivery, every accepted run, on the GLB's own arrays",
@@ -777,8 +831,13 @@ def build(reports: dict) -> dict:
             "an INSTRUMENT DEFECT was found by this very control")
     def _():
         r.named("control2", "subjects", expect=PERFORMERS)
-        failing = {s: set(r.at("control2", "subjects", s, "P1_channel_preservation",
-                               "failing_channels")) for s in PERFORMERS}
+        failing = {}
+        for performer in PERFORMERS:
+            # the SAME derivation as the delivery's P1: the control's detection is read from
+            # the channels' own constituents, so a control that "fails" only in a saved
+            # boolean cannot stand in for one the instrument actually caught.
+            _preserved, failing[performer] = channel_preservation(
+                "control2", "subjects", performer, "P1_channel_preservation")
         return (str({s: sorted(v) for s, v in failing.items()}),
                 all(seen == CONTROL_2_BUILT_CHANNELS and seen <= PROTECTED_CHANNELS
                     for seen in failing.values()))
@@ -808,10 +867,26 @@ def build(reports: dict) -> dict:
             "PASS (landmarks byte-identical)",
             "CHANGED would mean the change did more than refit the pelvis")
     def _():
-        value = r.at("b2", "same_denominator")
-        if isinstance(value, dict):
-            value = value.get("verdict", value)
-        return str(value), str(value).upper() in ("TRUE", "PASS")
+        # DERIVED FROM THE PER-SUBJECT, PER-BUILD CONSTITUENTS, which are on disk beside the
+        # aggregate. Astra's round 7 set subject_00's D7c entry to false and this clause,
+        # reading only `same_denominator`, still passed.
+        r.named("b2", "triangulated_landmarks_byte_identical_across_arms",
+                expect=PERFORMERS)
+        identical = {}
+        for performer in PERFORMERS:
+            r.named("b2", "triangulated_landmarks_byte_identical_across_arms", performer,
+                    expect=("D9b", "D7c"))
+            for build_name in ("D9b", "D7c"):
+                identical[f"{performer}/{build_name}"] = r.flag(
+                    "b2", "triangulated_landmarks_byte_identical_across_arms", performer,
+                    build_name)
+        derived = all(identical.values())
+        stored = r.flag("b2", "same_denominator")
+        if stored != derived:
+            raise Missing(f"b2/same_denominator stores {stored} against {derived} derived "
+                          f"from {len(identical)} per-subject per-build entries")
+        return (f"{sum(identical.values())} of {len(identical)} subject x build arrays "
+                f"byte-identical", derived)
 
     # --------------------------------------------------------------- the REPORT blocks
     @clause("B4 the pelvis and the root's motion (REPORTED, never banded)", "REPORT",
