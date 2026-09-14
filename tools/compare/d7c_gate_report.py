@@ -108,8 +108,10 @@ POPULATIONS = ("whole_take", "bent_tercile")
 # S's frozen population sizes, per body per arm. 150 frames whole take and 50 in the bent
 # tercile; pairs are formed on the FULL sequence and belong to a population iff BOTH
 # endpoints do, which gives 149 whole-take pairs and 47 bent ones -- 47 and not 49, because
-# the tercile's 50 frames are not contiguous. (Astra's round 6 wrote 49; every one of the 42
-# body x arm rows in the reread carries 47, and the card's own pair rule is why.)
+# the tercile's 50 frames are not contiguous. (An earlier note here attributed a 49-pair
+# requirement to Astra's round 6. THAT ATTRIBUTION WAS WRONG AND IS WITHDRAWN: round 6 made no
+# such requirement, and 47 is right by the both-endpoints rule -- every one of the 84 body x
+# arm x population rows in the reread carries the size this table states.)
 S_POPULATION = {"whole_take": (150, 149), "bent_tercile": (50, 47)}
 # S's arms BY NAME -- the two candidates, the unguarded variant, C-on-SOMA and the three
 # controls -- and the sigma the calibration accepted. Every arm's population is validated,

@@ -954,6 +954,8 @@ whether flipping it to FAIL turns the merge rule.
 | hygiene: today's code rebuilds the shipped delivery | 8 of 8 | 8 of 8 | **PASS** |
 | **tripwire (i)** mode C held reproduces D9b | 8 of 8 | 8 of 8, 274.0 s, `lever_guard.applied: false` | **PASS** |
 | **tripwire (ii)** the SAME execution vs exact truth | 6.865° | 6.8650 – 6.8651° | **PASS** (as a must-fail) |
+| **O1/O2 premises**: the six named arms, their populations, the shipping path's identity | 6 arms × 6 seeds at 150 frames; `src_default` == `E_rig_rest_kabsch` | leaf for leaf on every seed; `pelvis_frame_source_in_src` = `E_rig_rest_kabsch`; root landmark on the hip midpoint to 0.0 mm | **PASS** |
+| **O1/O2 premises**: the bands the instrument recorded ARE the bands the gate states | 5 bands equal | 5 of 5 equal | **PASS** |
 | O1 pelvis vs truth | ≤ 0.01° (from 6.865) | max **0.0001°** | **PASS** |
 | O1 `Spine` origin, hoist-subtracted | ≤ 0.01 mm (from 21–28) | max **0.0001 mm** | **PASS** |
 | O1 `Hips` origin, hoist-subtracted | ≤ 0.01 mm (from 10) | max **0.0002 mm** | **PASS** |
@@ -968,13 +970,14 @@ whether flipping it to FAIL turns the merge rule.
 | **S at the card's own fixture (σ 1.0): follower ≥ 2× every body** | ≥ 2× on 6/6 | **1.45 – 2.74×; 5 of 6 below** | **FAIL — a recorded STOP** |
 | **the calibration under its frozen monotonicity precondition** | monotone | **one 0.0135 mm decrease** | **FAIL — a recorded STOP** |
 | the same frozen evaluations under round 7's amended rule | REACHED | A 0.0135 ≤ 0.05, B 1 sign change, C σ = 0.335546875 | **PASS** (POST HOC) |
+| **S reread: at the calibration's EXACT accepted σ, every arm's full population** | σ = 0.335546875; 150/149 and 50/47 on all 7 arms of all 6 bodies | σ matches the accepted value exactly; `selector.json` at σ 1.0 is the pre-registered fixture and this file is not; 84 arm × population rows at the frozen sizes | **PASS** |
 | S reread: (a) vs (b), 3 metrics × 2 populations | decided, not split | (b) worse in **6 of 6**; ships `E_rig_rest_kabsch` | **PASS** |
 | S reread: winner vs C-on-SOMA on (i) | strictly better, both | 5.281 vs 9.456; 5.460 vs 8.717 | **PASS** |
 | S reread: follower ≥ 2× **and** ≥ 2°, every body | 6 of 6 | **2.56 – 3.20×**, 14.6 – 16.1° | **PASS** |
 | S reread: G1's AMENDED array-level claim | holds every body | holds 6/6; unconditional identity 5/6, rejections reported with lever/median/threshold | **PASS** |
 | S reread: G2 both metrics, every body | both, 6 of 6 | (i) **7.266 vs 76.673°**, (ii) **2.590 vs 8.179°**; miss rate ≤ 0.10 | **PASS** |
 | the world-vertical control vs the truth's own tilt | report; limitation if within 2° | **17.726° vs the truth PELVIS's 16.823°** | **LIMITATION APPLIES, stated** |
-| the delivery: BOTH landmark arrays byte-identical | identical | identical, both performers | **PASS** |
+| the delivery: BOTH landmark arrays byte-identical | identical | **22 independent claims from 5 instruments**, all True — three build reports, the silhouette and the take instrument — plus the rest skeleton unmoved on both performers and the candidate's 8 delivered files all DIFFERING from D9b's | **PASS** |
 | the run-report records the mode and the demoted frames | E + 0 and 29 | `E_rig_rest_kabsch`; 0 and the frozen 29-frame mask | REPORT |
 | **P1** on the take, both performers | PASS | PASS, no failing channel, GLB-authenticated | **PASS** |
 | **P1** on every oracle body | PASS | PASS, 6 of 6 | **PASS** |
@@ -1001,9 +1004,11 @@ whether flipping it to FAIL turns the merge rule.
 | B6 between-key playback (BOTH channels interpolated, then FK) | REPORT | inside a run, maxima **0.459 / 0.295 mm** (candidate) against **0.665 / 1.311 mm** (D9b). Two earlier versions withdrawn: 0.0003 mm (composed positions) and the millimetre-scale medians (translation read at the key) | REPORT |
 | B6 the `Root` / eye / finger invariants | REPORT | bit-identical, both performers — a **TRACK-ARRAY** claim | REPORT |
 | the provenance audit | no unaudited constant | `RIG_REST_PELVIS_MODES` registered; `PELVIS_FRAME_SOURCE` rewritten keeping its history | **PASS** |
-| **merge rule, twelve conjuncts** | all PASS | all PASS | **MERGE** |
-| **the gate's three structural rules** | derived-or-cross-checked; missing is FAIL; sets by identity | every read goes through a `Reader` that raises on an absent path; every aggregate is recomputed from named constituents and cross-checked against any stored summary; files, seeds, performers, cells and **contact runs (by `(side, start, end)` from the frozen mask)** are checked by identity | **PASS** |
-| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,172 paths — 13,763 leaves + 4,409 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **2,336 enforced, 0 gaps**, 164 REPORT-only, 40 diagnostics, 14 preserved-STOP, 15,618 read by no clause. Leaves are classified by **which** clauses they move — status and conjunct membership — and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way) | **PASS** |
+| **merge rule, thirteen conjuncts** | all PASS | all PASS | **MERGE** |
+| **the gate's four structural rules** | derived-or-cross-checked; missing is FAIL; sets by identity; every measurement leaf read or justified by name | every read goes through a `Reader` that raises on an absent path; every aggregate is recomputed from named constituents and cross-checked against any stored summary; files, seeds, performers, cells, **arms** and **contact runs (by `(side, start, end)` from the frozen mask)** are checked by identity | **PASS** |
+| **measurement coverage** (round 7) | every unread MEASUREMENT leaf under a report a clause reads is justified by name; no justification matches nothing | **3,897 leaves read by a clause**; of the unread, 774 LABEL, 127 PROVENANCE, 1,488 DIAGNOSTIC and 8,100 MEASUREMENT, the last covered by **70 named families with 0 gaps and 0 dead patterns** | **PASS** |
+| **the saved-value inventory, GENERATED not written** (round 7) | every boolean or string the gate consumes without deriving it is named | generated from the `Reader`'s own record: **1,357 reads cross-checked, 103 trusted families named, 0 unjustified**. The previous hand-written list's claim that "every other saved boolean is derived or cross-checked" was **false** and is withdrawn | **PASS** |
+| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,172 paths — 13,763 leaves + 4,409 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **4,488 enforced, 0 gaps**, 148 REPORT-only, 40 diagnostics, 52 preserved-STOP, 13,444 read by no clause — and that last class is now **inverted**: 774 labels, 127 provenance strings, 1,459 diagnostics, 3,046 containers and **8,038 measurement leaves justified by name, 0 unjustified**. Leaves are classified by **which** clauses they move — status and conjunct membership — the preserved-STOP class is pinned to the two recorded stops **by name**, and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way): **0 failures** | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the
@@ -1011,13 +1016,14 @@ coordinator re-pins that file in place at the merge), and `test_body_export::…
 `test_phase4_app::test_home_and_health`, which **fail identically on the D9b worktree and are
 not this step's**. `test_provenance_audit` now passes.
 
-## 5B. The gate, and what five rounds of review taught about building one
+## 5B. The gate, and what seven rounds of review taught about building one
 
-Astra's merge review broke this gate four times, and each time it was answered hole by hole:
+Astra's merge review broke this gate six times, and each time it was answered hole by hole:
 literal verdicts (round 1), saved classifications (round 2), partial populations (round 3),
-stored aggregates (round 4). The fifth round found six more escapes. **The holes were never
-the problem; the absence of a rule was.** The gate was rewritten around three, and they are
-worth stating because they generalise past this step:
+stored aggregates (round 4), six more escapes (round 5), four unread leaves (round 6), four
+more (round 7). **The holes were never the problem; the absence of a rule was.** The gate was
+rewritten around three rules, and round 7 added a fourth; they are worth stating because they
+generalise past this step:
 
 1. **Every value is DERIVED from named constituents, or CROSS-CHECKED against them.** An
    aggregate the gate reads without recomputing is an aggregate an attacker can write. Where a
@@ -1034,6 +1040,13 @@ worth stating because they generalise past this step:
    which is what catches a run replaced by a duplicate of its neighbour. `d7c_projection_
    preservation.py` now publishes those identities independently of the measurement rows,
    because previously there was nothing to check them against.
+4. **Every measurement leaf is READ, or justified BY NAME.** Rules 1–3 govern what the gate
+   does with what it reads. Rounds 6 and 7 were about what it does not read at all, and four
+   leaves a round is a rate, not a list. So the gate now classifies **every leaf no clause
+   touches** — LABEL / PROVENANCE / DIAGNOSTIC / MEASUREMENT — and every MEASUREMENT leaf
+   under a report some clause reads is a **GAP** unless a named family justifies it. A
+   justification that matches nothing is reported too: a stale cover is a hole that looks
+   like a cover.
 
 **And it is proved rather than asserted.** `tools/compare/d7c_gate_fuzz.py` walks **every leaf
 of every report the gate reads** — not a table someone wrote — and mutates each in turn:
@@ -1049,13 +1062,28 @@ the GLB's stamped `body_track_sha256` (the gate read the saved `authenticated` b
 winner's own bent-tercile error (the follower's ratio used a duplicated copy of it), S's
 per-body population sizes (a median was read without validating what it was over), and the P1
 controls' failing channels (any nonempty list passed, including `local::Head`, a channel the
-control never touches). All four are now derived. **Every other saved boolean the gate reads
-is derived or cross-checked** — `holds` against its own run maximum, `failing_channels`
-against the per-channel flags on both P1 reports, the tripwire's mode string against the
-converter's recorded modes, `winner/arm` against `winner/mode` — and the three that remain
-(two `np.array_equal` results whose arrays exist only inside another instrument's run, and the
-landmark byte-identity booleans) are listed in `gate.json` with why each is trusted and, for
-the third, that re-deriving it from the delivered `.npz` is owed as instrument debt.
+control never touches). All four are now derived.
+
+**Round 6's answer contained a false claim, and round 7 named it.** This section used to say
+"every other saved boolean the gate reads is derived or cross-checked", with a hand-written
+list of the three exceptions. That was wrong — the oracle P1 clause alone consumes ten more
+per body — and the reason it was wrong is that **the list was written from memory**. It is
+now **generated from the `Reader`'s own record**: every boolean and string the gate consumed,
+minus every one it cross-checked against a value derived from that leaf's own constituents.
+103 families survive, each named with why, and a trusted read with no entry fails the gate.
+The inventory is what the gate *does*, not what its author recalls.
+
+**Round 7's own four leaves** were the same shape once more — B2's `same_denominator`
+aggregate, P1's per-channel `bit_identical`, the follower's population, and the calibration's
+accepted median — so closing them one by one would only have set up round 8. Inverting the
+unread class is what ends it: 8,038 unread measurement leaves are now covered by 70 named
+families, 0 are unjustified, and closing the audit required **reading** twelve families the
+gate had been silent on. Three are worth naming. Every build report's `resolved_module` must
+lie under this worktree — the PYTHONPATH trap turned into a check rather than a habit. The
+shipping arm is required to BE the named estimator: `src_default == E_rig_rest_kabsch` leaf
+for leaf on every seed, so the O bands cannot drift onto an arm S never ranked. And the
+reread is pinned to the calibration's **exact** accepted σ, so the file that decides S cannot
+be substituted for one taken at a different noise amplitude.
 
 **Two things the fuzzer found about itself.** Its first run reported B1's `ci95` upper bound as
 an escape; that was the *mutation set's* gap, not the gate's — a confidence bound fails on a
@@ -1075,6 +1103,16 @@ are now classified by **which** clauses they move — their status and whether t
 merge conjunct — with `moves a conjunct clause without turning the verdict` reported as a
 **GAP**, not as a pass. Enforced numeric leaves also get a **direction check**: where a clause
 has a direction, a value pushed further past its band must still fail.
+
+**And the fuzzer's unread bucket was itself a place to hide.** "Read by no clause" held
+15,618 rows and a reviewer found four measurements inside it in one round — which is the
+definition of a class that proves nothing. It is now sub-classified by the gate's own
+functions, so the fuzz and the gate cannot disagree about what a leaf is: 774 labels, 127
+provenance strings, 1,459 diagnostics, 3,046 containers and 8,038 justified measurements, with
+**0** unjustified. Its historical-FAIL class is pinned to the two recorded STOPs **by name**;
+deriving it from "whichever clauses fail today" would let a new clause that accidentally fails
+at the baseline absorb every leaf it reads into a class excused by construction. Enforcement
+rose from 2,336 leaves to **4,488** across those changes.
 
 **What a green fuzz does NOT prove:** that the gate reads the *right* things. Only that what it
 reads, it depends on. Choosing the clauses remains the card's job, and no amount of fuzzing
