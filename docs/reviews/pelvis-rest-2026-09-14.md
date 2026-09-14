@@ -1,10 +1,13 @@
-# D7c — the pelvis on the rig's own rest. **STOPPED at selector S, twice, before any `src/` change.**
+# D7c — the pelvis on the rig's own rest
 
 **Date** 2026-09-14 · **Branch** `ladder/D7c` · **Worktree** `.claude/worktrees/ladder-D7c`
-**Verdict: the step stopped at the pre-registered stop condition in S at the card's own fixture,
-and then again at the amended card's FIXTURE CALIBRATION, which is UNREACHABLE by its own
-frozen rule. `src/` was not touched at any point, and the instrument-side estimators are frozen
-at `8a82ee4`.**
+**The step stopped twice in S and then resumed on two reviewer amendments, each frozen before
+the reading it gates. Both stops stay recorded exactly as they fell.** S at the card's own
+fixture STOPPED on the frozen-pitch-follower clause (§3); the amended card's FIXTURE CALIBRATION
+was UNREACHABLE under its own frozen monotonicity rule (§3A); Astra round 7 ruled that STOP
+correct, amended the admissibility test post hoc in its own wording, and the same frozen
+evaluations then recorded **REACHED** (§3B); the reread of all of S at the calibration's exact
+σ **PROCEEDS**, and **`E_rig_rest_kabsch` ships** (§3C).
 Hygiene PASSED (8 of 8). The instrument PASSED, committed before `src/` could have moved, and
 reproduces the pre-card on the shipped build and on all six D3 bodies. S then reached its own
 frozen-pitch-follower clause and failed it on **5 of 6 bodies**, which the card names a STOP —
@@ -25,7 +28,9 @@ it selects nothing.
 | 1 | hygiene — today's code rebuilds the shipped delivery byte-identically | **PASS**, 8 of 8 | `d146aa3` |
 | 2 | instrument first, on the SHIPPED build and the six D3 bodies | **PASS**, reproduces the pre-card | `7d5f3a3` |
 | 3 | S, the selector, at the card's own fixture, run BEFORE the src change was chosen | **STOP** | `ee4b71f` |
-| 3A | the amended card's FIXTURE CALIBRATION, and the reread it gates | **UNREACHABLE -> STOP** | this commit |
+| 3A | the amended card's FIXTURE CALIBRATION, under its frozen monotonicity rule | **UNREACHABLE -> STOP** | `210405d` |
+| 3B | the SAME frozen evaluations under Astra round 7's amended admissibility rule | **REACHED**, S pending | `2d8bfcc` |
+| 3C | all of S reread at the exact calibrated σ = 0.335546875 | **PROCEED** — `E_rig_rest_kabsch` ships | this commit |
 | 4 | the src change | **not started** — `git diff 7e35dd0 -- src/` is EMPTY | — |
 | 5 | the delivery and the bands | **not reached** | — |
 | 6 | the gate, the extractor, the tests, the report page | **not reached** | — |
@@ -446,6 +451,101 @@ bands**, and the guarded (a) rebuild is still owed.
   (b)'s 6, and its hoist p95 rises rather than falls. The card already says contacts may move
   and replaces D9b's identical-contacts clause with P; this is the size of it under (a).
 
+
+---
+
+## 3B. Astra round 7 — the admissibility rule amended, and the same evaluations **REACHED**
+
+The frozen rule's precondition was global monotonicity, and this record failed it on one
+0.0135 mm decrease. Astra round 7 ruled that STOP **correct under the wording it was given**,
+kept it recorded, and amended the ADMISSIBILITY test — post hoc, in the reviewer's own words,
+reproduced verbatim in `AMENDED_RULE_TEXT` and in the artifact. Nothing was re-observed; the
+**same frozen evaluations** were re-assessed.
+
+**Both predecessors are immutable and were not rewritten.** `selector.json` still records the
+σ-1.0 STOP; `selector-calibrated.json` still records `status: UNREACHABLE` and
+`monotone_across_the_evaluations: false`, and `selector-calibrated-amended.json` carries its
+sha256 and states that UNREACHABLE there records the failure of **that** admissibility rule,
+not proof that no numerical match exists.
+
+| check | rule | measured | verdict |
+|---|---|---|---|
+| A | no earlier evaluated statistic exceeds **any** later one by > τ (any pair, not adjacent only — several small decreases could conceal a larger total) | one decrease, **0.0135 mm** (σ 0.339063 → 0.353125) against τ = 0.05 | **PASS** |
+| B | the nonzero signs of (statistic − target) change at most once | **1 change**, one sampled crossing: 8.7495 at σ 0.335547 → 8.8410 at 0.339063 | **PASS** |
+| C | the unchanged stopping rule finds a value within τ | band [8.7136, 8.8136]; **exactly one** evaluation inside it, 8.7495 mm, residual −0.0141 | **PASS** |
+
+**Verdict: calibration REACHED. S PENDING, not PROCEED.** REACHED is an **observed tolerance
+match** at the sampled σ — never global monotonicity, never uniqueness between evaluations,
+since even a strictly increasing continuous statistic normally has an *interval* of σ inside a
+nonzero tolerance.
+
+**The rounding defect Astra found, fixed and disclosed.** `calibrate()` returned
+`round(accepted, 6)` and `main()` passed *that* to S, so S would have been read at 0.335547
+while the calibration was evaluated at **0.335546875** — a different fixture from the one
+measured. The exact value is now carried and is what S receives. **Separately disclosed and
+NOT changed:** the per-body sds are rounded to four places *before* their median is taken;
+silently changing that would change the statistic the bisection converged on.
+
+**The exact σ sequence is recovered by replay, not re-derived.** The stopping rule depends only
+on the recorded statistics, so replaying it from the frozen bracket reproduces the exact Python
+floats — 0.1, 1.0, 0.55, 0.325, 0.4375, 0.38125, 0.353125, 0.33906250000000004, 0.33203125,
+**0.335546875** — and every lookup succeeding is itself the proof that the replay *is* the
+recorded run.
+
+**The scope of the match, recorded narrowly.** A **conditional length spread** and nothing
+else: not directional noise, not detector realism, not camera support, not bias or correlation
+structure. Length bounds no direction. The matched fixture ratio at σ 1.0 is **1.4276×**
+(Astra's own figure); the zero-noise baseline is **1.8131 mm** and is never subtracted. The
+calibration's keep-mask restricts nothing in S's scoring populations.
+
+**The amendment is POST HOC and is recorded as such.** The σ is target-determined — the matched
+target and the frozen bisection reach it without consulting S, and the earlier PROCEED at
+σ 0.35 enters that arithmetic nowhere — but the coordinator knew that sensitivity result when
+proposing the amendment, so agent blindness during the bisection does not make the protocol
+independent of earlier outcomes. Every unchanged S clause was accepted in advance even if it
+stopped the step again.
+
+---
+
+## 3C. The reread at σ = 0.335546875 — **PROCEED**, and `E_rig_rest_kabsch` ships
+
+All of S, at the calibration's **exact** accepted σ. Median of the six per-body medians:
+
+| arm | whole (i) | (ii) | (iii) | bent (i) | (ii) | (iii) |
+|---|---|---|---|---|---|---|
+| **(a) `E_rig_rest_kabsch` guarded** | **5.281°** | **2.335°** | **4.356 mm** | **5.460°** | **2.370°** | **4.580 mm** |
+| (b) `D_rig_rest_hipline` guarded | 5.568 | 2.655 | 5.018 | 6.078 | 2.793 | 5.622 |
+| C-on-SOMA | 9.456 | 3.305 | 5.380 | 8.717 | 3.685 | 5.792 |
+| world-vertical | 8.877 | 2.288 | 5.346 | 17.726 | 2.296 | 5.495 |
+| thorax-as-pelvis | 15.836 | 2.282 | 4.979 | 37.369 | 2.336 | 5.025 |
+| frozen-pitch follower | 9.984 | 2.643 | 5.580 | 15.616 | 2.829 | 5.853 |
+| (b) unguarded (ablation) | 5.609 | 2.655 | 5.018 | 6.078 | 2.793 | 5.622 |
+
+* **(a) vs (b):** (b) is worse in **all six cells**. (a) ships — **the same ranking it held at
+  σ 1.00, 0.50, 0.35 and 0.25**, so the shipping selection is stable across every fixture this
+  step has tested and is not a product of the calibration.
+* **the winner beats C-on-SOMA in all six cells** — the constant it removes.
+* **THE CLAUSE THAT STOPPED THE STEP NOW PASSES ON EVERY BODY.** Follower ratios **2.559,
+  2.831, 2.825, 2.946, 3.048, 3.198**, and 14.61 – 16.13° against the 2° floor. At σ 1.0 five
+  of six read below 2×. **The follower's own error barely moved** (15.47 – 21.11 → 14.61 –
+  16.13, against its 14.401° noiseless floor); **what moved is the winner**, 6.89 – 12.22 →
+  4.80 – 5.71. That is exactly the attribution §3.2 gave for the σ-1.0 failure, confirmed by
+  the fixture that repairs it.
+* **world-vertical** reads 17.73° against the truth's own bent tilt of 53.73° — not within 2°,
+  so the stated limitation does not apply on this fixture.
+* **G1, the amended array-level claim, holds on every body.** Unconditional identity does not,
+  and is not claimed: seed 20260904 rejects five additional finite frames, each reported with
+  its lever, median and threshold. Frames 20, 21, 22 read 151.91 / 134.70 / 147.72 mm against a
+  180.02 mm median whose band is [153.02, 207.03]; frames 103 and 104 read 152.90 and 153.01
+  against that same 153.02 lower bound — off by 0.15067 and 0.15006 against the 0.15 ceiling,
+  a millimetre inside a boundary they cross by six parts in ten thousand. Ordinary noisy
+  samples crossing a stated threshold, not an implementation error.
+* **G2, where the stop lives, wins BOTH metrics on EVERY body and on the median of six:**
+  **7.266° guarded against 76.673° unguarded** on the corrupted frames, **2.590° against
+  8.179°** on the transition pairs. Miss rate 0.033 on five bodies, **0.10** on seed 20260906.
+
+The fixture's own guard-kept lever sd at this σ reads **8.75 mm** against the take's 8.7636 —
+the match the calibration was selected on, confirmed inside the run that uses it.
 
 ---
 
