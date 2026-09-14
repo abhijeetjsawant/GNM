@@ -547,6 +547,17 @@ All of S, at the calibration's **exact** accepted σ. Median of the six per-body
 The fixture's own guard-kept lever sd at this σ reads **8.75 mm** against the take's 8.7636 —
 the match the calibration was selected on, confirmed inside the run that uses it.
 
+**One thing S's main arms cannot show, stated here because the table invites the wrong
+reading.** (b) guarded and (b) unguarded are **tied to four places on the bent tercile** —
+6.078 / 2.793 / 5.622 both — and identical on the whole take on four of six bodies. The reason
+is in the guard's own mask: on the *clean* observation at this σ the guard rejects **nothing on
+five of six bodies**, and four frames (20, 21, 22, 24) on seed 20260904 alone. So **the guard's
+cost in S's main arms is close to zero by construction on this fixture, and its win there
+proves nothing about it** — a guard that cannot lose cannot be said to have won. The guard is
+tested in **G2**, on a corruption built for it, and there it wins both metrics on every body by
+an order of magnitude (7.266° against 76.673°). That separation, not the main table, is the
+evidence for shipping it.
+
 ---
 
 ## 4. What the card predicted that this run contradicts

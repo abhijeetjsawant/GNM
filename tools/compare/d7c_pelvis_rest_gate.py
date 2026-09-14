@@ -157,11 +157,19 @@ def arm_geometry(name: str, rest_array: np.ndarray, skeleton) -> dict:
     rest = {n: rest_array[index(n)] for n in ("Hips", "Spine", "LeftUpperLeg",
                                               "RightUpperLeg")}
     mid = 0.5 * (rest["LeftUpperLeg"] + rest["RightUpperLeg"])
-    if name in ("src_default", "C_soma_template"):
+    # `src_default` is whatever `src/` currently ships, so its geometry must be RESOLVED
+    # from `PELVIS_FRAME_SOURCE` and never assumed. Before D7c's src change that was mode C
+    # and the SOMA template; after it, it is a rig mode and the rig's own triangle. Reading
+    # the residual under the wrong template would score the shipping arm against geometry
+    # it does not use -- 0.10 m instead of 1e-7 -- and O1's residual clause would fail for
+    # a reporting reason.
+    effective = cm.PELVIS_FRAME_SOURCE if name == "src_default" else name
+    if effective in ("C_kabsch_pelvis", "C_soma_template"):
         return {"template": np.asarray(cm.SOMA77_REST_PELVIS_TEMPLATE_M, dtype=np.float64),
                 "origin": "root_landmark",
-                "note": "SOMA-77's rest pelvis about the `root` landmark (the shipped fit)"}
-    if name == "wrong_origin":
+                "note": ("SOMA-77's rest pelvis about the `root` landmark -- the fit D7c "
+                         "replaces")}
+    if effective == "wrong_origin":
         return {"template": np.stack((rest["Spine"], rest["LeftUpperLeg"],
                                       rest["RightUpperLeg"])),
                 "origin": "root_landmark",
@@ -200,9 +208,19 @@ def install_arm(name: str, rest_array: np.ndarray, skeleton):
             points, spine, **{**kw, "mode": "C_kabsch_pelvis"})
         return restore
     if name in est.RIG_MODES:
-        cm._pelvis_world_frames = (
-            lambda points, spine, **kw: est.rig_rest_pelvis_frames(
-                points, spine, rest, mode=name, guard=True))
+        # Since the src change these two are BRANCHES OF THE SHIPPED FUNCTION, so the arm
+        # runs the delivery's own code path rather than the instrument's copy of it. The
+        # two are pinned bit-for-bit in `tests/test_pelvis_rest.py`; if `src/` ever loses a
+        # mode, this falls back to the instrument and says so in the report rather than
+        # silently scoring a different estimator.
+        if name in getattr(cm, "RIG_REST_PELVIS_MODES", ()):
+            cm._pelvis_world_frames = (
+                lambda points, spine, **kw: saved_pelvis(
+                    points, spine, **{**kw, "rest": rest, "mode": name}))
+        else:
+            cm._pelvis_world_frames = (
+                lambda points, spine, **kw: est.rig_rest_pelvis_frames(
+                    points, spine, rest, mode=name, guard=True))
         return restore
     if name == "frozen_upright":
         cm._pelvis_world_frames = lambda points, spine, **kw: (
@@ -289,6 +307,9 @@ def run_arm(name: str, seed: int, rest_array: np.ndarray, skeleton, truth, truth
 
     return {
         "arm": name,
+        "code_path": ("src `_pelvis_world_frames`" if name in ("src_default", "C_soma_template",
+                      "wrong_origin") or name in getattr(cm, "RIG_REST_PELVIS_MODES", ())
+                      else "instrument-side"),
         "fit_geometry": {"origin": geometry["origin"], "note": geometry["note"],
                          "template_mm": (1e3 * geometry["template"]).round(4).tolist()},
         "pelvis_report": {k: v for k, v in pelvis_report.items()

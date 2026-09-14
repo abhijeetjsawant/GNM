@@ -239,6 +239,11 @@ def main() -> int:
     parser.add_argument("--mode", default="shipped",
                         choices=("shipped", "control-overwrite-locals",
                                  "control-clear-contacts"))
+    parser.add_argument("--pelvis-mode", default=None,
+                        help="hold `cm.PELVIS_FRAME_SOURCE` at this value for the build. "
+                             "The REFACTOR TRIPWIRE's mechanism: with it at "
+                             "`C_kabsch_pelvis` the refactored `_pelvis_world_frames` must "
+                             "reproduce the D9b delivery bit for bit, 8 of 8.")
     parser.add_argument("--src-state", default="",
                         help="what src/ carried on this arm, recorded verbatim")
     parser.add_argument("--expect-byte-identical", action="store_true",
@@ -271,6 +276,10 @@ def main() -> int:
     print(f"resolved build script: {Path(build.__file__).resolve()}")
     print(f"PELVIS_FRAME_SOURCE = {cm.PELVIS_FRAME_SOURCE!r}")
 
+    saved_source = cm.PELVIS_FRAME_SOURCE
+    if args.pelvis_mode is not None:
+        cm.PELVIS_FRAME_SOURCE = args.pelvis_mode
+        print(f"PELVIS_FRAME_SOURCE held at {cm.PELVIS_FRAME_SOURCE!r} for this build")
     log = install_watcher(args.mode, snapshots, inputs)
     argv = sys.argv[:]
     sys.argv = [
@@ -287,6 +296,7 @@ def main() -> int:
         sys.argv = argv
         cm.project_generated_foot_contacts, cm.positions_to_body_track = log.pop(
             "restore")
+        cm.PELVIS_FRAME_SOURCE = saved_source
     elapsed = time.time() - started
     if code != 0:
         raise SystemExit(f"the build exited {code}")
@@ -315,7 +325,10 @@ def main() -> int:
                   "the shipped delivery's own cached detections copied in"),
         "output": str(out.relative_to(ROOT)),
         "mode": args.mode,
-        "pelvis_frame_source_at_build_time": cm.PELVIS_FRAME_SOURCE,
+        "pelvis_frame_source_at_build_time": (args.pelvis_mode
+                                              if args.pelvis_mode is not None
+                                              else saved_source),
+        "pelvis_mode_held": args.pelvis_mode,
         "resolved_module": str(Path(cm.__file__).resolve()),
         "src_state": args.src_state or ("UNCHANGED (hygiene arm)"
                                         if args.expect_byte_identical else "unrecorded"),
