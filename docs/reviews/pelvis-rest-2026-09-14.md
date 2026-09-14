@@ -761,8 +761,10 @@ delivery.)
 | performer 1, whole take | +0.00303 [0.00066, 0.00752] | −0.00249 [−0.00512, 0.00686] | +0.00552 [−0.00194, 0.00750] |
 | performer 1, bent tercile | +0.00192 [−0.00066, 0.00360] | −0.00205 [−0.00808, 0.00430] | +0.00397 [−0.00376, 0.00965] |
 
-**This is a POINT-ESTIMATE decomposition, and only one of its four cells has an interval clear
-of zero.** Astra's round 2 was right to insist on the distinction:
+**This is a POINT-ESTIMATE decomposition, and only PERFORMER 1's two shares straddle zero.**
+Performer 0's articulation share is clear of zero on **both** cuts; every other share — both of
+performer 0's root shares and both of performer 1's — has an interval through zero. Astra's
+round 2 was right to insist on the distinction:
 
 * **Performer 0's rise IS attributable to the articulation.** Its interval is clear of zero on
   both cuts (+0.00732 and +0.00244 at the lower bound), while the root's share straddles zero
@@ -801,13 +803,16 @@ GLB channel.
 
 **Three readings in this section were wrong and are corrected, not quietly dropped.**
 
-1. **The rotational closure.** The raw comparison is ~32° and an earlier version refused to
-   call it a closure — right caution, wrong measurement. The exporter builds
-   `animated_world[j] = track_world[j] · alignment[j] · rest_world[j]`
-   (`body_export.py:379`), so the GLB's world rotation differs from the track's by a **constant
-   per-joint frame**. Undo it — estimate the constant on one frame, measure how constant it is
-   over the rest — and across all **8,250 joint-frame samples per performer** the residual is
-   **median 5e-6°, max 1.5e-5°**: the float32 floor.
+1. **The rotational closure, and it took two attempts.** The raw comparison is ~32° and the
+   first version refused to call it a closure — right caution, wrong measurement. The second
+   undid the exporter's constant per-joint frame but **fitted that constant from frame 0 of the
+   output**, which is circular: a constant error, and on a **leaf** joint *any* constant error
+   (the positional closure is blind there too), is absorbed into the fit and becomes invisible.
+   The constant is now **reconstructed from the exporter's own inputs** —
+   `_canonical_arm_bind_alignment` on the body asset's rest matrices composed with the asset's
+   rest world rotation (`body_export.py:379`) — with nothing from the delivered file entering
+   it. Across all **8,250 joint-frame samples per performer** the residual is **median 3e-6°,
+   max 1.1–1.4e-5°**: the float32 floor, and now a measurement a constant error could fail.
 2. **Between-key playback, wrong twice.** The first version averaged already-composed world
    positions (0.0003 mm, three orders too small); the second interpolated the rotations but
    read the **translation at the key**, freezing the root and inflating it to millimetres. Both
@@ -959,16 +964,17 @@ whether flipping it to FAIL turns the merge rule.
 | B5b the delivered `Head` WORLD rotation, from the GLB | REPORT | between-build difference **4e-6° median, 1.3e-5 max — NOT zero** | REPORT |
 | B6 sampler times, channels, quaternions | REPORT | LINEAR, 150 frames, 4.9667 s, 1+55 channels, norms 1±4e-8, **zero** negative adjacent dots; normalised increment median **0.0°** | REPORT |
 | B6 track→GLB **positional** closure | REPORT | max **0.0005 mm** | REPORT |
-| B6 track→GLB **rotational closure**, frame-corrected | REPORT | **median 5e-6°, max 1.5e-5°** over 8,250 joint-frame samples per performer, after undoing the exporter's constant per-joint frame (`body_export.py:379`). The raw 32° is that change of frame | REPORT |
+| B6 track→GLB **rotational closure**, against the exporter's OWN reconstructed transform | REPORT | **median 3e-6°, max 1.1–1.4e-5°** over 8,250 joint-frame samples per performer. The constant is rebuilt from the asset, not fitted from frame 0, so a constant (including leaf-joint) error is visible | REPORT |
 | B6 hierarchy and bone lengths vs the sized skeleton | REPORT | hierarchy matches joint for joint; bone-length error **0.0 mm** on all 54 | REPORT |
 | B6 the node defaults vs the bind pose | REPORT | **EXPLAINED**: `body_export.py:599` writes the FIRST ANIMATED POSE as the node default, so the 594.005→590.159 / 158.929→156.052 mm mismatch is a property of the motion, not a defect. Reader verified against Blender at 0.00518 mm | REPORT |
-| B6 mesh deformation, pelvis/hip/thigh | REPORT | inverted/frame **325→317** and **344→338** of 2424 (skinning at a deep crease, and the candidate inverts fewer); area max 28.15→29.95 and 42.32→41.58; worst edge 0.0349→0.0173 and 0.0821→0.1054. Tails move **both ways**; no band | REPORT |
+| B6 mesh deformation, pelvis/hip/thigh | REPORT | inverted per frame **279–328 → 274–326** and **46–349 → 45–344** of 2424 (11.3–13.5 % and 1.9–14.4 %); 187 → 172 always-inverted on performer 0, 0 → 2 on performer 1; dominantly `Left/RightUpperLeg` (≈38 % each) and `Hips` (≈20 %). Area max 28.15→29.95 / 42.32→41.58; worst edge 0.0349→0.0173 / 0.0821→0.1054. No band | REPORT |
+| B6 the inversion classifier is sound | a determinant test, order-invariant | signed volume of a carried tetrahedron; 4 tests pin it, incl. Astra's diag(1,−0.2,−0.2) → **uninverted** and a reflection → **inverted** | **PASS** |
 | B6 between-key playback (BOTH channels interpolated, then FK) | REPORT | inside a run, maxima **0.459 / 0.295 mm** (candidate) against **0.665 / 1.311 mm** (D9b). Two earlier versions withdrawn: 0.0003 mm (composed positions) and the millimetre-scale medians (translation read at the key) | REPORT |
 | B6 the `Root` / eye / finger invariants | REPORT | bit-identical, both performers — a **TRACK-ARRAY** claim | REPORT |
 | the provenance audit | no unaudited constant | `RIG_REST_PELVIS_MODES` registered; `PELVIS_FRAME_SOURCE` rewritten keeping its history | **PASS** |
 | **merge rule, twelve conjuncts** | all PASS | all PASS | **MERGE** |
 | **every verdict DERIVED from its input report** | no literal PASS | no literal remains; both of Astra's counter-examples are now derivations | **PASS** |
-| **failure demonstrated at the INPUT level, every conjunct** | every mutation detected | **16 of 16 input mutations detected**, including both of Astra's own | **PASS** |
+| **failure demonstrated at the INPUT level, every conjunct** | every mutation detected | **31 of 31 input mutations detected**, including all five of Astra's round 3 and ten population-coverage mutations | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the

@@ -50,6 +50,7 @@ if not str(Path(autoanim_gnm.__file__).resolve()).startswith(str(ROOT)):
 from autoanim_gnm.body import (  # noqa: E402
     forward_kinematics_positions, skeleton_for_track_dict, _quaternion_multiply)
 import d3_skeleton_gate as d3  # noqa: E402
+from autoanim_gnm import body_export as be  # noqa: E402
 
 BUILDS = (("D9b", ROOT / "artifacts/commercial-multiview-soma77"),
           ("D7c", ROOT / "artifacts/compare/d7c-pelvis-rest/delivery"))
@@ -565,12 +566,16 @@ def main() -> int:
                 np.asarray(data["track"].local_rotations_xyzw, np.float64),
                 skeleton=data["skeleton"]).astype(np.float64)
             order = [list(data["skeleton"].names).index(n) for n in data["names"]]
-            # ROTATIONAL CLOSURE, FRAME-CORRECTED. The raw comparison of the GLB's channel
-            # against the track's local is ~32 deg and is NOT an error: the exporter builds
-            # `animated_world[j] = track_world[j] * alignment[j] * rest_world[j]`
+            # ROTATIONAL CLOSURE, against the EXPORTER'S OWN TRANSFORMATION. The exporter
+            # builds `animated_world[j] = track_world[j] * alignment[j] * rest_world[j]`
             # (`body_export.py:379`), so the GLB's world rotation differs from the track's by
-            # a CONSTANT per-joint frame. Undo that constant -- estimate it on one frame, then
-            # measure how CONSTANT it is across every other frame -- and the closure appears.
+            # a constant per-joint frame. An earlier version FITTED that constant from frame
+            # 0 of the OUTPUT, which makes it circular: a constant error -- and on a LEAF
+            # joint, where the positional closure is blind too, any constant error -- is
+            # absorbed into the fitted constant and becomes invisible. The constant is now
+            # RECONSTRUCTED from the exporter's own inputs: `_canonical_arm_bind_alignment`
+            # on the body asset's rest matrices, composed with the asset's rest world
+            # rotation. Nothing from the delivered file enters it.
             track_local = np.asarray(data["track"].local_rotations_xyzw, np.float64)
             skel_names = list(data["skeleton"].names)
             track_world = np.zeros_like(track_local)
@@ -579,6 +584,21 @@ def main() -> int:
                     track_local[:, slot] if joint.parent == -1
                     else _quaternion_multiply(track_world[:, joint.parent],
                                               track_local[:, slot]))
+            asset = np.load(d3.BODY_RUN / "neutral-body.npz", allow_pickle=True)
+            asset_rest = np.asarray(asset["local_rest_matrices"], np.float64)
+            asset_parents = np.asarray(asset["parents"], int)
+            asset_names = [str(name) for name in asset["joint_names"]]
+            alignment = be._canonical_arm_bind_alignment(
+                asset_rest, asset_parents, skeleton=data["skeleton"])
+            asset_world = np.zeros((len(asset_parents), 4, 4))
+            for slot in range(len(asset_parents)):
+                asset_world[slot] = (
+                    asset_rest[slot] if asset_parents[slot] < 0
+                    else asset_world[asset_parents[slot]] @ asset_rest[slot])
+            exporter_constant = [
+                Rotation.from_quat(alignment[slot])
+                * Rotation.from_matrix(asset_world[slot][:3, :3])
+                for slot in range(len(asset_parents))]
             frames_count = track_local.shape[0]
             glb_world = np.zeros((frames_count, len(channels["joints"]), 4))
             for frame in range(frames_count):
@@ -587,11 +607,11 @@ def main() -> int:
                 glb_world[frame], _ = world_from_channels(channels, keyed, frame=frame)
             residuals = []
             for slot, name in enumerate(channels["names"]):
-                ours = Rotation.from_quat(track_world[:, skel_names.index(name)])
-                theirs = Rotation.from_quat(glb_world[:, slot])
-                constant = ours[0].inv() * theirs[0]
+                predicted = (Rotation.from_quat(track_world[:, skel_names.index(name)])
+                             * exporter_constant[asset_names.index(name)])
                 residuals.append(np.degrees(np.linalg.norm(
-                    ((ours * constant) * theirs.inv()).as_rotvec(), axis=1)))
+                    (predicted * Rotation.from_quat(glb_world[:, slot]).inv()).as_rotvec(),
+                    axis=1)))
             rotational = np.concatenate(residuals)
             skel_names = list(data["skeleton"].names)
             # THE GLB'S REST, HIERARCHY AND INVERSE BIND MATRICES against the sized
@@ -655,12 +675,14 @@ def main() -> int:
                 "rotational_deg_frame_corrected": summary(rotational),
                 "rotational_samples": int(rotational.size),
                 "rotational_note": (
-                    "the exporter's documented per-joint constant frame change "
-                    "(`body_export.py:379`) is undone first; this residual is how CONSTANT it "
-                    "is over every joint-frame sample. The RAW comparison is ~32 deg and is "
-                    "that change of frame, not an export error -- an earlier version of this "
-                    "file reported the raw figure and refused to call it a closure, which was "
-                    "the right caution and the wrong measurement."),
+                    "the per-joint constant is RECONSTRUCTED from the exporter's own inputs "
+                    "-- `_canonical_arm_bind_alignment` on the body asset's rest matrices, "
+                    "composed with the asset's rest world rotation (`body_export.py:379`) -- "
+                    "and nothing from the delivered file enters it, so a CONSTANT error is "
+                    "visible. An earlier version FITTED the constant from frame 0 of the "
+                    "output, which is circular: a constant leaf-joint error would have been "
+                    "absorbed into the fit and invisible to the positional closure too. The "
+                    "RAW comparison is ~32 deg and is the change of frame, not an error."),
                 "note": "the positional row is the float32 floor of the export, not a fit",
             }
             # the three invariants a pelvis frame must not touch
