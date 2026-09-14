@@ -277,7 +277,7 @@ def skin_matrices(channels: dict, world: np.ndarray) -> np.ndarray:
 
 
 def joint_breakdown(channels: dict, triangles: np.ndarray, mask: np.ndarray) -> dict:
-    """WHICH joint region the inverted triangles belong to. Localises the count."""
+    """WHICH joint region the FIRING triangles belong to. Localises the proxy's count."""
     joints = channels["skin_joints"].reshape(len(channels["vertices"]), -1)
     weights = channels["skin_weights"].reshape(len(channels["vertices"]), -1)
     dominant = joints[np.arange(len(joints)), weights.argmax(axis=1)]
@@ -299,9 +299,13 @@ def carried_tetrahedron_proxy(channels: dict, triangles: np.ndarray, world: np.n
     centroid and carried by the MEAN of the triangle's three vertex skinning matrices; the
     proxy fires when the resulting tetrahedron's signed volume is not positive.
 
-    WHY IT IS ONLY A PROXY. Under spatially VARYING weights the mean of three vertex matrices
-    is not the skinning field's value at the centroid, so the carried point is not where the
-    skin actually puts it. Two consequences, both demonstrated rather than supposed:
+    WHY IT IS ONLY A PROXY, stated correctly. Under barycentric weights the mean of the three
+    vertex matrices IS the skinning matrix of the centroid -- that part is fine, and an earlier
+    version of this docstring got it wrong. The defect is the next step: TRANSFORMING the
+    centroid is not the same as AVERAGING the transformed vertices, because linear blend
+    skinning is not affine where the weights vary over the triangle. That difference is the
+    weight-gradient term of the skinning Jacobian (Kavan, direct methods eq. 17), and dropping
+    it is what makes this a proxy. Two consequences, both demonstrated rather than supposed:
 
       * IT MIS-CLASSIFIES A PROPER RIGID MOTION. Astra's counter-example: the triangle
         (0,0,0), (1,0,0), (0,1,0) with two bones -- identity and a 60 deg rotation about x --
@@ -356,7 +360,8 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
     Three quantities, because IoU can rise while the skin tears:
       * the area ratio against the bind pose, and its SPREAD -- how much the region stretches;
       * the edge-length ratio, whose collapse toward zero is a pinched seam;
-      * triangles whose normal FLIPS relative to the bind pose -- an inverted triangle.
+      * how often the carried-tetrahedron PROXY fires -- reported as the proxy's output,
+        with no inversion word attached as a conclusion (see `carried_tetrahedron_proxy`).
     """
     triangles = region_triangles(channels, region)
     if not len(triangles):

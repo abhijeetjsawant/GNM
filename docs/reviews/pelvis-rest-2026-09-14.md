@@ -837,7 +837,7 @@ in ways only a counter-example exposes:
 * dotting the posed normal against a **fixed bind-space normal** is tripped by a harmless
   rigid 180° rotation (Astra reproduced the false positive);
 * fitting a rotation to a triangle's **own three points** is rank-deficient — three coplanar
-  points leave the determinant's sign a coin toss, and it read 1242 of 2424 as "inverted";
+  points cannot determine an out-of-plane sign at all, and it fired on 1242 of 2424;
 * carrying the rest normal by the **first vertex's dominant joint** is vertex-order dependent
   (a cyclic reorder moved the counts 317→318 and 338→337) and is simply the wrong field where
   the weights are blended — Astra built a constant-weight skin whose deformation is
@@ -849,8 +849,11 @@ triangle's rest normal from its centroid, carried by the mean of the triangle's 
 skinning matrices, and the signed volume of that tetrahedron.
 
 **It is a PROXY, not a classifier, and Astra's round 4 showed why.** Under spatially *varying*
-weights the mean of three vertex matrices is not the skinning field's value at the centroid, so
-the carried point is not where the skin puts it. Two failures follow, both demonstrated:
+weights the mean of the three vertex matrices **is** the centroid's skinning matrix — that part
+is fine. The defect is the next step: *transforming* the centroid is not the same as *averaging
+the transformed vertices*, because linear blend skinning is not affine where the weights vary
+across the triangle, and that difference is the weight-gradient term of the skinning Jacobian
+(Kavan, direct methods eq. 17). Two failures follow, both demonstrated:
 
 * **it mis-classifies a proper rigid motion.** The triangle (0,0,0), (1,0,0), (0,1,0) with two
   bones — identity and Rx(60°) — and weights (1,0), (1,0), (0,1) moves every vertex rigidly,
@@ -874,9 +877,8 @@ change which makes the symptom disappear without making the measurement sound is
 bind-space normal* is tripped by a rigid 180° rotation; a *Kabsch fit on the triangle's own
 three points* cannot establish an out-of-plane sign at all — a proper planar Kabsch recovers
 the rotation exactly (determinant +1, zero residual), and the third axis it reports simply
-carries no information about inversion, which is a different and more precise statement than
-the "coin toss" an earlier draft of this document claimed; and the *first vertex's dominant
-joint* is both order-dependent and wrong wherever the weights are blended.
+carries no information about inversion; and the *first vertex's dominant joint* is both
+order-dependent and wrong wherever the weights are blended.
 
 **The proxy's per-frame ranges**, reported as such — the earlier "325 / 317" and "344 / 338"
 were maxima over 15 sampled frames and are withdrawn as summaries:
@@ -1000,8 +1002,8 @@ whether flipping it to FAIL turns the merge rule.
 | B6 the `Root` / eye / finger invariants | REPORT | bit-identical, both performers — a **TRACK-ARRAY** claim | REPORT |
 | the provenance audit | no unaudited constant | `RIG_REST_PELVIS_MODES` registered; `PELVIS_FRAME_SOURCE` rewritten keeping its history | **PASS** |
 | **merge rule, twelve conjuncts** | all PASS | all PASS | **MERGE** |
-| **every verdict DERIVED from its input report** | no literal PASS | no literal remains; both of Astra's counter-examples are now derivations | **PASS** |
-| **failure demonstrated at the INPUT level, every conjunct** | every mutation detected | **39 of 39 input mutations detected**, including all five of Astra's round 3 and all five of round 4, ten coverage mutations and four summary-vs-measurement cross-checks | **PASS** |
+| **the gate's three structural rules** | derived-or-cross-checked; missing is FAIL; sets by identity | every read goes through a `Reader` that raises on an absent path; every aggregate is recomputed from named constituents and cross-checked against any stored summary; files, seeds, performers, cells and **contact runs (by `(side, start, end)` from the frozen mask)** are checked by identity | **PASS** |
+| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict | `d7c_gate_fuzz.py` walks **every leaf of every report** and mutates each in turn (numbers → 1e6, → 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated). The count is the number of leaves visited, not a hand-picked table; every leaf no mutation can turn is listed with which it is — REPORT-only or read by nothing | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the
@@ -1052,12 +1054,13 @@ not this step's**. `test_provenance_audit` now passes.
    pelvis is. S's stops are unchanged; the winner's separation from the **frozen-pitch
    follower** — the control built for exactly this, and not upright — is what carries that
    argument.
-3. **The pelvis / hip / thigh region inverts 13–14 % of its triangles per frame on EVERY
-   build**, and the tails move in both directions between them (performer 0's worst pinched
-   edge halves, performer 1's relaxes). Linear blend skinning at a deep hip crease, measured
-   here for the first time; no band is invented and the figures go to **D6**. The earlier
-   "not established / suspect the reader" framing was wrong: the node defaults are the first
-   animated pose (`body_export.py:599`) and the reader agrees with Blender to 0.00518 mm.
+3. **The carried-tetrahedron PROXY fires on 1.9–14.4 % of the pelvis / hip / thigh region's
+   triangles per frame, on every build, and NO INVERSION CLAIM IS MADE FROM IT.** It
+   mis-classifies a proper rigid motion under varying weights (Jacobian determinant +0.72) and
+   is vertex-order dependent; both are pinned by tests. The area and edge tails move in both
+   directions between the builds (performer 0's worst pinched edge halves, performer 1's
+   relaxes). **The sound measurement — the skinning Jacobian with spatially varying weights,
+   Kavan direct methods eq. 17 — is D6's instrument** and is handed there by name.
 4. **The hip residual under (a) is a REPORT and stays one** — full positional p95 12.1 / 14.9
    mm against D9b's 6.4 / 12.0. No band may be made from it.
 5. **One frame over 800°/s on performer 1**; a REPORT quantity by the card's own words.
