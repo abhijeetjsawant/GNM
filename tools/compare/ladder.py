@@ -238,8 +238,9 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f9, c9 = _d8b_figures("masks")
     f10, c10 = _d8c_figures("masks")
     f11, c11 = _d9b_figures("masks")
-    return (figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11,
-            ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11)
+    f12, c12 = _d7c_figures("masks")
+    return (figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12,
+            ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12)
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -312,8 +313,9 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f9, c9 = _d8b_figures("converter")
     f10, c10 = _d8c_figures("converter")
     f11, c11 = _d9b_figures("converter")
-    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11,
-            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11)
+    f12, c12 = _d7c_figures("converter")
+    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12,
+            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12)
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -449,6 +451,32 @@ def _d9b_figures(where: str) -> tuple[list, list]:
     except ImportError:
         return [], []
     figs, ctrls = d9b_hoist.x_hoist_reaim({})
+
+    def dest(key: str) -> str:
+        if key.startswith("silhouette_"):
+            return "masks"
+        return "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d7c_figures(where: str) -> tuple[list, list]:
+    """D7c figures from `tools/compare/extractors/d7c_pelvis_rest.py` (the agent's stub, wired here by
+    the registry owner): `silhouette_` to rung 1; `pelvisrest_` (the pelvis vs exact rig truth on the D3
+    gate's six bodies, the unnormalised residual that alone sees the wrong-origin control, the Spine
+    origin miss, the selector on calibrated synthetic noise, the lever guard, the legs' move) to rung 7.
+    D7c merged on 2026-09-15: the pelvis is fitted to the RIG's own rest offsets about the captured hip
+    midpoint (`E_rig_rest_kabsch`) instead of SOMA-77's rest template; on exact truth the constant 6.865
+    deg of pitch, 21-28 mm of Spine origin and 9-12 mm of torso go to 0.0001 deg / 0.0001 mm / 0.00.
+    Stated: two selector stops are recorded as they fell (the sigma-1.0 follower clause, the calibration's
+    first monotonicity wording); the pelvis convention itself (where SOMA's Spine1 sits on the rig's
+    pelvis axis) is UNRESOLVED and goes to lane H; the mesh-deformation reading is a PROXY handed to D6."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d7c_pelvis_rest  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d7c_pelvis_rest.x_pelvis_rest({})
 
     def dest(key: str) -> str:
         if key.startswith("silhouette_"):
@@ -1577,6 +1605,12 @@ def _splice_d7_visuals() -> None:
     VISUALS["pose"][0:0] = (d9b_hoist.VISUALS.get("placement", [])
                             + d9b_hoist.VISUALS.get("oracle", []))
     VISUALS["masks"][0:0] = d9b_hoist.VISUALS.get("masks", [])
+    try:
+        from extractors import d7c_pelvis_rest  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["pose"][0:0] = d7c_pelvis_rest.VISUALS.get("converter", [])
+    VISUALS["masks"][0:0] = d7c_pelvis_rest.VISUALS.get("masks", [])
 
 
 
