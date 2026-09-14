@@ -291,9 +291,54 @@ CURATED: dict[str, dict] = {
                          "heavy-tail noise, plus an injected consistent 2D collapse)",
         remedy="none open for the mode. The ceiling it runs at is a separate entry.",
     ),
+    "RIG_REST_PELVIS_MODES": dict(
+        provenance=SYNTHETIC,
+        evidence="src/autoanim_gnm/commercial_multiview.py -- ('D_rig_rest_hipline', "
+                 "'E_rig_rest_kabsch') since D7c, 2026-09-14. NOT A FITTED QUANTITY AND NOT A "
+                 "NUMBER: it is the pair of mode NAMES whose branches read the CALLER'S OWN "
+                 "`rest` -- the per-performer skeleton D3 stamps on the track -- and it exists "
+                 "so that one predicate (`mode in RIG_REST_PELVIS_MODES`) scopes both the "
+                 "`rest` requirement and the pelvis lever guard, and so that A/B/C provably "
+                 "keep reading the spine array untouched, which is what the refactor tripwire's "
+                 "bit-identity claim rests on. Neither branch carries any rest geometry of its "
+                 "own: `E` builds {rest[Spine]-mid, rest[LeftUpperLeg]-mid, "
+                 "rest[RightUpperLeg]-mid} from the caller's dict and `D` takes two directions "
+                 "from the same dict, so deleting the four SOMA77_REST_* constants rebuilds "
+                 "both bit-identically (proved, with a positive control, in "
+                 "tests/test_pelvis_rest.py). WHICH of the two ships is "
+                 "`PELVIS_FRAME_SOURCE` below and was selected on synthetic truth.",
+        selected_against="not selected -- a scoping predicate over two constructions, both of "
+                         "which read the caller's own rest skeleton and neither of which "
+                         "contains a fitted or measured value",
+        remedy="none open. If a third rig-rest construction is added it joins this tuple and "
+               "must be selected the same way the second was: on synthetic truth, never on a "
+               "MAMMA-referenced arm.",
+    ),
     "PELVIS_FRAME_SOURCE": dict(
         provenance=SYNTHETIC,
-        evidence="src/autoanim_gnm/commercial_multiview.py -- 'C_kabsch_pelvis' since 2026-09-04. "
+        evidence="src/autoanim_gnm/commercial_multiview.py -- 'E_rig_rest_kabsch' since D7c, "
+                 "2026-09-14; 'C_kabsch_pelvis' from 2026-09-04 to then. D7c RE-RAN D7's own "
+                 "selection under the RIG's geometry rather than SOMA-77's, and it reversed: "
+                 "the shipped C fit reads a CONSTANT 6.865 deg of pitch about the hip line on "
+                 "every frame of every one of the D3 gate's six exact-skeleton bodies, because "
+                 "SOMA-77's 39 mm spine lever does not exist on this rig, and both rig-rest "
+                 "modes recover the truth exactly (1.5-1.8e-7 m of unnormalised residual). "
+                 "SELECTED ON SYNTHETIC TRUTH ONLY, by tools/compare/d7c_pelvis_synthetic.py: "
+                 "artifacts/compare/d7c-pelvis-rest/selector-reread-sigma0.335546875.json, "
+                 "where (a) E_rig_rest_kabsch beats (b) D_rig_rest_hipline in all six cells "
+                 "(two populations x three metrics) and beats C-on-SOMA in all six. THE "
+                 "SELECTION IS STABLE ACROSS EVERY FIXTURE TESTED -- (a) also wins all six "
+                 "cells at sigma 1.00, 0.50, 0.35 and 0.25 -- so it is not a product of the "
+                 "fixture calibration. TWO RECORDED STOPS SIT BEHIND IT AND ARE NOT ERASED: "
+                 "selector.json (S at the card's own fixture, STOPPED on the every-body "
+                 "follower clause) and selector-calibrated.json (the calibration UNREACHABLE "
+                 "under its own frozen monotonicity precondition); both are immutable, and "
+                 "the two reviewer amendments that followed them are recorded as POST HOC in "
+                 "docs/reviews/pelvis-rest-astra-review-2026-09-14.md rounds 5-7. The MAMMA "
+                 "arm reported nothing here and selected nothing. "
+                 "SUPERSEDED TEXT, kept because the constant's history is its provenance: "
+                 "'C_kabsch_pelvis' was itself selected on synthetic truth, on the NOISY arm "
+                 "of tools/compare/d7_pelvis_synthetic.py -> "
                  "Which construction turns the triangulated pelvis landmarks into `Hips`' world "
                  "rotation. SELECTED ON SYNTHETIC TRUTH ONLY, on the NOISY arm of "
                  "`tools/compare/d7_pelvis_synthetic.py` -> "
@@ -301,11 +346,17 @@ CURATED: dict[str, dict] = {
                  "because a Kabsch fit of the rest offsets of Hips' three rigid children recovers "
                  "the pelvis rotation EXACTLY (4.2e-8 m residual) for every rigid candidate. The "
                  "selection rule was fixed in docs/reviews/pelvis-frame-2026-09-04.md section 0.4 "
-                 "before any number existed. The MAMMA arm reported beside it and selected nothing.",
-        selected_against="synthetic truth (GEM-X SOMASKEL77 clips posed through our own FK), "
-                         "with our own detector's measured heavy-tail noise",
+                 "before any number existed. The MAMMA arm reported beside it and selected "
+                 "nothing.' D7c's re-selection does not overturn that reasoning -- it changes "
+                 "the GEOMETRY the same reasoning is applied to.",
+        selected_against="synthetic truth: the D3 gate's six exact-skeleton bodies under our "
+                         "own detector's measured heavy-tail noise, at a pixel sigma "
+                         "calibrated to the take's own guard-kept pelvis-lever spread. Never a "
+                         "MAMMA-referenced arm.",
         remedy="none open. If it moves again it must move on synthetic truth, a held-out camera "
-               "or anatomy -- never on the MAMMA arm.",
+               "or anatomy -- never on the MAMMA arm. The pelvis CONVENTION it rests on -- that "
+               "SOMA-77's Spine1 lies on the rig's Hips->Spine axis seen from the hip midpoint "
+               "-- is UNRESOLVED and is handed to lane H's marker session.",
     ),
     "PELVIS_SMOOTHING_FRAMES": dict(
         provenance=SYNTHETIC,
