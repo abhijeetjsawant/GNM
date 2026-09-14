@@ -139,7 +139,12 @@ def test_a_clean_synthetic_body_round_trips_the_pelvis_frame() -> None:
     positions, spine, truth = posed_body()
     track = convert(positions, spine)
     error = geodesic_deg(hips_world_rotations(track), truth)
-    assert error.max() < 0.01, f"worst {error.max():.6f} deg"
+    # RE-PINNED IN PLACE AT D7c (2026-09-15). This fixture poses SOMA-77's rest template, whose
+    # truth pelvis IS the convention D7c removes; under the shipping mode (`E_rig_rest_kabsch`,
+    # the rig's own rest) it reads the convention's own size, 7.567708 deg, pinned tightly so a
+    # move for a DIFFERENT reason is visible. The exactness oracle on the rig's own rest lives in
+    # tests/test_pelvis_rest.py. Pre-registered in the D7c card as moved-by-design.
+    assert abs(float(error.max()) - 7.567708) < 1e-4, f"worst {error.max():.6f} deg"
 
 
 def test_without_a_spine_landmark_the_pelvis_is_the_trunk_and_that_is_the_defect() -> None:
@@ -205,7 +210,7 @@ def test_a_gap_is_interpolated_and_the_definition_never_switches_per_frame() -> 
     holed = spine.copy()
     holed[5:9] = np.nan
     quaternions, report = cm._pelvis_world_frames(
-        _rig_points(positions), _rig_spine(holed)
+        _rig_points(positions), _rig_spine(holed), rest=_rest()
     )
     assert report["status"] == "solved"
     assert report["interpolated_frames"] == 4
@@ -224,7 +229,7 @@ def test_too_few_resolved_frames_falls_the_WHOLE_subject_back_with_a_reason() ->
     holed = spine.copy()
     holed[: int(0.8 * len(holed))] = np.nan
     quaternions, report = cm._pelvis_world_frames(
-        _rig_points(positions), _rig_spine(holed)
+        _rig_points(positions), _rig_spine(holed), rest=_rest()
     )
     assert quaternions is None
     assert report["status"] == "fell_back_to_torso_frame"
@@ -234,6 +239,14 @@ def test_too_few_resolved_frames_falls_the_WHOLE_subject_back_with_a_reason() ->
     track = convert(positions, holed)
     assert np.array_equal(track.local_rotations_xyzw, reference.local_rotations_xyzw)
     assert np.array_equal(track.root_translation_m, reference.root_translation_m)
+
+
+def _rest() -> dict:
+    """The canonical rig rest as the dict the rig-rest modes read (D7c: `_pelvis_world_frames`
+    takes the caller's own `rest`; A/B/C ignore it)."""
+    from autoanim_gnm.body import DETAILED_HUMANOID
+    arr = np.asarray(DETAILED_HUMANOID.rest_translations_m, dtype=np.float64)
+    return {name: arr[k] for k, name in enumerate(DETAILED_HUMANOID.names)}
 
 
 def _rig_points(positions: np.ndarray) -> np.ndarray:
@@ -318,9 +331,9 @@ def test_a_smoothing_window_is_a_knob_and_it_moves_the_answer() -> None:
 
     positions, spine, _ = posed_body(wobble_m=0.01)
     base, _ = cm._pelvis_world_frames(_rig_points(positions), _rig_spine(spine),
-                                      smoothing_frames=0)
+                                      rest=_rest(), smoothing_frames=0)
     wide, _ = cm._pelvis_world_frames(_rig_points(positions), _rig_spine(spine),
-                                      smoothing_frames=9)
+                                      rest=_rest(), smoothing_frames=9)
     moved = geodesic_deg(Rotation.from_quat(wide).as_matrix(),
                          Rotation.from_quat(base).as_matrix())
     assert moved.max() > 0.05
