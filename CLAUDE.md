@@ -253,21 +253,20 @@
 - **MAMMA cannot referee a width.** Its hip line is a constant 117.6 / 114.8 mm on every frame (a rigid SMPL-X pelvis) against
   this performer's 215, so a collapsed hip line scored CLOSER to it and the repair scored worse. Its joints are conventions;
   a length comparison against them says which convention you are nearer, not which is right.
-- **Sol unavailable → Cursor's Grok 4.6 in its place** (2026-09-06, D8c card and merge): `cursor-agent -p --trust --mode ask
-  --model cursor-grok-4.6-medium "$(cat brief.md)" > review.md` (~5 min; without `--trust` it exits 1 asking for workspace
-  trust). Same brief shape (state, code excerpts, the measurement, the card, numbered adversarial questions); verify every
-  code claim against the source before adopting it. Records under `docs/reviews/*-grok-*.md`.
-- **"The Solve So Far" is at the page cap** (9.30 of ~9.5 MB after v7): a v8 player needs an older tab's frames shrunk or
-  dropped first. v2's JPEGs were already recompressed to q60 to pay for v7.
+- **Reviewer of record (from 2026-09-14): Astra GPT6** reviews every card before dispatch and every merge before it lands,
+  in the seat Sol held; verify every code claim it makes against the source before adopting it, and record each review under
+  `docs/reviews/<step>-astra-review-<date>.md` / `<step>-astra-merge-review-<date>.md` with a header saying what each finding
+  changed. Fallback when Astra is unreachable: Cursor's Grok 4.6 (`cursor-agent -p --trust --mode ask --model
+  cursor-grok-4.6-medium "$(cat brief.md)" > review.md`, ~5 min; without `--trust` it exits 1). Same brief shape either way:
+  state, code excerpts, the measurement, the card verbatim, numbered adversarial questions. Records so far under
+  `docs/reviews/*-grok-*.md` (D8c, D9b).
+- **"The Solve So Far" is at the page cap** (9.27 of ~9.5 MB after v8, 2026-09-07): a v9 player needs an older tab's frames
+  shrunk or dropped first. v2's JPEGs are at q60; the v4, v5 and v6 players were shrunk to 640 px q42 to pay for v8.
 - **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
   script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
   and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
-  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v6).
+  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v8).
 - **zsh does not word-split an unquoted `$VAR`**: pass file lists as `${=VAR}` / an array, or use a glob.
-
-## Verification
-- Each exporter writes a JSON report beside its output with input SHAs and gate results. Check the SHA chain rather than assuming a build used current inputs.
-- Confirm a suspected defect with a second, independent measurement before acting. Several "defects" this session were artefacts of the metric, not the rig.
 - **The D3 gate's oracle score is translation-aligned (D9b, 2026-09-07).** `retarget_cost.score` subtracts the leg-root midpoint
   per frame, so the exact-skeleton oracle cannot see a root move: it read identical before and after the foot-contact projection
   on all six bodies, and it reads the CORRECT re-aim WORSE (arms 1.17 → 2.72 mm since D9b; legs 0.05–0.07 unchanged). That is the
@@ -281,3 +280,7 @@
   that lifts converter code into a helper is proved by the tripwire: hoist forced to zero, old src vs new, 8/8 byte-identical.
 - **D8c's head-gate log predates D8c's own in-place rebuild** (written 19:46, the rebuild 20:42); D9b's close-out head gate is
   line-identical to D8c's close-out log, and the drift the D9b agent measured against the earlier log is D8c's, not D9b's.
+
+## Verification
+- Each exporter writes a JSON report beside its output with input SHAs and gate results. Check the SHA chain rather than assuming a build used current inputs.
+- Confirm a suspected defect with a second, independent measurement before acting. Several "defects" this session were artefacts of the metric, not the rig.
