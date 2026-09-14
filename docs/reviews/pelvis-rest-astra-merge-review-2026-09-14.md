@@ -461,3 +461,47 @@ Preserve the distinction between historical hygiene on **unchanged C**, the refa
 - Prose still says **103** trusted families and retains obsolete unread totals; the newer table and brief are correct. [Stale inventory:1073](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:1073), [stale totals:1110](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:1110).
 
 **38 focused tests pass.** Full suite not rerun. Read-only throughout; worktree clean; `git diff 9dda9ac -- src/` empty.
+
+---
+
+# Merge review round 9 — 2026-09-15, at ladder/D7c f56d27d. Verdict: NO MERGE (two areas)
+
+Verified: `d7c_gate_report.py:1532` requires only a nonempty mask-cache map (`silhouette.py:244` loads a named cache); `d7c_source_fingerprint.py:104` `fingerprint_now` emits neither `stage` nor `build_order/log_mtime`, which `:327/:352` require, and `d7c_pelvis_rest_gate.py:673` emits no fingerprint at all; `:149` the retrospective stamp overwrites `source_fingerprint` wholesale; `:2600` the sweep check is vocabulary membership, not applicability; `:356` hygiene compares against its duplicated timestamp map, not the tripwire's own value; prose 117 vs 120; `:1862` calls B2's distances MAMMA-referenced (they are against our own capture, `delivered_vs_capture.py:531`); `:1560` equal `draws_used` counts are not draw identity (the producer's shared draw list at `d7c_pelvis_rest_silhouette.py:289` is).
+
+| # | finding | change |
+|---|---|---|
+| 1 | the consumed mask cache not required by identity; the producer-to-gate fingerprint contract broken (fields missing, the instrument producer emits none, the retrospective stamp overwrites genuine ones) | cache by identity; the producers emit the full contract at build time and the gate is verified against a genuine producer output; the retrospective stamper never overwrites a genuine stamp |
+| 2 | the sweep check verifies vocabulary, not applicability; the stage-order check reads a duplicated map | applicability per conjunct (a reason is legal only for the conjunct the card gives it for); stage order derived from each stage's own value with all five stages present |
+| 3 | "by construction today" honest, insufficient as implemented | resolved by 1 |
+| 4 | three overclaims | the prose count, the B2 reason, draw identity from the shared draw list |
+
+---
+
+**1. NO MERGE at `f56d27d`. Two blocking areas, confidence 10/10.**
+
+- **Required evidence can still disappear or contradict its source without failing the gate.** Deleting `mask/masks-960x540-A001_B001_C001_D001.npz` from the silhouette’s cache-proof map leaves **MERGE / COVERED / NAMED**, all 50 clauses unchanged. That is the cache the reader actually loads; the gate merely requires a nonempty map. Require the consumed cache by identity. [Gate:1532](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1532), [reader:244](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/silhouette.py:244). The stage-order escape below needs the same constituent and membership checks.
+
+- **The promised build-time fingerprint handoff is broken.** Substituting the actual return from `fingerprint_now("E_rig_rest_kabsch")` into the delivery report produces **NO MERGE: missing `stage`**. Adding only `stage` exposes **missing `build_order/log_mtime`**. The helper emits neither; the gate requires both. Moreover, the oracle/take producer still emits **no fingerprint at all**. Complete and verify the producer-to-gate contract without subsequently replacing genuine stamps with retrospective ones. [Helper:104](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_source_fingerprint.py:104), [requirements:327](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:327), [requirements:352](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:352), [instrument producer:673](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_pelvis_rest_gate.py:673).
+
+**2. Both requested attacks escape.**
+
+| In-memory attack | Result |
+|---|---|
+| Give `FAMILY_SWEEP["silhouette/subjects/**"]` the reason **“a preserved recorded STOP”**, retaining its B1 grouping. The card gives B1 no such exclusion. | **MERGE / COVERED / NAMED**, all clauses unchanged. The check is only `row[1] not in WHY_NOT_BANDED`; it verifies vocabulary membership, not applicability to that family. [Check:2600](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:2600). |
+| Change the tripwire’s own `build_order/log_mtime` to **1789397462**, one second before hygiene’s **1789397463**. | **MERGE / COVERED / NAMED**, all clauses unchanged. Hygiene compares against its duplicated timestamp map, not the tripwire’s own value. Deleting four of that map’s five stage entries also passes. [Check:356](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:356). |
+
+**3. “Holds by construction today” is honest; the disposition is insufficient as implemented.**
+
+I reproduced the retained pre-change hash and the actual log ordering. Keeping historical hygiene explicitly retrospective is reasonable. But the planned close-out rebuild cannot currently supply evidence the gate accepts through its genuine producer path. Repair that handoff before relying on “the next build.” The retrospective stamping command otherwise overwrites `source_fingerprint` wholesale. [Stamp replacement:149](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_source_fingerprint.py:149).
+
+**4. Reproduction and remaining overclaims.**
+
+The three round-8 attacks now return **NO MERGE**. All headline counts reproduce, including **50 clauses; 36/12/2; thirteen conjuncts; 3,681 scalar leaves + 664 containers; sweep 81/16; inventory 1,450/120**. I reran every fuzz row: **18,360 visited, 5,130 enforced, zero gaps, zero monotone failures**, with no row differences. All **30 silhouette cells** reproduce from retained arrays, including **1,838–2,000 draws** and the five-frame-floor explanation.
+
+Three corrections remain:
+
+- Prose still says **117 trusted families**, versus the reproducible **120**. [Prose:1083](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:1083).
+- The exemption calls B2’s distances **MAMMA-referenced**. They are against the delivery’s own captured landmarks. [Wrong reason:1862](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1862), [producer:531](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/delivered_vs_capture.py:531).
+- Equal `draws_used` counts establish count consistency, not draw identity. The producer’s shared draw list supports identity; calling the count comparison its measurement repeats round 8’s count-versus-identity mistake. [Claim:1560](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1560), [shared draws:289](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_pelvis_rest_silhouette.py:289).
+
+**38 focused tests passed.** Full suite not rerun. Read-only throughout; worktree clean; `git diff 9dda9ac -- src/` empty.
