@@ -1004,13 +1004,13 @@ whether flipping it to FAIL turns the merge rule.
 | B6 between-key playback (BOTH channels interpolated, then FK) | REPORT | inside a run, maxima **0.459 / 0.295 mm** (candidate) against **0.665 / 1.311 mm** (D9b). Two earlier versions withdrawn: 0.0003 mm (composed positions) and the millimetre-scale medians (translation read at the key) | REPORT |
 | B6 the `Root` / eye / finger invariants | REPORT | bit-identical, both performers — a **TRACK-ARRAY** claim | REPORT |
 | the provenance audit | no unaudited constant | `RIG_REST_PELVIS_MODES` registered; `PELVIS_FRAME_SOURCE` rewritten keeping its history | **PASS** |
-| **B1 IDENTICAL DRAWS** (round 8) | the card bands identical draws in B1 and B2 | the flag read AND the property measured: every part of a cut reports the same `draws_used` (2000 / 1990 / 1999 / 1987 / 1838 — a degenerate-resample shortfall, reported and never banded); B2 publishes no such flag and its three bootstrap parameters are read instead, the missing boolean stated as owed | **PASS** |
-| **provenance by SOURCE FINGERPRINT** (round 8) | every report names the converter that produced it, by content | the historical hygiene arm on the pre-change module (retained from `dec1354^` and hashed by the gate), the C-held tripwire and the E candidate on the refactored one; a path prefix accepted the nested worktree from main and rejected an equal checkout elsewhere, and decides nothing now | **PASS** |
+| **B1 IDENTICAL DRAWS** (round 8) | the card bands identical draws in B1 and B2 | the flag read AND the property measured: `silhouette_partwise.py:405` builds ONE draw list for the whole take that every cut and part indexes, and every part of a cut reports the same `draws_used` (2000 / 1990 / 1999 / 1987 / 1838). The shortfall has a mechanism, read from the producer: `:414` drops a draw whose resampled frames land fewer than **five** times inside the cut, so the smallest cuts lose the most — performer 1's 22 hoisted frames keep 1,838 of 2,000. Reported, never banded; B2 publishes no such flag and its three bootstrap parameters are read instead, the missing boolean stated as owed | **PASS** |
+| **provenance by SOURCE FINGERPRINT** (round 8) | every report names the converter that produced it, by content | the historical hygiene arm on the pre-change module (retained from `dec1354^` and hashed by the gate), the C-held tripwire and the E candidate on the refactored one; a path prefix accepted the nested worktree from main and rejected an equal checkout elsewhere, and decides nothing now. **All six stamps were computed after the fact** — the producer recorded only a path — so "refactored == executing" holds by construction today and becomes evidence on the next build; what is *not* by construction is the order, and the historical arm's log precedes both the src-change commit and every refactored stage's log | **PASS** |
 | **merge rule, thirteen conjuncts** | all PASS | all PASS | **MERGE** |
 | **the gate's four structural rules** | derived-or-cross-checked; missing is FAIL; sets by identity; every measurement leaf read or justified by name | every read goes through a `Reader` that raises on an absent path; every aggregate is recomputed from named constituents and cross-checked against any stored summary; files, seeds, performers, cells, **arms** and **contact runs (by `(side, start, end)` from the frozen mask)** are checked by identity | **PASS** |
-| **measurement coverage** (round 7) | every unread MEASUREMENT leaf under a report a clause reads is justified by name; no justification matches nothing | **3,663 scalar leaves + 663 containers read by a clause** (round 8 took that label apart: `touched` holds every path a clause reached, and a map read whole is not a leaf); of the unread, 744 LABEL, 141 PROVENANCE, 1,488 DIAGNOSTIC and 7,860 MEASUREMENT, the last covered by **83 named families with 0 gaps and 0 dead patterns** — and a saved `verdict` or `status` string counts as a MEASUREMENT, not a label, because reading one instead of deriving it was round 2's whole attack | **PASS** |
-| **the saved-value inventory, GENERATED not written** (round 7) | every boolean or string the gate consumes without deriving it is named | generated from the `Reader`'s own record: **1,448 reads cross-checked, 117 trusted families named, 0 unjustified**, and a justification matching nothing fails the gate as a gap does. The previous hand-written list's claim that "every other saved boolean is derived or cross-checked" was **false** and is withdrawn | **PASS** |
-| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,332 paths — 13,894 leaves + 4,438 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **5,109 enforced, 0 gaps**, 148 REPORT-only, 40 diagnostics, **0** preserved-STOP, 13,035 read by no clause — and that last class is now **inverted**: 721 labels, 141 provenance strings, 1,459 diagnostics, 2,888 containers and **7,826 measurement leaves justified by name, 0 unjustified**. Leaves are classified by **which** clauses they move — status and conjunct membership — the preserved-STOP class is pinned to the two recorded stops **by name**, and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way): **0 failures** | **PASS** |
+| **measurement coverage** (round 7) | every unread MEASUREMENT leaf under a report a clause reads is justified by name; no justification matches nothing | **3,681 scalar leaves + 664 containers read by a clause** (round 8 took that label apart: `touched` holds every path a clause reached, and a map read whole is not a leaf); of the unread, 746 LABEL, 140 PROVENANCE, 1,493 DIAGNOSTIC and 7,858 MEASUREMENT, the last covered by **81 named families with 0 gaps and 0 dead patterns**, every one of them swept against the card's merge rule — and a saved `verdict` or `status` string counts as a MEASUREMENT, not a label, because reading one instead of deriving it was round 2's whole attack | **PASS** |
+| **the saved-value inventory, GENERATED not written** (round 7) | every boolean or string the gate consumes without deriving it is named | generated from the `Reader`'s own record: **1,450 reads cross-checked, 120 trusted families named, 0 unjustified**, and a justification matching nothing fails the gate as a gap does. The previous hand-written list's claim that "every other saved boolean is derived or cross-checked" was **false** and is withdrawn | **PASS** |
+| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,360 paths — 13,916 leaves + 4,444 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **5,130 enforced, 0 gaps**, 154 REPORT-only, 40 diagnostics, **0** preserved-STOP, 13,036 read by no clause — and that last class is now **inverted**: 723 labels, 140 provenance strings, 1,464 diagnostics, 2,885 containers and **7,824 measurement leaves justified by name, 0 unjustified**. Leaves are classified by **which** clauses they move — status and conjunct membership — the preserved-STOP class is pinned to the two recorded stops **by name**, and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way): **0 failures** | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the
@@ -1086,7 +1086,7 @@ The inventory is what the gate *does*, not what its author recalls.
 **Round 7's own four leaves** were the same shape once more — B2's `same_denominator`
 aggregate, P1's per-channel `bit_identical`, the follower's population, and the calibration's
 accepted median — so closing them one by one would only have set up round 8. Inverting the
-unread class is what ends it: 7,860 unread measurement leaves are now covered by 83 named
+unread class is what ends it: 7,858 unread measurement leaves are now covered by 81 named
 families, 0 are unjustified, and closing the audit required **reading** twelve families the
 gate had been silent on. Two are worth naming. The shipping arm is required to BE the named
 estimator: `src_default == E_rig_rest_kabsch` leaf for leaf on every seed, so the O bands
@@ -1103,9 +1103,14 @@ interval's upper bound below zero established worsening with every clause unchan
 statistics" when the card requires identical draws in B1 *and* B2. And the preserved σ-1 STOP
 read its duplicated follower table while the body rows behind it were exempt, so setting the
 winner's own error to 1° on all six bodies left the stop's cause gone and the stop still
-reported. All three now read their constituents; every one of the 86 families was swept
-against the card's conjuncts first, which is how B2's bootstrap parameters and the
-silhouette's mask-cache identity were read rather than excused on the way past.
+reported. All three now read their constituents — and the sweep that found them is itself an artifact,
+not a claim: `FAMILY_SWEEP` names, for each of the 81 exempted families, the merge conjunct
+whose subtree it lives in and *why the card does not band it*, drawn from a closed vocabulary
+of the card's own exclusions. A family with no sweep row, or with a reason the card does not
+give, fails the coverage audit exactly as a gap does; both were tried and both read GAPS. The
+families group 44 under S, 15 under O1, 6 under O2 and the rest in ones and twos, and the sweep
+is how B2's bootstrap parameters and the silhouette's mask-cache identity were read rather than
+excused on the way past.
 
 **And the provenance check was location, not content.** `resolved_module` had to start with
 this worktree's root — and Astra set that root to the main checkout, under which this worktree
@@ -1139,12 +1144,20 @@ has a direction, a value pushed further past its band must still fail.
 **And the fuzzer's unread bucket was itself a place to hide.** "Read by no clause" held
 15,618 rows and a reviewer found four measurements inside it in one round — which is the
 definition of a class that proves nothing. It is now sub-classified by the gate's own
-functions, so the fuzz and the gate cannot disagree about what a leaf is: 721 labels, 141
-provenance strings, 1,459 diagnostics, 2,888 containers and 7,826 justified measurements, with
+functions, so the fuzz and the gate cannot disagree about what a leaf is: 723 labels, 140
+provenance strings, 1,464 diagnostics, 2,885 containers and 7,824 justified measurements, with
 **0** unjustified. Its historical-FAIL class is pinned to the two recorded STOPs **by name**;
 deriving it from "whichever clauses fail today" would let a new clause that accidentally fails
 at the baseline absorb every leaf it reads into a class excused by construction. Enforcement
-rose from 2,336 leaves to **5,109** across those changes.
+rose from 2,336 leaves to **5,130** across those changes.
+
+**And the monotone check was mis-specified a second time, which is worth recording because the
+first version's lesson did not cover it.** It keyed the direction to the probe constant: "set
+to 1e6" was assumed to push a value *up*. That is false of any leaf whose own scale exceeds
+1e6 — an epoch timestamp is 1.8e9, so that probe **decreases** it — and six build-order times
+were duly reported for failing to fail in a direction they were never pushed. The direction is
+now taken relative to the leaf's own value, and the further probe is that value ±1e12: **0
+failures**. A leaf escapes when the *gate* ignores it; twice now the alarm was the fuzzer's.
 
 **And the stops themselves are enforced — on their bands.** The gate said in prose that two
 clauses read FAIL and stay that way, and checked nothing: a `selector.json` rewritten so the

@@ -39,8 +39,13 @@ with genuine report rows. A leaf is now classified by WHICH clauses it moves -- 
                            MEASUREMENT leaf under a report some clause reads is a GAP unless
                            the gate's own inventory names its family.
 
-AND FOR ENFORCED NUMERIC LEAVES, A MONOTONE CHECK -- and its first version was mis-specified,
-which is worth recording because it produced 387 "failures" that were the check's fault. It
+AND FOR ENFORCED NUMERIC LEAVES, A MONOTONE CHECK -- mis-specified TWICE, and both are worth
+recording. The second time, the direction was keyed to the probe constant: "set to 1e6" was
+assumed to push a value UP, which is false of any leaf whose own scale is larger than 1e6 -- an
+epoch timestamp is 1.8e9, so that probe DECREASES it. Six build-order times were reported for
+failing to fail in a direction they were never pushed. The direction is now taken relative to
+the leaf's own value and the further probe is that value plus or minus 1e12. The first time,
+it produced 387 "failures" that were its own fault: it
 required BOTH +1e6 and -1e6 to fail if either did, and most bands here are ONE-SIDED: an error
 that must be small correctly PASSES when driven to -1e6, because that is the good direction.
 What monotonicity actually means is: whichever extreme fails, pushing SIX MORE ORDERS OF
@@ -268,8 +273,14 @@ def main() -> int:
             failed = result["verdict"] != "MERGE"
             if failed:
                 turned = True
-            if label in ("set to 1e6", "set to -1e6"):
-                directions[label] = failed
+            if label in ("set to 1e6", "set to -1e6") and isinstance(original, (int, float)):
+                # BY DIRECTION RELATIVE TO THE ORIGINAL, not by the sign of the constant. A
+                # leaf whose natural scale is larger than 1e6 is DECREASED by "set to 1e6" --
+                # an epoch timestamp is 1.8e9 -- so keying the monotone check on the label
+                # mislabels the direction and then reports the leaf for failing to fail in a
+                # direction it was never pushed. Six such leaves (the build-order times) were
+                # flagged that way; the check was wrong, not the gate.
+                directions["up" if replacement > original else "down"] = failed
             for entry in result.get("clauses", []):
                 before = baseline.get(entry["clause"])
                 if before and (before[0] != entry["verdict"]
@@ -279,7 +290,10 @@ def main() -> int:
         # fail too. Only the FAILING direction is tested -- a one-sided band is supposed to
         # pass when pushed the good way.
         monotone = {}
-        for label, further in (("set to 1e6", FAR), ("set to -1e6", -FAR)):
+        for label, further in (("up", (original + FAR) if isinstance(original, (int, float))
+                                and not isinstance(original, bool) else FAR),
+                               ("down", (original - FAR) if isinstance(original, (int, float))
+                                and not isinstance(original, bool) else -FAR)):
             if not directions.get(label):
                 continue
             snapshot = list(parent) if isinstance(parent, list) else dict(parent)
@@ -395,9 +409,10 @@ def main() -> int:
         "counts": {name: len(rows) for name, rows in buckets.items()},
         "gaps": len(gaps),
         "monotone_check": (
-            "for every enforced numeric leaf, whichever extreme fails is pushed six more "
-            "orders of magnitude the SAME way and must fail again. Only the failing direction "
-            "is tested: a one-sided band is supposed to pass when pushed the good way."),
+            "for every enforced numeric leaf, whichever DIRECTION fails -- up or down from the "
+            "leaf's own value, not the sign of the probe constant -- is pushed 1e12 further "
+            "the same way and must fail again. Only the failing direction is tested: a "
+            "one-sided band is supposed to pass when pushed the good way."),
         "monotone_check_failures": len(direction_failures),
         "monotone_check_failing_leaves": direction_failures[:20],
         "summary": (f"{len(targets)} visited ({leaves} leaves + {containers} containers): "
