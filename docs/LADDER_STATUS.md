@@ -1,6 +1,6 @@
 # Body lane — where we are (generated, do not hand-edit)
 
-*Rendered from `docs/ladder-status.json` on 2026-09-14 by `tools/compare/status.py render`.*
+*Rendered from `docs/ladder-status.json` on 2026-09-15 by `tools/compare/status.py render`.*
 **Read this first in any body-lane session.** Then: `docs/LADDER_EXECUTION_PLAN.md` (what gets
 built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is measured and how).
 
@@ -28,12 +28,12 @@ Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D7, D7b, D8, D9, D8b, D8c,
 
 ## Recent log
 
-- 2026-09-14 [D7c] Astra merge review round 3 at 65a5a4d: NO MERGE. The gate's verdicts derive from saved classifications and partial populations (five further mutations still read MERGE); the mesh inversion classifier is unsound (first-vertex dominant joint; a positive-determinant LBS called inverted); B6 maxima over 15 frames; the closure constant fitted from the output. Sent back to the agent.
 - 2026-09-14 [D7c] Astra merge review round 4 at 1673e6b: NO MERGE. Five more gate coverage holes (empty G1/G2 maps, a hidden failing oracle seed and take run, an unnamed B1 cell); the tetrahedron inversion test unsound under varying skin weights -- after three unsound classifiers the reading is to be qualified as a proxy and the sound skinning-Jacobian measurement handed to D6. Sent back to the agent.
 - 2026-09-14 [D7c] Astra merge review round 5 at 843bce5: NO MERGE -- six more gate escapes (a stored S aggregate never derived, global summaries and run identities unchecked, missing measurement fields silent) and surviving B6 inversion conclusions. The agent is rebuilding the gate on one rule (derive or cross-check every value, missing is FAIL, sets by identity) and proving it with a leaf-level fuzzer over every input report.
 - 2026-09-14 [D7c] Astra merge review round 6 at e68e06d: NO MERGE -- four leaves the gate should read and does not (the authentication hashes, the follower's denominator, the selector populations, the controls' named channels); the fuzzer's REPORT-only class misclassified 8 enforced control leaves. Sent back to the agent.
 - 2026-09-14 [D7c] Astra merge review round 7 at cffaad3: NO MERGE -- four more stored-summary reads whose constituents are on disk (B2's aggregate, P1's bit_identical, the follower's population, the calibration's accepted median). The fuzzer's unread class is being inverted: every unread measurement leaf under a clause's subtree is a GAP unless justified by name.
 - 2026-09-14 [D7c] Astra merge review round 8 at 17dc09e: NO MERGE -- the coverage audit's exemptions excuse three banded measurements (B1's ci95 constituents and populations, identical draws, the sigma-1 stop's body constituents); the build-provenance check is a path prefix and must become a source fingerprint; contact counts are not mask identity. Sent back to the agent.
+- 2026-09-15 [D7c] Astra merge review round 9 at f56d27d: NO MERGE -- the silhouette's consumed mask cache not required by identity; the build-time fingerprint contract broken (the helper omits stage and build order, the instrument producer emits none, the retrospective stamp overwrites); the sweep checks vocabulary not applicability; stage order read from a duplicated map. Sent back to the agent.
 
 ## How to resume
 

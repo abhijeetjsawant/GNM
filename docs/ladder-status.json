@@ -1,6 +1,6 @@
 {
   "_about": "Source of truth for where the body lane stands. Edit ONLY through tools/compare/status.py (set / log / render). render writes docs/LADDER_STATUS.md and docs/progress.html from this file. Plan of record: docs/LADDER_EXECUTION_PLAN.md; what is measured and how: docs/SUBSTITUTION_LADDER.md.",
-  "updated": "2026-09-14",
+  "updated": "2026-09-15",
   "goal": "An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.",
   "lanes": [
     {
@@ -813,6 +813,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "Astra merge review round 8 at 17dc09e: NO MERGE -- the coverage audit's exemptions excuse three banded measurements (B1's ci95 constituents and populations, identical draws, the sigma-1 stop's body constituents); the build-provenance check is a path prefix and must become a source fingerprint; contact counts are not mask identity. Sent back to the agent."
+    },
+    {
+      "date": "2026-09-15",
+      "step": "D7c",
+      "text": "Astra merge review round 9 at f56d27d: NO MERGE -- the silhouette's consumed mask cache not required by identity; the build-time fingerprint contract broken (the helper omits stage and build order, the instrument producer emits none, the retrospective stamp overwrites); the sweep checks vocabulary not applicability; stage order read from a duplicated map. Sent back to the agent."
     }
   ]
 }
