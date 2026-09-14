@@ -227,9 +227,9 @@ At σ = 0.35 and 0.25 the guard's own experiments were reached, and they are rep
 
 * **G1, missing-only.** The equivalence holds on **5 of 6** bodies, not 6. On seed 20260904 the
   guard demotes **one additional frame (21)** beyond the injected 29-frame pattern, so the
-  guarded and unguarded interpolated arrays are not bit-identical there. Astra verified
-  bit-identity on the *shipped code path*; on this fixture's own noisy draw one frame's lever
-  lands outside the 0.15 ceiling on its own. Recovery error on the missing frames 3.7 – 5.7°
+  guarded and unguarded interpolated arrays are not bit-identical there. Astra's check was made on a
+  different observation than this fixture's noisy draw; here one frame's lever lands outside
+  the 0.15 ceiling on its own. Recovery error on the missing frames 3.7 – 5.7°
   against 3.3 – 4.3° elsewhere. **Reported, never banded** — G1 carries no superiority claim.
 * **G2, finite-only.** Decisive: guarded **3.2 – 5.7°** against unguarded **62 – 77°** on the
   corrupted frames, and 1.6 – 2.6° against 3.6 – 5.8° on the transition pairs, on every body
@@ -281,7 +281,7 @@ delivery under (a) would have failed a clause that was true only of the mode tha
 | the wrong-origin control reads 0.000° and is caught only by the residual | 0.000° / ~84 mm | 0.0001° / 80.4 – 96.5 mm | **PASS** (blindness realised) |
 | `frozen_upright` must-fail | fails O1 | 7.2166°, fails the 0.01° band | **PASS** (fails as required) |
 | the D9b build itself must-fail | 6.865° on every oracle frame | 6.8650 – 6.8651 | **PASS** (fails as required) |
-| the SOMA template through the new path must-fail | 6.865° | `C_soma_template` arm reads 6.8650 – 6.8651, identical to `src_default` | **PASS** (fails as required) |
+| the SOMA template through the new path must-fail | 6.865° | demonstrated on the CURRENT path only: `C_soma_template` reads 6.8650 – 6.8651, an execution identical to `src_default` because `src/` never moved. The card's must-fail is the C execution through the REFACTORED `_pelvis_world_frames` — the tripwire's second reading | **not reached** |
 | S: (a) vs (b) decided, not split | either | (a) wins 6/6 cells | **PASS** |
 | S: the winner beats C-on-SOMA on (i), both populations | strictly better | 9.549 vs 15.970 and 11.217 vs 15.510 | **PASS** |
 | **S: the follower ≥ 2× the winner on every body** | **≥ 2× on 6/6** | **1.45 – 2.74, 5 of 6 below 2×** | **FAIL → STOP** |
