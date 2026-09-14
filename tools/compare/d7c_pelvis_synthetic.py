@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from hashlib import sha256
 from pathlib import Path
 import sys
 
@@ -424,6 +425,17 @@ def main() -> int:
                              "seeing the verdict would be selecting on a knob. The sweep "
                              "exists so the coordinator and Astra can see how the a/b "
                              "selection and the follower ratio move with it.")
+    parser.add_argument("--admissibility", action="store_true",
+                        help="re-assess the FROZEN evaluations in `selector-calibrated.json` "
+                             "under Astra round 7's amended admissibility rule and write "
+                             "`selector-calibrated-amended.json`. Nothing is re-observed and "
+                             "neither `selector.json` nor `selector-calibrated.json` is "
+                             "touched. Runs no part of S.")
+    parser.add_argument("--reread-sigma", type=float, default=None,
+                        help="reread ALL of S at this EXACT sigma (no rounding) into "
+                             "`selector-reread-sigma<value>.json`. Use only after the "
+                             "calibration records REACHED; calibration REACHED leaves S "
+                             "PENDING, never PROCEED.")
     parser.add_argument("--calibrate", action="store_true",
                         help="the FIXTURE CALIBRATION amendment (Astra rounds 5 and 6): "
                              "measure the take's guard-kept lever sd at S's own stage, "
@@ -434,7 +446,12 @@ def main() -> int:
                              "STOP -- is never touched.")
     args = parser.parse_args()
     out = args.out if args.out.is_absolute() else ROOT / args.out
-    if args.calibrate:
+    if args.admissibility:
+        return admissibility_artifact(out.parent)
+    if args.reread_sigma is not None:
+        args.sigma_scale = float(args.reread_sigma)
+        out = out.parent / f"selector-reread-sigma{args.sigma_scale!r}.json"
+    elif args.calibrate:
         out = out.parent / "selector-calibrated.json"
     elif args.sigma_scale != 1.0:
         out = out.parent / f"selector-sensitivity-sigma{args.sigma_scale:g}.json"
@@ -466,7 +483,7 @@ def main() -> int:
                          "sigma-1.0 STOP stands and no reread was performed."),
                 "calibration": calibration}
             return finish(report, out, stop=True)
-        args.sigma_scale = found["accepted_sigma_scale"]
+        args.sigma_scale = found["accepted_sigma_scale_exact"]
         print(f"CALIBRATED sigma_scale = {args.sigma_scale} "
               f"({found['accepted_value_mm']} mm against {CALIBRATION_TARGET_MM})")
 
@@ -501,9 +518,18 @@ def main() -> int:
         },
         "arms": list(ARMS),
         "sigma_scale": args.sigma_scale,
-        "is_the_pre_registered_fixture": args.sigma_scale == 1.0 and not args.calibrate,
+        "sigma_scale_repr": repr(args.sigma_scale),
+        "is_the_reread_at_the_calibrated_sigma": args.reread_sigma is not None,
+        "is_the_pre_registered_fixture": (args.sigma_scale == 1.0 and not args.calibrate
+                                          and args.reread_sigma is None),
         "calibration": calibration,
         "sensitivity_note": (
+            ("THE REREAD at the calibration's EXACT accepted sigma (Astra round 7). Every S "
+             "clause is reread here with all six bodies kept and the calibration's keep-mask "
+             "restricting NOTHING in S's scoring populations. Calibration REACHED left S "
+             "PENDING; this file is where S is decided. The sigma-1.0 STOP stays recorded in "
+             "`selector.json` and the frozen-rule UNREACHABLE in `selector-calibrated.json`; "
+             "both are immutable.") if args.reread_sigma is not None else
             None if args.sigma_scale == 1.0 and not args.calibrate else
             ("THE CALIBRATED REREAD, under the card's FIXTURE CALIBRATION amendment "
              "(Astra rounds 5 and 6). Every S clause is reread at the calibrated sigma "
@@ -751,6 +777,7 @@ def calibrate(cameras, bodies: dict, target_mm: float) -> dict:
                     for seed, row in observed.items()}
         value = float(np.median(list(per_body.values())))
         evaluations.append({"sigma_scale": round(scale, 6),
+                            "sigma_scale_exact": float(scale),
                             "median_of_six_guard_kept_sd_mm": round(value, 4),
                             "per_body_mm": per_body})
         print(f"  calibration: sigma {scale:.6f} -> guard-kept lever sd "
@@ -831,12 +858,194 @@ def calibrate(cameras, bodies: dict, target_mm: float) -> dict:
                            "bisection on it is not well posed")
         return block
     block["status"] = "CALIBRATED"
+    # THE EXACT EVALUATED VALUE is what S receives. Until Astra round 7 this line rounded the
+    # accepted sigma to six places before handing it on, so S would have been read at
+    # 0.335547 while the calibration was evaluated at 0.335546875 -- a different fixture from
+    # the one the bisection measured. The display rounding is kept beside it, disclosed, and
+    # is never what runs.
+    block["accepted_sigma_scale_exact"] = float(accepted)
     block["accepted_sigma_scale"] = round(accepted, 6)
+    block["accepted_sigma_rounding_disclosure"] = (
+        "`accepted_sigma_scale` is a DISPLAY rounding; `accepted_sigma_scale_exact` is the "
+        "bisection midpoint that was actually evaluated and is what S is read at.")
     block["accepted_value_mm"] = round(
         [row for row in evaluations
-         if row["sigma_scale"] == round(accepted, 6)][-1]
+         if row["sigma_scale_exact"] == float(accepted)][-1]
         ["median_of_six_guard_kept_sd_mm"], 4)
     return block
+
+
+# ------------------------------------------- THE AMENDED ADMISSIBILITY RULE (Astra round 7)
+#
+# The frozen rule's precondition was global monotonicity, and this record failed it on a
+# single 0.0135 mm decrease. Astra round 7 ruled that STOP correct under the wording it was
+# given, kept it recorded, and amended the ADMISSIBILITY test -- post hoc, in the reviewer's
+# own words, and reproduced here verbatim:
+#
+#   "Calibration admissibility is assessed on the frozen evaluations, sorted by sigma. Retain
+#    the target, tolerance tau = 0.05 mm, bracket, evaluation budget, draws and numerical
+#    stopping rule. STOP if any earlier evaluated statistic exceeds any later evaluated
+#    statistic by more than tau, or if the nonzero signs of statistic-minus-target change more
+#    than once. Record every decrease and its keep-mask diagnosis; a diagnosed keep-mask
+#    decrease within tau does not itself stop calibration. When these checks pass and the
+#    unchanged stopping rule finds a value within tau, record REACHED. This establishes an
+#    observed tolerance match, not global monotonicity or uniqueness between evaluations."
+#
+# ANY earlier/later pair, not adjacent pairs only: several small successive decreases could
+# otherwise conceal a total decrease exceeding tau.
+#
+# NOTHING IS RE-OBSERVED. This re-assesses the SAME frozen evaluations that produced the
+# UNREACHABLE verdict; `selector-calibrated.json` is never rewritten and its
+# `monotone_across_the_evaluations: false` is preserved. REACHED is an observed tolerance
+# match and leaves S PENDING, never PROCEED.
+AMENDED_RULE_TEXT = (
+    "Calibration admissibility is assessed on the frozen evaluations, sorted by sigma. "
+    "Retain the target, tolerance tau = 0.05 mm, bracket, evaluation budget, draws and "
+    "numerical stopping rule. STOP if any earlier evaluated statistic exceeds any later "
+    "evaluated statistic by more than tau, or if the nonzero signs of statistic-minus-target "
+    "change more than once. Record every decrease and its keep-mask diagnosis; a diagnosed "
+    "keep-mask decrease within tau does not itself stop calibration. When these checks pass "
+    "and the unchanged stopping rule finds a value within tau, record REACHED. This "
+    "establishes an observed tolerance match, not global monotonicity or uniqueness between "
+    "evaluations.")
+
+
+def replay_bisection(evaluations: list[dict], target_mm: float) -> dict:
+    """Recover the EXACT evaluated sigmas by replaying the frozen stopping rule.
+
+    The recorded evaluations carry a six-place display rounding of sigma. The stopping rule
+    is deterministic and depends only on the recorded STATISTICS, so replaying it from the
+    frozen bracket reproduces the exact Python floats the bisection evaluated -- and every
+    lookup succeeding is itself the proof that the replay is the recorded run and not a
+    re-derivation of it.
+    """
+    lookup = {row["sigma_scale"]: row["median_of_six_guard_kept_sd_mm"]
+              for row in evaluations}
+    order: list[float] = []
+
+    def value(scale: float) -> float:
+        key = round(scale, 6)
+        if key not in lookup:
+            raise SystemExit(
+                f"replay diverged: sigma {scale!r} (display {key}) is not in the frozen "
+                "evaluations, so the recorded run did not follow this stopping rule")
+        order.append(float(scale))
+        return lookup[key]
+
+    low, high = CALIBRATION_BRACKET
+    low_value, high_value = value(low), value(high)
+    accepted = None
+    for _ in range(CALIBRATION_MAX_EVALUATIONS - len(order)):
+        if abs(low_value - target_mm) <= CALIBRATION_TOLERANCE_MM:
+            accepted = low
+            break
+        if abs(high_value - target_mm) <= CALIBRATION_TOLERANCE_MM:
+            accepted = high
+            break
+        middle = 0.5 * (low + high)
+        found = value(middle)
+        if abs(found - target_mm) <= CALIBRATION_TOLERANCE_MM:
+            accepted = middle
+            break
+        if found < target_mm:
+            low, low_value = middle, found
+        else:
+            high, high_value = middle, found
+    return {"evaluation_order_exact": order,
+            "evaluation_order_display": [round(v, 6) for v in order],
+            "accepted_sigma_scale_exact": accepted,
+            "accepted_sigma_scale_display": None if accepted is None else round(accepted, 6),
+            "replay_reproduced_every_recorded_evaluation": len(order) == len(evaluations)}
+
+
+def assess_admissibility(frozen: dict, target_mm: float, diagnosis: str) -> dict:
+    """The amended rule, applied to the frozen evaluations. Nothing is re-observed."""
+    evaluations = frozen["evaluations"]
+    replay = replay_bisection(evaluations, target_mm)
+    ordered = sorted(evaluations, key=lambda row: row["sigma_scale"])
+    values = [row["median_of_six_guard_kept_sd_mm"] for row in ordered]
+    sigmas = [row["sigma_scale"] for row in ordered]
+
+    # (A) ANY earlier/later pair, not adjacent only.
+    pairs = [{"sigma_earlier": sigmas[i], "sigma_later": sigmas[j],
+              "sd_earlier_mm": values[i], "sd_later_mm": values[j],
+              "decrease_mm": round(values[i] - values[j], 6)}
+             for i in range(len(values)) for j in range(i + 1, len(values))
+             if values[j] < values[i]]
+    worst = max((row["decrease_mm"] for row in pairs), default=0.0)
+
+    # (B) the nonzero signs of (statistic - target), at most one change.
+    signs = [(-1 if v < target_mm else 1) for v in values if v != target_mm]
+    changes = sum(1 for a, b in zip(signs, signs[1:]) if a != b)
+    crossings = [{"sigma_below": sigmas[i], "sd_below_mm": values[i],
+                  "sigma_above": sigmas[i + 1], "sd_above_mm": values[i + 1]}
+                 for i in range(len(values) - 1)
+                 if (values[i] < target_mm) != (values[i + 1] < target_mm)]
+
+    band = [round(target_mm - CALIBRATION_TOLERANCE_MM, 4),
+            round(target_mm + CALIBRATION_TOLERANCE_MM, 4)]
+    inside = [{"sigma_exact": replay["evaluation_order_exact"][
+                   replay["evaluation_order_display"].index(row["sigma_scale"])],
+               "sigma_display": row["sigma_scale"],
+               "sd_mm": row["median_of_six_guard_kept_sd_mm"],
+               "residual_mm": round(row["median_of_six_guard_kept_sd_mm"] - target_mm, 6)}
+              for row in ordered
+              if abs(row["median_of_six_guard_kept_sd_mm"] - target_mm)
+              <= CALIBRATION_TOLERANCE_MM]
+
+    checks = {
+        "A_no_earlier_to_later_decrease_over_tau": {
+            "rule": "STOP if any earlier evaluated statistic exceeds any later one by > tau",
+            "pairs_considered": "ALL earlier/later pairs, not adjacent only -- several small "
+                                "successive decreases could otherwise conceal a total "
+                                "decrease exceeding tau",
+            "decreases": pairs,
+            "largest_decrease_mm": worst,
+            "tau_mm": CALIBRATION_TOLERANCE_MM,
+            "passes": bool(worst <= CALIBRATION_TOLERANCE_MM)},
+        "B_at_most_one_sign_change_of_statistic_minus_target": {
+            "signs_in_sigma_order": signs,
+            "sign_changes": changes,
+            "sampled_crossings": crossings,
+            "passes": bool(changes <= 1)},
+        "C_the_unchanged_stopping_rule_found_a_value_within_tau": {
+            "tolerance_band_mm": band,
+            "evaluations_inside_the_band": inside,
+            "accepted_sigma_scale_exact": replay["accepted_sigma_scale_exact"],
+            "passes": bool(replay["accepted_sigma_scale_exact"] is not None)},
+    }
+    reached = all(row["passes"] for row in checks.values())
+    return {
+        "amended_rule_verbatim": AMENDED_RULE_TEXT,
+        "amendment_is_post_hoc": (
+            "YES, and it is recorded as such. The sigma itself is TARGET-DETERMINED -- the "
+            "matched target and the frozen bisection reach ~0.335547 without consulting S, "
+            "and the earlier PROCEED at sigma 0.35 enters that arithmetic nowhere. But the "
+            "coordinator already knew that sensitivity result when proposing the amendment, "
+            "so agent blindness during the bisection does not make the protocol independent "
+            "of earlier outcomes. Both facts are recorded; every unchanged S clause is "
+            "accepted even if it stops the step again."),
+        "what_the_old_artifact_records": (
+            "`selector-calibrated.json` is IMMUTABLE and keeps "
+            "`monotone_across_the_evaluations: false`. UNREACHABLE there records the failure "
+            "of THAT admissibility rule, not proof that no numerical match exists."),
+        "nothing_is_re_observed": (
+            "this re-assesses the SAME frozen evaluations; no camera, no triangulation and "
+            "no draw was touched"),
+        "target_mm": target_mm,
+        "tolerance_mm": CALIBRATION_TOLERANCE_MM,
+        "bracket": list(CALIBRATION_BRACKET),
+        "evaluation_budget": CALIBRATION_MAX_EVALUATIONS,
+        "replay_of_the_frozen_stopping_rule": replay,
+        "checks": checks,
+        "verdict": "REACHED" if reached else "STOP",
+        "what_REACHED_means": (
+            "an OBSERVED TOLERANCE MATCH at the sampled sigmas -- never global monotonicity, "
+            "never uniqueness between evaluations. Even a strictly increasing continuous "
+            "statistic normally has an INTERVAL of sigma inside a nonzero tolerance."),
+        "calibration_REACHED_leaves_S": "PENDING, not PROCEED",
+        "keep_mask_diagnosis": diagnosis,
+    }
 
 
 def zero_noise_baseline(cameras, bodies: dict) -> dict:
@@ -1171,6 +1380,123 @@ def g2(frozen: dict, winner: str) -> dict:
         and all(block["guard_wins_per_body_i"].values())
         and all(block["guard_wins_per_body_ii"].values()))
     return block
+
+
+def admissibility_artifact(directory: Path) -> int:
+    """Write `selector-calibrated-amended.json`. Reads the frozen record; observes nothing."""
+    frozen_path = directory / "selector-calibrated.json"
+    frozen = json.loads(frozen_path.read_text())
+    calibration = frozen["calibration"]
+    bisection = calibration["bisection"]
+    diagnosis_log = ROOT / "artifacts/compare/d7c-pelvis-rest/logs/06-violation-diagnosis.log"
+    diagnosis = (diagnosis_log.read_text() if diagnosis_log.exists()
+                 else "the diagnosis log is missing")
+    assessment = assess_admissibility(bisection, CALIBRATION_TARGET_MM, diagnosis)
+    exact = assessment["replay_of_the_frozen_stopping_rule"]["accepted_sigma_scale_exact"]
+    per_body = {row["sigma_scale"]: row["per_body_mm"] for row in bisection["evaluations"]}
+    baseline = calibration["zero_noise_baseline"]["median_of_six_guard_kept_lever_sd_mm"]
+    sigma_one = [row["median_of_six_guard_kept_sd_mm"]
+                 for row in bisection["evaluations"] if row["sigma_scale"] == 1.0][0]
+    report = {
+        "title": ("D7c -- the FIXTURE CALIBRATION re-assessed under Astra round 7's amended "
+                  "admissibility rule"),
+        "verdict": assessment["verdict"],
+        "S_status": "PENDING -- calibration REACHED is not S PROCEED",
+        "immutable_predecessors": {
+            "selector.json": ("the sigma-1.0 STOP, exactly as it fell. Not rewritten."),
+            "selector-calibrated.json": (
+                "the frozen-rule UNREACHABLE, with `monotone_across_the_evaluations: false` "
+                "preserved. Not rewritten. Its UNREACHABLE records the failure of THAT "
+                "admissibility rule, not proof that no numerical match exists."),
+            "selector-calibrated.json.sha256": sha256(frozen_path.read_bytes()).hexdigest(),
+        },
+        "admissibility": assessment,
+        "the_accepted_sigma": {
+            "exact_evaluated_value": exact,
+            "exact_repr": repr(exact),
+            "display_rounding_six_places": None if exact is None else round(exact, 6),
+            "which_one_S_is_read_at": "the EXACT value",
+            "implementation_change_disclosed": (
+                "`calibrate()` returned `round(accepted, 6)` and `main()` passed THAT to S, "
+                "so S would have been read at 0.335547 while the calibration was evaluated "
+                "at 0.335546875 -- a different fixture from the one measured. The exact "
+                "value is now carried in `accepted_sigma_scale_exact` and is what S "
+                "receives; the six-place value is kept as a display rounding. CHANGED in "
+                "this pass, disclosed here (Astra round 7, finding 3)."),
+            "per_body_sd_rounding_disclosed_not_changed": (
+                "`guard_kept_lever_sd` values are rounded to four places BEFORE their median "
+                "is taken (`per_body_mm` in every evaluation). That arithmetic is left "
+                "exactly as it was evaluated -- silently changing it would change the "
+                "statistic the bisection converged on. Disclosed, not changed."),
+        },
+        "all_six_body_values_per_evaluation_mm": per_body,
+        "evaluation_order_exact": assessment["replay_of_the_frozen_stopping_rule"][
+            "evaluation_order_exact"],
+        "scope_of_the_match": {
+            "matched_fixture_ratio_at_sigma_1": round(sigma_one / CALIBRATION_TARGET_MM, 4),
+            "matched_fixture_ratio_note": (
+                f"{sigma_one} mm at sigma 1.0 against the matched target "
+                f"{CALIBRATION_TARGET_MM} mm. The 1.8-3.0x first reported used D7's "
+                "rigidity row, a raw-triangulation common-valid-mask statistic at a "
+                "different stage, and is not the matched comparison."),
+            "zero_noise_baseline_mm": baseline,
+            "baseline_never_subtracted": (
+                f"{baseline} mm of guard-kept lever spread survives at sigma 0 through the "
+                "SAME `observe_body` pipeline. It is reported and NEVER subtracted from "
+                "either side: the target is the total post-processed observable, and a "
+                "variance subtraction would need a covariance model and would be a "
+                "different calibration."),
+            "what_is_matched": (
+                "A CONDITIONAL LENGTH SPREAD -- the guard-kept sd of |Spine1 - hip midpoint| "
+                "-- and nothing else. NOT directional noise, NOT detector realism, NOT "
+                "camera support, NOT bias or correlation structure. Length bounds no "
+                "direction. A guard-kept sd is conditional on the guard's own selection, so "
+                "the additive uncorrelated decomposition that would make it an upper bound "
+                "on observation noise may not hold, and no harshness claim is made in "
+                "either direction."),
+            "calibration_keep_mask_does_not_restrict_S": (
+                "the keep-rule exists only to make the calibration statistic comparable to "
+                "the take's; S's scoring populations are the whole take and the bent "
+                "tercile, unchanged, with all six bodies kept."),
+        },
+        "provenance": {
+            "code": {name: sha256((ROOT / "tools/compare" / name).read_bytes()).hexdigest()
+                     for name in ("d7c_pelvis_synthetic.py", "d7c_pelvis_estimators.py",
+                                  "d7_pelvis_synthetic.py")},
+            "estimators_frozen_at": "ladder/D7c 8a82ee4, unchanged since",
+            "camera_rig_sha256": sha256(RIG.read_bytes()).hexdigest(),
+            "converter_inputs_sha256": {
+                f"call-{s:02d}.npz": sha256(
+                    (HYGIENE_BUILD / f"converter-inputs/call-{s:02d}.npz").read_bytes()
+                ).hexdigest() for s in (0, 1)},
+            "seeds": [int(seed) for seed in d3.SEEDS],
+            "draw_law": ("np.random.default_rng(seed) per body per evaluation; "
+                         "`heavy_tail_magnitude` draws its uniform BEFORE it multiplies by "
+                         "sigma, so the stream is identical at every amplitude and the "
+                         "actual draws -- not merely their distribution -- are preserved"),
+            "reproducibility_evidence": (
+                "the bisection was executed twice, independently: all 10 evaluations agree "
+                "on sigma, on the median-of-six and on every per-body value, bit for bit "
+                "(logs/05-calibrated.log, and the replay in this file reproduces every "
+                "recorded evaluation from the frozen stopping rule alone)"),
+            "logs": ["logs/05-calibrated.log", "logs/06-violation-diagnosis.log"],
+        },
+        "take_target": calibration["take_target"],
+        "zero_noise_baseline": calibration["zero_noise_baseline"],
+    }
+    destination = directory / "selector-calibrated-amended.json"
+    destination.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    print(json.dumps({"verdict": report["verdict"], "S_status": report["S_status"],
+                      "accepted_sigma_exact": exact,
+                      "checks": {k: v["passes"]
+                                 for k, v in assessment["checks"].items()},
+                      "largest_decrease_mm": assessment["checks"][
+                          "A_no_earlier_to_later_decrease_over_tau"]["largest_decrease_mm"],
+                      "sign_changes": assessment["checks"][
+                          "B_at_most_one_sign_change_of_statistic_minus_target"][
+                          "sign_changes"]}, indent=1))
+    print(f"wrote {destination}")
+    return 0 if report["verdict"] == "REACHED" else 1
 
 
 def finish(report: dict, out: Path, stop: bool) -> int:
