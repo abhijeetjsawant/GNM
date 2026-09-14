@@ -593,11 +593,14 @@ def build(reports: dict) -> dict:
                         raise Missing(f"sigma1/{seed}/{arm_name}/{population} population is "
                                       f"not the frozen {frames}/{pairs}")
         below = [s for s, v in ratios.items() if v < FOLLOWER_RATIO]
-        r.checked("sigma1", "S_verdict", derived="STOP")
-        r.checked("sigma1", "follower_discriminated_on_every_body",
-                  derived=not below and all(
-                      r.num("sigma1", "frozen_pitch_follower_bent_tercile", s,
-                            "follower_i_deg") >= FOLLOWER_FLOOR_DEG for s in ORACLE_SEEDS))
+        discriminated = not below and all(
+            r.num("sigma1", "frozen_pitch_follower_bent_tercile", s, "follower_i_deg")
+            >= FOLLOWER_FLOOR_DEG for s in ORACLE_SEEDS)
+        r.checked("sigma1", "follower_discriminated_on_every_body", derived=discriminated)
+        # S's verdict in this file, DERIVED from the clause that decided it. If the follower
+        # ever discriminated here the recorded stop would have lost its cause, and the file
+        # would be claiming a stop it no longer measures.
+        r.checked("sigma1", "S_verdict", derived="PROCEED" if discriminated else "STOP")
         return (f"{min(ratios.values()):.3f}-{max(ratios.values()):.3f}x; {len(below)} of "
                 f"{len(ratios)} below {FOLLOWER_RATIO}x", not below)
 
@@ -688,7 +691,7 @@ def build(reports: dict) -> dict:
         # the recorded STATUS of the search, and S's own verdict in the same file
         r.checked("calibration", "calibration", "bisection", "status",
                   derived="UNREACHABLE" if worst > 0.0 else "REACHED")
-        r.checked("calibration", "S_verdict", derived="STOP")
+        r.checked("calibration", "S_verdict", derived="STOP" if worst > 0.0 else "PROCEED")
         # the sigma-ordered table beside the evaluations must BE the same pairs.
         table = r.listing("calibration", "calibration", "bisection",
                           "evaluated_in_sigma_order", minimum=2, elements=True)
@@ -782,8 +785,10 @@ def build(reports: dict) -> dict:
         if not r.text("admissibility", "S_status").startswith("PENDING"):
             raise Missing("the amended calibration file claims something other than PENDING "
                           "for S; calibration REACHED is not S PROCEED")
-        r.checked("admissibility", "verdict", derived="REACHED")
-        r.checked("admissibility", "admissibility", "verdict", derived="REACHED")
+        reached = "REACHED" if (worst <= CALIBRATION_TAU_MM and changes <= 1
+                                and inside) else "NOT REACHED"
+        r.checked("admissibility", "verdict", derived=reached)
+        r.checked("admissibility", "admissibility", "verdict", derived=reached)
         seeds = [str(int(x)) for x in r.listing("admissibility", "provenance", "seeds",
                                                 minimum=len(ORACLE_SEEDS), elements=True)]
         if tuple(seeds) != ORACLE_SEEDS:
@@ -1606,7 +1611,13 @@ def build(reports: dict) -> dict:
     # them PASSES means the immutable file no longer records what the step stopped on, which
     # is a corruption of the record and not a newly satisfied clause.
     by_name = {c["clause"]: c["verdict"] for c in clauses}
-    stops_held = all(by_name.get(name) == "FAIL" for name in RECORDED_STOPS)
+    measured = {c["clause"]: str(c["measured"]) for c in clauses}
+    # AND IT MUST FAIL ON ITS BAND. A `Missing` raise also produces FAIL, so deleting
+    # `selector.json`'s follower table would satisfy a naive check while destroying the
+    # record the clause exists to preserve. The stop has to be MEASURED and failing.
+    stops_held = all(by_name.get(name) == "FAIL"
+                     and not measured.get(name, "MISSING").startswith("MISSING")
+                     for name in RECORDED_STOPS)
     return {
         "clauses": clauses, "conjuncts": conjuncts, "not_yet_measured": missing,
         "touched": sorted("/".join(path) for path in r.touched),

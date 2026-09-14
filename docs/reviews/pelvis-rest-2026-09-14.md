@@ -1008,7 +1008,7 @@ whether flipping it to FAIL turns the merge rule.
 | **the gate's four structural rules** | derived-or-cross-checked; missing is FAIL; sets by identity; every measurement leaf read or justified by name | every read goes through a `Reader` that raises on an absent path; every aggregate is recomputed from named constituents and cross-checked against any stored summary; files, seeds, performers, cells, **arms** and **contact runs (by `(side, start, end)` from the frozen mask)** are checked by identity | **PASS** |
 | **measurement coverage** (round 7) | every unread MEASUREMENT leaf under a report a clause reads is justified by name; no justification matches nothing | **4,165 leaves read by a clause**; of the unread, 733 LABEL, 127 PROVENANCE, 1,488 DIAGNOSTIC and 7,904 MEASUREMENT, the last covered by **86 named families with 0 gaps and 0 dead patterns** — and a saved `verdict` or `status` string counts as a MEASUREMENT, not a label, because reading one instead of deriving it was round 2's whole attack | **PASS** |
 | **the saved-value inventory, GENERATED not written** (round 7) | every boolean or string the gate consumes without deriving it is named | generated from the `Reader`'s own record: **1,416 reads cross-checked, 106 trusted families named, 0 unjustified**, and a justification matching nothing fails the gate as a gap does. The previous hand-written list's claim that "every other saved boolean is derived or cross-checked" was **false** and is withdrawn | **PASS** |
-| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,172 paths — 13,763 leaves + 4,409 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **4,550 enforced, 0 gaps**, 148 REPORT-only, 40 diagnostics, 368 preserved-STOP, 13,066 read by no clause — and that last class is now **inverted**: 710 labels, 127 provenance strings, 1,459 diagnostics, 2,898 containers and **7,872 measurement leaves justified by name, 0 unjustified**. Leaves are classified by **which** clauses they move — status and conjunct membership — the preserved-STOP class is pinned to the two recorded stops **by name**, and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way): **0 failures** | **PASS** |
+| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,172 paths — 13,763 leaves + 4,409 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **4,918 enforced, 0 gaps**, 148 REPORT-only, 40 diagnostics, **0** preserved-STOP, 13,066 read by no clause — and that last class is now **inverted**: 710 labels, 127 provenance strings, 1,459 diagnostics, 2,898 containers and **7,872 measurement leaves justified by name, 0 unjustified**. Leaves are classified by **which** clauses they move — status and conjunct membership — the preserved-STOP class is pinned to the two recorded stops **by name**, and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way): **0 failures** | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the
@@ -1112,14 +1112,20 @@ provenance strings, 1,459 diagnostics, 3,046 containers and 8,038 justified meas
 **0** unjustified. Its historical-FAIL class is pinned to the two recorded STOPs **by name**;
 deriving it from "whichever clauses fail today" would let a new clause that accidentally fails
 at the baseline absorb every leaf it reads into a class excused by construction. Enforcement
-rose from 2,336 leaves to **4,550** across those changes, and the preserved-STOP class from 14
-leaves to 368 — the two immutable files are now read far more deeply than they were.
+rose from 2,336 leaves to **4,918** across those changes.
 
-**And the stops themselves are enforced.** The gate said in prose that two clauses read FAIL
-and stay that way, and checked nothing: a `selector.json` rewritten so the follower separates
-would have read MERGE with the stop silently gone. Both recorded stops must now read FAIL or
-the verdict is NO MERGE — verified by rewriting the σ-1.0 follower table to a 3.0× ratio on all
-six bodies, which reads **NO MERGE** with that stop showing PASS.
+**And the stops themselves are enforced — on their bands.** The gate said in prose that two
+clauses read FAIL and stay that way, and checked nothing: a `selector.json` rewritten so the
+follower separates would have read MERGE with the stop silently gone. Both recorded stops must
+now read FAIL or the verdict is NO MERGE — verified by rewriting the σ-1.0 follower table to a
+3.0× ratio on all six bodies, which reads **NO MERGE** with that stop showing PASS. The first
+version of that check was itself a hole, and it is worth recording: a **missing** field also
+produces FAIL, so *deleting* `selector.json`'s follower table satisfied "the stop still fails"
+while destroying the record the clause exists to preserve. A stop must fail **on its band**,
+measured, not by absence. The fuzz reads the difference exactly: the preserved-STOP class held
+**368** leaves under the weaker check — the two immutable files' whole evidence, none of it
+able to turn the verdict because the clause it feeds was already failing — and holds **0**
+under the stronger one, with those 368 moving into *enforced*.
 
 **What a green fuzz does NOT prove:** that the gate reads the *right* things. Only that what it
 reads, it depends on. Choosing the clauses remains the card's job, and no amount of fuzzing
