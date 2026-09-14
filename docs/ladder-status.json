@@ -763,6 +763,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "Astra rounds 5-6 (fixture question): a repair is permissible under the D8b rule with a MATCHED calibration frozen first -- target = the take's spine-lever sd at S's own stage on the guard-kept frames, ddof=0, the larger performer 8.764 mm; one sigma by bisection on [0.10, 1.00], original draws preserved, unreachable/non-monotone => STOP; baseline through observe_body reported never subtracted; G1 amended to an array-level equivalence; G2 corrected. Card amended in the plan (5d48476); the agent resumed on it to reread all of S."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "The calibrated fixture (target 8.7636 mm reproduced, baseline 1.81 mm, bisection reached sigma 0.335547 -> 8.7495 in 10 evaluations, draws bit-identical) STOPPED on its own monotonicity precondition: one 0.0135 mm dip above the accepted sigma from a keep-mask change on two bodies. Sent to Astra as round 7 with a proposed wording (a dip smaller than the tolerance, and a single crossing of the target, is not a stop)."
     }
   ]
 }
