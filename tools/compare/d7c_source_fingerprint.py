@@ -44,6 +44,22 @@ RETAINED = BASE / "provenance/commercial_multiview.pre-D7c.py"
 SRC_CHANGE_COMMIT = "dec1354"          # "D7c stage 4: the src change"
 CONVERTER = "src/autoanim_gnm/commercial_multiview.py"
 
+# THE ONE INDEPENDENT SIGNAL THE AFTER-THE-FACT STAMP CANNOT MANUFACTURE. Every hash below
+# was written by reading the same bytes the gate compares against, so "refactored == the
+# executing converter" is true by construction today and becomes evidence only on the next
+# build. What is NOT by construction is WHEN each stage ran: the historical hygiene arm's log
+# must predate every refactored stage's log and the src-change commit itself. That is
+# ordering evidence for the pre-change attribution -- not proof, since an uncommitted edit
+# leaves no timestamp, and the report says so.
+STAGE_LOGS = {
+    "delivery-hygiene-build.json": "01-hygiene.log",
+    "tripwire-mode-c-build.json": "08-tripwire-mode-c.log",
+    "delivery-build.json": "10-delivery.log",
+    "control-clear-contacts-build.json": "12-control-clear-contacts.log",
+    "instrument-d7c.json": "09-oracle-d7c.log",
+    "instrument-take.json": "14-take.log",
+}
+
 # report file -> (stage, the pelvis mode that stage runs in)
 BUILD_STAGES = {
     "delivery-hygiene-build.json": ("pre_change", "C_kabsch_pelvis"),
@@ -113,6 +129,13 @@ def main() -> int:
                          cwd=ROOT, capture_output=True, check=True).stdout
     RETAINED.write_bytes(pre)
     pre_sha, now_sha = sha256(pre).hexdigest(), hash_file(ROOT / CONVERTER)
+    commit_time = int(subprocess.run(["git", "log", "--format=%ct", "-1", SRC_CHANGE_COMMIT],
+                                     cwd=ROOT, capture_output=True, check=True,
+                                     text=True).stdout.strip())
+    mtimes = {}
+    for name, log in STAGE_LOGS.items():
+        path = BASE / "logs" / log
+        mtimes[name] = int(path.stat().st_mtime) if path.exists() else None
     if pre_sha == now_sha:
         raise SystemExit("the pre-change and refactored converters hash the same; the "
                          "retained copy is not the pre-change module")
@@ -136,6 +159,25 @@ def main() -> int:
                 f"A build run after this change records its own at build time."),
             "retained_pre_change_copy": (str(RETAINED.relative_to(ROOT))
                                          if stage == "pre_change" else None),
+            "build_order": {
+                "log": STAGE_LOGS.get(name),
+                "log_mtime": mtimes.get(name),
+                # only the HISTORICAL stage carries what it must be earlier than; a
+                # refactored stage has nothing to prove by its order, and writing the
+                # comparison into it would leave measurements no clause reads
+                **({"src_change_commit": SRC_CHANGE_COMMIT,
+                    "src_change_commit_time": commit_time,
+                    "refactored_stage_log_mtimes": {
+                        other: mtimes[other] for other, (st, _m) in BUILD_STAGES.items()
+                        if st == "refactored" and mtimes.get(other) is not None}}
+                   if stage == "pre_change" else {}),
+                "what_it_is": (
+                    "ORDERING EVIDENCE, not proof. The hashes above were taken from the "
+                    "bytes the gate itself compares against, so the refactored stages agree "
+                    "by construction; what is not by construction is that the historical "
+                    "hygiene arm ran BEFORE the src change. An uncommitted edit leaves no "
+                    "timestamp, so this narrows the claim rather than closing it."),
+            },
         }
         path.write_text(json.dumps(report, indent=1))
         print(f"  {name}: {stage} {sha[:12]} mode {mode}")

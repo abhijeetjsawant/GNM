@@ -344,6 +344,25 @@ def build(reports: dict) -> dict:
         expected = BUILD_STAGES.get(REPORTS[report_key])
         if expected is not None and (stage, mode) != expected:
             raise Missing(f"{report_key} is stage {(stage, mode)}, not the card's {expected}")
+        # THE ORDER, which is the one thing an after-the-fact stamp cannot manufacture. The
+        # hashes were taken from the bytes the gate compares against, so a refactored stage
+        # agrees by construction; the historical arm's claim to have run on the PRE-change
+        # module rests on its log preceding every refactored stage's log and the src-change
+        # commit. Ordering evidence, not proof -- an uncommitted edit leaves no timestamp.
+        when = r.num(report_key, "source_fingerprint", "build_order", "log_mtime")
+        if stage == "pre_change":
+            commit = r.num(report_key, "source_fingerprint", "build_order",
+                           "src_change_commit_time")
+            others = r.at(report_key, "source_fingerprint", "build_order",
+                          "refactored_stage_log_mtimes")
+            if not isinstance(others, dict) or not others:
+                raise Missing(f"{report_key} records no refactored stage to be earlier than")
+            later = {name: r.num(report_key, "source_fingerprint", "build_order",
+                                 "refactored_stage_log_mtimes", name) for name in others}
+            if when >= commit or any(when >= t for t in later.values()):
+                raise Missing(f"{report_key} ran at {int(when)}, not before the src change "
+                              f"at {int(commit)} and every refactored stage "
+                              f"{sorted(int(t) for t in later.values())}")
         # the path is kept as PROVENANCE and nothing else: it names the tree, it proves none.
         return f"{stage} {recorded[:12]} ({mode})"
 
@@ -914,6 +933,15 @@ def build(reports: dict) -> dict:
         if r.num("sigma1", "sigma_scale") != 1.0:
             raise Missing("selector.json is not at sigma 1.0")
         r.checked("sigma1", "is_the_pre_registered_fixture", derived=True)
+        # AND IT IS THE SAME FIXTURE, SCALED. The calibration multiplies one base pixel
+        # sigma; if the reread's base differed from the pre-registered one, the "calibrated
+        # sigma" would be a scale on a different noise model and S would be decided on a
+        # fixture the card never registered.
+        base = r.num("sigma1", "noise", "sigma_px")
+        if r.num("reread", "noise", "sigma_px") != base:
+            raise Missing(f"the reread's base pixel sigma "
+                          f"{r.num('reread', 'noise', 'sigma_px')} is not the pre-registered "
+                          f"fixture's {base}")
         # EVERY ARM, THE CONTROLS INCLUDED. `body_metric` validates the population of the
         # arms the merge rule reads; this reads the rest, so an arm cannot be scored on a
         # population that was never checked merely because no clause happens to band it.
@@ -1479,6 +1507,8 @@ def build(reports: dict) -> dict:
             # boolean cannot stand in for one the instrument actually caught.
             _preserved, failing[performer] = channel_preservation(
                 "control2", "subjects", performer, "P1_channel_preservation")
+            r.checked("control2", "subjects", performer, "P1_channel_preservation",
+                      "verdict", derived="FAIL" if failing[performer] else "PASS")
         p1_verdicts("control2", failing, expected="FAIL")
         r.checked("control2", "verdict",
                   derived="PASS" if all(failing.values()) else "FAIL")
@@ -1529,8 +1559,12 @@ def build(reports: dict) -> dict:
                                   f"the cut's {B1_CUT_FRAMES[cut]}")
                 # THE SAME DRAWS, MEASURED. Every part of a cut must report the same
                 # `draws_used` -- that identity IS the card's identical-draws requirement
-                # made observable -- and it can fall below the requested count when a
-                # resample is degenerate, which is reported rather than banded.
+                # made observable, and `silhouette_partwise.py:405` builds ONE draw list for
+                # the whole take that every cut and every part then indexes. The count falls
+                # below the requested number because `:414` drops a draw whose resampled
+                # frames land fewer than FIVE times inside the cut, so the smallest cuts lose
+                # the most (performer 1's 22 hoisted frames keep 1,838 of 2,000). Reported,
+                # never banded.
                 used = int(r.num(*source, "draws_used"))
                 siblings = {int(r.num("silhouette", "subjects", performer, "cuts", cut,
                                       f"{other}_D7c_minus_D9b", "draws_used"))
@@ -1625,6 +1659,7 @@ def build(reports: dict) -> dict:
             "the 800 deg/s line is a physical REFERENCE, not a band")
     def _():
         r.named("take", "take", "subjects", expect=PERFORMERS)
+        built_here("take")          # the same converter, by content, as the delivery it reads
         rows = [f"{s}: pitch "
                 f"{r.num('take', 'take', 'subjects', s, 'vs_baseline', 'pelvis_change_deg', 'pitch_about_hip_line_signed_median')} deg, "
                 f"root {r.num('take', 'take', 'subjects', s, 'vs_baseline', 'root_move_mm_hoist_subtracted', 'median')} mm, "
@@ -1920,8 +1955,6 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
      "the guard's false positives, reported; G2 bands the two errors."),
     ("reread/G2_finite_only/bodies/<seed>/guard_missed_corrupted_frames/**",
      "the guard's misses, reported; the miss RATE is cross-checked against this list."),
-    ("reread/noise/**", "the noise model that MAKES the fixture: an input to S, not a "
-                        "measurement of a candidate."),
     ("reread/fixture_attribution/**", "what the fixture is attributed to, a provenance "
                                       "block."),
     # --- the sigma-1.0 fixture, an immutable recorded STOP
@@ -1944,9 +1977,6 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
      "the synthetic observation spread and the real take's own lever spread beside it. It is "
      "the DIAGNOSIS that led to the amended calibration, reported; the calibration it led to "
      "is read and banded in its own file."),
-    ("sigma1/noise/sigma_px",
-     "the pixel sigma that MAKES the fixture: an input to it. The scale applied to it is "
-     "read and required to be 1.0 here."),
     ("sigma1/winner_beats_the_constant_it_removes",
      "the winner-vs-C-on-SOMA summary on the fixture that STOPPED. The reread's copy of it "
      "is derived cell by cell; this one is preserved with the rest of the stop's record."),
@@ -2035,6 +2065,295 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
     ("projection/P2_on_the_oracle_bodies/seeds/<seed>/run_measurements/<i>/**",
      "the same, on the oracle bodies."),
 )
+# ------------------------------------------------- the sweep: rule 5, made mechanical
+# ASTRA'S ROUND 8 DECIDED THE RULE AND THIS TABLE ENFORCES IT: an exemption may never cover a
+# measurement the card bands. Rule 4 requires every unread measurement to be NAMED; round 8
+# showed that naming one is not the same as being entitled to exempt it -- three families were
+# named, reasoned, and sitting over evidence the card's own merge rule bands.
+#
+# So every family above is swept against the card's merge rule, which is:
+#
+#   hygiene AND the tripwire AND O1 AND O2 AND P1 and P2 on the take and every seed AND S
+#   (with its three stop conditions) AND B1 on both performers AND B2's same-denominator
+#   PASS; O3, B3, B4, B5, B6 report          (LADDER_EXECUTION_PLAN.md:156)
+#
+# Each family names the conjunct whose SUBTREE it lives in, and WHY the card does not band it.
+# The `why` must come from the closed vocabulary below -- every entry of which is a reason the
+# CARD gives, not a reason the gate would like. A family with no entry, or with a `why` outside
+# the vocabulary, fails the coverage audit exactly as a gap does.
+WHY_NOT_BANDED = {
+    "the card reports it":
+        "the card's own line puts this measurement in a REPORT block: `O3, B3, B4, B5, B6 "
+        "report`, B2's share of the merge rule being its same-denominator clause alone, and "
+        "B1's being the eight pre-registered cells.",
+    "an order statistic the band does not name":
+        "the band names one statistic of a distribution (a max, a median) and the others are "
+        "published beside it. Reading them would be inventing a band the card did not set.",
+    "a control arm outside the merge rule":
+        "an arm the card builds to be compared against, not to be banded: the ablation, the "
+        "world-vertical and thorax controls, the mode S ranked and did not choose.",
+    "a diagnostic beside a banded value":
+        "a number the instrument publishes so the banded one is legible -- a signed component, "
+        "a worst-frame index, a miss list, a rejection's own lever and threshold.",
+    "a fixture input":
+        "something that MAKES the fixture rather than measuring a candidate on it: the noise "
+        "model, the seeds, the truth tilts, the sizing factors, the corruption placement.",
+    "a preserved recorded STOP":
+        "frozen evidence inside an immutable file whose stop the gate re-derives. Re-banding a "
+        "recorded stop on the fixture it was recorded at is how a stop gets relitigated.",
+    "an amendment's own working":
+        "the POST HOC rule's internal arithmetic, every conclusion of which the gate "
+        "recomputes independently and cross-checks against it.",
+    "not a property of the artifact":
+        "wall-clock time and the like: a property of the machine that ran the build.",
+}
+FAMILY_SWEEP = {
+    'take/**':
+        ('B2/B4 (report)',
+         'the card reports it'),
+    'b3/**':
+        ('B3 (report)',
+         'the card reports it'),
+    'b6/**':
+        ('B5/B6 (report)',
+         'the card reports it'),
+    'b1_attribution/**':
+        ('B1 (diagnostic)',
+         'the card reports it'),
+    'b2/subjects/**':
+        ('the same denominator (B2 and both landmark arrays)',
+         'the card reports it'),
+    'oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/angle/*':
+        ('O1',
+         'an order statistic the band does not name'),
+    'oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/pitch_signed_median':
+        ('O1',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_worst_frame_deg':
+        ('O1',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/penetration_before_mm':
+        ('O2',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/hoisted_frames':
+        ('O2',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/ALIGNED_rc_score_groups_mm/*':
+        ('O3 (report)',
+         'the card reports it'),
+    'oracle/oracle/seeds/<seed>/arms/*/ABSOLUTE_groups_mm/**':
+        ('O1',
+         'an order statistic the band does not name'),
+    'oracle/oracle/seeds/<seed>/arms/*/hips_origin_miss_mm/**':
+        ('O1',
+         'an order statistic the band does not name'),
+    'oracle/oracle/seeds/<seed>/arms/*/spine_origin_miss_mm/**':
+        ('O1',
+         'an order statistic the band does not name'),
+    'oracle/oracle/seeds/<seed>/arms/*/three_point_residual_m/*':
+        ('O1',
+         'an order statistic the band does not name'),
+    'oracle/oracle/seeds/<seed>/arms/*/neck_miss_mm/**':
+        ("O1 (D7b's, not this step's)",
+         'the card reports it'),
+    'oracle/oracle/seeds/<seed>/arms/*/hoist_mm/**':
+        ('O2',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/contacts/**':
+        ('O2',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/fit_geometry/**':
+        ('O1',
+         'a fixture input'),
+    'oracle/oracle/seeds/<seed>/arms/*/pelvis_report/**':
+        ('O1',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/D_rig_rest_hipline/**':
+        ('O1',
+         'a control arm outside the merge rule'),
+    'oracle/oracle/seeds/<seed>/factors/**':
+        ('O1',
+         'a fixture input'),
+    'oracle/oracle/seeds/<seed>/rig_rest_mm/**':
+        ('O1',
+         'a fixture input'),
+    'oracle/oracle/seeds/<seed>/O2_vs_baseline/*/median':
+        ('O2',
+         'an order statistic the band does not name'),
+    'oracle/oracle/seeds/<seed>/O2_vs_baseline/*/p95':
+        ('O2',
+         'an order statistic the band does not name'),
+    'oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/pitch_about_hip_line/*':
+        ('O1',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/roll/*':
+        ('O1',
+         'a diagnostic beside a banded value'),
+    'oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/yaw/*':
+        ('O1',
+         'a diagnostic beside a banded value'),
+    'reread/bodies/<seed>/arms/*/*/iii_rotational_compensation_step_mm':
+        ('S',
+         'the card reports it'),
+    'reread/aggregated_median_of_six/*/*/iii_rotational_compensation_step_mm':
+        ('S',
+         'the card reports it'),
+    'reread/bodies/<seed>/arms/world_vertical/**':
+        ('S',
+         'a control arm outside the merge rule'),
+    'reread/bodies/<seed>/arms/thorax_as_pelvis/**':
+        ('S',
+         'a control arm outside the merge rule'),
+    'reread/bodies/<seed>/arms/b_hipline_unguarded/**':
+        ('S',
+         'a control arm outside the merge rule'),
+    'reread/bodies/<seed>/arms/frozen_pitch_follower/*/ii_step_deg':
+        ('S',
+         'the card reports it'),
+    'reread/bodies/<seed>/arms/frozen_pitch_follower/*/iii_root_step_mm':
+        ('S',
+         'the card reports it'),
+    'reread/G1_missing_only/bodies/<seed>/recovery_error_on_missing_frames_i_deg':
+        ('S',
+         'the card reports it'),
+    'reread/G1_missing_only/bodies/<seed>/recovery_error_on_transition_pairs_ii_deg':
+        ('S',
+         'the card reports it'),
+    'reread/G1_missing_only/bodies/<seed>/i_deg_elsewhere':
+        ('S',
+         'a diagnostic beside a banded value'),
+    'reread/G1_missing_only/bodies/<seed>/quaternions_bit_identical':
+        ('S',
+         'the card reports it'),
+    'reread/G1_missing_only/bodies/<seed>/additional_rejections/**':
+        ('S',
+         'a diagnostic beside a banded value'),
+    'reread/G1_missing_only/bodies/<seed>/guard_additionally_demoted/<i>':
+        ('S',
+         'a diagnostic beside a banded value'),
+    'reread/G1_missing_only/pattern/<i>':
+        ('S',
+         'a fixture input'),
+    'reread/G2_finite_only/bodies/<seed>/guard_demoted_count':
+        ('S',
+         'a diagnostic beside a banded value'),
+    'reread/G2_finite_only/bodies/<seed>/*/i_elsewhere_deg':
+        ('S',
+         'a diagnostic beside a banded value'),
+    'reread/G2_finite_only/bodies/<seed>/runs/**':
+        ('S',
+         'a fixture input'),
+    'reread/G2_finite_only/bodies/<seed>/guard_demoted_uncorrupted_frames/**':
+        ('S',
+         'the card reports it'),
+    'reread/G2_finite_only/bodies/<seed>/guard_missed_corrupted_frames/**':
+        ('S',
+         'the card reports it'),
+    'reread/fixture_attribution/**':
+        ('S',
+         'a fixture input'),
+    'reread/aggregated_median_of_six/b_hipline_unguarded/**':
+        ('S',
+         'a control arm outside the merge rule'),
+    'reread/aggregated_median_of_six/world_vertical/**':
+        ('S',
+         'a control arm outside the merge rule'),
+    'reread/aggregated_median_of_six/thorax_as_pelvis/**':
+        ('S',
+         'a control arm outside the merge rule'),
+    'reread/aggregated_median_of_six/frozen_pitch_follower/**':
+        ('S',
+         'the card reports it'),
+    'reread/bodies/<seed>/truth_pelvis_tilt_deg/**':
+        ('S',
+         'a fixture input'),
+    'reread/bodies/<seed>/truth_trunk_tilt_deg/**':
+        ('S',
+         'a fixture input'),
+    'sigma1/bodies/<seed>/arms/*/*/ii_step_deg':
+        ('S',
+         'a preserved recorded STOP'),
+    'sigma1/bodies/<seed>/arms/*/*/iii_root_step_mm':
+        ('S',
+         'a preserved recorded STOP'),
+    'sigma1/bodies/<seed>/arms/*/*/iii_rotational_compensation_step_mm':
+        ('S',
+         'a preserved recorded STOP'),
+    'sigma1/aggregated_median_of_six/**':
+        ('S',
+         'a preserved recorded STOP'),
+    'sigma1/bodies/<seed>/truth_trunk_tilt_deg/**':
+        ('S',
+         'a fixture input'),
+    'sigma1/fixture_attribution/**':
+        ('S',
+         'a fixture input'),
+    'sigma1/winner_beats_the_constant_it_removes':
+        ('S',
+         'a preserved recorded STOP'),
+    'calibration/calibration/take_target/**':
+        ('S',
+         'a fixture input'),
+    'calibration/calibration/zero_noise_baseline/**':
+        ('S',
+         'the card reports it'),
+    'admissibility/take_target/**':
+        ('S',
+         'a fixture input'),
+    'admissibility/zero_noise_baseline/**':
+        ('S',
+         'the card reports it'),
+    'admissibility/scope_of_the_match/**':
+        ('S',
+         "an amendment's own working"),
+    'admissibility/admissibility/checks/*/decreases/**':
+        ('S',
+         "an amendment's own working"),
+    'admissibility/admissibility/checks/*/sampled_crossings/**':
+        ('S',
+         "an amendment's own working"),
+    'admissibility/admissibility/checks/*/signs_in_sigma_order/<i>':
+        ('S',
+         "an amendment's own working"),
+    'admissibility/admissibility/checks/*/evaluations_inside_the_band/**':
+        ('S',
+         "an amendment's own working"),
+    'admissibility/admissibility/checks/*/tolerance_band_mm/<i>':
+        ('S',
+         "an amendment's own working"),
+    'admissibility/admissibility/replay_of_the_frozen_stopping_rule/evaluation_order_display/<i>':
+        ('S',
+         "an amendment's own working"),
+    '*/build_seconds':
+        ('hygiene / the tripwire',
+         'not a property of the artifact'),
+    'control2/**':
+        ('every must-fail still fails',
+         'a control arm outside the merge rule'),
+    'silhouette/subjects/**':
+        ('B1 on both performers',
+         'the card reports it'),
+    'silhouette/preregistered_clause_verdicts/<subject>/reported_*/**':
+        ('B1 on both performers',
+         'the card reports it'),
+    'silhouette/masks_copied_never_shared/**':
+        ('B1 on both performers',
+         'a diagnostic beside a banded value'),
+    'projection/P2_on_the_oracle_bodies/seeds/<seed>/contacts/<i>':
+        ('P2 on every oracle body',
+         'a diagnostic beside a banded value'),
+    'projection/subjects/<subject>/P3_travel_report/**':
+        ('P3 (report)',
+         'the card reports it'),
+    'projection/subjects/<subject>/P2_anchor_lock/runs/<i>/**':
+        ('P2 on the take',
+         'an order statistic the band does not name'),
+    'projection/P2_on_the_oracle_bodies/seeds/<seed>/run_measurements/<i>/**':
+        ('P2 on every oracle body',
+         'an order statistic the band does not name'),
+}
+
+
 # EVERY BOOLEAN AND STRING THE GATE CONSUMES WITHOUT DERIVING OR CROSS-CHECKING IT, BY FAMILY.
 # This table is checked against the Reader's own record on every run: a family that no longer
 # appears is reported, and a trusted read with no entry here FAILS the gate.
@@ -2204,8 +2523,12 @@ def classify_leaf(path, kind) -> str:
     if kind == "string":
         last = str(path[-1]).lower()
         # A SAVED VERDICT OR STATUS IS A CLASSIFICATION, not a name: round 2's whole attack
-        # was a gate reading one instead of deriving it. Such a string is a MEASUREMENT.
-        if last in ("verdict", "status", "s_verdict", "s_status", "p1", "p2"):
+        # was a gate reading one instead of deriving it. Such a string is a MEASUREMENT --
+        # and so is one keyed by WHOSE verdict it is, which is why the parent segment counts
+        # too: `P2_verdicts/subject_00`'s own key is a performer's name.
+        parent = str(path[-2]).lower() if len(path) > 1 else ""
+        if (last in ("verdict", "status", "s_verdict", "s_status", "p1", "p2")
+                or parent.endswith("_verdicts") or parent in ("verdict", "verdicts")):
             return "MEASUREMENT"
         return ("PROVENANCE" if any(word in last for word in PROVENANCE_WORDS)
                 else "LABEL")
@@ -2268,6 +2591,18 @@ def coverage_audit(reports: dict, built: dict) -> dict:
         else:
             used.add(pattern)
     dead = [pattern for pattern, _ in UNREAD_MEASUREMENTS_JUSTIFIED if pattern not in used]
+    # RULE 5, MECHANICAL: every family swept against the card's merge rule. A family with no
+    # sweep row, or one whose reason is not a reason THE CARD gives, is a hole and not a
+    # justification -- which is what round 8's three escapes were.
+    unswept, by_conjunct = [], {}
+    for pattern, _reason in UNREAD_MEASUREMENTS_JUSTIFIED:
+        row = FAMILY_SWEEP.get(pattern)
+        if row is None or row[1] not in WHY_NOT_BANDED:
+            unswept.append(pattern)
+            continue
+        by_conjunct.setdefault(row[0], []).append({"family": pattern, "why": row[1]})
+    stale_sweep = [pattern for pattern in FAMILY_SWEEP
+                   if pattern not in {p for p, _ in UNREAD_MEASUREMENTS_JUSTIFIED}]
     # SCALARS AND CONTAINERS COUNTED APART. "4,165 leaves read" was neither: `touched` holds
     # every path a clause reached, and a map or a list read whole is not a leaf. Astra's
     # round 8 took the label apart (3,511 + 654), so the report now does.
@@ -2285,10 +2620,26 @@ def coverage_audit(reports: dict, built: dict) -> dict:
         "justified_families": len(used),
         "justifications": [{"pattern": p, "why": w} for p, w in
                            UNREAD_MEASUREMENTS_JUSTIFIED],
+        "the_sweep": {
+            "rule": ("AN EXEMPTION MAY NEVER COVER A MEASUREMENT THE CARD BANDS. Every family "
+                     "names the merge conjunct whose subtree it lives in and why the CARD does "
+                     "not band it; the reason must come from a closed vocabulary of the card's "
+                     "own exclusions."),
+            "merge_rule": ("hygiene AND the tripwire AND O1 AND O2 AND P1 and P2 on the take "
+                           "and every seed AND S (with its three stop conditions) AND B1 on "
+                           "both performers AND B2's same-denominator PASS; O3, B3, B4, B5, "
+                           "B6 report -- LADDER_EXECUTION_PLAN.md:156"),
+            "why_not_banded": WHY_NOT_BANDED,
+            "families_by_conjunct": {k: by_conjunct[k] for k in sorted(by_conjunct)},
+            "families_swept": sum(len(v) for v in by_conjunct.values()),
+            "families_with_no_sweep_row_or_a_reason_the_card_does_not_give": unswept,
+            "sweep_rows_matching_no_family": stale_sweep,
+        },
         "justifications_matching_nothing": dead,
         "gaps": sorted(gaps),
         "gap_leaves": sum(gaps.values()),
-        "verdict": ("COVERED" if not gaps and not dead else "GAPS"),
+        "verdict": ("COVERED" if not gaps and not dead and not unswept and not stale_sweep
+                    else "GAPS"),
     }
 
 
@@ -2395,6 +2746,11 @@ def main() -> int:
           f"{len(coverage['justifications_matching_nothing'])} justifications matching "
           f"nothing; {coverage['read_by_a_clause']['scalar_leaves']} scalar leaves + "
           f"{coverage['read_by_a_clause']['containers']} containers read by a clause")
+    sweep = coverage["the_sweep"]
+    print(f"the sweep: {sweep['families_swept']} families across "
+          f"{len(sweep['families_by_conjunct'])} conjuncts, "
+          f"{len(sweep['families_with_no_sweep_row_or_a_reason_the_card_does_not_give'])} "
+          f"unswept, {len(sweep['sweep_rows_matching_no_family'])} stale rows")
     print(f"saved values: {inventory['verdict']} -- {len(inventory['trusted_families'])} "
           f"trusted families named, {inventory['cross_checked_reads']} reads cross-checked, "
           f"{len(inventory['unjustified'])} unjustified")
