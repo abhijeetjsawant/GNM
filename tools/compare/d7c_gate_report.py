@@ -60,7 +60,9 @@ if str(ROOT / "tools/compare") not in sys.path:
     sys.path.insert(0, str(ROOT / "tools/compare"))
 from d7c_source_fingerprint import (  # noqa: E402
     BUILD_STAGES, RETAINED, SRC_CHANGE_COMMIT, hash_file, is_ancestor,
-    resolved_converter_sha)
+    resolved_converter_sha, src_change_sha)
+
+SRC_CHANGE_SHA = src_change_sha()
 
 # THE CONVERTER THIS RUN RESOLVES, hashed once. Every "refactored" build report must name it;
 # the historical hygiene arm must name the retained pre-change module instead, and must NOT
@@ -358,19 +360,36 @@ def build(reports: dict) -> dict:
         # stage's own value -- this one used to read hygiene's duplicated copy of everybody
         # else's times, which Astra's round 9 broke by moving the tripwire's own.
         retrospective = r.flag(report_key, "source_fingerprint", "retrospective")
-        r.num(report_key, "source_fingerprint", "build_order", "stage_time")
+        when = r.num(report_key, "source_fingerprint", "build_order", "stage_time")
         head = r.text(report_key, "source_fingerprint", "build_order", "head_commit")
         if retrospective:
+            # "I am retrospective" WOULD OTHERWISE BE A SELF-DECLARED EXEMPTION from the git
+            # check. So a retrospective stamp must also say so in words AND name the log its
+            # time came from, and the gate re-stats that log: forging one then needs a file
+            # on disk with the right mtime rather than a boolean.
             if head:
                 raise Missing(f"{report_key} is marked retrospective and yet names a build "
                               f"commit {head[:12]}; a stamp filled from the branch's bytes "
                               "knows no such thing")
+            if not r.text(report_key, "source_fingerprint", "computed_after_the_fact"):
+                raise Missing(f"{report_key} claims a retrospective stamp without saying so")
+            log = r.text(report_key, "source_fingerprint", "build_order", "log")
+            path = BASE / "logs" / log
+            if not path.exists() or int(path.stat().st_mtime) != int(when):
+                raise Missing(
+                    f"{report_key} takes its time from logs/{log}, which "
+                    f"{'is absent' if not path.exists() else f'reads {int(path.stat().st_mtime)}'}"
+                    f" against the recorded {int(when)}")
         else:
             if not head:
                 raise Missing(f"{report_key} carries a GENUINE stamp with no head commit")
-            if stage == "pre_change" and not is_ancestor(head, SRC_CHANGE_COMMIT):
+            # `git merge-base --is-ancestor A A` is TRUE, so a pre-change claim taken AT the
+            # src-change commit would pass its own check; it must be STRICTLY earlier.
+            if stage == "pre_change" and (head == SRC_CHANGE_SHA
+                                          or not is_ancestor(head, SRC_CHANGE_COMMIT)):
                 raise Missing(f"{report_key} claims the pre-change stage from commit "
-                              f"{head[:12]}, which is not an ancestor of {SRC_CHANGE_COMMIT}")
+                              f"{head[:12]}, which is not strictly before "
+                              f"{SRC_CHANGE_COMMIT}")
             if stage == "refactored" and not is_ancestor(SRC_CHANGE_COMMIT, head):
                 raise Missing(f"{report_key} claims the refactored stage from commit "
                               f"{head[:12]}, which does not descend from {SRC_CHANGE_COMMIT}")
@@ -2474,6 +2493,13 @@ TRUSTED_READ_JUSTIFICATIONS = (
      "demands -- a genuine stamp must carry a head commit that git places on the right side "
      "of the src change, and a retrospective one must carry none, because a stamp filled "
      "from the branch knows no such thing."),
+    ("*/source_fingerprint/computed_after_the_fact",
+     "the retrospective stamp's own statement that it is one. Required present on any stamp "
+     "claiming to be retrospective, so that claim costs more than flipping a boolean; a "
+     "genuine stamp carries a head commit instead and git checks it."),
+    ("*/source_fingerprint/build_order/log",
+     "which log a retrospective stamp took its time from. The gate re-stats that file and "
+     "requires its mtime to BE the recorded stage time."),
     ("*/source_fingerprint/build_order/head_commit",
      "the commit the build ran on. Checked with `git merge-base --is-ancestor` against the "
      "src-change commit, which is the one ordering claim git can settle; empty on a "

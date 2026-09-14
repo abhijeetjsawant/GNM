@@ -157,12 +157,36 @@ def fingerprint_now(mode: str, *, stage: str) -> dict:
             "stage_time_source": "the producer's own clock as it wrote this report",
             "head_commit": head_commit(),
             "argv": list(sys.argv),
+            # the historical arm is the one whose ORDER has to be established, so it carries
+            # what it must be earlier than. A genuine pre-change stamp is a reachable path,
+            # not a hypothetical: it is exercised in the tests.
+            **({"src_change_commit": SRC_CHANGE_COMMIT,
+                "src_change_commit_time": src_change_time()} if stage == "pre_change" else {}),
         },
         "retrospective": False,
     }
 
 
 @lru_cache(maxsize=None)
+@lru_cache(maxsize=None)
+def src_change_time() -> int:
+    """When the src change landed, asked of git rather than carried as a literal."""
+    import subprocess
+    return int(subprocess.run(["git", "log", "--format=%ct", "-1", SRC_CHANGE_COMMIT],
+                              cwd=ROOT, capture_output=True, check=True,
+                              text=True).stdout.strip())
+
+
+@lru_cache(maxsize=None)
+def src_change_sha() -> str:
+    """The src-change commit in full, so `head == dec1354` can be told from `head < dec1354`:
+    `git merge-base --is-ancestor A A` is TRUE, and a pre-change stamp taken AT the src change
+    would otherwise pass its own ancestry check."""
+    import subprocess
+    return subprocess.run(["git", "rev-parse", SRC_CHANGE_COMMIT], cwd=ROOT,
+                          capture_output=True, check=True, text=True).stdout.strip()
+
+
 def is_ancestor(earlier: str, later: str) -> bool:
     """Does `earlier` lie on `later`'s history? The one ordering claim git can settle.
 
@@ -197,9 +221,7 @@ def main() -> int:
                          cwd=ROOT, capture_output=True, check=True).stdout
     RETAINED.write_bytes(pre)
     pre_sha, now_sha = sha256(pre).hexdigest(), hash_file(ROOT / CONVERTER)
-    commit_time = int(subprocess.run(["git", "log", "--format=%ct", "-1", SRC_CHANGE_COMMIT],
-                                     cwd=ROOT, capture_output=True, check=True,
-                                     text=True).stdout.strip())
+    commit_time = src_change_time()
     mtimes = {}
     for name, log in STAGE_LOGS.items():
         path = BASE / "logs" / log

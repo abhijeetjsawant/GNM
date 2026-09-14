@@ -261,7 +261,7 @@ def main() -> int:
                              "reproduce the D9b delivery bit for bit, 8 of 8.")
     parser.add_argument("--src-state", default="",
                         help="what src/ carried on this arm, recorded verbatim")
-    parser.add_argument("--src-stage", choices=("pre_change", "refactored"), default=None,
+    parser.add_argument("--src-stage", choices=("pre_change", "refactored"), required=True,
                         help="WHICH SOURCE STAGE this build is, stated by the operator and "
                              "verified by the gate against the converter's hash and git. It "
                              "is an input, never inferred: a producer that decided its own "
@@ -358,7 +358,7 @@ def main() -> int:
         # gate must keep apart.
         "source_fingerprint": source_fingerprint(
             args.pelvis_mode if args.pelvis_mode is not None else saved_source,
-            stage=args.src_stage or "refactored"),
+            stage=args.src_stage),
         "src_state": args.src_state or ("UNCHANGED (hygiene arm)"
                                         if args.expect_byte_identical else "unrecorded"),
         "build_seconds": round(elapsed, 1),

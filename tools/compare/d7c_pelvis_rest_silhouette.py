@@ -166,6 +166,12 @@ def hoisted_masks() -> np.ndarray:
 
 
 def main() -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--src-stage", choices=("pre_change", "refactored"), required=True,
+                        help="which source stage this run belongs to; stated by the operator "
+                             "and checked by the gate against the converter's hash and git")
+    args = parser.parse_args()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     copies = seed_masks()
     width, height = sil.NATIVE[0] // SCALE, sil.NATIVE[1] // SCALE
@@ -317,7 +323,7 @@ def main() -> int:
                                 "sha256": digest(consumed),
                                 "loaded_by": "silhouette.MaskStore at the scale and camera "
                                              "set this run scored"},
-        "source_fingerprint": source_fingerprint("E_rig_rest_kabsch", stage="refactored"),
+        "source_fingerprint": source_fingerprint("E_rig_rest_kabsch", stage=args.src_stage),
         "meshes_exported_fresh": ("both arms, through the real Blender path into this "
                                   "step's own work directories."),
         "raw_triangulation_byte_identical": raw_identical,

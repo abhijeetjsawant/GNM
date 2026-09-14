@@ -672,8 +672,7 @@ def main() -> int:
     parser.add_argument("--take-label", default="build")
     parser.add_argument("--take-baseline", type=Path)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--src-stage", choices=("pre_change", "refactored"),
-                        default="refactored",
+    parser.add_argument("--src-stage", choices=("pre_change", "refactored"), required=True,
                         help="which source stage this instrument run belongs to; stated by "
                              "the operator and checked by the gate against the converter's "
                              "hash and git")
