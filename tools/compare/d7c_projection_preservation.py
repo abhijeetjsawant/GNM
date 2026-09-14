@@ -113,13 +113,25 @@ def p1(directory: Path, subject: int) -> dict:
                                   frozen["root_translation_m"]))
     contacts_ok = bool(np.array_equal(np.asarray(track.foot_contacts),
                                       frozen["foot_contacts"]))
+    # PER-FRAME DIFFERENCES FOR THE TWO WHOLE-TRACK CHANNELS TOO, not just for the locals.
+    # A COUNT IS NOT AN IDENTITY: Astra's round 8 moved performer 0's left contact from frame
+    # 21 to frame 0, which keeps the totals at [36, 36] while changing the mask, so a gate
+    # deriving preservation from `snapshot_contacts == delivered_contacts` could not see it.
+    # The root channel published only its dtype, which left its `bit_identical` a boolean the
+    # gate had to trust; it now publishes the same constituent every local does.
+    root_now = np.asarray(track.root_translation_m)
+    contacts_now = np.asarray(track.foot_contacts)
     channels["root_translation_m"] = {
         "bit_identical": root_ok,
-        "dtype": str(np.asarray(track.root_translation_m).dtype)}
+        "frames_that_differ": int((~np.all(root_now == frozen["root_translation_m"],
+                                           axis=-1)).sum()),
+        "dtype": str(root_now.dtype)}
     channels["foot_contacts"] = {
         "bit_identical": contacts_ok,
+        "frames_that_differ": int((~np.all(contacts_now == frozen["foot_contacts"],
+                                           axis=-1)).sum()),
         "snapshot_contacts": [int(v) for v in frozen["foot_contacts"].sum(0)],
-        "delivered_contacts": [int(v) for v in np.asarray(track.foot_contacts).sum(0)]}
+        "delivered_contacts": [int(v) for v in contacts_now.sum(0)]}
     local = np.asarray(track.local_rotations_xyzw)
     for joint in PROTECTED_JOINTS:
         slot = names.index(joint)

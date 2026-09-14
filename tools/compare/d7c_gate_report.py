@@ -1203,21 +1203,21 @@ def build(reports: dict) -> dict:
         """Each P1 channel's preservation DERIVED from its own constituents, with the stored
         `bit_identical` and `failing_channels` cross-checked against what it derives.
 
-        `local::<joint>` carries `frames_that_differ`, `foot_contacts` carries the two
-        per-side contact counts before and after; both are on disk. `root_translation_m`
-        carries only its dtype -- there is NO constituent in the report -- so its boolean is
-        trusted and named in the inventory. Astra's round 7 set `local::LeftFoot`'s
-        `frames_that_differ` to 150 and the left delivered contact count to 0, and this
-        clause, reading only `bit_identical`, passed both.
+        EVERY channel carries `frames_that_differ` now, the two whole-track channels
+        included, and every one of them is derived from it. Astra's round 7 set
+        `local::LeftFoot`'s count to 150 and the left delivered contact count to 0, and this
+        clause, reading only `bit_identical`, passed both. Round 8 then showed that the
+        contact COUNTS cannot carry the mask: moving performer 0's left contact from frame 21
+        to frame 0 keeps the totals at [36, 36] and changes the mask, so a derivation from
+        `snapshot_contacts == delivered_contacts` is blind to it. The counts stay as a second,
+        weaker cross-check; the per-frame difference is the one that decides.
         """
         r.named(*path, "channels", expect=P1_CHANNELS)
         derived = {}
         for name in P1_CHANNELS:
             base = (*path, "channels", name)
-            if name.startswith("local::"):
-                value = r.num(*base, "frames_that_differ") == 0
-                r.checked(*base, "bit_identical", derived=value)
-            elif name == "foot_contacts":
+            value = r.num(*base, "frames_that_differ") == 0
+            if name == "foot_contacts":
                 before = [int(x) for x in r.listing(*base, "snapshot_contacts", minimum=2,
                                                     elements=True)]
                 after = [int(x) for x in r.listing(*base, "delivered_contacts", minimum=2,
@@ -1225,14 +1225,12 @@ def build(reports: dict) -> dict:
                 if len(before) != 2 or len(after) != 2:
                     raise Missing(f"{'/'.join(map(str, base))} contact counts are not "
                                   f"per-side pairs: {before} and {after}")
-                value = before == after
-                r.checked(*base, "bit_identical", derived=value)
-            else:
-                # NO CONSTITUENT ON DISK, so this one is TRUSTED and must show up in the
-                # generated inventory as trusted. Cross-checking it against itself would
-                # always agree and would quietly move it out of that inventory -- which is
-                # exactly the defect round 7 named, manufactured by the fix for it.
-                value = r.flag(*base, "bit_identical")
+                # a count change implies a mask change; the converse is what round 8 broke,
+                # so the counts may only ADD a failure, never excuse one.
+                if before != after and value:
+                    raise Missing(f"{'/'.join(map(str, base))} reports 0 differing frames "
+                                  f"with contact counts {before} -> {after}")
+            r.checked(*base, "bit_identical", derived=value)
             derived[name] = value
         failing = {name for name, ok in derived.items() if not ok}
         # `failing_channels` is CROSS-CHECKED against the per-channel values it summarises: a
@@ -2061,10 +2059,6 @@ TRUSTED_READ_JUSTIFICATIONS = (
      "one of the two hashes the authentication clause compares against each other."),
     ("projection/subjects/<subject>/P1_channel_preservation/authentication/recomputed_sha256",
      "the other half of that comparison."),
-    ("*/subjects/<subject>/P1_channel_preservation/channels/root_translation_m/bit_identical",
-     "an `np.array_equal` over two [frame, 3] root arrays. The report carries no per-frame "
-     "constituent for this channel -- unlike every local, which carries `frames_that_differ` "
-     "-- so the gate can believe it or drop the channel. Owed as instrument debt."),
     ("p_oracle/seeds/<seed>/*",
      "the oracle P1 report is BOOLEANS ONLY: ten `np.array_equal` results per body over the "
      "delivered arrays against the projection's own return. None of the arrays is in any "
@@ -2274,12 +2268,18 @@ def coverage_audit(reports: dict, built: dict) -> dict:
         else:
             used.add(pattern)
     dead = [pattern for pattern, _ in UNREAD_MEASUREMENTS_JUSTIFIED if pattern not in used]
+    # SCALARS AND CONTAINERS COUNTED APART. "4,165 leaves read" was neither: `touched` holds
+    # every path a clause reached, and a map or a list read whole is not a leaf. Astra's
+    # round 8 took the label apart (3,511 + 654), so the report now does.
+    kinds = built["kinds"]
+    scalars = sum(1 for path in touched if kinds.get(path) not in ("map", "list"))
     return {
         "rule": ("every leaf no clause reads is classified LABEL / PROVENANCE / DIAGNOSTIC / "
                  "MEASUREMENT; every MEASUREMENT leaf under a report any clause reads is a "
                  "GAP unless a justification names its family"),
         "reports_read_by_some_clause": sorted(read_reports),
-        "leaves_read_by_a_clause": len(touched),
+        "read_by_a_clause": {"paths": len(touched), "scalar_leaves": scalars,
+                             "containers": len(touched) - scalars},
         "unread_by_class": classes,
         "unread_by_report_and_class": per_subtree,
         "justified_families": len(used),
@@ -2393,7 +2393,8 @@ def main() -> int:
     print(f"coverage: {coverage['verdict']} -- {coverage['gap_leaves']} unjustified "
           f"MEASUREMENT leaves in {len(coverage['gaps'])} families, "
           f"{len(coverage['justifications_matching_nothing'])} justifications matching "
-          f"nothing; {coverage['leaves_read_by_a_clause']} leaves read by a clause")
+          f"nothing; {coverage['read_by_a_clause']['scalar_leaves']} scalar leaves + "
+          f"{coverage['read_by_a_clause']['containers']} containers read by a clause")
     print(f"saved values: {inventory['verdict']} -- {len(inventory['trusted_families'])} "
           f"trusted families named, {inventory['cross_checked_reads']} reads cross-checked, "
           f"{len(inventory['unjustified'])} unjustified")
