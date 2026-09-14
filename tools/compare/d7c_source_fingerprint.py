@@ -168,7 +168,6 @@ def fingerprint_now(mode: str, *, stage: str) -> dict:
 
 
 @lru_cache(maxsize=None)
-@lru_cache(maxsize=None)
 def src_change_time() -> int:
     """When the src change landed, asked of git rather than carried as a literal."""
     import subprocess
@@ -187,6 +186,7 @@ def src_change_sha() -> str:
                           capture_output=True, check=True, text=True).stdout.strip()
 
 
+@lru_cache(maxsize=None)
 def is_ancestor(earlier: str, later: str) -> bool:
     """Does `earlier` lie on `later`'s history? The one ordering claim git can settle.
 
