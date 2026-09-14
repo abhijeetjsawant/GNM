@@ -215,12 +215,70 @@ def p3(baseline: Path, candidate: Path, subject: int) -> dict:
     return out
 
 
+def oracle_anchor_lock(save: Path, arm: str = "src_default") -> dict:
+    """P2 ON THE ORACLE BODIES, from each exported GLB's own arrays.
+
+    The card says "P1 AND P2 on the take and every seed", and the first pass measured only
+    channel preservation on the six bodies. This is the missing half: every accepted contact
+    run, taken from the FROZEN post-projection mask the same npz carries, must hold Foot AND
+    Toes at the run's first KEYED sample within `CONTACT_TOLERANCE_M`, forward-kinematicked
+    from the GLB the real exporter wrote -- not from the track, because a code-path
+    instrument cannot see what the exporter wrote.
+    """
+    import d3_skeleton_gate as gate_d3
+
+    block: dict = {
+        "contract": ("P2 on every oracle body: every accepted contact run holds Foot AND "
+                     "Toes at its first KEYED sample within "
+                     f"CONTACT_TOLERANCE_M = {CONTACT_TOLERANCE_M} m, on the exported GLB's "
+                     "own arrays"),
+        "mask_source": "the FROZEN post-projection mask saved beside each body",
+        "arm": arm, "band_m": CONTACT_TOLERANCE_M, "seeds": {}}
+    worst_overall = 0.0
+    for seed in gate_d3.SEEDS:
+        path = save / f"oracle-{arm}-{seed}.glb"
+        if not path.exists():
+            raise SystemExit(f"{path} is missing: re-run the gate with --oracle-export-glb")
+        with np.load(save / f"oracle-{arm}-{seed}.npz") as archive:
+            mask = np.asarray(archive["post_contacts"])
+        names, positions, _ = gate_d3.glb_joint_positions(path)
+        index = {name: slot for slot, name in enumerate(names)}
+        rows, worst = [], 0.0
+        for side, (foot, toes) in enumerate(FOOT_SIDES):
+            for start, end in runs_of(mask[:, side]):
+                entry = {"side": foot, "run": [start, end], "frames": end - start + 1}
+                for joint in (foot, toes):
+                    anchor = positions[start, index[joint]]
+                    travel = np.linalg.norm(
+                        positions[start:end + 1, index[joint]] - anchor, axis=1)
+                    entry[f"{joint}_max_m"] = float(travel.max())
+                    worst = max(worst, float(travel.max()))
+                entry["holds"] = bool(max(entry[f"{foot}_max_m"], entry[f"{toes}_max_m"])
+                                      <= CONTACT_TOLERANCE_M)
+                rows.append(entry)
+        worst_overall = max(worst_overall, worst)
+        block["seeds"][str(seed)] = {
+            "runs": len(rows), "contacts": [int(v) for v in mask.sum(0)],
+            "worst_travel_m": worst,
+            "verdict": "PASS" if all(r["holds"] for r in rows) else "FAIL",
+            "failing_runs": [r for r in rows if not r["holds"]]}
+        print(f"  oracle P2 {seed}: {len(rows)} runs, worst {worst:.3e} m -> "
+              f"{block['seeds'][str(seed)]['verdict']}")
+    block["worst_travel_m_over_all_seeds"] = worst_overall
+    block["verdict"] = ("PASS" if all(r["verdict"] == "PASS"
+                                      for r in block["seeds"].values()) else "FAIL")
+    return block
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--label", default="candidate")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--oracle-save", type=Path, default=None,
+                        help="also run P2's anchor lock on the six exported oracle bodies "
+                             "in this directory, and write it beside the take's P report")
     parser.add_argument("--expect-p1", choices=("PASS", "FAIL"), default="PASS",
                         help="a CONTROL is built to FAIL P1; say so and the exit code "
                              "reflects whether it did what it was built to do")
@@ -243,6 +301,10 @@ def main() -> int:
               f"P2 {row['P2_anchor_lock']['verdict']} worst "
               f"{row['P2_anchor_lock']['worst_travel_m']:.3e} m, "
               f"{len(row['P2_anchor_lock']['runs'])} runs")
+    if args.oracle_save is not None:
+        save = (args.oracle_save if args.oracle_save.is_absolute()
+                else ROOT / args.oracle_save)
+        report["P2_on_the_oracle_bodies"] = oracle_anchor_lock(save)
     p1_verdicts = {s: row["P1_channel_preservation"]["verdict"]
                    for s, row in report["subjects"].items()}
     p2_verdicts = {s: row["P2_anchor_lock"]["verdict"]

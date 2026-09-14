@@ -233,7 +233,7 @@ def install_arm(name: str, rest_array: np.ndarray, skeleton):
 
 
 def run_arm(name: str, seed: int, rest_array: np.ndarray, skeleton, truth, truth_world,
-            landmarks, spine_truth, toes, save: Path) -> dict:
+            landmarks, spine_truth, toes, save: Path, export_glb: bool = False) -> dict:
     """One arm, one seed, through the REAL converter under a recording watcher."""
 
     captured: list = []
@@ -293,6 +293,12 @@ def run_arm(name: str, seed: int, rest_array: np.ndarray, skeleton, truth, truth
     def joint_miss(name_, array):
         return 1e3 * np.linalg.norm(array[:, index(name_)] - truth[:, index(name_)], axis=1)
 
+    if export_glb:
+        # P2 on the oracle needs the EXPORTED file, not the track: the anchor lock is a
+        # claim about what a viewer forward-kinematics from the GLB's own arrays, and a
+        # code-path instrument cannot see what the exporter wrote (CLAUDE.md). `d3.export`
+        # is the D3 gate's own call into the real `export_animated_body_glb`.
+        d3.export(track, save / f"oracle-{name}-{seed}.glb")
     np.savez_compressed(
         save / f"oracle-{name}-{seed}.npz",
         root=np.asarray(track.root_translation_m), rotations=rotations,
@@ -338,7 +344,8 @@ def run_arm(name: str, seed: int, rest_array: np.ndarray, skeleton, truth, truth
     }
 
 
-def oracle_block(save: Path, arms: tuple[str, ...], baseline: Path | None) -> dict:
+def oracle_block(save: Path, arms: tuple[str, ...], baseline: Path | None,
+                 export_glb: bool = False) -> dict:
     """The D3 gate's six exact-skeleton bodies, every arm, the ABSOLUTE row banded."""
 
     save.mkdir(parents=True, exist_ok=True)
@@ -385,7 +392,8 @@ def oracle_block(save: Path, arms: tuple[str, ...], baseline: Path | None) -> di
         }
         for arm in arms:
             record["arms"][arm] = run_arm(arm, seed, rest_array, skeleton, truth,
-                                          truth_world, landmarks, spine_truth, toes, save)
+                                          truth_world, landmarks, spine_truth, toes, save,
+                                          export_glb=export_glb and arm == arms[0])
             row = record["arms"][arm]
             print(f"  seed {seed} {arm:20s} tilt med {row['pelvis_vs_truth_deg']['angle']['median']:8.4f} "
                   f"pitch {row['pelvis_vs_truth_deg']['pitch_signed_median']:+8.4f} "
@@ -649,6 +657,10 @@ def main() -> int:
     parser.add_argument("--oracle", action="store_true")
     parser.add_argument("--oracle-save", type=Path)
     parser.add_argument("--oracle-baseline", type=Path)
+    parser.add_argument("--oracle-export-glb", action="store_true",
+                        help="export the SHIPPING arm's track to a GLB per seed, so P2's "
+                             "anchor lock can be measured on the oracle bodies from the "
+                             "exported file's own arrays rather than from the track")
     parser.add_argument("--arms", default="src_default,C_soma_template,wrong_origin,"
                                           "D_rig_rest_hipline,E_rig_rest_kabsch,"
                                           "frozen_upright")
@@ -673,7 +685,8 @@ def main() -> int:
         if baseline is not None and not baseline.is_absolute():
             baseline = ROOT / baseline
         print(f"ORACLE -> {save}")
-        report["oracle"] = oracle_block(save, tuple(args.arms.split(",")), baseline)
+        report["oracle"] = oracle_block(save, tuple(args.arms.split(",")), baseline,
+                                        export_glb=args.oracle_export_glb)
     if args.take is not None:
         take = args.take if args.take.is_absolute() else ROOT / args.take
         baseline = args.take_baseline

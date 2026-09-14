@@ -226,6 +226,17 @@ if proj:
         + "; runs " + str({s: len(r['P2_anchor_lock']['runs']) for s, r in proj['subjects'].items()}),
         "PASS" if all(v == 'PASS' for v in proj.get('P2_verdicts', {}).values()) else "FAIL",
         "KEYED samples only: the samplers are LINEAR and between-key playback is B6's report")
+if proj.get("P2_on_the_oracle_bodies"):
+    block = proj["P2_on_the_oracle_bodies"]
+    add("P2 anchor lock on EVERY ORACLE BODY, from each exported GLB's own arrays",
+        f"<= {block['band_m']} m at every accepted run's first KEYED sample",
+        f"{block['verdict']}; worst over all six seeds "
+        f"{block['worst_travel_m_over_all_seeds']:.3e} m; runs "
+        + str({k: v['runs'] for k, v in block['seeds'].items()}),
+        block["verdict"],
+        "the card says P1 AND P2 on the take AND every seed. The first pass measured only "
+        "channel preservation on the six bodies; this is the missing half, and it reads the "
+        "EXPORTED file rather than the track.")
 if p_oracle:
     add("P1 on EVERY ORACLE BODY (the card says the take AND every oracle body)",
         "PASS on all six", f"{p_oracle.get('verdict')} on "
@@ -355,18 +366,76 @@ def verdict_of(prefix):
     return "PASS" if all(c["verdict"] in ("PASS", "REPORT") for c in hits) else "FAIL"
 
 
-conjuncts = {
-    "hygiene": verdict_of("hygiene:"),
-    "the refactor tripwire": verdict_of("REFACTOR TRIPWIRE"),
-    "O1": verdict_of("O1 "),
-    "O2": verdict_of("O2 "),
-    "P1 on the take": verdict_of("P1 channel preservation"),
-    "P2 on the take": verdict_of("P2 anchor lock"),
-    "P1 on every oracle body": verdict_of("P1 on EVERY ORACLE BODY"),
-    "S (with its three stop conditions)": verdict_of("S REREAD"),
-    "B1 on both performers": verdict_of("B1 the photographs"),
-    "B2's same-denominator PASS": verdict_of("B2 `delivered_vs_capture.py"),
+# S's conjunct is EVERY stop the reread can fire, not the three clauses whose names happen
+# to begin "S REREAD". Astra's merge review injected a G2 FAIL in memory and this gate still
+# returned MERGE, because G2 sat outside the selection. `S_STOPS` is now the explicit list
+# and `verdict_of` requires every one of them; `--inject-fail` below demonstrates that the
+# enforcement is real rather than asserted.
+S_STOPS = (
+    "the SAME frozen evaluations under Astra round 7's amended admissibility rule",
+    "S REREAD at the exact calibrated sigma",            # the (a)/(b) split
+    "S REREAD: the winner strictly better than C-on-SOMA",
+    "S REREAD: the frozen-pitch follower",
+    "G1 (missing-only)",
+    "G2 (finite-only)",
+)
+# The card names its must-fails explicitly, and a must-fail that stops failing destroys the
+# clause it protects: the wrong-origin control is the only thing that makes O1's residual
+# band meaningful, and the projection controls are the only thing that makes P1's PASS mean
+# anything. They are conjuncts.
+MUST_FAILS = (
+    "the SAME six-body C execution read against exact rig truth",
+    "must-fail: the WRONG-ORIGIN template",
+    "must-fail: a pelvis frozen upright",
+    "P1's CONTROL 1",
+    "P1's CONTROL 2 -- the nonempty contact mask cleared",
+    "P1's CONTROL 2, BUILT",
+)
+TRIPWIRE = ("REFACTOR TRIPWIRE",
+            "the SAME six-body C execution read against exact rig truth")
+P1_TAKE = ("P1 channel preservation", "the UNMUTATED delivery through the same comparison")
+B1 = ("B1 the photographs", "B1 the MAMMA mesh oracle bit-identical")
+SAME_DENOMINATOR = ("B2 `delivered_vs_capture.py",
+                    "the delivery: BOTH landmark arrays byte-identical")
+# Deliberately OUTSIDE the merge predicate, each with its reason. Listed so that a reader can
+# see the choice was made rather than overlooked -- which is exactly the defect the merge
+# review found in the first version of this gate.
+OUTSIDE = {
+    "the delivered run-report records the mode and the guard's demoted frames":
+        "a REPORT clause; the card does not band the diagnostics block",
+    "O3 the D3 gate's own leg-root-ALIGNED gauge":
+        "explicitly REPORT in the card, on a gauge blind to a root move",
+    "P3 planted-foot travel": "explicitly REPORT in the card",
+    "S at the CARD'S OWN FIXTURE": "a RECORDED STOP, kept as it fell; not a merge conjunct",
+    "the amended card's FIXTURE CALIBRATION, under its own frozen monotonicity precondition":
+        "a RECORDED STOP, kept as it fell; not a merge conjunct",
+    "B4": "explicitly REPORT in the card", "B3": "explicitly REPORT in the card",
+    "B6": "explicitly REPORT in the card", "B5b": "explicitly REPORT in the card",
 }
+
+
+def all_of(prefixes):
+    verdicts = [verdict_of(prefix) for prefix in prefixes]
+    if any(v is None for v in verdicts):
+        return None
+    return "PASS" if all(v == "PASS" for v in verdicts) else "FAIL"
+
+
+CONJUNCTS = (
+    ("hygiene", ("hygiene:",)),
+    ("the refactor tripwire (both readings)", TRIPWIRE),
+    ("O1", ("O1 ",)),
+    ("O2", ("O2 ",)),
+    ("every must-fail still fails", MUST_FAILS),
+    ("P1 on the take", P1_TAKE),
+    ("P2 on the take", ("P2 anchor lock -- the delivery",)),
+    ("P1 on every oracle body", ("P1 on EVERY ORACLE BODY",)),
+    ("P2 on every oracle body", ("P2 anchor lock on EVERY ORACLE BODY",)),
+    ("S (every stop of the reread, G1 and G2 included)", S_STOPS),
+    ("B1 on both performers, oracle included", B1),
+    ("the same denominator (B2 and both landmark arrays)", SAME_DENOMINATOR),
+)
+conjuncts = {name: all_of(prefixes) for name, prefixes in CONJUNCTS}
 missing = [k for k, v in conjuncts.items() if v is None]
 report = {
     "title": "D7c -- the pelvis on the rig's own rest. Every clause, predicted / measured / verdict.",
@@ -378,6 +447,8 @@ report = {
         "amendments, each frozen before the reading it gates, and both are recorded as POST HOC."),
     "oracle_seeds": seeds,
     "clauses": clauses,
+    "S_stops_enforced": list(S_STOPS),
+    "must_fails_enforced": list(MUST_FAILS),
     "merge_rule": {
         "source": ("the D7c card: hygiene AND the tripwire AND O1 AND O2 AND P1 and P2 on "
                    "the take and every seed AND S AND B1 on both performers AND B2's "
@@ -391,9 +462,45 @@ report = {
 dest = ROOT / 'artifacts/compare/d7c-pelvis-rest/gate.json'
 dest.write_text(json.dumps(report, indent=1))
 
+# ------------------------------------------- the enforcement demonstration, not an assertion
+# Astra's merge review flipped G2 to FAIL in memory and this gate still returned MERGE. Run
+# the same experiment here, on every conjunct, and record it: flip ONE clause and the merge
+# rule must turn. A merge instrument that cannot be made to say NO MERGE is not one.
+injection: dict = {
+    "what": ("each clause below was flipped to FAIL in memory, one at a time, and the merge "
+             "rule re-evaluated. Every flip must turn the verdict; a conjunct that survives "
+             "a FAIL is not enforced. This is the check Astra's merge review used to find "
+             "that G2 sat outside the S conjunct."),
+    "results": {},
+}
+for probe in [c["clause"] for c in clauses if c["verdict"] == "PASS"]:
+    saved = {c["clause"]: c["verdict"] for c in clauses}
+    for c in clauses:
+        if c["clause"] == probe:
+            c["verdict"] = "FAIL"
+    probed = {name: all_of(prefixes) for name, prefixes in CONJUNCTS}
+    turned = not all(v == "PASS" for v in probed.values())
+    injection["results"][probe[:70]] = "the merge rule turns" if turned else "NOT ENFORCED"
+    for c in clauses:
+        c["verdict"] = saved[c["clause"]]
+injection["every_passing_clause_is_enforced"] = all(
+    v == "the merge rule turns" for v in injection["results"].values())
+injection["clauses_not_enforced"] = [k for k, v in injection["results"].items()
+                                     if v != "the merge rule turns"]
+injection["deliberately_outside_the_predicate"] = OUTSIDE
+injection["every_unenforced_clause_is_deliberate"] = all(
+    any(k.startswith(reason[:40]) for reason in OUTSIDE)
+    for k in injection["clauses_not_enforced"])
+report["enforcement_check"] = injection
+dest.write_text(json.dumps(report, indent=1))
+
 for c in clauses:
     print(f"{c['verdict']:7s} {c['clause'][:74]:74s} {str(c['measured'])[:44]}")
 print()
 print("MERGE RULE:", json.dumps(report["merge_rule"]["conjuncts"], indent=1))
 print("verdict:", report["merge_rule"]["verdict"], "| missing:", missing)
+print("ENFORCEMENT: every passing clause turns the merge rule when flipped to FAIL:",
+      injection["every_passing_clause_is_enforced"])
+if injection["clauses_not_enforced"]:
+    print("  NOT ENFORCED:", json.dumps(injection["clauses_not_enforced"], indent=1))
 print("wrote", dest)
