@@ -298,6 +298,32 @@
   hemisphere walk runs BEFORE the projection, so a re-solved local must be signed against the delivered local of its own frame or
   the bits of an unhoisted frame flip. The re-solve runs on every frame; 0.5 mm is a report cut, never control flow. A refactor
   that lifts converter code into a helper is proved by the tripwire: hoist forced to zero, old src vs new, 8/8 byte-identical.
+- **The pelvis is on the rig's own rest (D7c, 2026-09-15).** `_pelvis_world_frames` takes the caller's `rest`; the shipping
+  mode `E_rig_rest_kabsch` fits {rest[Spine] − mid, rest[L] − mid, rest[R] − mid} about the captured HIP MIDPOINT and never
+  reads SOMA's `root` landmark; the four `SOMA77_REST_*` constants stay in `src/` as instrument-only controls (deletion proven
+  inert on both rig modes) and their move to `tools/compare/` is instrument debt. On exact truth SOMA's template read a
+  CONSTANT 6.865° of pitch on every frame (a convention, invisible to any rigid fit); the pelvis CONVENTION itself (where
+  SOMA's Spine1 sits on the rig's pelvis axis, ~9° on this take) is unresolved and belongs to lane H's marker session.
+- **A synthetic fixture's noise is a fixture parameter, and its calibration must be MATCHED (D7c).** Calibrate to the take's
+  own statistic at the SAME processing stage, the same population (guard-kept), the same sd convention (ddof), one sigma by a
+  frozen rule; a post-hoc amendment is recorded as post hoc and the original STOP stays on record. Two synthetic truths can
+  disagree by exactly the constant under test (D7's SOMA-posed fixture reads D7c 7.57° worse BY CONSTRUCTION): name which
+  truth referees which claim before the numbers. A frozen-pitch hip-line follower is the control leg-root placement cannot
+  discriminate.
+- **A length guard on a lever a fit consumes is a NEW mechanism when it discards the sample** (D7c's spine-lever guard
+  interpolates a world point; D8b/D8c's demote keeps the rays): score it on synthetic truth with its gaps, freeze its median
+  from the pre-guard input, and a missing-only trial is an equivalence check, never a win.
+- **A gate is proven by mutating its INPUTS, never its verdicts** (D7c, nine merge rounds): every value derived from named
+  constituents or cross-checked against them, a missing field or set member is a FAIL, every set (files, seeds, performers,
+  cells, contact runs) checked by identity, every exemption legal only for the conjunct the card gives it for, provenance
+  by source fingerprint and stage (never a path prefix; a stamp from a dirty tree is not genuine). `tools/compare/d7c_gate_fuzz.py`
+  is the pattern: walk every leaf, and a leaf the gate never reads looks inert — that class only a reviewer finds. Bound
+  the review: after the candidate stops changing, the question is whether a mutation reaches a CARD-BANDED verdict.
+- **LBS inversion counts are a proxy until the skinning Jacobian is measured** (Kavan direct methods eq. 17): a carried
+  normal, a coplanar Kabsch and a carried tetrahedron under the averaged matrix were each unsound (order-dependent, and a
+  positive-determinant deformation read as inverted). D6 owns the sound measurement.
+- **The close-out's `post_merge.sh` must pass `--src-stage refactored` to the D7c producers**; the hygiene arm (`pre_change`)
+  cannot run on the main checkout's converter — it runs against the retained pre-change copy or is skipped and said so.
 - **D8c's head-gate log predates D8c's own in-place rebuild** (written 19:46, the rebuild 20:42); D9b's close-out head gate is
   line-identical to D8c's close-out log, and the drift the D9b agent measured against the earlier log is D8c's, not D9b's.
 
