@@ -1011,6 +1011,53 @@ coordinator re-pins that file in place at the merge), and `test_body_export::…
 `test_phase4_app::test_home_and_health`, which **fail identically on the D9b worktree and are
 not this step's**. `test_provenance_audit` now passes.
 
+## 5B. The gate, and what five rounds of review taught about building one
+
+Astra's merge review broke this gate four times, and each time it was answered hole by hole:
+literal verdicts (round 1), saved classifications (round 2), partial populations (round 3),
+stored aggregates (round 4). The fifth round found six more escapes. **The holes were never
+the problem; the absence of a rule was.** The gate was rewritten around three, and they are
+worth stating because they generalise past this step:
+
+1. **Every value is DERIVED from named constituents, or CROSS-CHECKED against them.** An
+   aggregate the gate reads without recomputing is an aggregate an attacker can write. Where a
+   report also stores a summary, the stored and the derived value must agree, and a
+   disagreement is a **FAIL** — a report that contradicts itself is corrupt whichever half
+   would have passed.
+2. **A missing field or set member is a FAIL, never a no-op.** `all()` over an empty map is
+   `True`; `max()` over a subset says nothing about the whole. Every read goes through a
+   `Reader` that raises on an absent path, and the clause that needed it fails **with the path
+   named**.
+3. **Every set is checked by IDENTITY, not by count.** The eight delivered files, the six
+   oracle seeds, the two performers, the eight B1 cells, the six G1/G2/follower bodies — and
+   the contact **runs**, by their `(side, start, end)` identity taken from the frozen mask,
+   which is what catches a run replaced by a duplicate of its neighbour. `d7c_projection_
+   preservation.py` now publishes those identities independently of the measurement rows,
+   because previously there was nothing to check them against.
+
+**And it is proved rather than asserted.** `tools/compare/d7c_gate_fuzz.py` walks **every leaf
+of every report the gate reads** — not a table someone wrote — and mutates each in turn:
+numbers to 1e6, to −1e6, to 0 and deleted; strings mismatched and deleted; booleans flipped and
+deleted; lists and maps emptied, shortened and duplicated. Every leaf any clause depends on
+must turn the verdict to NO MERGE. The leaves that cannot be turned are listed with **which**
+they are — read only by a REPORT clause, or read by nothing — derived from whether any clause's
+own text moved, not asserted.
+
+**Two things the fuzzer found about itself, recorded because they are the interesting part.**
+Its first run reported B1's `ci95` upper bound as an escape; that was the *mutation set's* gap,
+not the gate's — a confidence bound fails on a **negative**, and the set only tried 1e6 and 0.
+The distinction matters and is kept: a leaf escapes when the **gate** ignores it. Its second
+run died with `KeyError` because it restored a mutated list element by index and identity, and
+equal floats are interned — so a deletion was never undone and the report stayed corrupt. An
+instrument that damages its own input produces a clean-looking report of nothing. Containers
+are now restored wholesale.
+
+**What a green fuzz does NOT prove:** that the gate reads the *right* things. Only that what it
+reads, it depends on. Choosing the clauses remains the card's job, and no amount of fuzzing
+substitutes for that.
+
+---
+
 ## 6. What every instrument here is blind to
 
 * **Nothing in this step resolves the pelvis CONVENTION.** Every figure is measured in the

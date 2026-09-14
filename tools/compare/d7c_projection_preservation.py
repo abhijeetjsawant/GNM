@@ -152,7 +152,8 @@ def p2(directory: Path, subject: int) -> dict:
     worst = 0.0
     for side, (foot, toes) in enumerate(FOOT_SIDES):
         for start, end in runs_of(mask[:, side]):
-            entry = {"side": foot, "run": [start, end], "frames": end - start + 1}
+            entry = {"side": foot, "side_index": side, "run": [start, end],
+                     "frames": end - start + 1}
             for joint in (foot, toes):
                 anchor = positions[start, index[joint]]
                 travel = np.linalg.norm(positions[start:end + 1, index[joint]] - anchor,
@@ -163,6 +164,13 @@ def p2(directory: Path, subject: int) -> dict:
                                   <= CONTACT_TOLERANCE_M)
             rows.append(entry)
     return {
+        # THE RUN IDENTITIES, straight from the frozen mask and INDEPENDENT of the rows
+        # below. A gate that only sees the measurement rows cannot tell a dropped run from a
+        # duplicated one; Astra's round 5 replaced a run with a copy of its neighbour and the
+        # count and the maximum both survived. This is the set the rows must match.
+        "mask_run_identities": [[side, int(start), int(end)]
+                                for side, (foot, _toes) in enumerate(FOOT_SIDES)
+                                for start, end in runs_of(mask[:, side])],
         "contract": ("every accepted contact run, taken from the FROZEN SNAPSHOT MASK, holds "
                      "Foot AND Toes at the run's first KEYED sample within "
                      f"CONTACT_TOLERANCE_M = {CONTACT_TOLERANCE_M} m, forward-kinematicked "
@@ -246,7 +254,8 @@ def oracle_anchor_lock(save: Path, arm: str = "src_default") -> dict:
         rows, worst = [], 0.0
         for side, (foot, toes) in enumerate(FOOT_SIDES):
             for start, end in runs_of(mask[:, side]):
-                entry = {"side": foot, "run": [start, end], "frames": end - start + 1}
+                entry = {"side": foot, "side_index": side, "run": [start, end],
+                         "frames": end - start + 1}
                 for joint in (foot, toes):
                     anchor = positions[start, index[joint]]
                     travel = np.linalg.norm(
@@ -258,6 +267,9 @@ def oracle_anchor_lock(save: Path, arm: str = "src_default") -> dict:
                 rows.append(entry)
         worst_overall = max(worst_overall, worst)
         block["seeds"][str(seed)] = {
+            "mask_run_identities": [[side, int(start), int(end)]
+                                    for side, (foot, _toes) in enumerate(FOOT_SIDES)
+                                    for start, end in runs_of(mask[:, side])],
             "runs": len(rows), "contacts": [int(v) for v in mask.sum(0)],
             "worst_travel_m": worst,
             "verdict": "PASS" if all(r["holds"] for r in rows) else "FAIL",
