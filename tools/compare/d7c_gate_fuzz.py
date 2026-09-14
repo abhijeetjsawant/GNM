@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """D7c: PROVE the gate, leaf by leaf, instead of asserting it.
 
-Four rounds of Astra's merge review found holes in `d7c_gate_report.py` one at a time --
-literal verdicts, saved classifications, partial populations, stored aggregates -- and each was
-answered with a hand-picked mutation table. A hand-picked table can only contain the attacks
-its author thought of, which is exactly why the fifth round found six more.
+Six rounds of Astra's merge review found holes in `d7c_gate_report.py` one at a time --
+literal verdicts, saved classifications, partial populations, stored aggregates, then four
+unread leaves and four more -- and the first four were answered with a hand-picked mutation
+table. A hand-picked table can only contain the attacks its author thought of, which is
+exactly why the fifth round found six more.
 
 So this walks EVERY LEAF of EVERY REPORT the gate reads and mutates each one in turn:
 
@@ -31,7 +32,12 @@ with genuine report rows. A leaf is now classified by WHICH clauses it moves -- 
   REPORT-only              every clause it moves has status REPORT
   diagnostics              it moves only the clause deliberately excluded from the predicate
   historical FAIL          it moves only a preserved recorded STOP, which is meant to stay FAIL
-  read by no clause        no clause's text moves at all
+  read by no clause        no clause's text moves at all -- and THAT class is itself
+                           sub-classified (round 7) as LABEL / PROVENANCE / DIAGNOSTIC /
+                           MEASUREMENT, because a bucket of 15,618 rows a reviewer can find
+                           four measurements inside is not a classification either. An unread
+                           MEASUREMENT leaf under a report some clause reads is a GAP unless
+                           the gate's own inventory names its family.
 
 AND FOR ENFORCED NUMERIC LEAVES, A MONOTONE CHECK -- and its first version was mis-specified,
 which is worth recording because it produced 387 "failures" that were the check's fault. It
@@ -191,8 +197,12 @@ def main() -> int:
     reports = load_all()
     clean = build(reports)
     if clean["verdict"] != "MERGE":
-        print(f"the gate does not read MERGE on the unmutated reports ({clean['verdict']}); "
-              "the fuzz would prove nothing")
+        # NOT A WARNING. Over a baseline that already reads NO MERGE every mutation "turns"
+        # the verdict, so every leaf would be classified enforced and the run would report a
+        # perfect score for a gate that measures nothing.
+        raise SystemExit(f"the gate reads {clean['verdict']} on the UNMUTATED reports; a fuzz "
+                         "from that baseline would classify every leaf as enforced and prove "
+                         "nothing")
     baseline = {c["clause"]: (c["verdict"], str(c["measured"])) for c in clean["clauses"]}
 
     status_of = {c["clause"]: c["verdict"] for c in clean["clauses"]}
@@ -207,8 +217,10 @@ def main() -> int:
     historical = set(RECORDED_STOPS)
     failing_now = {c for c in status_of if status_of[c] == "FAIL"}
     if failing_now != historical:
-        print("the baseline FAIL set is not the two recorded STOPs: "
-              f"{sorted(failing_now ^ historical)}")
+        raise SystemExit("the baseline FAIL set is not the two recorded STOPs: "
+                         f"{sorted(failing_now ^ historical)}. A clause that fails on the "
+                         "unmutated reports would absorb every leaf it reads into a class "
+                         "this fuzzer excuses by construction.")
     read_reports = {p.split("/")[0] for p in clean["touched"]}
 
     targets = [(path, kind) for path, kind in walk(reports) if path]

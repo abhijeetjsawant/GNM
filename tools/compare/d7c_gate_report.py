@@ -98,6 +98,11 @@ PERFORMERS = ("subject_00", "subject_01")
 DELIVERED_FILES = tuple(
     f"subject-{s:02d}{suffix}" for s in (0, 1)
     for suffix in (".glb", ".body-track.json", ".body-track.npz", ".mapping.npz"))
+# B1's own cut sizes. They happen to equal S's synthetic fixture sizes, and that is a
+# COINCIDENCE of two 150-frame takes with a third bent: the photographs are the real take and
+# S's are six synthetic bodies, so pinning one to the other's constant would tie two unrelated
+# populations together.
+B1_CUT_FRAMES = {"whole_take": 150, "bent_tercile": 50}
 B1_CELLS = tuple(f"clause_{part}_{cut}_worsening_not_established_vs_D9b"
                  for part in ("arm", "torso")
                  for cut in ("whole_take", "bent_tercile"))
@@ -324,6 +329,8 @@ def build(reports: dict) -> dict:
         failed = sorted(k for k, v in premises.items() if not v)
         if failed:
             raise Missing(f"{report_key} build premises failed: {failed}")
+        r.checked(report_key, "verdict",
+                  derived="PASS" if all(equal.values()) else "FAIL")
         return (f"{sum(equal.values())} of {len(DELIVERED_FILES)} named files equal {label}, "
                 f"from {built_here(report_key)[len(str(ROOT)) + 1:]}",
                 all(equal.values()))
@@ -573,7 +580,20 @@ def build(reports: dict) -> dict:
             r.checked(*base, "ratio", derived=ratios[seed], tolerance=1e-2)
             r.checked(*base, "ratio_at_least_2x", derived=ratios[seed] >= FOLLOWER_RATIO)
             r.checked(*base, "at_least_2_deg", derived=follower >= FOLLOWER_FLOOR_DEG)
+        # EVERY ARM'S POPULATION on the pre-registered fixture too. The stop this clause
+        # records is only as good as the denominators under it.
+        for seed in ORACLE_SEEDS:
+            r.named("sigma1", "bodies", seed, "arms", expect=REREAD_ARMS)
+            for arm_name in REREAD_ARMS:
+                for population in POPULATIONS:
+                    frames, pairs = S_POPULATION[population]
+                    base = ("sigma1", "bodies", seed, "arms", arm_name, population)
+                    if (int(r.num(*base, "n_frames")) != frames
+                            or int(r.num(*base, "n_pairs")) != pairs):
+                        raise Missing(f"sigma1/{seed}/{arm_name}/{population} population is "
+                                      f"not the frozen {frames}/{pairs}")
         below = [s for s, v in ratios.items() if v < FOLLOWER_RATIO]
+        r.checked("sigma1", "S_verdict", derived="STOP")
         r.checked("sigma1", "follower_discriminated_on_every_body",
                   derived=not below and all(
                       r.num("sigma1", "frozen_pitch_follower_bent_tercile", s,
@@ -650,9 +670,28 @@ def build(reports: dict) -> dict:
         if bool(violations) != (worst > 0.0):
             raise Missing(f"{len(violations)} recorded violations against a derived largest "
                           f"decrease of {worst}")
+        # each recorded violation against the pairs it claims to be between
+        by_sigma = dict(pairs)
+        for index in range(len(violations)):
+            spot = ("calibration", "calibration", "bisection", "monotonicity_violations",
+                    index)
+            lower, higher = r.num(*spot, "sigma_lower"), r.num(*spot, "sigma_higher")
+            for sigma, field in ((lower, "sd_lower_mm"), (higher, "sd_higher_mm")):
+                matched = [v for k, v in by_sigma.items() if abs(k - sigma) <= 5e-7]
+                if len(matched) != 1:
+                    raise Missing(f"a violation names sigma {sigma}, which is not one "
+                                  "evaluation")
+                r.checked(*spot, field, derived=matched[0], tolerance=1e-3)
+            r.checked(*spot, "decrease_mm",
+                      derived=r.num(*spot, "sd_lower_mm") - r.num(*spot, "sd_higher_mm"),
+                      tolerance=1e-3)
+        # the recorded STATUS of the search, and S's own verdict in the same file
+        r.checked("calibration", "calibration", "bisection", "status",
+                  derived="UNREACHABLE" if worst > 0.0 else "REACHED")
+        r.checked("calibration", "S_verdict", derived="STOP")
         # the sigma-ordered table beside the evaluations must BE the same pairs.
         table = r.listing("calibration", "calibration", "bisection",
-                          "evaluated_in_sigma_order", minimum=2)
+                          "evaluated_in_sigma_order", minimum=2, elements=True)
         if len(table) != len(pairs) or any(
                 abs(float(row[0]) - sigma) > 5e-7 or not agrees(float(row[1]), value, 1e-3)
                 for row, (sigma, value) in zip(table, pairs)):
@@ -705,11 +744,53 @@ def build(reports: dict) -> dict:
         matched = [value for sigma, value in pairs if abs(sigma - accepted) <= 5e-7]
         if not matched:
             raise Missing("the accepted sigma is not among the frozen evaluations")
-        inside = abs(matched[0] - target) <= CALIBRATION_TAU_MM
+        inside = (abs(matched[0] - target) <= CALIBRATION_TAU_MM
+                  and float(bracket[0]) <= accepted <= float(bracket[1]))
+        # THE RULE'S OWN THREE CHECKS, against the three this clause just derived. The
+        # amended file recomputes A, B and C itself; if its arithmetic and the gate's
+        # disagree, one of them is wrong and the gate does not get to pick.
+        checks = ("A_no_earlier_to_later_decrease_over_tau",
+                  "B_at_most_one_sign_change_of_statistic_minus_target",
+                  "C_the_unchanged_stopping_rule_found_a_value_within_tau")
+        r.named("admissibility", "admissibility", "checks", expect=checks)
+        spot = ("admissibility", "admissibility", "checks", checks[0])
+        r.checked(*spot, "largest_decrease_mm", derived=worst, tolerance=1e-3)
+        r.checked(*spot, "tau_mm", derived=CALIBRATION_TAU_MM)
+        r.checked(*spot, "passes", derived=worst <= CALIBRATION_TAU_MM)
+        spot = ("admissibility", "admissibility", "checks", checks[1])
+        r.checked(*spot, "sign_changes", derived=changes)
+        r.checked(*spot, "passes", derived=changes <= 1)
+        spot = ("admissibility", "admissibility", "checks", checks[2])
+        r.checked(*spot, "accepted_sigma_scale_exact", derived=accepted)
+        r.checked(*spot, "passes", derived=inside)
+        # the replay's recorded order IS the order the evaluations were made in, and the
+        # top-level copy of it is the same list again
+        for index in range(len(order)):
+            sigma = r.num("calibration", "calibration", "bisection", "evaluations", index,
+                          "sigma_scale")
+            for where in (("admissibility", "admissibility",
+                           "replay_of_the_frozen_stopping_rule", "evaluation_order_exact"),
+                          ("admissibility", "evaluation_order_exact")):
+                if abs(r.num(*where, index) - sigma) > 5e-7:
+                    raise Missing(f"{'/'.join(where)}[{index}] is not the sigma evaluation "
+                                  f"{index} was made at")
+                r.note_cross_checked(*where, str(index))
+        r.checked("admissibility", "the_accepted_sigma", "exact_evaluated_value",
+                  derived=accepted)
+        r.checked("admissibility", "the_accepted_sigma", "display_rounding_six_places",
+                  derived=display)
+        if not r.text("admissibility", "S_status").startswith("PENDING"):
+            raise Missing("the amended calibration file claims something other than PENDING "
+                          "for S; calibration REACHED is not S PROCEED")
+        r.checked("admissibility", "verdict", derived="REACHED")
+        r.checked("admissibility", "admissibility", "verdict", derived="REACHED")
+        seeds = [str(int(x)) for x in r.listing("admissibility", "provenance", "seeds",
+                                                minimum=len(ORACLE_SEEDS), elements=True)]
+        if tuple(seeds) != ORACLE_SEEDS:
+            raise Missing(f"the amended file's provenance seeds {seeds} are not the six")
         return (f"A {worst:.4f} mm, B {changes} sign change(s), C sigma {accepted} -> "
                 f"{matched[0]} mm against target {target}",
-                worst <= CALIBRATION_TAU_MM and changes <= 1 and inside
-                and float(bracket[0]) <= accepted <= float(bracket[1]))
+                worst <= CALIBRATION_TAU_MM and changes <= 1 and inside)
 
     # ------------------------------------------------------------------- S, the reread
     def body_metric(seed, arm_name, population, metric):
@@ -1016,6 +1097,9 @@ def build(reports: dict) -> dict:
         r.checked("delivery", "hygiene", "all_delivered_files_identical", derived=not changed)
         claims["delivery/the candidate's files differ from D9b's"] = changed == len(
             DELIVERED_FILES)
+        # the delivery build's verdict is about the BUILD, not about matching D9b
+        r.checked("delivery", "verdict",
+                  derived="PASS" if all(claims.values()) else "FAIL")
         claims["delivery/observations before/after"] = r.flag(
             "delivery", "hygiene", "observations_byte_identical_before_and_after_the_build")
         claims["delivery/observations vs shipped"] = r.flag(
@@ -1061,6 +1145,7 @@ def build(reports: dict) -> dict:
             base = (*path, "channels", name)
             if name.startswith("local::"):
                 value = r.num(*base, "frames_that_differ") == 0
+                r.checked(*base, "bit_identical", derived=value)
             elif name == "foot_contacts":
                 before = [int(x) for x in r.listing(*base, "snapshot_contacts", minimum=2,
                                                     elements=True)]
@@ -1070,9 +1155,13 @@ def build(reports: dict) -> dict:
                     raise Missing(f"{'/'.join(map(str, base))} contact counts are not "
                                   f"per-side pairs: {before} and {after}")
                 value = before == after
+                r.checked(*base, "bit_identical", derived=value)
             else:
-                value = r.flag(*base, "bit_identical")   # no constituent; see the inventory
-            r.checked(*base, "bit_identical", derived=value)
+                # NO CONSTITUENT ON DISK, so this one is TRUSTED and must show up in the
+                # generated inventory as trusted. Cross-checking it against itself would
+                # always agree and would quietly move it out of that inventory -- which is
+                # exactly the defect round 7 named, manufactured by the fix for it.
+                value = r.flag(*base, "bit_identical")
             derived[name] = value
         failing = {name for name, ok in derived.items() if not ok}
         # `failing_channels` is CROSS-CHECKED against the per-channel values it summarises: a
@@ -1140,6 +1229,9 @@ def build(reports: dict) -> dict:
             ok &= all(preserved.values()) and not failed
             failing[performer] = sorted(failed)
         p1_verdicts("projection", failing, expected="PASS")
+        for performer in PERFORMERS:
+            r.checked("projection", "subjects", performer, "P1_channel_preservation",
+                      "verdict", derived="PASS" if not failing[performer] else "FAIL")
         return f"{len(PERFORMERS)} performers; failing {failing}", ok
 
     @clause("P2 anchor lock -- the delivery, every accepted run, on the GLB's own arrays",
@@ -1172,6 +1264,10 @@ def build(reports: dict) -> dict:
         for performer in PERFORMERS:
             r.checked("projection", "P2_verdicts", performer,
                       derived="PASS" if ok else "FAIL")
+            r.checked("projection", "subjects", performer, "P2_anchor_lock", "verdict",
+                      derived="PASS" if ok else "FAIL")
+        # the P report's own top-level verdict, over both contracts it carries
+        r.checked("projection", "verdict", derived="PASS" if ok else "FAIL")
         return f"worst {worst_all:.3e} m; runs {detail}", ok
 
     @clause("P2 anchor lock on EVERY ORACLE BODY, from each exported GLB's own arrays",
@@ -1200,6 +1296,10 @@ def build(reports: dict) -> dict:
             worst_all = max(worst_all, worst)
             ok &= holds and worst <= CONTACT_TOLERANCE_M
             detail[seed] = len(seen)
+            r.checked(*path, "verdict",
+                      derived="PASS" if holds and worst <= CONTACT_TOLERANCE_M else "FAIL")
+        r.checked("projection", "P2_on_the_oracle_bodies", "verdict",
+                  derived="PASS" if ok else "FAIL")
         global_stored = r.num("projection", "P2_on_the_oracle_bodies",
                               "worst_travel_m_over_all_seeds")
         if not agrees(global_stored, worst_all, 1e-12):
@@ -1232,6 +1332,9 @@ def build(reports: dict) -> dict:
                               f"{sorted(derived_failing)} derived from the flags")
             ok &= not failing
             clean += not failing
+            r.checked("p_oracle", "seeds", seed, "verdict",
+                      derived="PASS" if not failing else "FAIL")
+        r.checked("p_oracle", "verdict", derived="PASS" if ok else "FAIL")
         return f"{clean} of {len(ORACLE_SEEDS)} clean", ok
 
     @clause("P1's CONTROL 1 -- the projection's foot locals overwritten", "must FAIL P1",
@@ -1280,6 +1383,7 @@ def build(reports: dict) -> dict:
                      "control_1_foot_locals_overwritten", "failing_channels"))
         r.checked("p1_controls", "both_controls_detected_on_both_performers",
                   derived=detected)
+        r.checked("p1_controls", "verdict", derived="PASS" if detected else "FAIL")
         expected = CONTROL_CHANNELS["control_2_contact_mask_cleared"]
         return (str({s: sorted(v) for s, v in failing.items()}),
                 all(seen == expected and seen <= PROTECTED_CHANNELS
@@ -1307,6 +1411,8 @@ def build(reports: dict) -> dict:
             _preserved, failing[performer] = channel_preservation(
                 "control2", "subjects", performer, "P1_channel_preservation")
         p1_verdicts("control2", failing, expected="FAIL")
+        r.checked("control2", "verdict",
+                  derived="PASS" if all(failing.values()) else "FAIL")
         return (str({s: sorted(v) for s, v in failing.items()}),
                 all(seen == CONTROL_2_BUILT_CHANNELS and seen <= PROTECTED_CHANNELS
                     for seen in failing.values()))
@@ -1332,9 +1438,9 @@ def build(reports: dict) -> dict:
                 # different measurement whatever its interval says.
                 cut = "whole_take" if "whole_take" in name else "bent_tercile"
                 frames = int(r.num(*base, "cut_frames"))
-                if frames != S_POPULATION[cut][0]:
-                    raise Missing(f"B1/{performer}/{name} is over {frames} frames, not the "
-                                  f"cut's {S_POPULATION[cut][0]}")
+                if frames != B1_CUT_FRAMES[cut]:
+                    raise Missing(f"B1/{performer}/{name} is over {frames} photographs, not "
+                                  f"the cut's {B1_CUT_FRAMES[cut]}")
                 # the point estimate and the interval that summarises it, and the cell's own
                 # "rose with the interval clear of zero" flag derived from both.
                 difference = r.num(*base, "difference")
@@ -1347,6 +1453,7 @@ def build(reports: dict) -> dict:
                           derived="PASS" if float(interval[1]) >= 0.0 else "FAIL")
                 ok &= float(interval[1]) >= 0.0
                 seen += 1
+        r.checked("silhouette", "verdict", derived="PASS" if ok else "FAIL")
         return f"{seen} of {len(B1_CELLS) * len(PERFORMERS)} named cells checked", ok
 
     @clause("B1 the MAMMA mesh oracle bit-identical", "< 1e-9")
@@ -1354,6 +1461,8 @@ def build(reports: dict) -> dict:
         worst = r.num("silhouette", "preregistered_clause_verdicts",
                       "clause_mamma_mesh_oracle",
                       "this_instruments_split_oracle_vs_the_committed_unsplit_one_worst_abs_difference")
+        r.checked("silhouette", "preregistered_clause_verdicts", "clause_mamma_mesh_oracle",
+                  "verdict", derived="PASS" if worst < 1e-9 else "FAIL")
         return str(worst), worst < 1e-9
 
     @clause("B2 `delivered_vs_capture.py --reference smoothed`: the same-denominator clause",
@@ -1492,11 +1601,19 @@ def build(reports: dict) -> dict:
 
     conjuncts = {name: all_of(prefixes) for name, prefixes in CONJUNCTS}
     missing = [k for k, v in conjuncts.items() if v is None]
+    # THE TWO RECORDED STOPS MUST STILL READ FAIL. `selector.json` and
+    # `selector-calibrated.json` are immutable and each records a stop; a run in which one of
+    # them PASSES means the immutable file no longer records what the step stopped on, which
+    # is a corruption of the record and not a newly satisfied clause.
+    by_name = {c["clause"]: c["verdict"] for c in clauses}
+    stops_held = all(by_name.get(name) == "FAIL" for name in RECORDED_STOPS)
     return {
         "clauses": clauses, "conjuncts": conjuncts, "not_yet_measured": missing,
         "touched": sorted("/".join(path) for path in r.touched),
         "kinds": dict(r.kinds), "cross_checked": set(r.cross_checked),
-        "verdict": ("MERGE" if not missing and all(v == "PASS" for v in conjuncts.values())
+        "recorded_stops_still_fail": {name: by_name.get(name) for name in RECORDED_STOPS},
+        "verdict": ("MERGE" if not missing and stops_held
+                    and all(v == "PASS" for v in conjuncts.values())
                     else "INCOMPLETE" if missing else "NO MERGE"),
     }
 
@@ -1557,11 +1674,14 @@ CONJUNCTS = (
 # A family here is a family the CARD does not band -- not one the gate found inconvenient.
 UNREAD_MEASUREMENTS_JUSTIFIED = (
     # --- the report blocks. The card: "O3, B3, B4, B5, B6 report".
-    ("take/**", "B2/B4 REPORT blocks. The card reports the take's pelvis and root motion and "
-                "bands nothing in it; the clauses that read it carry verdict REPORT."),
-    ("b3/**", "B3 REPORTED: the hoist and the contacts. No band."),
-    ("b6/**", "B5b/B6 REPORTED: the delivered bytes, the closures, the head world rotation "
-              "and the carried-tetrahedron PROXY, which makes no inversion claim."),
+    ("take/**", "B2/B4 REPORT blocks. THE CARD: \"O3, B3, B4, B5, B6 report\" -- it reports "
+                "the take's pelvis and root motion and bands nothing in it; the clauses that "
+                "read it carry verdict REPORT."),
+    ("b3/**", "B3 REPORTED by the card's own line \"O3, B3, B4, B5, B6 report\": the hoist "
+              "and the contacts. No band."),
+    ("b6/**", "B5b/B6 REPORTED by the same card line: the delivered bytes, the closures, the "
+              "head world rotation and the carried-tetrahedron PROXY, which makes no "
+              "inversion claim."),
     ("b1_attribution/**", "B1's attribution is a DIAGNOSTIC decomposition, explicitly a "
                           "point estimate; only the three rising torso cells' shares are "
                           "quoted and the clause that reads them is REPORT."),
@@ -1668,20 +1788,65 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
     ("reread/fixture_attribution/**", "what the fixture is attributed to, a provenance "
                                       "block."),
     # --- the sigma-1.0 fixture, an immutable recorded STOP
-    ("sigma1/**",
-     "`selector.json` is the card's own pre-registered fixture and an IMMUTABLE RECORDED "
-     "STOP. The gate reads its follower table, which is the clause that stopped the step, "
-     "its sigma and its fixture flag; everything else in it is the same shape as the "
-     "reread's and is preserved, not re-banded."),
+    # --- the sigma-1.0 fixture: an IMMUTABLE RECORDED STOP, preserved and not re-banded
+    ("sigma1/bodies/<seed>/arms/*/*/i_orientation_deg",
+     "`selector.json` records a STOP. What stopped the step is the follower's separation, "
+     "which the gate reads and re-derives; the per-arm metrics are the frozen evidence "
+     "BEHIND that stop and are preserved, not re-banded -- re-banding a recorded stop on "
+     "the fixture it was recorded at is how a stop gets quietly relitigated. Every arm's "
+     "population IS validated."),
+    ("sigma1/bodies/<seed>/arms/*/*/ii_step_deg", "the same, metric (ii)."),
+    ("sigma1/bodies/<seed>/arms/*/*/iii_root_step_mm", "the same, metric (iii)."),
+    ("sigma1/bodies/<seed>/arms/*/*/iii_rotational_compensation_step_mm",
+     "the same, and a fourth metric the card's three-metric rule does not include."),
+    ("sigma1/aggregated_median_of_six/**", "the same evidence, aggregated."),
+    ("sigma1/bodies/<seed>/truth_trunk_tilt_deg/**",
+     "the fixture's own truth tilt, an input to it."),
+    ("sigma1/fixture_attribution/**",
+     "WHY the pre-registered fixture failed to discriminate: the noiseless deficit per arm, "
+     "the synthetic observation spread and the real take's own lever spread beside it. It is "
+     "the DIAGNOSIS that led to the amended calibration, reported; the calibration it led to "
+     "is read and banded in its own file."),
+    ("sigma1/noise/sigma_px",
+     "the pixel sigma that MAKES the fixture: an input to it. The scale applied to it is "
+     "read and required to be 1.0 here."),
+    ("sigma1/winner_beats_the_constant_it_removes",
+     "the winner-vs-C-on-SOMA summary on the fixture that STOPPED. The reread's copy of it "
+     "is derived cell by cell; this one is preserved with the rest of the stop's record."),
     # --- the calibration's frozen record
-    ("calibration/**",
-     "`selector-calibrated.json` is IMMUTABLE. Its bisection parameters, every evaluation's "
-     "six bodies and its monotonicity record are read and cross-checked; what remains is the "
-     "per-evaluation bookkeeping of a search whose verdict is recorded UNREACHABLE."),
-    ("admissibility/**",
-     "the amended rule's own record. Its target, tolerance, bracket, budget, replay order, "
-     "accepted sigma and all six body values per evaluation are read; what remains is the "
-     "amendment's prose and its POST HOC declaration."),
+    ("calibration/calibration/take_target/**",
+     "how the 8.7636 mm target was measured ON THE REAL TAKE -- the per-performer lever "
+     "spreads it is the median of. The target is an INPUT to the calibration, read against "
+     "the gate's own constant where the search uses it; its derivation is D8b's."),
+    ("calibration/calibration/zero_noise_baseline/**",
+     "the zero-noise floor, REPORTED FIRST AND NEVER SUBTRACTED by the card's own rule. It "
+     "says what each estimator's error is with no observation noise at all, which is a "
+     "property of the fixture's geometry and not of the candidate."),
+    ("admissibility/take_target/**", "the same target derivation, copied into the amended "
+                                     "file."),
+    ("admissibility/zero_noise_baseline/**", "the same zero-noise floor, copied in."),
+    ("admissibility/scope_of_the_match/**",
+     "what the observed tolerance match does and does not cover, reported: the amendment is "
+     "an OBSERVED TOLERANCE MATCH and never a monotonicity or uniqueness claim."),
+    ("admissibility/admissibility/checks/*/decreases/**",
+     "the rule's own listing of every earlier-to-later decrease it considered. Its LARGEST "
+     "and its verdict are cross-checked against the gate's independent recomputation."),
+    ("admissibility/admissibility/checks/*/sampled_crossings/**",
+     "the rule's own listing of where the statistic crosses the target. Its sign-change "
+     "COUNT and its verdict are cross-checked against the gate's."),
+    ("admissibility/admissibility/checks/*/signs_in_sigma_order/<i>",
+     "the sign of statistic-minus-target at each evaluation, the working behind that count."),
+    ("admissibility/admissibility/checks/*/evaluations_inside_the_band/**",
+     "which evaluations landed inside the tolerance band. The ACCEPTED one and its verdict "
+     "are cross-checked against the gate's."),
+    ("admissibility/admissibility/checks/*/tolerance_band_mm/<i>",
+     "the band's two edges, which are the target plus and minus the tolerance the gate reads "
+     "against its own constants."),
+    ("admissibility/admissibility/replay_of_the_frozen_stopping_rule/"
+     "evaluation_order_display/<i>",
+     "the six-place display of each evaluated sigma; the EXACT order beside it is checked "
+     "element by element against the evaluations, and the display rounding is the thing "
+     "round 7 caught S being read at."),
     # --- the builds
     ("*/build_seconds", "wall-clock build time: a property of this machine, not of the "
                         "artifact."),
@@ -1804,8 +1969,6 @@ TRUSTED_READ_JUSTIFICATIONS = (
      "the mode the instrument resolved from src. It is not believed: it is compared against "
      "the mode the converter recorded on every seed AND against the arm the src path "
      "reproduces leaf for leaf."),
-    ("oracle/oracle/seeds/<seed>/arms/src_default/pelvis_report/mode",
-     "the converter's own recorded mode, the other half of that comparison."),
     ("tripwire/pelvis_mode_held",
      "the mode the tripwire requested; compared against the modes the converter recorded."),
     ("tripwire/diagnostics/pelvis_frame/<i>/mode", "the other half of that comparison."),
@@ -1819,6 +1982,10 @@ TRUSTED_READ_JUSTIFICATIONS = (
     ("reread/winner/mode", "the other half of that comparison."),
     ("reread/S_verdict", "S's own verdict string, required to be PROCEED beside the six "
                          "cells the gate recomputes."),
+    ("admissibility/S_status",
+     "the amended calibration file's statement of where S stands. It is not believed: it is "
+     "REQUIRED to begin PENDING, because calibration REACHED is not S PROCEED and a file "
+     "that said otherwise would be claiming a verdict it does not hold."),
     ("b2/triangulated_landmarks_byte_identical_across_arms/<subject>/*",
      "`np.array_equal` over the triangulated landmark arrays of one build, per subject. "
      "These ARE the constituents `same_denominator` is derived from, and four other "
@@ -1828,9 +1995,6 @@ TRUSTED_READ_JUSTIFICATIONS = (
     ("oracle/oracle/seeds/<seed>/O2_vs_baseline/bit_identity_claimed",
      "the instrument's own declaration that it claims no bit identity; required FALSE, "
      "because a pelvis frame is whole-take and O2 is a band, not an identity."),
-    ("b6/builds/D7c/<subject>/invariants_vs_the_other_build_TRACK_ARRAYS/*",
-     "`np.array_equal` results over track arrays, inside a REPORT clause that makes no "
-     "band."),
 )
 OUTSIDE = {
     "the delivered run-report records the mode and the guard's demoted frames":
@@ -1886,6 +2050,10 @@ def classify_leaf(path, kind) -> str:
         return "DIAGNOSTIC"
     if kind == "string":
         last = str(path[-1]).lower()
+        # A SAVED VERDICT OR STATUS IS A CLASSIFICATION, not a name: round 2's whole attack
+        # was a gate reading one instead of deriving it. Such a string is a MEASUREMENT.
+        if last in ("verdict", "status", "s_verdict", "s_status", "p1", "p2"):
+            return "MEASUREMENT"
         return ("PROVENANCE" if any(word in last for word in PROVENANCE_WORDS)
                 else "LABEL")
     if kind in ("number", "bool"):
@@ -1989,16 +2157,17 @@ def saved_value_inventory(built: dict) -> dict:
         else:
             used.add(pattern)
             rows.append({"family": key, "leaves": trusted[key], "why": reason})
+    dead = [pattern for pattern, _ in TRUSTED_READ_JUSTIFICATIONS if pattern not in used]
     return {
         "method": ("generated from the Reader's own record: every boolean and string the "
                    "gate read, minus every one it cross-checked against a value derived "
                    "from that leaf's own constituents"),
         "cross_checked_reads": len(built["cross_checked"]),
         "trusted_families": rows,
-        "justifications_matching_nothing": [p for p, _ in TRUSTED_READ_JUSTIFICATIONS
-                                            if p not in used],
+        "justifications_matching_nothing": dead,
         "unjustified": unjustified,
-        "verdict": "NAMED" if not unjustified else "UNJUSTIFIED READS",
+        "verdict": ("NAMED" if not unjustified and not dead
+                    else "UNJUSTIFIED READS" if unjustified else "STALE JUSTIFICATIONS"),
     }
 
 
@@ -2042,6 +2211,7 @@ def main() -> int:
                        "the take and every seed AND S AND B1 on both performers AND B2's "
                        "same-denominator PASS; O3, B3, B4, B5, B6 report"),
             "conjuncts": built["conjuncts"],
+            "recorded_stops_still_fail": built["recorded_stops_still_fail"],
             "not_yet_measured": built["not_yet_measured"],
             "verdict": built["verdict"],
         },
