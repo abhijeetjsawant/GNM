@@ -798,6 +798,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "Astra merge review round 5 at 843bce5: NO MERGE -- six more gate escapes (a stored S aggregate never derived, global summaries and run identities unchecked, missing measurement fields silent) and surviving B6 inversion conclusions. The agent is rebuilding the gate on one rule (derive or cross-check every value, missing is FAIL, sets by identity) and proving it with a leaf-level fuzzer over every input report."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "Astra merge review round 6 at e68e06d: NO MERGE -- four leaves the gate should read and does not (the authentication hashes, the follower's denominator, the selector populations, the controls' named channels); the fuzzer's REPORT-only class misclassified 8 enforced control leaves. Sent back to the agent."
     }
   ]
 }
