@@ -87,6 +87,23 @@ PROTECTED = ("Root", "Hips", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg",
              "RightLowerLeg", "LeftFoot", "RightFoot", "LeftToes", "RightToes")
 SIDE_JOINTS = {0: ("LeftFoot", "LeftToes"), 1: ("RightFoot", "RightToes")}
 POPULATIONS = ("whole_take", "bent_tercile")
+# S's frozen population sizes, per body per arm. 150 frames whole take and 50 in the bent
+# tercile; pairs are formed on the FULL sequence and belong to a population iff BOTH
+# endpoints do, which gives 149 whole-take pairs and 47 bent ones -- 47 and not 49, because
+# the tercile's 50 frames are not contiguous. (Astra's round 6 wrote 49; every one of the 42
+# body x arm rows in the reread carries 47, and the card's own pair rule is why.)
+S_POPULATION = {"whole_take": (150, 149), "bent_tercile": (50, 47)}
+# What each P1 control must fail, BY NAME. "some nonempty list" is satisfied by a channel the
+# control never touches.
+CONTROL_CHANNELS = {
+    "control_1_foot_locals_overwritten": {"local::LeftFoot", "local::RightFoot"},
+    "control_2_contact_mask_cleared": {"foot_contacts"},
+}
+CONTROL_2_BUILT_CHANNELS = {"root_translation_m", "foot_contacts"}
+PROTECTED_CHANNELS = ({"root_translation_m", "foot_contacts"}
+                      | {f"local::{j}" for j in (
+                          "Root", "Hips", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg",
+                          "RightLowerLeg", "LeftFoot", "RightFoot", "LeftToes", "RightToes")})
 METRICS = (("i_orientation_deg", TIE_DEG), ("ii_step_deg", TIE_DEG),
            ("iii_root_step_mm", TIE_MM))
 
@@ -207,7 +224,14 @@ def build(reports: dict) -> dict:
     def _():
         detail, ok = eight_files("tripwire", "(SHA)")
         held = r.text("tripwire", "pelvis_mode_held")
-        return f"{detail}, mode held {held!r}", ok and held == "C_kabsch_pelvis"
+        # the requested mode is cross-checked against what the CONVERTER recorded per subject
+        recorded = [r.text("tripwire", "diagnostics", "pelvis_frame", i, "mode")
+                    for i in range(len(r.listing("tripwire", "diagnostics", "pelvis_frame",
+                                                 minimum=2)))]
+        if any(mode != held for mode in recorded):
+            raise Missing(f"tripwire pelvis_mode_held {held!r} against recorded {recorded}")
+        return (f"{detail}, mode held {held!r} and recorded {recorded}",
+                ok and held == "C_kabsch_pelvis")
 
     # ------------------------------------------------------------------------- the oracle
     def arm(seed, name, *path):
@@ -374,10 +398,25 @@ def build(reports: dict) -> dict:
 
     # ------------------------------------------------------------------- S, the reread
     def per_body(arm_name, population, metric):
-        """THE AGGREGATE, DERIVED. `aggregated_median_of_six` is never read as evidence."""
+        """THE AGGREGATE, DERIVED -- and its POPULATION validated.
+
+        A median says nothing without the population it is over. Astra's round 6 set one
+        body's `n_frames` to 0 and the medians sailed through, so every body's frame and pair
+        counts must equal the frozen sizes before its number is used.
+        """
         r.named("reread", "bodies", expect=ORACLE_SEEDS)
-        return {seed: r.num("reread", "bodies", seed, "arms", arm_name, population, metric)
-                for seed in ORACLE_SEEDS}
+        frames, pairs = S_POPULATION[population]
+        out = {}
+        for seed in ORACLE_SEEDS:
+            base = ("reread", "bodies", seed, "arms", arm_name, population)
+            if (int(r.num(*base, "n_frames")) != frames
+                    or int(r.num(*base, "n_pairs")) != pairs):
+                raise Missing(
+                    f"bodies/{seed}/{arm_name}/{population} population is "
+                    f"{int(r.num(*base, 'n_frames'))}/{int(r.num(*base, 'n_pairs'))}, not "
+                    f"the frozen {frames}/{pairs}")
+            out[seed] = r.num(*base, metric)
+        return out
 
     def aggregate(arm_name, population, metric):
         derived = median(list(per_body(arm_name, population, metric).values()))
@@ -409,6 +448,10 @@ def build(reports: dict) -> dict:
         implied = ("D_rig_rest_hipline" if b_wins
                    else "E_rig_rest_kabsch" if a_wins else None)
         shipped = r.text("reread", "winner", "mode")
+        arm_name = r.text("reread", "winner", "arm")
+        if {"a_kabsch_guarded": "E_rig_rest_kabsch",
+            "b_hipline_guarded": "D_rig_rest_hipline"}.get(arm_name) != shipped:
+            raise Missing(f"winner/arm {arm_name!r} and winner/mode {shipped!r} disagree")
         status = r.text("reread", "S_verdict")
         return (f"recomputed cells {cells}; implies {implied}; ships {shipped}; "
                 f"S_verdict {status}",
@@ -435,24 +478,26 @@ def build(reports: dict) -> dict:
             "the clause that stopped the step at sigma 1.0")
     def _():
         rows = r.named("reread", "frozen_pitch_follower_bent_tercile", expect=ORACLE_SEEDS)
+        winner_arm = r.text("reread", "winner", "arm")
         ok, ratios = True, {}
         for seed in rows:
-            follower = r.num("reread", "frozen_pitch_follower_bent_tercile", seed,
-                             "follower_i_deg")
-            winner = r.num("reread", "frozen_pitch_follower_bent_tercile", seed,
-                           "winner_i_deg")
+            # BOTH TERMS COME FROM THE BODIES, not from the follower table's own copies.
+            # Astra's round 6 set the winner's bent-tercile error on one body to 100 deg:
+            # the six-body median barely moved, the duplicated `winner_i_deg` was left alone,
+            # and that body's true ratio fell to 0.146 unnoticed.
+            follower = r.num("reread", "bodies", seed, "arms", "frozen_pitch_follower",
+                             "bent_tercile", "i_orientation_deg")
+            winner = r.num("reread", "bodies", seed, "arms", winner_arm, "bent_tercile",
+                           "i_orientation_deg")
             if winner <= 0.0:
-                raise Missing(f"follower/{seed}/winner_i_deg is not positive")
+                raise Missing(f"bodies/{seed}/{winner_arm}/bent_tercile is not positive")
             ratios[seed] = follower / winner
-            stored = r.num("reread", "frozen_pitch_follower_bent_tercile", seed, "ratio")
-            if not agrees(stored, ratios[seed], 1e-2):
-                raise Missing(f"follower/{seed}/ratio stores {stored} against "
-                              f"{ratios[seed]:.5f} derived")
-            # the follower's own error is also a per-body number the reread carries
-            if not agrees(follower, r.num("reread", "bodies", seed, "arms",
-                                          "frozen_pitch_follower", "bent_tercile",
-                                          "i_orientation_deg"), 1e-3):
-                raise Missing(f"follower/{seed}/follower_i_deg disagrees with its body row")
+            for label, derived in (("follower_i_deg", follower), ("winner_i_deg", winner),
+                                   ("ratio", ratios[seed])):
+                stored = r.num("reread", "frozen_pitch_follower_bent_tercile", seed, label)
+                if not agrees(stored, derived, 1e-2):
+                    raise Missing(f"follower/{seed}/{label} stores {stored} against "
+                                  f"{derived:.5f} derived from the body rows")
             ok &= (ratios[seed] >= FOLLOWER_RATIO and follower >= FOLLOWER_FLOOR_DEG)
         return (f"{len(rows)} bodies; recomputed ratios {min(ratios.values()):.3f}-"
                 f"{max(ratios.values()):.3f}x", ok)
@@ -556,9 +601,16 @@ def build(reports: dict) -> dict:
             if identity in seen:
                 raise Missing(f"{'/'.join(map(str, path))}/{field} repeats run {identity}")
             seen.append(identity)
+            run_worst = 0.0
             for joint in SIDE_JOINTS[side]:          # BOTH named fields, per side
-                worst = max(worst, r.num(*path, field, index, f"{joint}_max_m"))
-            holds &= r.flag(*path, field, index, "holds")
+                run_worst = max(run_worst, r.num(*path, field, index, f"{joint}_max_m"))
+            worst = max(worst, run_worst)
+            # `holds` is CROSS-CHECKED against the run's own numbers rather than believed.
+            stored_holds = r.flag(*path, field, index, "holds")
+            if stored_holds != (run_worst <= CONTACT_TOLERANCE_M):
+                raise Missing(f"{'/'.join(map(str, path))}/{field}[{index}] holds="
+                              f"{stored_holds} against its own {run_worst} m")
+            holds &= stored_holds
         return set(seen), worst, holds
 
     @clause("P1 channel preservation -- the delivery, both performers",
@@ -568,8 +620,21 @@ def build(reports: dict) -> dict:
         r.named("projection", "subjects", expect=PERFORMERS)
         ok, failing = True, {}
         for performer in PERFORMERS:
-            ok &= r.flag("projection", "subjects", performer, "P1_channel_preservation",
-                         "authentication", "authenticated")
+            # AUTHENTICATION IS DERIVED FROM THE TWO HASHES, not read off the saved boolean.
+            # Astra's round 6 set the GLB's stamped hash to 64 zeros, kept the recomputed one
+            # and the boolean, and nothing moved. Both must be PRESENT and EQUAL.
+            stamped = r.text("projection", "subjects", performer, "P1_channel_preservation",
+                             "authentication", "glb_body_track_sha256")
+            recomputed = r.text("projection", "subjects", performer,
+                                "P1_channel_preservation", "authentication",
+                                "recomputed_sha256")
+            saved = r.flag("projection", "subjects", performer, "P1_channel_preservation",
+                           "authentication", "authenticated")
+            derived = bool(stamped) and stamped == recomputed
+            if saved != derived:
+                raise Missing(f"P1/{performer}/authenticated stores {saved} against "
+                              f"{derived} derived from the two hashes")
+            ok &= derived
             channels = r.at("projection", "subjects", performer, "P1_channel_preservation",
                             "channels")
             for name in ("root_translation_m", "foot_contacts", *(f"local::{j}"
@@ -578,8 +643,18 @@ def build(reports: dict) -> dict:
                     raise Missing(f"P1/{performer}/channels/{name}")
                 ok &= r.flag("projection", "subjects", performer, "P1_channel_preservation",
                              "channels", name, "bit_identical")
-            failing[performer] = r.at("projection", "subjects", performer,
-                                      "P1_channel_preservation", "failing_channels")
+            # `failing_channels` is CROSS-CHECKED against the per-channel flags it
+            # summarises: a list that disagrees with its own booleans is a corrupted report.
+            derived_failing = {
+                name for name in ("root_translation_m", "foot_contacts",
+                                  *(f"local::{j}" for j in PROTECTED))
+                if not r.flag("projection", "subjects", performer,
+                              "P1_channel_preservation", "channels", name, "bit_identical")}
+            failing[performer] = sorted(r.at("projection", "subjects", performer,
+                                             "P1_channel_preservation", "failing_channels"))
+            if set(failing[performer]) != derived_failing:
+                raise Missing(f"P1/{performer}/failing_channels {failing[performer]} "
+                              f"against {sorted(derived_failing)} derived from the flags")
             ok &= not failing[performer]
         return f"{len(PERFORMERS)} performers; failing {failing}", ok
 
@@ -652,7 +727,12 @@ def build(reports: dict) -> dict:
             ok &= r.flag("p_oracle", "seeds", seed, "contacts_bit_identical")
             for joint in PROTECTED:
                 ok &= r.flag("p_oracle", "seeds", seed, f"local::{joint}")
-            failing = r.at("p_oracle", "seeds", seed, "failing_channels")
+            derived_failing = {j for j in PROTECTED
+                               if not r.flag("p_oracle", "seeds", seed, f"local::{j}")}
+            failing = set(r.at("p_oracle", "seeds", seed, "failing_channels"))
+            if failing != derived_failing:
+                raise Missing(f"oracle P1/{seed}/failing_channels {sorted(failing)} against "
+                              f"{sorted(derived_failing)} derived from the flags")
             ok &= not failing
             clean += not failing
         return f"{clean} of {len(ORACLE_SEEDS)} clean", ok
@@ -661,19 +741,30 @@ def build(reports: dict) -> dict:
             "refused by the shipping path is STRONGER than caught by a gate")
     def _():
         r.named("p1_controls", "controls", expect=PERFORMERS)
-        failing = {s: r.at("p1_controls", "controls", s,
-                           "control_1_foot_locals_overwritten", "failing_channels")
+        failing = {s: set(r.at("p1_controls", "controls", s,
+                               "control_1_foot_locals_overwritten", "failing_channels"))
                    for s in PERFORMERS}
+        # THE NAMED CHANNELS, not "some nonempty list". Astra's round 6 replaced performer
+        # 0's failing list with ["local::Head"] -- a channel this control never touches, and
+        # not even one P1 protects -- and the clause still passed.
+        expected = CONTROL_CHANNELS["control_1_foot_locals_overwritten"]
+        ok = all(seen == expected and seen <= PROTECTED_CHANNELS
+                 for seen in failing.values())
         return (f"the shipping path REFUSES to build it; applied to the delivered bytes P1 "
-                f"detects it: {failing}", all(failing.values()))
+                f"detects exactly {sorted(expected)}: "
+                f"{ {s: sorted(v) for s, v in failing.items()} }", ok)
 
     @clause("P1's CONTROL 2 -- the nonempty contact mask cleared (offline)",
             "must FAIL P1 on the mask")
     def _():
         r.named("p1_controls", "controls", expect=PERFORMERS)
-        failing = {s: r.at("p1_controls", "controls", s, "control_2_contact_mask_cleared",
-                           "failing_channels") for s in PERFORMERS}
-        return str(failing), all(failing.values())
+        failing = {s: set(r.at("p1_controls", "controls", s,
+                               "control_2_contact_mask_cleared", "failing_channels"))
+                   for s in PERFORMERS}
+        expected = CONTROL_CHANNELS["control_2_contact_mask_cleared"]
+        return (str({s: sorted(v) for s, v in failing.items()}),
+                all(seen == expected and seen <= PROTECTED_CHANNELS
+                    for seen in failing.values()))
 
     @clause("the UNMUTATED delivery through the same comparison", "PASS")
     def _():
@@ -686,9 +777,11 @@ def build(reports: dict) -> dict:
             "an INSTRUMENT DEFECT was found by this very control")
     def _():
         r.named("control2", "subjects", expect=PERFORMERS)
-        failing = {s: r.at("control2", "subjects", s, "P1_channel_preservation",
-                           "failing_channels") for s in PERFORMERS}
-        return str(failing), all(failing.values())
+        failing = {s: set(r.at("control2", "subjects", s, "P1_channel_preservation",
+                               "failing_channels")) for s in PERFORMERS}
+        return (str({s: sorted(v) for s, v in failing.items()}),
+                all(seen == CONTROL_2_BUILT_CHANNELS and seen <= PROTECTED_CHANNELS
+                    for seen in failing.values()))
 
     # -------------------------------------------------------------------------- B1, B2
     @clause("B1 the photographs: worsening NOT ESTABLISHED (ci95 upper bound >= 0), 8 cells",
@@ -876,6 +969,33 @@ CONJUNCTS = (
     ("the same denominator (B2 and both landmark arrays)",
      ("B2 `delivered_vs_capture.py", "the delivery: BOTH landmark arrays byte-identical")),
 )
+# EVERY SAVED BOOLEAN THE GATE STILL CONSUMES, and why each is acceptable. Astra's round 6
+# asked the question of all of them; these are the ones that survive it, and each survives
+# because the arrays it summarises are NOT in any report -- so the gate can either believe the
+# boolean or drop the clause, and dropping the clause would lose the measurement entirely.
+# Every other saved boolean or status string the gate reads is now derived or cross-checked:
+# `authenticated` (from the two hashes), `holds` (from each run's own maximum),
+# `failing_channels` on both P1 reports (from the per-channel flags), `pelvis_mode_held` (from
+# the converter's own recorded modes), `winner/arm` against `winner/mode`, `b_vs_a` and
+# `S_verdict` (from the aggregated medians), every stored aggregate (from its constituents),
+# and the follower's three stored numbers (from the body rows).
+SAVED_BOOLEANS_STILL_TRUSTED = {
+    "oracle/.../O2_vs_baseline/contacts_identical":
+        "a `np.array_equal` over two [frame, 2] contact masks. Neither mask is in any report, "
+        "so it cannot be recomputed here; it IS cross-checked in spirit by P1 on the same six "
+        "bodies, which compares the delivered contact array against the projection's own "
+        "return bit for bit.",
+    "reread/G1_missing_only/.../effective_masks_identical and interpolated_arrays_bit_identical":
+        "two `np.array_equal` results over [frame] masks and [frame, 3] interpolated arrays "
+        "that exist only inside the selector's run. The clause is an EQUIVALENCE check and "
+        "carries no band; the alternative to trusting them is not measuring G1 at all.",
+    "delivery/hygiene/raw_ and smoothed_triangulation_byte_identical":
+        "`np.array_equal` over two [frame, 19, 3] landmark arrays held in the build's memory. "
+        "The delivered `.npz` files carry the arrays, so this is re-derivable IN PRINCIPLE and "
+        "is owed as instrument debt; today the gate reads the booleans. Note that B2's own "
+        "same-denominator clause, computed by a different instrument on the same files, is a "
+        "conjunct beside it, so a single corrupted boolean does not carry the clause alone.",
+}
 OUTSIDE = {
     "the delivered run-report records the mode and the guard's demoted frames":
         "a REPORT clause; the card does not band the diagnostics block. Astra's round 2 "
@@ -922,6 +1042,7 @@ def main() -> int:
             "verdict": built["verdict"],
         },
         "deliberately_outside_the_predicate": OUTSIDE,
+        "saved_booleans_still_trusted": SAVED_BOOLEANS_STILL_TRUSTED,
         "leaf_level_fuzz": fuzz,
     }
     (BASE / "gate.json").write_text(json.dumps(report, indent=1))
