@@ -64,6 +64,14 @@ REPORTS = {
 O1_TILT_DEG, O1_ORIGIN_MM, O1_RESIDUAL_M = 0.01, 0.01, 1.0e-6
 O2_LEG_MM, O2_HOIST_MM = 0.1, 0.05
 CONTACT_TOLERANCE_M = 1.0e-5
+CALIBRATION_TARGET_MM = 8.7636
+CALIBRATION_BRACKET = (0.10, 1.00)
+TIE_DEG, TIE_MM = 0.1, 0.1
+ORACLE_SEEDS = ("20260903", "20260904", "20260905", "20260906", "20260907", "20260908")
+PERFORMERS = ("subject_00", "subject_01")
+DELIVERED_FILES = tuple(
+    f"subject-{s:02d}{suffix}" for s in (0, 1)
+    for suffix in (".glb", ".body-track.json", ".body-track.npz", ".mapping.npz"))
 FOLLOWER_RATIO, FOLLOWER_FLOOR_DEG = 2.0, 2.0
 CALIBRATION_TAU_MM = 0.05
 
@@ -89,23 +97,36 @@ def build(r: dict) -> dict:
                         "verdict": value, **({"note": note} if note else {})})
 
     # ------------------------------------------------------------------------- hygiene
+    # POPULATION COVERAGE IS PART OF THE CLAUSE. `all()` over whatever happens to be in the
+    # map is vacuous on an empty map and satisfied by a single surviving row: Astra's round 3
+    # deleted seven of the eight comparisons, left one matching hash, and the gate still said
+    # MERGE. The eight files are NAMED and each must be present AND equal.
+    def eight_files(node, label):
+        present = [name for name in DELIVERED_FILES if name in node]
+        matching = [name for name in present if node[name]["rebuild"] == node[name]["shipped"]]
+        return (len(present) == len(DELIVERED_FILES) and len(matching) == len(present),
+                f"{len(matching)} of {len(present)} present ({len(DELIVERED_FILES)} required) "
+                f"{label}")
+
     files = r["hygiene"].get("hygiene", {}).get("delivered_files_vs_shipped", {})
-    identical = [row["rebuild"] == row["shipped"] for row in files.values()]
+    ok, detail = eight_files(files, "SHAs equal")
     add("hygiene: today's code rebuilds the shipped delivery byte-identically",
-        "8 of 8", f"{sum(identical)} of {len(identical)} SHAs equal",
-        verdict(bool(identical) and all(identical)))
+        f"all {len(DELIVERED_FILES)} named files present and equal", detail, verdict(ok))
 
     # ------------------------------------------------------------------------ tripwire
     trip = r["tripwire"].get("hygiene", {}).get("delivered_files_vs_shipped", {})
-    trip_identical = [row["rebuild"] == row["shipped"] for row in trip.values()]
     held = r["tripwire"].get("pelvis_mode_held")
+    trip_ok, trip_detail = eight_files(trip, "SHAs equal")
     add("REFACTOR TRIPWIRE (i): mode C held, the refactored function reproduces D9b",
-        "8 of 8 with the mode held at C_kabsch_pelvis",
-        f"{sum(trip_identical)} of {len(trip_identical)} SHAs equal, mode held {held!r}",
-        verdict(bool(trip_identical) and all(trip_identical)
-                and held == "C_kabsch_pelvis"))
+        f"all {len(DELIVERED_FILES)} named files equal, mode held at C_kabsch_pelvis",
+        f"{trip_detail}, mode held {held!r}",
+        verdict(trip_ok and held == "C_kabsch_pelvis"))
 
     seeds = list((r["oracle"].get("oracle", {}).get("seeds") or {}).keys())
+    # POPULATION COVERAGE. Every oracle clause is "on every seed", so a missing seed is a
+    # missing measurement and not a passing one; `max()` over five of six says nothing about
+    # the sixth. The same reasoning gives the take's clauses their two-performer requirement.
+    seeds_complete = set(seeds) == set(ORACLE_SEEDS)
 
     def arm(seed, name, *path):
         node = r["oracle"]["oracle"]["seeds"][seed]["arms"][name]
@@ -133,16 +154,22 @@ def build(r: dict) -> dict:
         tor = [arm(s, "src_default", "ABSOLUTE_groups_mm", "unhoisted_frames", "torso")
                for s in seeds]
         rmax = max(arm(s, "src_default", "three_point_residual_m", "max") for s in seeds)
-        add("O1 pelvis vs truth, every seed, every frame", f"<= {O1_TILT_DEG} deg (from 6.865)",
-            f"max {tmax} deg", verdict(tmax <= O1_TILT_DEG))
+        add("O1 pelvis vs truth, every seed, every frame",
+            f"<= {O1_TILT_DEG} deg (from 6.865) on all {len(ORACLE_SEEDS)} seeds",
+            f"max {tmax} deg over {len(seeds)} seeds",
+            verdict(seeds_complete and tmax <= O1_TILT_DEG))
         add("O1 `Spine` origin miss, hoist-subtracted", f"<= {O1_ORIGIN_MM} mm (from 21-28)",
-            f"max {smax} mm", verdict(smax <= O1_ORIGIN_MM))
+            f"max {smax} mm over {len(seeds)} seeds",
+            verdict(seeds_complete and smax <= O1_ORIGIN_MM))
         add("O1 `Hips` origin miss, hoist-subtracted", f"<= {O1_ORIGIN_MM} mm (from 10)",
-            f"max {hmax} mm", verdict(hmax <= O1_ORIGIN_MM))
+            f"max {hmax} mm over {len(seeds)} seeds",
+            verdict(seeds_complete and hmax <= O1_ORIGIN_MM))
         add("O1 torso on the unhoisted frames, ABSOLUTE row", "0.00 (from 8.98-12.09)",
-            f"{max(tor)}", verdict(max(tor) <= O1_ORIGIN_MM))
+            f"{max(tor)} over {len(seeds)} seeds",
+            verdict(seeds_complete and max(tor) <= O1_ORIGIN_MM))
         add("O1 unnormalised three-point positional residual", f"<= {O1_RESIDUAL_M} m",
-            f"max {rmax:.3e} m", verdict(rmax <= O1_RESIDUAL_M),
+            f"max {rmax:.3e} m over {len(seeds)} seeds",
+            verdict(seeds_complete and rmax <= O1_RESIDUAL_M),
             "the clause that discriminates the wrong-origin control")
 
         # ------------------------------------------------------- the must-fails, DERIVED
@@ -167,12 +194,14 @@ def build(r: dict) -> dict:
         hoist = max(row["hoist_change_mm"]["max"] for row in o2)
         contacts = all(row["contacts_identical"] for row in o2)
         add("O2 legs, feet and toes vs the shipped build's FK", f"<= {O2_LEG_MM} mm per seed",
-            f"max {leg} mm", verdict(leg <= O2_LEG_MM),
+            f"max {leg} mm over {len(seeds)} seeds",
+            verdict(seeds_complete and leg <= O2_LEG_MM),
             "bit-identity is NOT claimed: a pelvis frame is whole-take")
-        add("O2 contacts identical on the oracle bodies", "identical", f"{contacts}",
-            verdict(contacts))
+        add("O2 contacts identical on the oracle bodies",
+            f"identical on all {len(ORACLE_SEEDS)} seeds",
+            f"{contacts} over {len(seeds)} seeds", verdict(seeds_complete and contacts))
         add("O2 hoist change", f"<= {O2_HOIST_MM} mm", f"max {hoist} mm",
-            verdict(hoist <= O2_HOIST_MM))
+            verdict(seeds_complete and hoist <= O2_HOIST_MM))
         o3o = [arm(s, "src_default", "ALIGNED_rc_score_groups_mm", "arms") for s in seeds]
         o3c = [arm(s, "C_soma_template", "ALIGNED_rc_score_groups_mm", "arms") for s in seeds]
         add("O3 the D3 gate's own leg-root-ALIGNED gauge, arms (REPORTED)",
@@ -201,34 +230,89 @@ def build(r: dict) -> dict:
             verdict(bool(bis.get("monotone_across_the_evaluations"))),
             "the step STOPPED again; `selector-calibrated.json` keeps "
             "`monotone_across_the_evaluations: false`. Diagnosed to the frame.")
-    checks = r["admissibility"].get("admissibility", {}).get("checks", {})
-    if checks:
-        a = checks["A_no_earlier_to_later_decrease_over_tau"]["largest_decrease_mm"]
-        b = checks["B_at_most_one_sign_change_of_statistic_minus_target"]["sign_changes"]
-        c = checks["C_the_unchanged_stopping_rule_found_a_value_within_tau"][
-            "accepted_sigma_scale_exact"]
+    adm = r["admissibility"].get("admissibility", {})
+    if adm:
+        # RECOMPUTED FROM THE EVALUATIONS, not read off the saved checks. Astra's round 3 set
+        # the accepted sample's residual to 1 mm with `passes` false and the gate still said
+        # MERGE, because it only asked whether an accepted sigma EXISTED. The three
+        # conditions of the amended rule are re-derived here from the (sigma, statistic)
+        # pairs themselves, and the accepted sample must actually sit inside the tolerance.
+        evaluations = r["calibration"].get(
+            "calibration", {}).get("bisection", {}).get("evaluations", [])
+        target = adm.get("target_mm", CALIBRATION_TARGET_MM)
+        bracket = adm.get("bracket", list(CALIBRATION_BRACKET))
+        ordered = sorted(evaluations, key=lambda row: row["sigma_scale"])
+        values = [row["median_of_six_guard_kept_sd_mm"] for row in ordered]
+        sigmas = [row["sigma_scale"] for row in ordered]
+        worst_decrease = max(
+            (values[i] - values[j] for i in range(len(values))
+             for j in range(i + 1, len(values)) if values[j] < values[i]), default=0.0)
+        signs = [(-1 if v < target else 1) for v in values if v != target]
+        sign_changes = sum(1 for x, y in zip(signs, signs[1:]) if x != y)
+        accepted = adm.get("replay_of_the_frozen_stopping_rule", {}).get(
+            "accepted_sigma_scale_exact")
+        # the frozen artifact predates `sigma_scale_exact`, so the evaluation is identified
+        # by the six-place display rounding the bisection recorded -- which is exactly how
+        # the replay identifies it too.
+        accepted_value = next(
+            (row["median_of_six_guard_kept_sd_mm"] for row in evaluations
+             if accepted is not None
+             and (row.get("sigma_scale_exact") == accepted
+                  or row["sigma_scale"] == round(accepted, 6))), None)
+        inside = (accepted_value is not None
+                  and abs(accepted_value - target) <= CALIBRATION_TAU_MM)
+        in_bracket = (accepted is not None
+                      and bracket[0] <= accepted <= bracket[1])
         add("the SAME frozen evaluations under Astra round 7's amended admissibility rule",
-            f"A <= {CALIBRATION_TAU_MM} mm, B <= 1 sign change, C a sigma inside tolerance",
-            f"A {a} mm, B {b} sign change(s), C sigma {c}",
-            verdict(a <= CALIBRATION_TAU_MM and b <= 1 and c is not None),
+            f"A <= {CALIBRATION_TAU_MM} mm, B <= 1 sign change, C an accepted sigma whose "
+            f"OWN statistic is within {CALIBRATION_TAU_MM} mm of the target and inside the "
+            "bracket",
+            f"A {worst_decrease:.4f} mm over {len(values)} evaluations, B {sign_changes} "
+            f"sign change(s), C sigma {accepted} -> {accepted_value} mm against target "
+            f"{target} (inside tolerance {inside}, inside bracket {in_bracket})",
+            verdict(bool(evaluations) and worst_decrease <= CALIBRATION_TAU_MM
+                    and sign_changes <= 1 and inside and in_bracket),
             "an OBSERVED TOLERANCE MATCH, never monotonicity or uniqueness. POST HOC.")
 
     # ------------------------------------------------------------------------ S, reread
     re_ = r["reread"]
     if re_:
         agg = re_["aggregated_median_of_six"]
-        bva = list(re_["b_vs_a"].values())
-        decided = (all(v in ("worse", "tied") for v in bva) and "worse" in bva) or \
-                  (all(v in ("better", "tied") for v in bva) and "better" in bva)
+        # THE SIX CELLS ARE RECOMPUTED FROM THE NUMBERS AND THE TIE RULE. Reading the saved
+        # `b_vs_a` classification strings is what let Astra's round 3 set (b)'s whole-take
+        # orientation error to 4 deg against (a)'s 5.28 -- a genuine SPLIT -- while the
+        # strings still said "worse" six times and the gate said MERGE.
+        cells, rebuilt = [], {}
+        for population in ("whole_take", "bent_tercile"):
+            for metric, tie in (("i_orientation_deg", TIE_DEG), ("ii_step_deg", TIE_DEG),
+                                ("iii_root_step_mm", TIE_MM)):
+                b_value = agg["b_hipline_guarded"][population][metric]
+                a_value = agg["a_kabsch_guarded"][population][metric]
+                cell = ("tied" if abs(b_value - a_value) <= tie
+                        else "better" if b_value < a_value else "worse")
+                cells.append(cell)
+                rebuilt[f"b_vs_a__{population}__{metric}"] = cell
+        b_wins = all(c in ("better", "tied") for c in cells) and "better" in cells
+        a_wins = all(c in ("worse", "tied") for c in cells) and "worse" in cells
+        decided = b_wins or a_wins
+        implied = ("D_rig_rest_hipline" if b_wins
+                   else "E_rig_rest_kabsch" if a_wins else None)
+        shipped = re_.get("winner", {}).get("mode")
         add("S REREAD: (a) vs (b), all three metrics, both populations",
             "one of them better-or-tied everywhere and strictly better somewhere, else SPLIT",
-            f"b_vs_a = {bva}; S_verdict {re_.get('S_verdict')}; ships "
-            f"{re_.get('winner', {}).get('mode')}",
-            verdict(decided and re_.get("S_verdict") == "PROCEED"
-                    and bool(re_.get("winner"))),
-            "DERIVED from the six cells and the verdict, and it is the second clause Astra's "
-            "counter-example broke: one-better/five-worse with S_verdict SPLIT is exactly the "
-            "card's SPLIT, which STOPS the step.")
+            f"recomputed cells {cells}; implies {implied}; the file ships {shipped}; "
+            f"S_verdict {re_.get('S_verdict')}",
+            verdict(decided and implied is not None and implied == shipped
+                    and re_.get("S_verdict") == "PROCEED"),
+            "DERIVED from the six aggregated medians and the tie rule, and cross-checked "
+            "against the mode the file says it ships: a decision the numbers do not support "
+            "is a SPLIT, and the card says a SPLIT STOPS the step.")
+        if rebuilt != re_.get("b_vs_a"):
+            add("S REREAD: the saved (a)/(b) classifications agree with the numbers",
+                "the recomputed cells equal the stored ones",
+                f"recomputed {rebuilt} against stored {re_.get('b_vs_a')}", "FAIL",
+                "a stored classification that disagrees with its own numbers is a corrupted "
+                "report, and the gate must not prefer either one silently")
         winner_arm = re_.get("winner", {}).get("arm", "a_kabsch_guarded")
         beats = []
         for population in ("whole_take", "bent_tercile"):
@@ -245,12 +329,20 @@ def build(r: dict) -> dict:
             f"{agg['C_on_SOMA']['bent_tercile']['i_orientation_deg']}",
             verdict(all(beats)))
         fol = re_["frozen_pitch_follower_bent_tercile"]
-        ok = all(v["ratio"] >= FOLLOWER_RATIO and v["follower_i_deg"] >= FOLLOWER_FLOOR_DEG
-                 for v in fol.values())
+        # THE RATIO IS RECOMPUTED from the two numbers on every body, and the six bodies must
+        # be PRESENT. Astra's round 3 set one row's `winner_i_deg` to 100 while leaving its
+        # stored ratio at 3.05 and the gate still said MERGE.
+        recomputed = {seed: (row["follower_i_deg"] / row["winner_i_deg"]
+                             if row["winner_i_deg"] > 0 else float("inf"))
+                      for seed, row in fol.items()}
+        ok = (set(fol) == set(ORACLE_SEEDS)
+              and all(recomputed[seed] >= FOLLOWER_RATIO
+                      and row["follower_i_deg"] >= FOLLOWER_FLOOR_DEG
+                      for seed, row in fol.items()))
         add("S REREAD: the frozen-pitch follower >= 2x the winner AND >= 2 deg, on EVERY body",
             f">= {FOLLOWER_RATIO}x and >= {FOLLOWER_FLOOR_DEG} deg on 6 of 6",
-            f"{min(v['ratio'] for v in fol.values()):.3f}-"
-            f"{max(v['ratio'] for v in fol.values()):.3f}x, "
+            f"{len(fol)} of {len(ORACLE_SEEDS)} bodies; recomputed ratios "
+            f"{min(recomputed.values()):.3f}-{max(recomputed.values()):.3f}x, "
             f"{min(v['follower_i_deg'] for v in fol.values()):.2f}-"
             f"{max(v['follower_i_deg'] for v in fol.values()):.2f} deg",
             verdict(ok), "the clause that stopped the step at sigma 1.0")
@@ -290,11 +382,19 @@ def build(r: dict) -> dict:
 
     # -------------------------------------------------------------------- the delivery
     hyg = r["delivery"].get("hygiene", {})
-    same = (all(hyg.get("raw_triangulation_byte_identical_same_denominator", {}).values())
-            and all(hyg.get("smoothed_triangulation_byte_identical", {}).values()))
+    raw = hyg.get("raw_triangulation_byte_identical_same_denominator", {})
+    smoothed = hyg.get("smoothed_triangulation_byte_identical", {})
+    # BOTH PERFORMERS AND BOTH ARRAYS MUST BE PRESENT. `all({})` is True, and Astra's round 3
+    # emptied both maps and the gate still said MERGE. A missing comparison is not a passing
+    # one.
+    covered = (set(raw) == set(PERFORMERS) and set(smoothed) == set(PERFORMERS))
+    same = covered and all(raw.values()) and all(smoothed.values())
     add("the delivery: BOTH landmark arrays byte-identical (the same denominator)",
-        "raw AND smoothed identical", f"{same}", verdict(bool(same)),
-        "a converter-only change cannot move either array")
+        f"raw AND smoothed identical on {len(PERFORMERS)} performers",
+        f"raw {raw or '{} MISSING'}; smoothed {smoothed or '{} MISSING'}",
+        verdict(bool(same)),
+        "a converter-only change cannot move either array, and an ABSENT comparison is not a "
+        "passing one")
     pf = r["delivery"].get("diagnostics", {}).get("pelvis_frame", [])
     if pf:
         add("the delivered run-report records the mode and the guard's demoted frames",
@@ -308,36 +408,44 @@ def build(r: dict) -> dict:
     proj = r["projection"]
     if proj:
         subjects = proj["subjects"]
-        p1_ok = all(row["P1_channel_preservation"]["authentication"]["authenticated"]
-                    and not row["P1_channel_preservation"]["failing_channels"]
-                    for row in subjects.values())
+        p1_ok = (set(subjects) == set(PERFORMERS)
+                 and all(row["P1_channel_preservation"]["authentication"]["authenticated"]
+                         and not row["P1_channel_preservation"]["failing_channels"]
+                         for row in subjects.values()))
         add("P1 channel preservation -- the delivery, both performers",
-            "every protected channel bit-identical, on an AUTHENTICATED track",
-            str({s: row["P1_channel_preservation"]["failing_channels"]
-                 for s, row in subjects.items()}), verdict(p1_ok))
+            f"every protected channel bit-identical on {len(PERFORMERS)} performers, on an "
+            "AUTHENTICATED track",
+            f"{len(subjects)} of {len(PERFORMERS)} performers; failing "
+            + str({s: row["P1_channel_preservation"]["failing_channels"]
+                   for s, row in subjects.items()}), verdict(p1_ok))
         worst = max(row["P2_anchor_lock"]["worst_travel_m"] for row in subjects.values())
+        p2_covered = set(subjects) == set(PERFORMERS)
         add("P2 anchor lock -- the delivery, every accepted run, on the GLB's own arrays",
             f"<= {CONTACT_TOLERANCE_M} m at every run's first KEYED sample",
-            f"worst {worst:.3e} m; runs "
+            f"worst {worst:.3e} m over {len(subjects)} of {len(PERFORMERS)} performers; runs "
             + str({s: len(row["P2_anchor_lock"]["runs"]) for s, row in subjects.items()}),
-            verdict(worst <= CONTACT_TOLERANCE_M))
+            verdict(p2_covered and worst <= CONTACT_TOLERANCE_M))
         add("P3 planted-foot travel on the frozen UNION of both builds' runs", "REPORT",
             f"{sum(len(row['P3_travel_report']['intervals']) for row in subjects.values())} "
             "intervals", "REPORT")
         oracle_p2 = proj.get("P2_on_the_oracle_bodies", {})
         if oracle_p2:
             worst_o = oracle_p2["worst_travel_m_over_all_seeds"]
+            oracle_p2_covered = set(oracle_p2["seeds"]) == set(ORACLE_SEEDS)
             add("P2 anchor lock on EVERY ORACLE BODY, from each exported GLB's own arrays",
-                f"<= {CONTACT_TOLERANCE_M} m", f"worst {worst_o:.3e} m; runs "
+                f"<= {CONTACT_TOLERANCE_M} m on all {len(ORACLE_SEEDS)} seeds",
+                f"worst {worst_o:.3e} m over {len(oracle_p2['seeds'])} seeds; runs "
                 + str({k: v["runs"] for k, v in oracle_p2["seeds"].items()}),
-                verdict(worst_o <= CONTACT_TOLERANCE_M))
+                verdict(oracle_p2_covered and worst_o <= CONTACT_TOLERANCE_M))
     po = r["p_oracle"].get("seeds", {})
     if po:
-        ok = all(row["root_bit_identical"] and row["contacts_bit_identical"]
-                 and not row["failing_channels"] for row in po.values())
+        ok = (set(po) == set(ORACLE_SEEDS)
+              and all(row["root_bit_identical"] and row["contacts_bit_identical"]
+                      and not row["failing_channels"] for row in po.values()))
         add("P1 on EVERY ORACLE BODY (the card says the take AND every oracle body)",
-            "every protected channel bit-identical on all six",
-            f"{sum(1 for row in po.values() if not row['failing_channels'])} of {len(po)} clean",
+            f"every protected channel bit-identical on all {len(ORACLE_SEEDS)} seeds",
+            f"{sum(1 for row in po.values() if not row['failing_channels'])} of {len(po)} "
+            f"clean, {len(po)} of {len(ORACLE_SEEDS)} seeds present",
             verdict(ok))
     ctrl = r["p1_controls"].get("controls", {})
     if ctrl:
@@ -375,10 +483,13 @@ def build(r: dict) -> dict:
         cells = [(s, name, cell) for s, row in sil.items() if s.startswith("subject_")
                  for name, cell in row.items() if name.startswith("clause_")]
         upper = [cell["ci95"][1] >= 0.0 for _, _, cell in cells]
+        b1_covered = ({s for s in sil if s.startswith("subject_")} == set(PERFORMERS)
+                      and len(cells) == 8)
         add("B1 the photographs: worsening NOT ESTABLISHED (ci95 upper bound >= 0), 8 cells",
             "ci95[1] >= 0 on every cell",
-            f"{sum(upper)} of {len(upper)} cells with the upper bound at or above zero",
-            verdict(bool(upper) and all(upper)),
+            f"{sum(upper)} of {len(upper)} cells with the upper bound at or above zero, "
+            f"over {len({s for s in sil if s.startswith('subject_')})} performers",
+            verdict(b1_covered and all(upper)),
             "it does NOT establish non-worsening; a wide interval passes it for want of power")
         oracle_cell = sil.get("clause_mamma_mesh_oracle", {})
         worst = oracle_cell.get(
@@ -600,9 +711,32 @@ INPUT_MUTATIONS = (
      lambda r: _set(list(r["reread"]["G2_finite_only"]["bodies"].values())[0],
                     ("guarded", "i_on_corrupted_frames_deg"), 999.0)),
     ("S (every stop of the reread, G1 and G2 included)",
-     "one body's follower ratio dropped below 2x",
+     "ASTRA ROUND 3 (iv): one body's winner_i_deg set to 100 while its STORED ratio is left "
+     "at 3.05 -- the ratio must be recomputed from the two numbers",
      lambda r: _set(list(r["reread"]["frozen_pitch_follower_bent_tercile"].values())[0],
-                    ("ratio",), 1.2)),
+                    ("winner_i_deg",), 100.0)),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "one body's follower error dropped below the 2 deg floor",
+     lambda r: _set(list(r["reread"]["frozen_pitch_follower_bent_tercile"].values())[0],
+                    ("follower_i_deg",), 0.5)),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "ASTRA ROUND 3 (i): (b)'s whole-take orientation error set to 4 deg against (a)'s "
+     "5.28078 -- a genuine SPLIT that the stored classification strings still call 'worse'",
+     lambda r: _set(r["reread"]["aggregated_median_of_six"]["b_hipline_guarded"],
+                    ("whole_take", "i_orientation_deg"), 4.0)),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "ASTRA ROUND 3 (ii): the accepted calibration sample's own statistic moved 1 mm off the "
+     "target -- an accepted sigma that is no longer inside the tolerance",
+     lambda r: [_set(row, ("median_of_six_guard_kept_sd_mm",), 9.7636)
+                for row in r["calibration"]["calibration"]["bisection"]["evaluations"]
+                if row["sigma_scale"] == 0.335547]),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "COVERAGE: one of the six bodies removed from the follower table",
+     lambda r: r["reread"]["frozen_pitch_follower_bent_tercile"].pop(
+         list(r["reread"]["frozen_pitch_follower_bent_tercile"])[0])),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "COVERAGE: the calibration's evaluations emptied",
+     lambda r: _set(r["calibration"]["calibration"]["bisection"], ("evaluations",), [])),
     ("S (every stop of the reread, G1 and G2 included)",
      "G1's arrays made to differ where the effective masks agree",
      lambda r: list(r["reread"]["G1_missing_only"]["bodies"].values())[0].update(
@@ -617,6 +751,41 @@ INPUT_MUTATIONS = (
      "the delivery's smoothed landmark array marked as moved",
      lambda r: _set(r["delivery"]["hygiene"]["smoothed_triangulation_byte_identical"],
                     ("subject_00",), False)),
+    ("the same denominator (B2 and both landmark arrays)",
+     "ASTRA ROUND 3 (v): COVERAGE -- both landmark comparison maps emptied, so `all({})` is "
+     "vacuously true",
+     lambda r: [_set(r["delivery"]["hygiene"], (key,), {}) for key in
+                ("raw_triangulation_byte_identical_same_denominator",
+                 "smoothed_triangulation_byte_identical")]),
+    ("the same denominator (B2 and both landmark arrays)",
+     "COVERAGE: one performer dropped from the smoothed comparison",
+     lambda r: r["delivery"]["hygiene"]["smoothed_triangulation_byte_identical"].pop(
+         "subject_01")),
+    ("hygiene",
+     "ASTRA ROUND 3 (iii): COVERAGE -- seven of the eight hygiene comparisons deleted, "
+     "leaving one matching hash",
+     lambda r: _set(r["hygiene"]["hygiene"], ("delivered_files_vs_shipped",),
+                    {"subject-00.glb": next(iter(
+                        r["hygiene"]["hygiene"]["delivered_files_vs_shipped"].values()))})),
+    ("the refactor tripwire (both readings)",
+     "COVERAGE: one delivered file dropped from the tripwire comparison",
+     lambda r: r["tripwire"]["hygiene"]["delivered_files_vs_shipped"].pop(
+         "subject-01.mapping.npz")),
+    ("O1", "COVERAGE: one of the six oracle seeds removed",
+     lambda r: r["oracle"]["oracle"]["seeds"].pop(
+         list(r["oracle"]["oracle"]["seeds"])[0])),
+    ("P1 on every oracle body", "COVERAGE: one oracle body removed from the P1 report",
+     lambda r: r["p_oracle"]["seeds"].pop(list(r["p_oracle"]["seeds"])[0])),
+    ("P2 on every oracle body", "COVERAGE: one oracle body removed from the P2 report",
+     lambda r: r["projection"]["P2_on_the_oracle_bodies"]["seeds"].pop(
+         list(r["projection"]["P2_on_the_oracle_bodies"]["seeds"])[0])),
+    ("P1 on the take", "COVERAGE: one performer removed from the take's P report",
+     lambda r: r["projection"]["subjects"].pop("subject_01")),
+    ("B1 on both performers, oracle included",
+     "COVERAGE: one performer removed from the silhouette verdicts",
+     lambda r: r["silhouette"]["preregistered_clause_verdicts"].pop("subject_01")),
+    ("hygiene", "COVERAGE: the hygiene report absent altogether",
+     lambda r: _set(r, ("hygiene",), {})),
 )
 
 
