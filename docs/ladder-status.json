@@ -803,6 +803,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "Astra merge review round 6 at e68e06d: NO MERGE -- four leaves the gate should read and does not (the authentication hashes, the follower's denominator, the selector populations, the controls' named channels); the fuzzer's REPORT-only class misclassified 8 enforced control leaves. Sent back to the agent."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "Astra merge review round 7 at cffaad3: NO MERGE -- four more stored-summary reads whose constituents are on disk (B2's aggregate, P1's bit_identical, the follower's population, the calibration's accepted median). The fuzzer's unread class is being inverted: every unread measurement leaf under a clause's subtree is a GAP unless justified by name."
     }
   ]
 }
