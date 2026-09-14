@@ -275,3 +275,55 @@ On question 4:
 I regenerated **every B6 JSON value exactly**, including ranges, ever/always counts, joint percentages, area/edge statistics and closure. Focused tests: **36 passed**. I did not rerun the full suite or independently recheck the two pre-existing failures.
 
 Read-only throughout; worktree unchanged; `git diff 9dda9ac -- src/` remains empty.
+
+---
+
+# Merge review round 5 — 2026-09-14, at ladder/D7c 843bce5. Verdict: NO MERGE (two blockers)
+
+Verified: `d7c_gate_report.py:304/313` read S's stored aggregate and never derive it from `bodies`; `:518` the oracle P2 global summary is not cross-checked; `:509` run identity is not required; `:93` a missing measurement field contributes nothing; the follower's stored ratio still escapes; `pelvis-rest-2026-09-14.md:1055` still claims "inverts 13–14 % of its triangles per frame on EVERY build" and a "deep hip crease" (the proxy spans 1.86–14.19 % on performer 1), `:840` the "coin toss" text survives, `d7c_delivered_bytes.py:359` the docstring still says "normal FLIPS … an inverted triangle"; `:303` misstates the centroid argument (the averaged matrix IS the centroid's skinning matrix under barycentric weights; transforming the centroid differs from averaging the transformed vertices).
+
+| # | finding | change |
+|---|---|---|
+| 1 | six more mutations pass; the general rule is not applied | the gate is rebuilt on one rule enforced mechanically: every value it reads is either derived from named constituents or cross-checked against them, a missing field is a FAIL, every set is checked by identity; proven by a leaf-level fuzzer over every input report (perturb-to-fail and delete, one leaf at a time), with the ignored leaves listed and justified |
+| 2 | B6 still draws inversion conclusions the proxy cannot support | every inversion conclusion removed; the docstring and the centroid explanation corrected; the "coin toss" text removed at its second site |
+
+---
+
+**NO MERGE at `843bce5`. Two blockers remain, both confidence 10/10: gate enforcement and surviving B6 inversion claims.**
+
+1. **The gate still accepts missing evidence and contradictory summaries.**
+
+   The saved MERGE verdict and **39/39 committed mutations detected** reproduce. These **new, independent in-memory mutations** nevertheless return **MERGE**:
+
+   | Mutation | Deciding implementation |
+   |---|---|
+   | Change S’s stored `(a)` whole-take orientation median from **5.28078° to 1°**, leaving all six constituents valid and unchanged | `agg = re_["aggregated_median_of_six"]`; the gate never derives this aggregate from `bodies`. [Line 304](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:304) |
+   | Set all six underlying `(a)` whole-take orientation errors to **100°**, retaining the passing aggregate; separately, empty S’s main `bodies` map | Both return MERGE through the same aggregate-only path. [Line 313](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:313) |
+   | Change oracle P2’s global `worst_travel_m_over_all_seeds` to **0.001 m**, leaving every seed and run unchanged | Cross-checks cover per-seed maxima but omit the global summary. [Line 518](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:518) |
+   | Replace oracle seed `20260903`’s first run with a duplicate of its second, preserving count and maximum | `have_runs` checks only nonemptiness, not required run identities. [Line 509](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:509) |
+   | Delete both Foot/Toes measurement fields from the take’s first run, retaining `holds=True` | `run_maximum` scans whatever `_max_m` fields remain; missing measurements contribute nothing. [Line 93](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:93) |
+
+   Changing only the follower’s saved ratio to **0.1** also escapes. Changing G2’s stored median alone correctly produces **NO MERGE**.
+
+   The round-4 examples are repaired; the claimed general rule is not. Require S’s constituent population, complete run identities and measurements, and consistency of retained summaries.
+
+2. **The proxy qualification is acceptable in scope, but the report still contradicts it.**
+
+   The decisive surviving claim is:
+
+   > “inverts 13–14 % of its triangles per frame on EVERY build”
+
+   It then attributes this to “a deep hip crease.” Neither conclusion follows from this proxy. [Lines beginning 1055](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:1055). The instrument’s own docstring also retains “normal FLIPS … an inverted triangle.” [Line 359](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:359).
+
+   Remove those conclusions consistently. The qualified proxy and D6 handoff are sufficient under round 4; this requires no new deformation band.
+
+3. **Two explanations still misread the correction.**
+
+   - The proxy says the averaged matrix is **not** the centroid’s skinning matrix. Under barycentrically interpolated weights, it **is**. The problem is that **transforming the centroid differs from averaging the transformed vertices**. I reproduced that distinction directly. Correct [line 303](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:303), including its artifact/document copies. [Kavan equation 17](https://skinning.org/direct-methods.pdf) supplies the weight-gradient term for the Jacobian.
+   - The planar Kabsch “coin toss” assertion **still appears at [line 840](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:840)**, despite the later correction. Proper planar Kabsch again reproduces **determinant +1, RSSD 0**.
+
+4. **Reproduction:** every B6 JSON value and both take/oracle P2 reports regenerated exactly. The proxy counterexample gives **det +0.722222**, firing before the swap and not afterward; candidate swapped ranges reproduce **265–313 / 72–340**. Closure reproduces **3e-6° / 4e-6°** medians and **1.1e-5° / 1.4e-5°** maxima. The corrected B1 sentence agrees with its intervals.
+
+   **38 tests passed** (`test_pelvis_rest.py`, `test_provenance_audit.py`). I did not rerun the two reported pre-existing failures. The “13–14% every frame” number fails even as a proxy summary: candidate performer 1 spans **1.86–14.19%**.
+
+Read-only throughout; worktree unchanged; `git diff 9dda9ac -- src/` is empty.
