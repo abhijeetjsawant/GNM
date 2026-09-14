@@ -33,11 +33,8 @@ it selects nothing.
 | 3B | the SAME frozen evaluations under Astra round 7's amended admissibility rule | **REACHED**, S pending | `2d8bfcc` |
 | 3C | all of S reread at the exact calibrated σ = 0.335546875 | **PROCEED** — `E_rig_rest_kabsch` ships | `2878977` |
 | 4 | the `src/` change, the tripwire, the containment test, the tests | **PASS** — tripwire 8 of 8 | `dec1354` |
-| 5 | the delivery, O1–O3, P1–P3, B1–B6 | **PASS** — every conjunct | this commit |
-| 6 | the gate JSON, the extractor stub, the review | **MERGE** | this commit |
-| 4 | the src change | **not started** — `git diff 7e35dd0 -- src/` is EMPTY | — |
-| 5 | the delivery and the bands | **not reached** | — |
-| 6 | the gate, the extractor, the tests, the report page | **not reached** | — |
+| 5 | the delivery, O1–O3, P1–P3, B1–B6 | **PASS** — every conjunct | `3e41b7b` |
+| 6 | the gate JSON, the extractor stub, the report frames, the review | **MERGE** | this commit |
 
 ---
 
@@ -940,28 +937,69 @@ See section 3A.5 for the single question it hands the coordinator.
 
 ---
 
+## 7A. The report frames, and why they are not published here
+
+`d7c_pelvis_rest_frames.py` draws the one thing this step is about: the pelvis's own up axis,
+from the hip midpoint through the rig's `Spine`, extended, against the captured `Spine1` the
+step claims it should point at. Performer 1, cameras A001 and D001, the demoted run 38–46
+(frame ids 98–106) with unaffected frames either side. **No magnification** — 9° of pelvis
+rotation and 30 mm at `Spine` are visible at native scale, unlike D9b's one-pixel re-aim. The
+captured landmarks and the Spine1 array are asserted identical between the columns before a
+pixel is drawn.
+
+The axis error on those frames, before → after: **9.80 → 3.40°, 13.89 → 6.44°, 14.70 → 4.09°**
+and so on across the 21 frames.
+
+**Nothing is published.** Two sets are written and the choice is the coordinator's:
+
+* `report/frames/` — 21 frames, 1.9 MB, plus `d7c-pelvis-rest.mp4` (496 KB) for SendUserFile;
+* `report/frames-page/` — **11 frames, 268 KB**, half scale at q38, which is what a v9 tab can
+  actually carry.
+
+"The Solve So Far" is at **9.27 of its ~9.5 MB cap**, so even the small set needs an older
+tab's frames shrunk or dropped first. That is a page edit and a publish, and this agent does
+neither.
+
+---
+
 ## 8. Files
 
 ```
-tools/compare/d7c_pelvis_rest_delivery.py     the rebuild, the watchers, the two P1 controls
+src/autoanim_gnm/commercial_multiview.py      `_pelvis_world_frames(rest=...)`, the two rig
+                                              modes, `_pelvis_lever_guard`,
+                                              PELVIS_FRAME_SOURCE = E_rig_rest_kabsch
+tests/test_pelvis_rest.py                     14 tests: bit-parity, containment with its
+                                              positive control, the guard's scope and frozen
+                                              denominator, the four superseded pins re-pinned
+
+tools/compare/d7c_pelvis_rest_delivery.py     the rebuild, both watchers, `--pelvis-mode`
 tools/compare/d7c_pelvis_rest_gate.py         the oracle and take instrument
-tools/compare/d7c_pelvis_estimators.py        the two rig estimators, the lever guard, the
-                                              controls -- FROZEN at 8a82ee4, unchanged since
+tools/compare/d7c_pelvis_estimators.py        FROZEN at 8a82ee4, unchanged since
 tools/compare/d7c_pelvis_synthetic.py         S, the calibration, the amended G1
+tools/compare/d7c_projection_preservation.py  P1 / P2 / P3
+tools/compare/d7c_p1_controls.py              P1's two controls, one of which cannot be built
+tools/compare/d7c_pelvis_rest_silhouette.py   B1
+tools/compare/d7c_delivered_bytes.py          B5b and B6
+tools/compare/d7c_gate_report.py              the clause table and the merge rule
+tools/compare/d7c_pelvis_rest_frames.py       the report frames and the mp4
+tools/compare/extractors/d7c_pelvis_rest.py   the ladder extractor STUB (never a registry edit)
 
 artifacts/compare/d7c-pelvis-rest/
-  delivery-hygiene-build.json                 PASS, 8 of 8
-  delivery-hygiene/                           + projection-snapshots/, converter-inputs/
-  instrument-shipped.json                     the pre-card reproduced
-  oracle-shipped/                             per arm per seed, O2's baseline
-  selector.json                               S at the card's own fixture. STOP. Untouched by
-                                              the amendment, exactly as it fell.
-  selector-calibrated.json                    the FIXTURE CALIBRATION. UNREACHABLE. No reread.
-  selector-sensitivity-sigma{0.5,0.35,0.25}.json   REPORT ONLY
-  logs/01-hygiene.log 02-instrument-shipped.log 03-selector.log
-       04-sensitivity-sigma*.log 05-calibrated.log 06-violation-diagnosis.log
+  gate.json                                   every clause, and the merge rule: MERGE
+  delivery-hygiene-build.json                 8 of 8
+  tripwire-mode-c-build.json                  8 of 8, the mode held at C
+  delivery-build.json                         the shipped candidate
+  instrument-shipped.json instrument-d7c.json instrument-take.json
+  selector.json                               S at the card's fixture. STOP. IMMUTABLE.
+  selector-calibrated.json                    the frozen-rule UNREACHABLE. IMMUTABLE.
+  selector-calibrated-amended.json            REACHED, S pending
+  selector-reread-sigma0.335546875.json       PROCEED, E_rig_rest_kabsch ships
+  projection-preservation*.json p1-controls.json silhouette-partwise.json
+  b2-delivered-vs-capture.json b3-hoist-and-contacts.json b6-delivered-bytes.json
+  report/frames/ report/frames-page/ report/d7c-pelvis-rest.mp4
+  logs/01 … 22
 ```
 
-`git diff 7e35dd0 -- src/` is empty and
-`git diff 8a82ee4 -- tools/compare/d7c_pelvis_estimators.py` is empty: no source file and no
-estimator was touched at any point in this step.
+`git diff 8a82ee4 -- tools/compare/d7c_pelvis_estimators.py` is empty: the estimator the
+selector evaluated was frozen through the calibration, the reread **and** the src change, and
+the shipped branch was written to match it bit for bit.
