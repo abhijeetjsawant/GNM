@@ -126,3 +126,83 @@ Verified against the worktree: `d7c_gate_report.py:95` and `:158` assign literal
    - Focused validation: **32 passed**, including pelvis-rest and provenance tests. I did not rerun the full suite.
 
 Read-only throughout; worktree unchanged.
+
+---
+
+# Merge review round 3 — 2026-09-14, at ladder/D7c 65a5a4d. Verdict: NO MERGE (two blockers)
+
+Verified against the worktree: `d7c_gate_report.py:220` reads saved (b)-vs-(a) classification strings, `:213` checks that an accepted σ exists without its residual, `:96` and `:293` accept a nonempty subset / a vacuous `all({})`, `:248` trusts the stored follower ratio; `d7c_delivered_bytes.py:273` takes the FIRST VERTEX's dominant joint (a cyclic reorder changes the counts 317→318, 4373→4362); a constant-weight LBS with positive determinant 0.04 is called inverted; `:340` the 325/317 figures are maxima over 15 sampled frames (performer 1 ranges 35–338); `:531` fits the closure constant from frame 0 so a constant 10° leaf error is invisible; `pelvis-rest-2026-09-14.md:764` "only one of four cells" vs two positive articulation intervals.
+
+| # | finding | change |
+|---|---|---|
+| 1 | five further input mutations still read MERGE (numerical SPLIT, calibration residual, hygiene 1/8, follower winner, empty denominator maps) | every S / calibration / hygiene / denominator verdict recomputed from the measurements with required population coverage (8/8 files, six cells, six bodies, both performers) |
+| 2 | the carried-normal inversion test is not a sound classifier | replaced by the sign of the per-triangle deformation determinant (deformed edges and carried rest normal against the rest triangle), or the counts qualified as a heuristic |
+| 3 | the B6 maxima are over 15 frames, and "deep hip crease / a handful / not a tear" are unsupported | per-frame ranges reported; the interpretation qualified or localised |
+| 4 | the rotational closure fits its constant from the output | the exporter's actual bind/alignment transform reconstructed (`body_export.py:379`), median 0.000003°, max 0.000011 / 0.000013°; the "one of four cells" line corrected |
+
+---
+
+**NO MERGE at `65a5a4d`.** Two blockers remain, both verified at confidence **10/10**: incomplete gate enforcement and incorrectly characterized B6 measurements. No deformation acceptance band is needed.
+
+1. **The twelve conjuncts are input-dependent, but they do not enforce every required condition.**
+
+   I reproduced the saved gate and **16/16 committed mutations → NO MERGE**. These additional, independent mutations still returned **MERGE**:
+
+   | Input mutation | Missed condition |
+   |---|---|
+   | Set `(b)` whole-take orientation error to **4°**, against `(a)`’s **5.28078°**, leaving the other five comparisons worse | Numerical SPLIT |
+   | Set the accepted calibration sample’s residual to **1 mm** and its `passes` field false | Outside **0.05 mm** tolerance |
+   | Remove seven hygiene comparisons, leaving one matching hash | **1/8** is insufficient coverage |
+   | Set one follower row’s `winner_i_deg` to **100**, retaining its saved ratio | Follower no longer achieves 2× |
+   | Empty both landmark-array comparison maps | Missing denominator evidence |
+
+   The deciding lines are:
+   
+   - `bva = list(re_["b_vs_a"].values())`: S reads saved classification strings instead of deriving them from the six numerical comparisons. [Line 220](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:220)
+   - `... and c is not None`: calibration checks that an accepted sigma exists, without checking its measured residual. [Line 213](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:213)
+   - Hygiene requires only a nonempty matching subset; denominator checks allow vacuous `all({}.values())`. [Line 96](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:96), [line 293](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:293)
+   - The follower condition trusts the stored ratio. [Line 248](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:248)
+
+   Removing literal PASS assignments fixed the earlier examples. Measurement derivation and required-population coverage still need enforcement.
+
+2. **The carried-normal test is rigid-frame invariant, but it is not a sound general inversion classifier.**
+
+   Its supposed triangle-dominant joint is actually the **first vertex’s** dominant joint:
+
+   ```python
+   slot = dominant[triangles[:, 0]]
+   ```
+
+   [Deciding line 273](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:273).
+
+   Cyclically reordering vertices preserves geometry and winding, yet changes candidate performer 0’s maximum **317→318** and total **4373→4362**. Performer 1’s maximum changes **338→337**.
+
+   More fundamentally, I constructed constant-weight LBS with weights **0.4/0.3/0.3** and joint rotations **identity/180°/180°**. Its deformation is `diag(1, −0.2, −0.2)`, with **positive determinant 0.04**, yet this test calls the triangle inverted. Normal opposition to one selected joint is a heuristic, not proof of inversion.
+
+   The Kabsch explanation also overreaches: rank-two covariance does not make a **proper rotation** a coin toss. A planar, noncollinear triangle rotated 180° reproduced with determinant **+1** and zero RSSD using [SciPy’s Kabsch implementation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.align_vectors.html). Such a fitted rotation still cannot independently establish inversion.
+
+3. **The area/edge numbers reproduce; the stronger B6 interpretations do not follow.**
+
+   I regenerated **every B6 JSON value exactly**, in memory. The reported stretching and pinching changes support “tails move both ways.”
+
+   However, **325/317 and 344/338 are maxima across 15 sampled frames**, not counts applying to every frame. Candidate performer 1 ranges **35–338**, or **1.44–13.94%**. [Maximum calculation](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:340).
+
+   “Deep hip crease,” “a handful,” and “not a systematic tear” are not established by these aggregate statistics or the defective inversion classifier. Those claims need supporting localization/inspection or qualification. [Deciding interpretation](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:841).
+
+4. **The rotational-closure adoption weakens round two’s requested measurement.**
+
+   The implementation fits the correction from the tested output:
+
+   ```python
+   constant = ours[0].inv() * theirs[0]
+   ```
+
+   [Deciding line 531](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:531).
+
+   That measures constancy relative to frame zero. It does not validate the exporter’s known bind/alignment transformation. Adding a constant **10° leaf-joint error** leaves this fitted residual around **0.000011°**.
+
+   Reconstructing the actual exporter transformation reproduces round two: candidate median **0.000003°**, maxima **0.000011/0.000013°**. The current fitted calculation instead reports candidate medians **0.000006/0.000004°**, maxima **0.000014/0.000011°**.
+
+   Playback’s rounded **0.459/0.295 versus 0.665/1.311 mm** reproduces. B1’s revised attribution agrees with its recorded intervals; “only one of four cells” at [line 764](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:764) is inconsistent with the **two** positive articulation intervals.
+
+Read-only throughout. Gate and B6 regenerated in memory; B1 was checked against its artifact, without rerendering.
