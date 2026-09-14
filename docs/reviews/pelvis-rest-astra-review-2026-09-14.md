@@ -419,3 +419,46 @@ The calibration is now matched and frozen in the reviewer's own terms; the agent
 3. **The substantive round-5 corrections are faithful:** preserve the original STOP, reread all S clauses, retain comparative evidence without shipping selection, amend G1 at array level, correct G2, and restate guarded (a)’s consequences. The remaining misreadings are the **“rounding” explanation** and carrying the upper-bound argument over to a selected population without qualification. Round 5 did **not** require baseline subtraction or establish that any particular σ was valid.
 
 Read-only: I inspected source and recomputed retained-input statistics; I did not rerun S or change files.
+
+---
+
+# Round 7 — 2026-09-14, the calibration's monotonicity stop. Verdict: amend with tighter wording and reread S; the agent's STOP was correct and stays recorded
+
+Verified: `d7c_pelvis_synthetic.py:834` rounds the accepted σ before passing it to S (the evaluated midpoint is 0.335546875); the dip (0.0135 mm, 0.339063 → 0.353125) and its keep-mask cause are in `logs/06-violation-diagnosis.log`; the dip's lower value 8.8275 lies above the tolerance band [8.7136, 8.8136].
+
+| # | finding | change |
+|---|---|---|
+| 1 | the uniqueness argument was too strong; admissibility = no earlier-to-later decrease > τ over ANY pair, at most one sign change of statistic − target; keep-mask decreases within τ recorded, not a stop; REACHED is an observed tolerance match | adopted in Astra's wording; `monotone_across_the_evaluations: false` preserved; a new artifact |
+| 2 | σ is target-determined, but the amendment is post hoc after the σ-0.35 sensitivity was known | recorded as such in the card; every unchanged S clause accepted even if it stops again |
+| 3 | carry the exact evaluated σ, the per-body rounding disclosure, the full provenance, the 1.4276× ratio, the 1.8131 baseline, the conditional-length-spread scope; REACHED leaves S pending; reread all of S | all adopted |
+
+---
+
+**I would amend and permit the reread of S, with tighter wording. The agent’s original STOP was correct under the frozen rule and must remain recorded.**
+
+1. **The amendment is defensible; the uniqueness argument is too strong.**
+
+   The evaluations establish one sampled target crossing and one sampled value inside **[8.7136, 8.8136] mm**. They establish neither global monotonicity nor a unique admissible σ between evaluations. Even a strictly increasing continuous function normally has an interval of σ values inside a nonzero tolerance.
+
+   What makes this calibration usable is a **deterministic, target-only selection rule that actually found a match**. I suggest:
+
+   > Calibration admissibility is assessed on the frozen evaluations, sorted by σ. Retain the target, tolerance τ = 0.05 mm, bracket, evaluation budget, draws and numerical stopping rule. STOP if any earlier evaluated statistic exceeds any later evaluated statistic by more than τ, or if the nonzero signs of statistic-minus-target change more than once. Record every decrease and its keep-mask diagnosis; a diagnosed keep-mask decrease within τ does not itself stop calibration. When these checks pass and the unchanged stopping rule finds a value within τ, record REACHED. This establishes an observed tolerance match, not global monotonicity or uniqueness between evaluations.
+
+   I use **any earlier/later pair**, rather than adjacent pairs only, because several small successive decreases could otherwise conceal a total decrease exceeding τ.
+
+   Your record passes this amendment: maximum earlier-to-later decrease **0.0135 mm**, one sampled crossing, and the tenth evaluation within tolerance. The dip’s lower value, **8.8275**, remains above the tolerance band. Preserve `monotone_across_the_evaluations: false`; add the amended admissibility result separately.
+
+2. **The numerical selection shows no evidence of selection on S’s verdict. The amendment is nevertheless post hoc.**
+
+   The matched target and frozen bisection select approximately **σ = 0.335547** without consulting S. The earlier PROCEED at 0.35 does not enter that calculation.
+
+   But the coordinator already knew that sensitivity result when proposing this amendment. Agent blindness during bisection does not make the entire protocol independent of earlier outcomes. Record both facts: **target-determined σ; explicitly post-hoc protocol amendment after prior S results were known**. Freeze this amendment before rereading S, and accept every unchanged S clause even if it stops the step again.
+
+3. **Before the reread, carry these concrete items into the record.**
+
+   - **Preserved history and separate statuses.** Keep both original STOP artifacts immutable; write a new amended calibration/reread artifact. Calibration REACHED leaves S **pending**, not PROCEED. “UNREACHABLE” in the old artifact records failure of its admissibility rule, not proof that no numerical match exists.
+   - **Exact execution value.** The [implementation](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_pelvis_synthetic.py:834) rounds the accepted σ before passing it to S. The evaluated midpoint was **0.335546875**; **0.335547** is its display rounding. Carry the actual evaluated value through to S and record both. Also disclose the existing rounding of per-body SDs before taking their median; do not silently change that arithmetic.
+   - **Auditable diagnosis and provenance.** Retain all six body values, evaluation order, bracket, tolerance residual, code/input/draw identifiers and reproducibility evidence. Attach the changed masks, counts and guard medians. The frame-level evidence is in the [diagnosis log](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/logs/06-violation-diagnosis.log), rather than in the calibration JSON itself.
+   - **Scope of the match.** Record **1.4276×** for the matched σ-1 fixture, the unsubtracted **1.8131 mm** baseline, and that this matches a conditional length spread—not directional noise or detector realism. Calibration’s keep-mask must not restrict S’s scoring populations. Reread **all of S**, including G1/G2 and every-body requirements.
+
+Read-only review; I inspected the artifacts and implementation, changed no files, and did not execute S.
