@@ -818,6 +818,11 @@
       "date": "2026-09-15",
       "step": "D7c",
       "text": "Astra merge review round 9 at f56d27d: NO MERGE -- the silhouette's consumed mask cache not required by identity; the build-time fingerprint contract broken (the helper omits stage and build order, the instrument producer emits none, the retrospective stamp overwrites); the sweep checks vocabulary not applicability; stage order read from a duplicated map. Sent back to the agent."
+    },
+    {
+      "date": "2026-09-15",
+      "step": "D7c",
+      "text": "COORDINATOR DECISION (user: 'enough rounds'): D7c merges on the nine Astra merge rounds recorded. The candidate has not changed since round 2; rounds 3-9 were the gate instrument. Round 10 (the bounded question) was sent and stopped before it answered; the residual gate findings and the six retrospective provenance stamps are instrument debt with the fuzz artifact (gate-fuzz.json: 18,934 paths, 5,170 enforced, 0 gaps) as their record. Merging ladder/D7c at 65e3091."
     }
   ]
 }
