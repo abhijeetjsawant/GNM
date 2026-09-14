@@ -291,29 +291,37 @@ def joint_breakdown(channels: dict, triangles: np.ndarray, mask: np.ndarray) -> 
             for name, value in sorted(counts.items(), key=lambda kv: -kv[1])[:6]}
 
 
-def signed_volume_inversions(channels: dict, triangles: np.ndarray, world: np.ndarray,
+def carried_tetrahedron_proxy(channels: dict, triangles: np.ndarray, world: np.ndarray,
                              offset_m: float = 1.0e-3) -> np.ndarray:
-    """Which triangles the SKINNING FIELD turns inside out. A determinant test, in 3D.
+    """A PROXY for local inversion. IT IS NOT A SOUND CLASSIFIER, and the reasons are here.
 
-    THE TWO EARLIER TESTS WERE BOTH UNSOUND and Astra broke each in turn:
+    WHAT IT COMPUTES. A fourth point is placed 1 mm along each triangle's rest normal from its
+    centroid and carried by the MEAN of the triangle's three vertex skinning matrices; the
+    proxy fires when the resulting tetrahedron's signed volume is not positive.
 
-      * dotting the posed normal against a FIXED bind-space normal is tripped by a harmless
-        rigid 180 deg rotation;
-      * carrying the rest normal by the FIRST VERTEX's dominant joint is vertex-order
-        dependent (a cyclic reorder moved the counts 317 -> 318 and 338 -> 337) and is simply
-        the wrong field where the weights are blended: Astra built a constant-weight skin
-        whose deformation is diag(1, -0.2, -0.2), determinant +0.04 -- NOT inverted -- and
-        that test called it inverted.
+    WHY IT IS ONLY A PROXY. Under spatially VARYING weights the mean of three vertex matrices
+    is not the skinning field's value at the centroid, so the carried point is not where the
+    skin actually puts it. Two consequences, both demonstrated rather than supposed:
 
-    A surface triangle has no intrinsic orientation, so "inverted" only means anything
-    against a carried volume. This builds one. The mesh's winding is consistent, so each
-    triangle's rest normal points consistently outward; a fourth rest point is placed one
-    millimetre along it from the centroid and carried by the SAME blended skinning field
-    (the mean of the triangle's three vertex matrices, which is the field's own value at the
-    centroid). The tetrahedron's signed volume is positive in rest by construction, and the
-    triangle is inverted exactly when the skinning field makes it negative. That is the sign
-    of the deformation gradient's determinant, it is invariant to any reordering of the
-    triangle's vertices, and it gives Astra's counterexample the right answer.
+      * IT MIS-CLASSIFIES A PROPER RIGID MOTION. Astra's counter-example: the triangle
+        (0,0,0), (1,0,0), (0,1,0) with two bones -- identity and a 60 deg rotation about x --
+        and weights (1,0), (1,0), (0,1). Every vertex moves rigidly and the Jacobian
+        determinant is +0.72, yet this proxy fires.
+      * IT IS VERTEX-ORDER DEPENDENT. The same counter-example reads the other way once the
+        first two vertices are swapped, and on the delivered meshes a vertex swap moves the
+        candidate's ranges from 274-326 to 265-313 and from 45-344 to 72-340.
+
+    Three earlier attempts failed differently and are recorded so the next reader does not
+    repeat them: a FIXED bind-space normal is tripped by a rigid 180 deg rotation; a Kabsch
+    fit on a triangle's own three points cannot establish an out-of-plane sign at all (it
+    recovers a proper planar rotation exactly, and the third axis it reports carries no
+    information about inversion); the FIRST VERTEX's dominant joint is both order-dependent
+    and wrong wherever weights are blended.
+
+    THE SOUND MEASUREMENT IS NOT ATTEMPTED HERE. It is the skinning Jacobian with spatially
+    varying weights -- Kavan's direct methods, equation 17 -- and it is D6's instrument. The
+    counts this function returns are reported as proxy outputs and NO INVERSION CLAIM IS MADE
+    from them.
     """
     rest = channels["vertices"]
     a, b, c = (rest[triangles[:, k]] for k in (0, 1, 2))
@@ -323,7 +331,7 @@ def signed_volume_inversions(channels: dict, triangles: np.ndarray, world: np.nd
     centroid = (a + b + c) / 3.0
     fourth = centroid + offset_m * unit
     matrices = skin_matrices(channels, world)
-    triangle_matrices = matrices[triangles].mean(axis=1)          # the field at the centroid
+    triangle_matrices = matrices[triangles].mean(axis=1)
 
     def apply(matrix, point):
         return np.einsum("nij,nj->ni", matrix[:, :3, :3], point) + matrix[:, :3, 3]
@@ -372,7 +380,7 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
         area, edges, normal = measure(posed)
         area_ratio.append(area[good] / rest_area[good])
         edge_ratio.append((edges[good] / np.maximum(rest_edges[good], 1e-12)).ravel())
-        inverted.append(signed_volume_inversions(channels, triangles, world))
+        inverted.append(carried_tetrahedron_proxy(channels, triangles, world))
     area_ratio = np.concatenate(area_ratio)
     edge_ratio = np.concatenate(edge_ratio)
     return {
@@ -387,23 +395,36 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
                               "p5": round(float(np.percentile(edge_ratio, 5)), 5),
                               "p95": round(float(np.percentile(edge_ratio, 95)), 5),
                               "min": round(float(edge_ratio.min()), 5)},
-        "inverted_triangles_signed_volume": {
+        "carried_tetrahedron_PROXY": {
+            "WHAT_IT_IS_NOT": (
+                "NOT an inversion count and NOT a sound classifier. It is the signed volume "
+                "of a tetrahedron carried by the MEAN of the triangle's three vertex "
+                "skinning matrices, which under spatially VARYING weights is not the "
+                "skinning field at the centroid. NO INVERSION CLAIM IS MADE from these "
+                "numbers."),
+            "known_failure_modes": [
+                "it mis-classifies a PROPER RIGID MOTION under varying weights: the triangle "
+                "(0,0,0),(1,0,0),(0,1,0) with bones identity and Rx(60 deg) and weights "
+                "(1,0),(1,0),(0,1) moves every vertex rigidly with Jacobian determinant "
+                "+0.72, and this proxy fires",
+                "it is VERTEX-ORDER DEPENDENT: the same counter-example reverses when the "
+                "first two vertices are swapped, and on the delivered meshes a vertex swap "
+                "moves the candidate's per-frame ranges from 274-326 to 265-313 and from "
+                "45-344 to 72-340"],
+            "the_sound_measurement": (
+                "the skinning Jacobian with spatially varying weights -- Kavan's direct "
+                "methods, equation 17 -- which is D6's instrument and is handed there by "
+                "name. It is deliberately NOT attempted in this step."),
             "per_frame_counts": [int(mask.sum()) for mask in inverted],
             "per_frame_min": int(min(mask.sum() for mask in inverted)),
             "per_frame_max": int(max(mask.sum() for mask in inverted)),
             "per_frame_percent_range": [
                 round(100.0 * float(min(mask.mean() for mask in inverted)), 3),
                 round(100.0 * float(max(mask.mean() for mask in inverted)), 3)],
-            "triangles_ever_inverted": int(np.any(np.stack(inverted), axis=0).sum()),
-            "triangles_always_inverted": int(np.all(np.stack(inverted), axis=0).sum()),
+            "triangles_ever_firing": int(np.any(np.stack(inverted), axis=0).sum()),
+            "triangles_always_firing": int(np.all(np.stack(inverted), axis=0).sum()),
             "by_dominant_joint_ever": joint_breakdown(channels, triangles,
-                                                      np.any(np.stack(inverted), axis=0)),
-            "test": ("the SIGNED VOLUME of a tetrahedron built on the triangle plus a point "
-                     "1 mm along its rest normal, carried by the same blended skinning "
-                     "field: the sign of the deformation gradient's determinant. Invariant "
-                     "to vertex reordering, and it gives Astra's constant-weight "
-                     "diag(1, -0.2, -0.2) counterexample the right answer (determinant "
-                     "+0.04, NOT inverted).")},
+                                                      np.any(np.stack(inverted), axis=0))},
         "collapsed_triangles_area_below_1e-4_of_bind": int((area_ratio < 1e-4).sum()),
         "reader_is_sound": (
             "Astra's merge review compared this reader's animated vertices against the "

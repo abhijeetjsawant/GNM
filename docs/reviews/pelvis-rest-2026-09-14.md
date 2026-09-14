@@ -761,9 +761,9 @@ delivery.)
 | performer 1, whole take | +0.00303 [0.00066, 0.00752] | −0.00249 [−0.00512, 0.00686] | +0.00552 [−0.00194, 0.00750] |
 | performer 1, bent tercile | +0.00192 [−0.00066, 0.00360] | −0.00205 [−0.00808, 0.00430] | +0.00397 [−0.00376, 0.00965] |
 
-**This is a POINT-ESTIMATE decomposition, and only PERFORMER 1's two shares straddle zero.**
-Performer 0's articulation share is clear of zero on **both** cuts; every other share — both of
-performer 0's root shares and both of performer 1's — has an interval through zero. Astra's
+**This is a POINT-ESTIMATE decomposition, and only the two ARTICULATION shares for performer 0
+are clear of zero.** Every other share — both of performer 0's root shares and both of
+performer 1's shares, articulation and root alike — has an interval through zero. Astra's
 round 2 was right to insist on the distinction:
 
 * **Performer 0's rise IS attributable to the articulation.** Its interval is clear of zero on
@@ -811,8 +811,9 @@ GLB channel.
    The constant is now **reconstructed from the exporter's own inputs** —
    `_canonical_arm_bind_alignment` on the body asset's rest matrices composed with the asset's
    rest world rotation (`body_export.py:379`) — with nothing from the delivered file entering
-   it. Across all **8,250 joint-frame samples per performer** the residual is **median 3e-6°,
-   max 1.1–1.4e-5°**: the float32 floor, and now a measurement a constant error could fail.
+   it. Across all **8,250 joint-frame samples per performer** the residual is **median 3e-6°
+   on performer 0 and 4e-6° on performer 1, maxima 1.1e-5° and 1.4e-5°**: the float32 floor,
+   and now a measurement a constant error could fail.
 2. **Between-key playback, wrong twice.** The first version averaged already-composed world
    positions (0.0003 mm, three orders too small); the second interpolated the rotations but
    read the **translation at the key**, freezing the root and inflating it to millimetres. Both
@@ -842,40 +843,66 @@ in ways only a counter-example exposes:
   the weights are blended — Astra built a constant-weight skin whose deformation is
   diag(1, −0.2, −0.2), **determinant +0.04, not inverted**, and that test called it inverted.
 
-A surface triangle has no intrinsic orientation, so "inverted" only means something against a
-carried **volume**. The test now builds one: a fourth point 1 mm along the triangle's rest
-normal from its centroid, carried by the same blended skinning field, and the **signed volume**
-of that tetrahedron — the sign of the deformation gradient's determinant. It is invariant to
-any reordering of the triangle's vertices and it gives Astra's counter-example the right answer.
-Four tests in `tests/test_pelvis_rest.py` pin it: the +0.04 determinant reads uninverted, a
-genuine reflection reads inverted (the positive control, without which the test is inert),
-cyclic and swapped reorderings agree, and a rigid 180° turn reads uninverted.
+A surface triangle has no intrinsic orientation, so a local inversion can only be measured
+against a **carried volume**, and the fourth attempt builds one: a point 1 mm along the
+triangle's rest normal from its centroid, carried by the mean of the triangle's three vertex
+skinning matrices, and the signed volume of that tetrahedron.
 
-**Per-frame ranges, not maxima** — the earlier "325 / 317" and "344 / 338" were maxima over 15
-sampled frames and are withdrawn as summaries:
+**It is a PROXY, not a classifier, and Astra's round 4 showed why.** Under spatially *varying*
+weights the mean of three vertex matrices is not the skinning field's value at the centroid, so
+the carried point is not where the skin puts it. Two failures follow, both demonstrated:
 
-| | inverted per frame | as % of the region | ever / always inverted | area max | edge min |
+* **it mis-classifies a proper rigid motion.** The triangle (0,0,0), (1,0,0), (0,1,0) with two
+  bones — identity and Rx(60°) — and weights (1,0), (1,0), (0,1) moves every vertex rigidly,
+  Jacobian determinant **+0.72**, and the proxy fires;
+* **it is vertex-order dependent.** The same example reverses when the first two vertices are
+  swapped, and on the delivered meshes a vertex swap moves the candidate's ranges from
+  274–326 to 265–313 and from 45–344 to 72–340.
+
+So **no inversion claim is made from these counts.** They are reported as the proxy's output.
+The sound measurement is the **skinning Jacobian with spatially varying weights** — Kavan's
+direct methods, equation 17 — and it is **D6's instrument**, handed there by name and
+deliberately not attempted in this step.
+
+Six tests in `tests/test_pelvis_rest.py` pin the proxy: four fix its behaviour under a
+*constant* affine skin, where it is well posed (the +0.04 determinant does not fire, a genuine
+reflection does — the positive control, without which the others are inert — reorderings agree,
+a rigid 180° turn does not fire), and **two document the failures above**, so that a later
+change which makes the symptom disappear without making the measurement sound is caught.
+
+**The three earlier attempts, recorded so the next reader does not repeat them:** a *fixed
+bind-space normal* is tripped by a rigid 180° rotation; a *Kabsch fit on the triangle's own
+three points* cannot establish an out-of-plane sign at all — a proper planar Kabsch recovers
+the rotation exactly (determinant +1, zero residual), and the third axis it reports simply
+carries no information about inversion, which is a different and more precise statement than
+the "coin toss" an earlier draft of this document claimed; and the *first vertex's dominant
+joint* is both order-dependent and wrong wherever the weights are blended.
+
+**The proxy's per-frame ranges**, reported as such — the earlier "325 / 317" and "344 / 338"
+were maxima over 15 sampled frames and are withdrawn as summaries:
+
+| | proxy fires per frame | as % of the region | ever / always | area max | edge min |
 |---|---|---|---|---|---|
 | D9b performer 0 | 279 – 328 | 11.51 – 13.53 % | 429 / 187 | 28.15 | 0.0349 |
 | **D7c performer 0** | **274 – 326** | **11.30 – 13.45 %** | **422 / 172** | **29.95** | **0.0173** |
 | D9b performer 1 | 46 – 349 | 1.90 – 14.40 % | 565 / 0 | 42.32 | 0.0821 |
 | **D7c performer 1** | **45 – 344** | **1.86 – 14.19 %** | **557 / 2** | **41.58** | **0.1054** |
 
-**Localised rather than characterised.** The inverted triangles' vertices are dominantly
-weighted to `LeftUpperLeg` and `RightUpperLeg` (≈ 35–39 % each) and `Hips` (≈ 19–22 %), with
-1–5 % on the lower legs — so the count lives at the hip joints and the upper thigh, and on
-performer 0 **187 triangles are inverted in every sampled frame** while on performer 1 almost
-none are (0 and 2), whose range instead swings 46 → 349 with the pose. The earlier phrases
-"deep hip crease", "a handful" and "not a systematic tear" are **withdrawn**: the aggregates do
-not establish a mechanism, a persistent 187-triangle set is not a handful, and nothing here
-measures tearing. What is stated is what was measured — where the triangles are, how many, and
-how it varies frame to frame.
+**Localised rather than characterised.** The firing triangles' vertices are dominantly weighted
+to `LeftUpperLeg` and `RightUpperLeg` (≈ 35–39 % each) and `Hips` (≈ 19–22 %), with 1–5 % on the
+lower legs. On performer 0, 187 triangles fire in every sampled frame; on performer 1 almost
+none do (0 and 2) and the count swings 46 → 349 with the pose. The earlier phrases "deep hip
+crease", "a handful" and "not a systematic tear" are **withdrawn**: the aggregates do not
+establish a mechanism, a persistent 187-triangle set is not a handful, and nothing here measures
+tearing — nor, given the proxy's two failure modes, does anything here establish that these
+triangles are inverted at all.
 
-**What the comparison supports.** The candidate reads slightly fewer inverted triangles than
-the shipped build on both performers and at both ends of the range, and its area and edge tails
-move in **both** directions (performer 0's worst pinched edge halves, 0.0349 → 0.0173;
-performer 1's relaxes, 0.0821 → 0.1054). Medians are 1.0 everywhere. **No deformation
-acceptance band is invented** and the figures go to D6.
+**What the comparison supports.** The area and edge tails move in **both** directions between
+the builds (performer 0's worst pinched edge halves, 0.0349 → 0.0173; performer 1's relaxes,
+0.0821 → 0.1054), and the medians are 1.0 everywhere. The proxy fires slightly less often on
+the candidate than on the shipped build, which — given what the proxy is — is worth recording
+and not worth interpreting. **No deformation acceptance band is invented** and the figures go
+to D6 with the sound instrument named.
 
 ### 5A.6 B3, and what the two hoist recoveries say
 
@@ -964,17 +991,17 @@ whether flipping it to FAIL turns the merge rule.
 | B5b the delivered `Head` WORLD rotation, from the GLB | REPORT | between-build difference **4e-6° median, 1.3e-5 max — NOT zero** | REPORT |
 | B6 sampler times, channels, quaternions | REPORT | LINEAR, 150 frames, 4.9667 s, 1+55 channels, norms 1±4e-8, **zero** negative adjacent dots; normalised increment median **0.0°** | REPORT |
 | B6 track→GLB **positional** closure | REPORT | max **0.0005 mm** | REPORT |
-| B6 track→GLB **rotational closure**, against the exporter's OWN reconstructed transform | REPORT | **median 3e-6°, max 1.1–1.4e-5°** over 8,250 joint-frame samples per performer. The constant is rebuilt from the asset, not fitted from frame 0, so a constant (including leaf-joint) error is visible | REPORT |
+| B6 track→GLB **rotational closure**, against the exporter's OWN reconstructed transform | REPORT | **median 3e-6° / 4e-6° (performers 0 / 1), maxima 1.1e-5° / 1.4e-5°** over 8,250 joint-frame samples each. The constant is rebuilt from the asset, not fitted from frame 0, so a constant (including leaf-joint) error is visible | REPORT |
 | B6 hierarchy and bone lengths vs the sized skeleton | REPORT | hierarchy matches joint for joint; bone-length error **0.0 mm** on all 54 | REPORT |
 | B6 the node defaults vs the bind pose | REPORT | **EXPLAINED**: `body_export.py:599` writes the FIRST ANIMATED POSE as the node default, so the 594.005→590.159 / 158.929→156.052 mm mismatch is a property of the motion, not a defect. Reader verified against Blender at 0.00518 mm | REPORT |
-| B6 mesh deformation, pelvis/hip/thigh | REPORT | inverted per frame **279–328 → 274–326** and **46–349 → 45–344** of 2424 (11.3–13.5 % and 1.9–14.4 %); 187 → 172 always-inverted on performer 0, 0 → 2 on performer 1; dominantly `Left/RightUpperLeg` (≈38 % each) and `Hips` (≈20 %). Area max 28.15→29.95 / 42.32→41.58; worst edge 0.0349→0.0173 / 0.0821→0.1054. No band | REPORT |
-| B6 the inversion classifier is sound | a determinant test, order-invariant | signed volume of a carried tetrahedron; 4 tests pin it, incl. Astra's diag(1,−0.2,−0.2) → **uninverted** and a reflection → **inverted** | **PASS** |
+| B6 mesh deformation, pelvis/hip/thigh | REPORT | area max 28.15→29.95 / 42.32→41.58; worst edge ratio 0.0349→0.0173 / 0.0821→0.1054; medians 1.0 everywhere. No band | REPORT |
+| B6 the carried-tetrahedron **PROXY** (NOT an inversion count) | REPORT | fires on **274–326** and **45–344** of 2424 per frame; **no inversion claim is made** — it mis-classifies a proper rigid motion (det +0.72) and is vertex-order dependent, both pinned by tests. The sound measurement (skinning Jacobian, Kavan eq. 17) is **D6's** | REPORT |
 | B6 between-key playback (BOTH channels interpolated, then FK) | REPORT | inside a run, maxima **0.459 / 0.295 mm** (candidate) against **0.665 / 1.311 mm** (D9b). Two earlier versions withdrawn: 0.0003 mm (composed positions) and the millimetre-scale medians (translation read at the key) | REPORT |
 | B6 the `Root` / eye / finger invariants | REPORT | bit-identical, both performers — a **TRACK-ARRAY** claim | REPORT |
 | the provenance audit | no unaudited constant | `RIG_REST_PELVIS_MODES` registered; `PELVIS_FRAME_SOURCE` rewritten keeping its history | **PASS** |
 | **merge rule, twelve conjuncts** | all PASS | all PASS | **MERGE** |
 | **every verdict DERIVED from its input report** | no literal PASS | no literal remains; both of Astra's counter-examples are now derivations | **PASS** |
-| **failure demonstrated at the INPUT level, every conjunct** | every mutation detected | **31 of 31 input mutations detected**, including all five of Astra's round 3 and ten population-coverage mutations | **PASS** |
+| **failure demonstrated at the INPUT level, every conjunct** | every mutation detected | **39 of 39 input mutations detected**, including all five of Astra's round 3 and all five of round 4, ten coverage mutations and four summary-vs-measurement cross-checks | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the

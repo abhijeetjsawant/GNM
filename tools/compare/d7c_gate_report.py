@@ -655,12 +655,26 @@ def build(r: dict) -> dict:
                 json.dumps(playback.get("maxima_mm", {})), "REPORT",
                 "B6's report, never P2's clause, which reads KEYED samples only")
         mesh = row.get("mesh_deformation_pelvis_hip_thigh", {})
+        proxy = mesh.get("carried_tetrahedron_PROXY", {})
         if mesh:
             add("B6 the mesh-deformation reading on the pelvis / hip / thigh region", "REPORT",
-                json.dumps({k: mesh.get(k) for k in
-                            ("triangles", "inverted_triangles_frame_relative",
-                             "area_ratio", "edge_length_ratio")})[:300], "REPORT",
+                f"{mesh.get('triangles')} triangles over {mesh.get('frames_measured')} "
+                f"frames; area ratio {mesh.get('area_ratio', {}).get('p5')}-"
+                f"{mesh.get('area_ratio', {}).get('p95')} (p5-p95), max "
+                f"{mesh.get('area_ratio', {}).get('max')}; worst edge ratio "
+                f"{mesh.get('edge_length_ratio', {}).get('min')}", "REPORT",
                 "no deformation acceptance band is invented")
+        if proxy:
+            add("B6 the carried-tetrahedron PROXY (NOT an inversion count)", "REPORT",
+                f"fires on {proxy.get('per_frame_min')}-{proxy.get('per_frame_max')} of "
+                f"{mesh.get('triangles')} triangles per frame "
+                f"({proxy.get('per_frame_percent_range')} %); "
+                f"{proxy.get('triangles_always_firing')} fire on every sampled frame",
+                "REPORT",
+                "a PROXY with two demonstrated failure modes -- it mis-classifies a proper "
+                "rigid motion under varying weights and it is vertex-order dependent -- so "
+                "NO inversion claim is made. The sound measurement is the skinning Jacobian "
+                "with spatially varying weights (Kavan, direct methods eq. 17) and is D6's.")
         add("B6 the `Root` / eye / finger local invariants vs D9b (a TRACK-ARRAY claim)",
             "bit-identical", str(row.get("invariants_vs_the_other_build_TRACK_ARRAYS")),
             "REPORT")

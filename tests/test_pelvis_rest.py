@@ -328,18 +328,14 @@ def test_repin_a_smoothing_window_is_a_knob_and_it_moves_the_answer():
 
 
 # ---------------------------------------------------------------------------------------
-# THE INVERSION CLASSIFIER, pinned against the two counter-examples that broke its
-# predecessors. B6's mesh reading is a REPORT and carries no band, but a classifier that
-# reports "inverted" has to mean it, and two earlier versions did not:
+# THE CARRIED-TETRAHEDRON PROXY. It is NOT a sound inversion classifier and these tests say
+# so: the first four pin its behaviour under a CONSTANT affine skin, where it is well posed,
+# and the last two DOCUMENT the two failures Astra found under varying weights. A test that
+# records a known-wrong answer is worth more than none, because it fails the day someone
+# "fixes" the proxy without fixing the measurement.
 #
-#   * dotting the posed normal against a FIXED bind-space normal is tripped by a harmless
-#     rigid 180 degree rotation;
-#   * carrying the rest normal by the FIRST VERTEX's dominant joint is vertex-order
-#     dependent AND wrong wherever the weights are blended -- Astra's constant-weight skin
-#     with deformation diag(1, -0.2, -0.2) has determinant +0.04 and is NOT inverted, and
-#     that test called it inverted.
-#
-# The signed-volume test is pinned against both here.
+# The sound measurement is the skinning Jacobian with spatially varying weights (Kavan,
+# direct methods eq. 17). It is D6's instrument and is deliberately not attempted here.
 # ---------------------------------------------------------------------------------------
 def _flat_channels(matrix: np.ndarray) -> dict:
     """A two-triangle patch under ONE constant affine skin, applied to every vertex."""
@@ -358,46 +354,88 @@ def _flat_channels(matrix: np.ndarray) -> dict:
     }, transform[None]
 
 
-def test_the_inversion_classifier_calls_a_positive_determinant_UNINVERTED():
-    """ASTRA'S COUNTER-EXAMPLE: diag(1, -0.2, -0.2), determinant +0.04. Not inverted."""
+def _two_bone_channels(angle_deg: float, order=(0, 1, 2)):
+    """ASTRA'S COUNTER-EXAMPLE: a proper rigid motion under VARYING weights.
+
+    The triangle (0,0,0), (1,0,0), (0,1,0); two bones, identity and a rotation about x;
+    weights (1,0), (1,0), (0,1). Every vertex moves rigidly.
+    """
+    from scipy.spatial.transform import Rotation
+
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    joints = np.zeros((3, 2, 4), dtype=np.int64)
+    joints[2, 0, 0] = 1
+    weights = np.zeros((3, 2, 4))
+    weights[:, 0, 0] = 1.0
+    world = np.stack([np.eye(4), np.eye(4)])
+    world[1, :3, :3] = Rotation.from_euler("x", angle_deg, degrees=True).as_matrix()
+    return {
+        "vertices": vertices, "triangles": np.array([list(order)]),
+        "skin_joints": joints, "skin_weights": weights,
+        "inverse_bind": np.stack([np.eye(4), np.eye(4)]),
+        "names": ["A", "B"], "joints": [0, 1],
+    }, world
+
+
+def test_the_proxy_is_well_posed_under_a_CONSTANT_skin_positive_determinant():
+    """diag(1, -0.2, -0.2), determinant +0.04: the proxy does not fire."""
     import d7c_delivered_bytes as bytes_
 
     channels, world = _flat_channels(np.diag([1.0, -0.2, -0.2]))
-    inverted = bytes_.signed_volume_inversions(channels, channels["triangles"], world)
-    assert not inverted.any(), f"a determinant of +0.04 is not an inversion: {inverted}"
+    assert not bytes_.carried_tetrahedron_proxy(
+        channels, channels["triangles"], world).any()
 
 
-def test_the_inversion_classifier_calls_a_negative_determinant_INVERTED():
-    """The positive control: a genuine reflection must be caught, or the test is inert."""
+def test_the_proxy_is_well_posed_under_a_CONSTANT_skin_negative_determinant():
+    """The positive control: a genuine reflection fires, or the tests above are inert."""
     import d7c_delivered_bytes as bytes_
 
     channels, world = _flat_channels(np.diag([1.0, 1.0, -1.0]))
-    inverted = bytes_.signed_volume_inversions(channels, channels["triangles"], world)
-    assert inverted.all(), f"a determinant of -1 IS an inversion: {inverted}"
+    assert bytes_.carried_tetrahedron_proxy(channels, channels["triangles"], world).all()
 
 
-def test_the_inversion_classifier_is_invariant_to_vertex_reordering():
-    """Its predecessor moved 317 -> 318 and 338 -> 337 under a cyclic reorder."""
+def test_the_proxy_is_order_invariant_under_a_CONSTANT_skin():
     import d7c_delivered_bytes as bytes_
 
     channels, world = _flat_channels(np.diag([1.0, 1.0, -1.0]))
-    straight = bytes_.signed_volume_inversions(channels, channels["triangles"], world)
-    for shift in (1, 2):
-        rolled = dict(channels)
-        rolled["triangles"] = np.roll(channels["triangles"], shift, axis=1)
+    straight = bytes_.carried_tetrahedron_proxy(channels, channels["triangles"], world)
+    for triangles in (np.roll(channels["triangles"], 1, axis=1),
+                      np.roll(channels["triangles"], 2, axis=1),
+                      channels["triangles"][:, [1, 0, 2]]):
         assert np.array_equal(
-            bytes_.signed_volume_inversions(rolled, rolled["triangles"], world), straight)
-    swapped = dict(channels)
-    swapped["triangles"] = channels["triangles"][:, [1, 0, 2]]
-    assert np.array_equal(
-        bytes_.signed_volume_inversions(swapped, swapped["triangles"], world), straight)
+            bytes_.carried_tetrahedron_proxy(channels, triangles, world), straight)
 
 
-def test_the_inversion_classifier_is_blind_to_a_rigid_rotation():
-    """The FIRST failure mode: a harmless rigid 180 degree turn is not an inversion."""
+def test_the_proxy_is_blind_to_a_rigid_rotation_under_a_CONSTANT_skin():
     import d7c_delivered_bytes as bytes_
 
     turn = np.array([[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]])
     channels, world = _flat_channels(turn)
-    assert not bytes_.signed_volume_inversions(
+    assert not bytes_.carried_tetrahedron_proxy(
         channels, channels["triangles"], world).any()
+
+
+def test_the_proxy_MISCLASSIFIES_a_rigid_motion_under_varying_weights():
+    """A DOCUMENTED FAILURE, pinned so it cannot be forgotten.
+
+    Every vertex moves rigidly and the Jacobian determinant is +0.72; the proxy fires. This
+    is why the counts are reported as a proxy's output and carry no inversion claim.
+    """
+    import d7c_delivered_bytes as bytes_
+
+    channels, world = _two_bone_channels(60.0)
+    fires = bytes_.carried_tetrahedron_proxy(channels, channels["triangles"], world)
+    assert fires.all(), (
+        "the proxy no longer fires on Astra's counter-example. If that is because the "
+        "measurement was made SOUND, replace this test with the sound one; if it is because "
+        "the proxy was tuned until the symptom went away, do not.")
+
+
+def test_the_proxy_is_VERTEX_ORDER_DEPENDENT_under_varying_weights():
+    """The second documented failure: the same triangle, the first two vertices swapped."""
+    import d7c_delivered_bytes as bytes_
+
+    straight, world = _two_bone_channels(60.0)
+    swapped, _ = _two_bone_channels(60.0, order=(1, 0, 2))
+    assert (bytes_.carried_tetrahedron_proxy(straight, straight["triangles"], world)
+            != bytes_.carried_tetrahedron_proxy(swapped, swapped["triangles"], world)).all()
