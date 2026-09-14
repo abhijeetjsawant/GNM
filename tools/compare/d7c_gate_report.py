@@ -383,6 +383,14 @@ def build(reports: dict) -> dict:
         else:
             if not head:
                 raise Missing(f"{report_key} carries a GENUINE stamp with no head commit")
+            # A HEAD COMMIT NAMES BYTES ONLY IF THE TREE MATCHED IT. This step's own first
+            # genuine stamp recorded the commit BEFORE the one that changed the producer
+            # writing it: the commit named was not the code that ran. A stamp from a dirty
+            # tree is not genuine evidence and may not be counted as one.
+            if not r.flag(report_key, "source_fingerprint", "build_order",
+                          "working_tree_clean"):
+                raise Missing(f"{report_key} carries a GENUINE stamp from a DIRTY tree; the "
+                              f"commit {head[:12]} it names is not the code that ran")
             # `git merge-base --is-ancestor A A` is TRUE, so a pre-change claim taken AT the
             # src-change commit would pass its own check; it must be STRICTLY earlier.
             if stage == "pre_change" and (head == SRC_CHANGE_SHA
@@ -2500,6 +2508,10 @@ TRUSTED_READ_JUSTIFICATIONS = (
     ("*/source_fingerprint/build_order/log",
      "which log a retrospective stamp took its time from. The gate re-stats that file and "
      "requires its mtime to BE the recorded stage time."),
+    ("*/source_fingerprint/build_order/working_tree_clean",
+     "whether the build's tree was committed when it ran. Required True on a GENUINE stamp: "
+     "a head commit names bytes only if the tree matched it, and this step's own first "
+     "genuine stamp named the commit before the one that changed the producer writing it."),
     ("*/source_fingerprint/build_order/head_commit",
      "the commit the build ran on. Checked with `git merge-base --is-ancestor` against the "
      "src-change commit, which is the one ordering claim git can settle; empty on a "

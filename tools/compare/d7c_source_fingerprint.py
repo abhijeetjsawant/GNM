@@ -120,6 +120,23 @@ def head_commit() -> str:
         return ""
 
 
+def working_tree_clean() -> bool:
+    """Was the tree committed when this build ran?
+
+    A HEAD COMMIT NAMES BYTES ONLY IF THE TREE MATCHED IT. The first genuine stamp this step
+    produced recorded `c05f578` while the producer that wrote it was an uncommitted edit --
+    so the commit it named was not the code that ran, which is the round-8 defect one layer
+    out. A stamp from a dirty tree says so, and the gate refuses to treat it as genuine.
+    """
+    import subprocess
+    try:
+        return not subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+                                  capture_output=True, check=True,
+                                  text=True).stdout.strip()
+    except Exception:
+        return False
+
+
 def fingerprint_now(mode: str, *, stage: str) -> dict:
     """What a build records about its own source, AT BUILD TIME and in full.
 
@@ -156,6 +173,7 @@ def fingerprint_now(mode: str, *, stage: str) -> dict:
             "stage_time": int(time.time()),
             "stage_time_source": "the producer's own clock as it wrote this report",
             "head_commit": head_commit(),
+            "working_tree_clean": working_tree_clean(),
             "argv": list(sys.argv),
             # the historical arm is the one whose ORDER has to be established, so it carries
             # what it must be earlier than. A genuine pre-change stamp is a reachable path,
