@@ -164,19 +164,14 @@ METRICS = (("i_orientation_deg", TIE_DEG), ("ii_step_deg", TIE_DEG),
            ("iii_root_step_mm", TIE_MM))
 
 
+_KINDS = {dict: "map", list: "list", bool: "bool", int: "number", float: "number",
+          str: "string"}
+
+
 def kind_of(node) -> str:
-    """One naming of the kinds, shared by the Reader and by the fuzzer's walk."""
-    if isinstance(node, dict):
-        return "map"
-    if isinstance(node, list):
-        return "list"
-    if isinstance(node, bool):
-        return "bool"
-    if isinstance(node, (int, float)):
-        return "number"
-    if isinstance(node, str):
-        return "string"
-    return "other"
+    """One naming of the kinds, shared by the Reader and by the fuzzer's walk. A dict lookup
+    on the exact type: JSON decodes to these and nothing else, and this is on the hot path."""
+    return _KINDS.get(type(node), "other")
 
 
 class Missing(Exception):
@@ -196,14 +191,18 @@ class Reader:
         self.cross_checked: set[tuple] = set()
 
     def at(self, *path):
+        # THE HOT LOOP: the gate is rebuilt tens of thousands of times under the fuzz and
+        # reaches ~4,800 paths per build. `type() is` rather than `isinstance` is exact for
+        # JSON-decoded data (dict and list, never a subclass) and halves the walk.
         node = self.reports
         for step in path:
-            if isinstance(node, list):
-                if not isinstance(step, int) or not -len(node) <= step < len(node):
+            kind = type(node)
+            if kind is dict:
+                if step not in node:
                     raise Missing("/".join(map(str, path)))
                 node = node[step]
-            elif isinstance(node, dict):
-                if step not in node:
+            elif kind is list:
+                if not isinstance(step, int) or not -len(node) <= step < len(node):
                     raise Missing("/".join(map(str, path)))
                 node = node[step]
             else:

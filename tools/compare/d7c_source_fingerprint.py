@@ -31,6 +31,7 @@ the commit named. A build run after this change records its own at build time.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -79,6 +80,14 @@ BUILD_STAGES = {
 
 
 def hash_file(path) -> str:
+    """Memoised on (path, mtime, size): the gate re-hashes the same mask cache on every one
+    of the fuzz's tens of thousands of builds, and that file is hundreds of megabytes."""
+    stamp = Path(path).stat()
+    return _hash_file(str(Path(path).resolve()), stamp.st_mtime_ns, stamp.st_size)
+
+
+@lru_cache(maxsize=None)
+def _hash_file(path: str, _mtime: int, _size: int) -> str:
     return sha256(Path(path).read_bytes()).hexdigest()
 
 
@@ -153,8 +162,14 @@ def fingerprint_now(mode: str, *, stage: str) -> dict:
     }
 
 
+@lru_cache(maxsize=None)
 def is_ancestor(earlier: str, later: str) -> bool:
-    """Does `earlier` lie on `later`'s history? The one ordering claim git can settle."""
+    """Does `earlier` lie on `later`'s history? The one ordering claim git can settle.
+
+    MEMOISED because the gate is rebuilt tens of thousands of times under the fuzz and this
+    shells out to git: uncached it took a build from 9 ms to 39 ms, which is 43 minutes of
+    fuzz. The answer for a pair of commits does not change while the process runs.
+    """
     import subprocess
     if not earlier or not later:
         return False
