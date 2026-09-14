@@ -412,3 +412,52 @@ On question 4:
 - **38 tests pass.** Every B6 JSON value reproduces, including the corrected artifact string. The interning explanation is appropriately withdrawn. Both historical STOPs remain FAIL.
 
 Read-only throughout; regeneration and mutations stayed in memory. Worktree clean; `git diff 9dda9ac -- src/` empty.
+
+---
+
+# Merge review round 8 — 2026-09-14, at ladder/D7c 17dc09e. Verdict: NO MERGE (gate enforcement; three exemptions excuse banded evidence)
+
+Verified: `d7c_gate_report.py:1439` reads B1's copied verdicts while `:1871` exempts `silhouette/subjects/**` (the ci95 constituents); `:1867` exempts `silhouette/statistics/**` including `every_arm_on_identical_draws`, which the card bands; `:579/:1803` the preserved σ-1 STOP reads the duplicated follower table and exempts the body measurements behind it; `:304` `startswith(ROOT + "/")` accepts the nested worktree from main and rejects an equal checkout elsewhere; `:1155` contact COUNTS cannot derive mask identity (a moved contact keeps [36, 36]); `:2134` "4,165 leaves read" = 3,511 scalars + 654 containers; the review's inventory prose stale (103 families, old totals).
+
+| # | finding | change |
+|---|---|---|
+| 1 | B1's eight cells, identical draws, and the historical follower table bypass validation through exemptions | the eight cells cross-checked against their subject/cut measurements and populations; identical draws enforced; the σ-1 follower table validated against its body constituents; an exemption may never cover a measurement the card bands |
+| 3 | the provenance check is tied to a path prefix | tied to a source fingerprint (content hash of the resolved module) and the build mode per stage; the absolute path kept as provenance only; hygiene on unchanged C, the C-held tripwire and the E candidate kept distinct |
+| 4 | contact counts do not derive mask identity; the leaf count mislabelled; stale prose | the array-equality flag kept explicitly trusted or frame differences published; counts relabelled; prose regenerated |
+
+---
+
+**1. NO MERGE at `17dc09e`. Gate enforcement remains the only blocker.** B1’s banded evidence and the preserved STOP’s constituents still bypass validation through unjustified exemptions.
+
+**2. Three reproduced attacks.** Each returns **MERGE / COVERED / NAMED, with all 49 clauses unchanged**:
+
+| Mutation using report aliases | Missed enforcement |
+|---|---|
+| Set `silhouette/subjects/subject_00/cuts/whole_take/arm_D7c_minus_D9b/ci95/1` from **0.00115 → −0.0001** | The underlying interval now establishes worsening. The gate reads its unchanged copy under `preregistered_clause_verdicts`. The producer explicitly copies this measurement; the audit exempts the source through `silhouette/subjects/**`. [Gate:1439](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1439), [producer:349](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_pelvis_rest_silhouette.py:349), [exemption:1871](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1871). |
+| Set `silhouette/statistics/every_arm_on_identical_draws` to **false** | The card explicitly requires identical draws. `silhouette/statistics/**` incorrectly excuses this requirement as “per-frame overlap statistics.” [Card:156](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/LADDER_EXECUTION_PLAN.md:156), [exemption:1867](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1867). |
+| Set `sigma1/bodies/<seed>/arms/a_kabsch_guarded/bent_tercile/i_orientation_deg` to **1° on all six seeds** | The constituent follower ratios become **15.469–21.110×**, clearing both requirements everywhere. The gate nevertheless retains the original STOP by reading the duplicated follower table. Its justification explicitly exempts the body measurements behind that stop. [Gate:579](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:579), [exemption:1803](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1803). |
+
+Setting B1’s underlying whole-take population from **150 → 0** independently produces the same escape.
+
+Before merging, cross-check the eight B1 cells against their subject/cut measurements and populations, enforce identical draws, and validate the historical follower table against its body constituents. Naming an exemption does not justify exempting evidence the card actually bands.
+
+**3. The coordinator’s predicted main-checkout path failure does not occur in this layout.**
+
+I changed `ROOT` in memory to `/Users/abhi_macbook/Projects/apps/AutoAnim`, retaining all existing reports: **MERGE / COVERED / NAMED**. The old worktree lies beneath that directory, so `startswith(ROOT + "/")` accepts it. The check therefore permits the wrong nested checkout when run from main. [Check:304](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:304).
+
+Conversely, equivalent artifacts from a checkout outside that prefix would fail solely because of location.
+
+Tie artifact validity to the **expected source revision/content fingerprint and build mode for that stage**. At execution, check the resolved module against the exact intended checkout/module; retain its absolute path as provenance. The current producer records a path and descriptive `src_state`, without a source fingerprint. [Producer:343](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_pelvis_rest_delivery.py:343).
+
+Preserve the distinction between historical hygiene on **unchanged C**, the refactored **C-held tripwire**, and the **E candidate**. Rebuilding current E against D9b and demanding historical hygiene byte identity would test the wrong stage. [Hygiene obligation:45](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:45).
+
+**4. Adoption and reproduction.**
+
+- **All four original round-7 attacks now return NO MERGE.** The changed calibration median reproduces as **9.028 mm**, **0.2644 mm** outside the target. The 49-pair attribution is withdrawn.
+- **Contact counts do not derive mask identity.** Moving performer 0’s left contact from frame 21 to frame 0 preserves counts **[36, 36]** while changing the mask. Round 7 required consistency with those counts; it did not make them sufficient proof of bit-identity. Keep the array-equality flag explicitly trusted, or publish frame differences. [Current derivation:1155](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:1155).
+- **“4,165 leaves read” is mislabeled:** it is **3,511 scalar leaves + 654 containers**. The implementation counts every touched path. [Counting line:2134](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:2134).
+- The baseline clauses, audit and inventory reproduce exactly: **49 clauses; 35 PASS / 12 REPORT / 2 FAIL; thirteen conjuncts; 1,416 cross-checked reads; 106 trusted families; 7,904 unread measurements in 86 families**.
+- **Every fuzz bucket and row reproduces exactly:** 18,172 visited; 4,918 enforced; 148 REPORT; 40 diagnostics; zero preserved-STOP; 13,066 unread; zero reported gaps or monotone failures. The **368-path** transition from `880fc1b` also reproduces, including **150 containers**.
+- Prose still says **103** trusted families and retains obsolete unread totals; the newer table and brief are correct. [Stale inventory:1073](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:1073), [stale totals:1110](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:1110).
+
+**38 focused tests pass.** Full suite not rerun. Read-only throughout; worktree clean; `git diff 9dda9ac -- src/` empty.
