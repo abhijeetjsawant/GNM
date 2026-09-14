@@ -385,3 +385,37 @@ Verified: `d7_pelvis_rigidity.py:134` measures raw triangulations on a common-va
    G2’s summary also needs correction: at σ=0.35 the recorded median-over-six orientation errors are **7.527° versus 76.641°**, and one body’s miss rate is **0.10**. G2 still wins both metrics on every body. [Recorded G2 results.](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/selector-sensitivity-sigma0.35.json:1712)
 
 Read-only review; I inspected the saved artifacts and calculated their input statistics. I changed no files and did not rerun S.
+
+---
+
+# Round 6 — 2026-09-14. Verdict: permissible in principle; two mismatches, both adopted
+
+Verified: `d7c_pelvis_synthetic.py:636` computes the calibration sd over ALL synthetic frames with `np.std` (ddof=0); the take's guard-kept sd with ddof=0 reads 5.994 / 8.764 mm (the round-5 record's "rounding" was the SD denominator, corrected here).
+
+| # | finding | change |
+|---|---|---|
+| 1 | population and SD convention unmatched; bisection under-specified; guard-kept sd is a conditional spread | the synthetic statistic applies the same keep-rule; ddof=0 both sides, target 8.764; bracket [0.10, 1.00], last-inside-tolerance, ≤ 20 evaluations, original draws preserved, unreachable / non-monotone ⇒ STOP; the upper-bound claim qualified |
+| 2 | baseline through `observe_body`, reported, never subtracted | stated |
+| 3 | round 5 faithfully adopted except the "rounding" explanation and the unqualified upper bound | both corrected |
+
+The calibration is now matched and frozen in the reviewer's own terms; the agent resumes on it. Astra reviews the merge.
+
+---
+
+**A permissible repair in principle, but not yet a fully matched, frozen calibration.** Two concrete mismatches remain.
+
+1. **The stage matches; the population and SD convention do not.** The target excludes guard-rejected frames, whereas [`fixture_attribution`](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_pelvis_synthetic.py:636) computes SD over **all synthetic frames**. Apply the same keep-rule to the synthetic calibration statistic, or explicitly justify the asymmetric comparison; currently “matched” overstates it. This concerns calibration only—S’s scoring populations remain unchanged.
+
+   Recomputing the retained inputs confirms **6.014 / 8.800 uses `ddof=1`**. The frozen synthetic code uses `np.std`, hence **`ddof=0`**; the corresponding take values are **5.994 / 8.764 mm**. Freeze one convention on both sides. Round 5’s recording calls this difference rounding; it is the SD denominator.
+
+   Still unspecified: the bisection bracket, deterministic stopping choice within tolerance, and handling of an unreachable target or nonmonotonic statistic—especially if synthetic keep-masks change with σ. Freeze those before scoring; preserve the actual original draws, not merely their distribution.
+
+   The independently measured scalar target supports a repair without selecting on 2×. But guard-kept SD is a **conditional spread**, not automatically an upper bound on unconditional observation noise: selecting by observed length can invalidate the uncorrelated-error decomposition. Qualify that claim accordingly.
+
+2. **Reporting the zero-noise baseline is enough for matching total postprocessed lever spread; subtraction is not required.** The proposed target measures that total observable, so preprocessing belongs in both sides. Report the baseline through `observe_body`, including its lever spread and estimator errors; direct truth input is not that baseline.
+
+   Do not subtract SDs, and do not automatically subtract variances: additivity requires an appropriate covariance model. Estimating the injected-noise component separately would be a different calibration definition. If the baseline prevents a defensible match, diagnose that rather than changing the target after seeing S.
+
+3. **The substantive round-5 corrections are faithful:** preserve the original STOP, reread all S clauses, retain comparative evidence without shipping selection, amend G1 at array level, correct G2, and restate guarded (a)’s consequences. The remaining misreadings are the **“rounding” explanation** and carrying the upper-bound argument over to a selected population without qualification. Round 5 did **not** require baseline subtraction or establish that any particular σ was valid.
+
+Read-only: I inspected source and recomputed retained-input statistics; I did not rerun S or change files.
