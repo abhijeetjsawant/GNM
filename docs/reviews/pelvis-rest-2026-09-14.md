@@ -1010,9 +1010,9 @@ whether flipping it to FAIL turns the merge rule.
 | **the consumed mask cache, by identity** (round 9) | the cache the reader loads is named, proven a faithful copy, and re-hashed | a *nonempty* map of proven copies said nothing about which cache was consumed: deleting the consumed entry cost nothing. The producer records the name `silhouette.MaskStore` builds for this scale and camera set, and the gate re-hashes the file | **PASS** |
 | **merge rule, fourteen conjuncts** | all PASS | all PASS | **MERGE** |
 | **the gate's six structural rules** | derived-or-cross-checked; missing is FAIL; sets by identity; every measurement leaf read or justified by name; no exemption over banded evidence; evidence required by identity and every claim checkable by someone other than its author | every read goes through a `Reader` that raises on an absent path; every aggregate is recomputed from named constituents and cross-checked against any stored summary; files, seeds, performers, cells, **arms** and **contact runs (by `(side, start, end)` from the frozen mask)** are checked by identity | **PASS** |
-| **measurement coverage** (round 7) | every unread MEASUREMENT leaf under a report a clause reads is justified by name; no justification matches nothing | **3,705 scalar leaves + 663 containers read by a clause** (round 8 took that label apart: `touched` holds every path a clause reached, and a map read whole is not a leaf); of the unread, 785 LABEL, 189 PROVENANCE, 1,831 DIAGNOSTIC and 7,880 MEASUREMENT, the last covered by **82 named families with 0 gaps and 0 dead patterns**, every one swept against the card's merge rule *and* its reason checked for applicability to that conjunct — and a saved `verdict` or `status` string counts as a MEASUREMENT, not a label, because reading one instead of deriving it was round 2's whole attack | **PASS** |
-| **the saved-value inventory, GENERATED not written** (round 7) | every boolean or string the gate consumes without deriving it is named | generated from the `Reader`'s own record: **1,450 reads cross-checked, 155 trusted families named, 0 unjustified**, and a justification matching nothing fails the gate as a gap does. The previous hand-written list's claim that "every other saved boolean is derived or cross-checked" was **false** and is withdrawn | **PASS** |
-| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,933 paths — 14,398 leaves + 4,535 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **5,169 enforced, 0 gaps**, 154 REPORT-only, 40 diagnostics, **0** preserved-STOP, 13,570 read by no clause — and that last class is now **inverted**: 762 labels, 189 provenance strings, 1,802 diagnostics, 2,971 containers and **7,846 measurement leaves justified by name, 0 unjustified**. Leaves are classified by **which** clauses they move — status and conjunct membership — the preserved-STOP class is pinned to the two recorded stops **by name**, and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way): **0 failures** | **PASS** |
+| **measurement coverage** (round 7) | every unread MEASUREMENT leaf under a report a clause reads is justified by name; no justification matches nothing | **3,716 scalar leaves + 663 containers read by a clause** (round 8 took that label apart: `touched` holds every path a clause reached, and a map read whole is not a leaf); of the unread, 785 LABEL, 189 PROVENANCE, 1,831 DIAGNOSTIC and 7,880 MEASUREMENT, the last covered by **82 named families with 0 gaps and 0 dead patterns**, every one swept against the card's merge rule *and* its reason checked for applicability to that conjunct — and a saved `verdict` or `status` string counts as a MEASUREMENT, not a label, because reading one instead of deriving it was round 2's whole attack | **PASS** |
+| **the saved-value inventory, GENERATED not written** (round 7) | every boolean or string the gate consumes without deriving it is named | generated from the `Reader`'s own record: **1,450 reads cross-checked, 156 trusted families named, 0 unjustified**, and a justification matching nothing fails the gate as a gap does. The previous hand-written list's claim that "every other saved boolean is derived or cross-checked" was **false** and is withdrawn | **PASS** |
+| **the gate PROVED leaf by leaf, not asserted** | every leaf any clause depends on turns the verdict; **zero gaps** | `d7c_gate_fuzz.py` walks **18,934 paths — 14,399 leaves + 4,535 containers** — mutating each (numbers → 1e6, −1e6, 0, deleted; strings mismatched, deleted; booleans flipped, deleted; lists and maps emptied, shortened, duplicated): **5,170 enforced, 0 gaps**, 154 REPORT-only, 40 diagnostics, **0** preserved-STOP, 13,570 read by no clause — and that last class is now **inverted**: 762 labels, 189 provenance strings, 1,802 diagnostics, 2,971 containers and **7,846 measurement leaves justified by name, 0 unjustified**. Leaves are classified by **which** clauses they move — status and conjunct membership — the preserved-STOP class is pinned to the two recorded stops **by name**, and enforced numeric leaves also take a **monotone check** (whichever extreme fails must fail again six orders further the same way): **0 failures** | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the
@@ -1092,7 +1092,7 @@ list of the three exceptions. That was wrong — the oracle P1 clause alone cons
 per body — and the reason it was wrong is that **the list was written from memory**. It is
 now **generated from the `Reader`'s own record**: every boolean and string the gate consumed,
 minus every one it cross-checked against a value derived from that leaf's own constituents.
-155 families survive, each named with why, and a trusted read with no entry fails the gate.
+156 families survive, each named with why, and a trusted read with no entry fails the gate.
 The inventory is what the gate *does*, not what its author recalls.
 
 **Round 7's own four leaves** were the same shape once more — B2's `same_denominator`
@@ -1146,7 +1146,15 @@ its stamp, was re-run, and its 30 cells are byte-equal to the pinned values.
 | `control-clear-contacts-build.json` | refactored | E | retrospective |
 | `instrument-d7c.json` | refactored | E | retrospective |
 | `instrument-take.json` | refactored | E | retrospective |
-| `silhouette-partwise.json` | refactored | E | **genuine** |
+| `silhouette-partwise.json` | refactored | E | **genuine, from a clean tree at the commit it names** |
+
+That last qualification is not decoration. The FIRST genuine stamp this step produced recorded
+`c05f578` — and the very next commit changed the producer that wrote it, so the commit the
+stamp named was an uncommitted edit, not the code that ran. A fingerprint agreeing with itself,
+one layer out from the defect it was built to close. `fingerprint_now` now records whether the
+tree was clean and the gate refuses to count a dirty-tree stamp as genuine; the silhouette was
+re-run from a committed tree, its 30 cells byte-equal again. The other six become genuine only
+when their producers are re-run through `--src-stage`.
 
 A genuine stamp carries the commit the build ran on and the gate asks git whether it lies on
 the right side of the src change; a retrospective one must carry none, because a stamp filled
@@ -1196,7 +1204,7 @@ provenance strings, 1,802 diagnostics, 2,971 containers and 7,846 justified meas
 **0** unjustified. Its historical-FAIL class is pinned to the two recorded STOPs **by name**;
 deriving it from "whichever clauses fail today" would let a new clause that accidentally fails
 at the baseline absorb every leaf it reads into a class excused by construction. Enforcement
-rose from 2,336 leaves to **5,169** across those changes.
+rose from 2,336 leaves to **5,170** across those changes.
 
 **And the monotone check was mis-specified a second time, which is worth recording because the
 first version's lesson did not cover it.** It keyed the direction to the probe constant: "set
