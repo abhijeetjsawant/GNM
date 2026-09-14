@@ -373,3 +373,42 @@ On round-5 adoption and reproduction:
 - I did **not** rerun the two pre-existing failures. Both commits’ `src/` diffs against `9dda9ac` are empty.
 
 Read-only throughout; no files changed.
+
+---
+
+# Merge review round 7 — 2026-09-14, at ladder/D7c cffaad3. Verdict: NO MERGE (gate enforcement, the only blocker)
+
+Verified: `d7c_gate_report.py:811` B2 reads the aggregate `same_denominator` while its per-subject constituents exist in the report; `:644` P1 trusts `bit_identical` while `frames_that_differ` and the contact counts exist (`d7c_projection_preservation.py:128`); `:488` the follower reads its metric bypassing `per_body()`'s population check; `:381` the calibration reads the stored 8.7495 aggregate while the per-body values exist (a 100 mm per-body value moves the derived median to 9.028); `:972` the "every other saved boolean" claim is false (`:726` oracle P1 consumes more); `:93` attributes a 49-pair requirement to round 6 that round 6 never made. The three `np.array_equal` families may remain instrument outputs (Astra compared the NPZ arrays: 4/4 byte-identical).
+
+| # | finding | change |
+|---|---|---|
+| 1 | four leaves with constituents in the reports still bypass derivation | each derived; and the rule inverted in the fuzzer: every UNREAD leaf is classified (label / provenance / diagnostics / measurement) and every unread MEASUREMENT leaf under a subtree any clause reads is a GAP unless justified by name |
+| 2 | the saved-boolean inventory incomplete; the 49-pair attribution wrong | inventory regenerated mechanically from the gate's reads; the attribution removed |
+
+---
+
+**NO MERGE at `cffaad3`. Gate enforcement remains the only blocker, confidence 10/10.**
+
+I reproduced four additional independent mutations that return **MERGE with all 46 clauses unchanged**. These also answer question 3:
+
+| Mutation, using the gate’s report aliases | Missed enforcement |
+|---|---|
+| Set `b2/triangulated_landmarks_byte_identical_across_arms/subject_00/D7c` to `false` | B2 reads only `value = r.at("b2", "same_denominator")`, ignoring its available constituents. [Gate:811](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:811) |
+| Set `projection/subjects/subject_00/P1_channel_preservation/channels/local::LeftFoot/frames_that_differ` to **150** | P1 still trusts `bit_identical=True`. Changing the left delivered-contact count from **36→0** also escapes. Cross-checking `failing_channels` against those booleans does not validate them against the reported measurements. [Gate:644](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:644), [measurement producer:128](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_projection_preservation.py:128) |
+| Set `reread/bodies/20260903/arms/frozen_pitch_follower/bent_tercile/n_frames` to **0** | The follower reads its metric directly, bypassing `per_body()` and its population validation. Setting its `n_pairs` to zero also escapes. [Gate:488](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:488) |
+| Set `calibration/calibration/bisection/evaluations/9/per_body_mm/20260903` from **8.9585→100** | The accepted evaluation’s derived median becomes **9.028 mm**, missing **8.7636 mm** by **0.2644 mm**, outside **0.05 mm**. The gate still reads the stored **8.7495 mm** aggregate. [Gate:381](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:381) |
+
+All four representative leaves are classified `read_by_no_clause` by the saved fuzzer. Apply the existing population-validation and summary-consistency requirements to these paths before merging.
+
+On question 2: **the three listed equality families can remain instrument outputs; moving landmark comparison into the gate is not an additional merge prerequisite.** I independently compared the delivered NPZ arrays: raw and smoothed, both performers, **4/4 byte-identical**.
+
+However, the claimed inventory is incomplete. P1 directly consumes additional saved equality booleans, and B2 consumes an aggregate boolean whose constituents already exist in its report. Therefore “every other saved boolean … is now derived or cross-checked” is false. [Inventory claim:972](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:972), [oracle P1:726](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:726).
+
+On question 4:
+
+- **All four original round-6 attacks now return NO MERGE.** The broader population and boolean-audit claims remain incomplete, as demonstrated above.
+- **47 bent-tercile pairs reproduces on every body**, alongside 150/149 and 50 frames. The recorded merge round 6 contains no requirement for 49 pairs; that attribution at [gate:93](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:93) is unsupported by the [recorded finding](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-merge-review-2026-09-14.md:353).
+- **The entire current fuzz output reproduces exactly:** 18,172 = 13,763 leaves + 4,409 containers; 2,336 enforced, 0 gaps, 164 REPORT, 40 diagnostics, 14 historical-FAIL, 15,618 unread; **0 monotone-check failures**. All **eight** previously misclassified control leaves are now enforced. Those counts do not establish completeness.
+- **38 tests pass.** Every B6 JSON value reproduces, including the corrected artifact string. The interning explanation is appropriately withdrawn. Both historical STOPs remain FAIL.
+
+Read-only throughout; regeneration and mutations stayed in memory. Worktree clean; `git diff 9dda9ac -- src/` empty.
