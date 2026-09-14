@@ -258,21 +258,82 @@ def skin(channels: dict, world: np.ndarray) -> np.ndarray:
     return out
 
 
-def dominant_rotation(channels: dict, frame: int, triangles: np.ndarray) -> np.ndarray:
-    """Each triangle's own rigid motion: its dominant joint's skinning rotation at `frame`.
+def skin_matrices(channels: dict, world: np.ndarray) -> np.ndarray:
+    """Each vertex's own blended skinning matrix, `sum_j w_j * world_j @ inverseBind_j`."""
+    vertices = channels["vertices"]
+    joints = channels["skin_joints"].reshape(len(vertices), -1)
+    weights = channels["skin_weights"].reshape(len(vertices), -1)
+    out = np.zeros((len(vertices), 4, 4))
+    for column in range(joints.shape[1]):
+        weight = weights[:, column]
+        active = weight > 0.0
+        if not active.any():
+            continue
+        slot = joints[active, column]
+        out[active] += weight[active, None, None] * (world[slot]
+                                                     @ channels["inverse_bind"][slot])
+    return out
 
-    A triangle's rest normal carried through this is where the normal SHOULD point; the
-    triangle is inverted when its posed normal opposes it. Using the joint's transform rather
-    than a fit to the triangle's own three points is what makes the test well posed -- three
-    coplanar points cannot determine an out-of-plane sign.
-    """
-    world = animated_world_matrices(channels, frame)
+
+def joint_breakdown(channels: dict, triangles: np.ndarray, mask: np.ndarray) -> dict:
+    """WHICH joint region the inverted triangles belong to. Localises the count."""
     joints = channels["skin_joints"].reshape(len(channels["vertices"]), -1)
     weights = channels["skin_weights"].reshape(len(channels["vertices"]), -1)
     dominant = joints[np.arange(len(joints)), weights.argmax(axis=1)]
-    slot = dominant[triangles[:, 0]]
-    matrix = world[slot] @ channels["inverse_bind"][slot]
-    return matrix[:, :3, :3]
+    names = channels["names"]
+    counts: dict = {}
+    for triangle in triangles[mask]:
+        for vertex in triangle:
+            counts[names[dominant[vertex]]] = counts.get(names[dominant[vertex]], 0) + 1
+    total = sum(counts.values()) or 1
+    return {name: round(100.0 * value / total, 1)
+            for name, value in sorted(counts.items(), key=lambda kv: -kv[1])[:6]}
+
+
+def signed_volume_inversions(channels: dict, triangles: np.ndarray, world: np.ndarray,
+                             offset_m: float = 1.0e-3) -> np.ndarray:
+    """Which triangles the SKINNING FIELD turns inside out. A determinant test, in 3D.
+
+    THE TWO EARLIER TESTS WERE BOTH UNSOUND and Astra broke each in turn:
+
+      * dotting the posed normal against a FIXED bind-space normal is tripped by a harmless
+        rigid 180 deg rotation;
+      * carrying the rest normal by the FIRST VERTEX's dominant joint is vertex-order
+        dependent (a cyclic reorder moved the counts 317 -> 318 and 338 -> 337) and is simply
+        the wrong field where the weights are blended: Astra built a constant-weight skin
+        whose deformation is diag(1, -0.2, -0.2), determinant +0.04 -- NOT inverted -- and
+        that test called it inverted.
+
+    A surface triangle has no intrinsic orientation, so "inverted" only means anything
+    against a carried volume. This builds one. The mesh's winding is consistent, so each
+    triangle's rest normal points consistently outward; a fourth rest point is placed one
+    millimetre along it from the centroid and carried by the SAME blended skinning field
+    (the mean of the triangle's three vertex matrices, which is the field's own value at the
+    centroid). The tetrahedron's signed volume is positive in rest by construction, and the
+    triangle is inverted exactly when the skinning field makes it negative. That is the sign
+    of the deformation gradient's determinant, it is invariant to any reordering of the
+    triangle's vertices, and it gives Astra's counterexample the right answer.
+    """
+    rest = channels["vertices"]
+    a, b, c = (rest[triangles[:, k]] for k in (0, 1, 2))
+    normal = np.cross(b - a, c - a)
+    length = np.linalg.norm(normal, axis=1)
+    unit = np.divide(normal, np.maximum(length, 1e-12)[:, None])
+    centroid = (a + b + c) / 3.0
+    fourth = centroid + offset_m * unit
+    matrices = skin_matrices(channels, world)
+    triangle_matrices = matrices[triangles].mean(axis=1)          # the field at the centroid
+
+    def apply(matrix, point):
+        return np.einsum("nij,nj->ni", matrix[:, :3, :3], point) + matrix[:, :3, 3]
+
+    posed_a = apply(matrices[triangles[:, 0]], a)
+    posed_b = apply(matrices[triangles[:, 1]], b)
+    posed_c = apply(matrices[triangles[:, 2]], c)
+    posed_d = apply(triangle_matrices, fourth)
+    volume = np.einsum("ni,ni->n", posed_b - posed_a,
+                       np.cross(posed_c - posed_a, posed_d - posed_a))
+    return volume <= 0.0
 
 
 def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...]) -> dict:
@@ -305,23 +366,12 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
     good = rest_area > 1e-12
     area_ratio, edge_ratio, inverted = [], [], []
     for frame in frames:
-        posed = skin(channels, animated_world_matrices(channels, frame))
+        world = animated_world_matrices(channels, frame)
+        posed = skin(channels, world)
         area, edges, normal = measure(posed)
         area_ratio.append(area[good] / rest_area[good])
         edge_ratio.append((edges[good] / np.maximum(rest_edges[good], 1e-12)).ravel())
-        # THE INVERSION TEST IS FRAME-RELATIVE, and this is its SECOND repair. Dotting the
-        # posed normal against the triangle's BIND-SPACE normal is wrong -- a harmless RIGID
-        # 180 deg rotation trips it, and Astra reproduced that false positive. Fitting a
-        # rotation to the triangle's own three points is ALSO wrong, and quietly so: three
-        # coplanar points give a rank-2 covariance, the third singular vector is arbitrary,
-        # and the determinant's sign is then a coin toss -- it read 1242 of 2424 triangles
-        # "inverted", i.e. exactly noise. What carries a triangle's rigid motion is the
-        # SKINNING: the rest normal is rotated by the triangle's own dominant joint
-        # transform, and the triangle is inverted when its posed normal opposes THAT.
-        expected = np.einsum("tij,tj->ti", dominant_rotation(channels, frame, triangles),
-                             rest_normal)
-        inverted.append(int((np.einsum("ij,ij->i", normal[good],
-                                       expected[good]) < 0.0).sum()))
+        inverted.append(signed_volume_inversions(channels, triangles, world))
     area_ratio = np.concatenate(area_ratio)
     edge_ratio = np.concatenate(edge_ratio)
     return {
@@ -336,12 +386,23 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
                               "p5": round(float(np.percentile(edge_ratio, 5)), 5),
                               "p95": round(float(np.percentile(edge_ratio, 95)), 5),
                               "min": round(float(edge_ratio.min()), 5)},
-        "inverted_triangles_frame_relative": {
-            "per_frame_max": int(max(inverted)), "total": int(sum(inverted)),
-            "test": ("the rest normal carried through the triangle's own dominant-joint "
-                     "skinning rotation; inverted when the posed normal opposes THAT. A "
-                     "rigid rotation of a limb cannot trip it, and unlike a Kabsch fit on "
-                     "three coplanar points it is not rank-deficient.")},
+        "inverted_triangles_signed_volume": {
+            "per_frame_counts": [int(mask.sum()) for mask in inverted],
+            "per_frame_min": int(min(mask.sum() for mask in inverted)),
+            "per_frame_max": int(max(mask.sum() for mask in inverted)),
+            "per_frame_percent_range": [
+                round(100.0 * float(min(mask.mean() for mask in inverted)), 3),
+                round(100.0 * float(max(mask.mean() for mask in inverted)), 3)],
+            "triangles_ever_inverted": int(np.any(np.stack(inverted), axis=0).sum()),
+            "triangles_always_inverted": int(np.all(np.stack(inverted), axis=0).sum()),
+            "by_dominant_joint_ever": joint_breakdown(channels, triangles,
+                                                      np.any(np.stack(inverted), axis=0)),
+            "test": ("the SIGNED VOLUME of a tetrahedron built on the triangle plus a point "
+                     "1 mm along its rest normal, carried by the same blended skinning "
+                     "field: the sign of the deformation gradient's determinant. Invariant "
+                     "to vertex reordering, and it gives Astra's constant-weight "
+                     "diag(1, -0.2, -0.2) counterexample the right answer (determinant "
+                     "+0.04, NOT inverted).")},
         "collapsed_triangles_area_below_1e-4_of_bind": int((area_ratio < 1e-4).sum()),
         "reader_is_sound": (
             "Astra's merge review compared this reader's animated vertices against the "

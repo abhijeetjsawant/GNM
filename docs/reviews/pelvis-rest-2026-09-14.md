@@ -824,29 +824,53 @@ GLB channel.
    Astra settled the reader independently against the retained Blender meshes — **maximum
    discrepancy 0.00518 mm** — so the mesh reading below is **finished**, not handed over.
 
-**The mesh-deformation reading, pelvis / hip / thigh, 2424 triangles, 15 frames per build.**
-The inverted-triangle test was repaired twice: dotting against a fixed bind-space normal is
-tripped by a harmless rigid 180° rotation (Astra reproduced the false positive), and fitting a
-rotation to a triangle's own three points is rank-deficient — three coplanar points leave the
-determinant's sign a coin toss, and it read 1242 of 2424 "inverted", which is noise. The test
-now carries each triangle's rest normal through **its own dominant-joint skinning rotation**.
+**The mesh-deformation reading, pelvis / hip / thigh, 2424 triangles, 15 sampled frames per
+build.** The inversion classifier was repaired **three times**, and the first two were unsound
+in ways only a counter-example exposes:
 
-| | inverted / frame | area p95 | area max | edge min |
-|---|---|---|---|---|
-| D9b performer 0 | 325 | 2.453 | 28.154 | 0.0349 |
-| **D7c performer 0** | **317** | 2.453 | **29.949** | **0.0173** |
-| D9b performer 1 | 344 | 3.422 | 42.322 | 0.0821 |
-| **D7c performer 1** | **338** | 3.439 | **41.578** | **0.1054** |
+* dotting the posed normal against a **fixed bind-space normal** is tripped by a harmless
+  rigid 180° rotation (Astra reproduced the false positive);
+* fitting a rotation to a triangle's **own three points** is rank-deficient — three coplanar
+  points leave the determinant's sign a coin toss, and it read 1242 of 2424 as "inverted";
+* carrying the rest normal by the **first vertex's dominant joint** is vertex-order dependent
+  (a cyclic reorder moved the counts 317→318 and 338→337) and is simply the wrong field where
+  the weights are blended — Astra built a constant-weight skin whose deformation is
+  diag(1, −0.2, −0.2), **determinant +0.04, not inverted**, and that test called it inverted.
 
-* **The region inverts on every build** — 13–14 % of its triangles per frame — and this is the
-  first time it has been measured. It is linear blend skinning at a deep hip crease, not D7c:
-  the candidate inverts **fewer** triangles than the shipped build on both performers.
-* **The tails move in both directions, and "within 1 %, unchanged" is withdrawn.** Performer
-  0's worst stretched triangle grows (28.15 → 29.95× its bind area) and its worst pinched edge
-  halves (0.0349 → 0.0173); performer 1 moves the other way (42.32 → 41.58, worst edge
-  relaxing 0.0821 → 0.1054). Medians are 1.0 everywhere, so this is a tail effect on a handful
-  of crease triangles in both directions, not a systematic tear.
-* **No deformation acceptance band is invented.** The figures go to D6.
+A surface triangle has no intrinsic orientation, so "inverted" only means something against a
+carried **volume**. The test now builds one: a fourth point 1 mm along the triangle's rest
+normal from its centroid, carried by the same blended skinning field, and the **signed volume**
+of that tetrahedron — the sign of the deformation gradient's determinant. It is invariant to
+any reordering of the triangle's vertices and it gives Astra's counter-example the right answer.
+Four tests in `tests/test_pelvis_rest.py` pin it: the +0.04 determinant reads uninverted, a
+genuine reflection reads inverted (the positive control, without which the test is inert),
+cyclic and swapped reorderings agree, and a rigid 180° turn reads uninverted.
+
+**Per-frame ranges, not maxima** — the earlier "325 / 317" and "344 / 338" were maxima over 15
+sampled frames and are withdrawn as summaries:
+
+| | inverted per frame | as % of the region | ever / always inverted | area max | edge min |
+|---|---|---|---|---|---|
+| D9b performer 0 | 279 – 328 | 11.51 – 13.53 % | 429 / 187 | 28.15 | 0.0349 |
+| **D7c performer 0** | **274 – 326** | **11.30 – 13.45 %** | **422 / 172** | **29.95** | **0.0173** |
+| D9b performer 1 | 46 – 349 | 1.90 – 14.40 % | 565 / 0 | 42.32 | 0.0821 |
+| **D7c performer 1** | **45 – 344** | **1.86 – 14.19 %** | **557 / 2** | **41.58** | **0.1054** |
+
+**Localised rather than characterised.** The inverted triangles' vertices are dominantly
+weighted to `LeftUpperLeg` and `RightUpperLeg` (≈ 35–39 % each) and `Hips` (≈ 19–22 %), with
+1–5 % on the lower legs — so the count lives at the hip joints and the upper thigh, and on
+performer 0 **187 triangles are inverted in every sampled frame** while on performer 1 almost
+none are (0 and 2), whose range instead swings 46 → 349 with the pose. The earlier phrases
+"deep hip crease", "a handful" and "not a systematic tear" are **withdrawn**: the aggregates do
+not establish a mechanism, a persistent 187-triangle set is not a handful, and nothing here
+measures tearing. What is stated is what was measured — where the triangles are, how many, and
+how it varies frame to frame.
+
+**What the comparison supports.** The candidate reads slightly fewer inverted triangles than
+the shipped build on both performers and at both ends of the range, and its area and edge tails
+move in **both** directions (performer 0's worst pinched edge halves, 0.0349 → 0.0173;
+performer 1's relaxes, 0.0821 → 0.1054). Medians are 1.0 everywhere. **No deformation
+acceptance band is invented** and the figures go to D6.
 
 ### 5A.6 B3, and what the two hoist recoveries say
 

@@ -325,3 +325,79 @@ def test_repin_a_smoothing_window_is_a_knob_and_it_moves_the_answer():
     moved = _geodesic_deg(Rotation.from_quat(wide).as_matrix(),
                           Rotation.from_quat(base).as_matrix())
     assert moved.max() > 0.05
+
+
+# ---------------------------------------------------------------------------------------
+# THE INVERSION CLASSIFIER, pinned against the two counter-examples that broke its
+# predecessors. B6's mesh reading is a REPORT and carries no band, but a classifier that
+# reports "inverted" has to mean it, and two earlier versions did not:
+#
+#   * dotting the posed normal against a FIXED bind-space normal is tripped by a harmless
+#     rigid 180 degree rotation;
+#   * carrying the rest normal by the FIRST VERTEX's dominant joint is vertex-order
+#     dependent AND wrong wherever the weights are blended -- Astra's constant-weight skin
+#     with deformation diag(1, -0.2, -0.2) has determinant +0.04 and is NOT inverted, and
+#     that test called it inverted.
+#
+# The signed-volume test is pinned against both here.
+# ---------------------------------------------------------------------------------------
+def _flat_channels(matrix: np.ndarray) -> dict:
+    """A two-triangle patch under ONE constant affine skin, applied to every vertex."""
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
+                         [1.0, 1.0, 0.0]])
+    transform = np.eye(4)
+    transform[:3, :3] = matrix
+    return {
+        "vertices": vertices,
+        "triangles": np.array([[0, 1, 2], [1, 3, 2]]),
+        "skin_joints": np.zeros((4, 2, 4), dtype=np.int64),
+        "skin_weights": np.concatenate(
+            [np.ones((4, 1)), np.zeros((4, 7))], axis=1).reshape(4, 2, 4),
+        "inverse_bind": np.eye(4)[None].repeat(1, axis=0),
+        "names": ["J"], "joints": [0],
+    }, transform[None]
+
+
+def test_the_inversion_classifier_calls_a_positive_determinant_UNINVERTED():
+    """ASTRA'S COUNTER-EXAMPLE: diag(1, -0.2, -0.2), determinant +0.04. Not inverted."""
+    import d7c_delivered_bytes as bytes_
+
+    channels, world = _flat_channels(np.diag([1.0, -0.2, -0.2]))
+    inverted = bytes_.signed_volume_inversions(channels, channels["triangles"], world)
+    assert not inverted.any(), f"a determinant of +0.04 is not an inversion: {inverted}"
+
+
+def test_the_inversion_classifier_calls_a_negative_determinant_INVERTED():
+    """The positive control: a genuine reflection must be caught, or the test is inert."""
+    import d7c_delivered_bytes as bytes_
+
+    channels, world = _flat_channels(np.diag([1.0, 1.0, -1.0]))
+    inverted = bytes_.signed_volume_inversions(channels, channels["triangles"], world)
+    assert inverted.all(), f"a determinant of -1 IS an inversion: {inverted}"
+
+
+def test_the_inversion_classifier_is_invariant_to_vertex_reordering():
+    """Its predecessor moved 317 -> 318 and 338 -> 337 under a cyclic reorder."""
+    import d7c_delivered_bytes as bytes_
+
+    channels, world = _flat_channels(np.diag([1.0, 1.0, -1.0]))
+    straight = bytes_.signed_volume_inversions(channels, channels["triangles"], world)
+    for shift in (1, 2):
+        rolled = dict(channels)
+        rolled["triangles"] = np.roll(channels["triangles"], shift, axis=1)
+        assert np.array_equal(
+            bytes_.signed_volume_inversions(rolled, rolled["triangles"], world), straight)
+    swapped = dict(channels)
+    swapped["triangles"] = channels["triangles"][:, [1, 0, 2]]
+    assert np.array_equal(
+        bytes_.signed_volume_inversions(swapped, swapped["triangles"], world), straight)
+
+
+def test_the_inversion_classifier_is_blind_to_a_rigid_rotation():
+    """The FIRST failure mode: a harmless rigid 180 degree turn is not an inversion."""
+    import d7c_delivered_bytes as bytes_
+
+    turn = np.array([[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]])
+    channels, world = _flat_channels(turn)
+    assert not bytes_.signed_volume_inversions(
+        channels, channels["triangles"], world).any()
