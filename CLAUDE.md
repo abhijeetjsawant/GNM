@@ -1,8 +1,28 @@
 # AutoAnim
 
+## Commands
+- Tests: `.venv/bin/python -m pytest` (1315 collected; the gem_x worker tests skip
+  because the venv has no torch). `pyproject.toml` pins `testpaths = ["tests"]`.
+- Bootstrap and the face-lane CLI (`autoanim-gnm audio|image|multiview|video`): see the
+  Quick start in `README.md`; `scripts/bootstrap*.sh` create `.venv`.
+- Interpreters: everything under `tools/compare/` and `tools/head/` runs on
+  `.venv/bin/python`; `tools/swap-harness/` scripts run on the system `python3`.
+- GPU workers are Modal apps under `workers/<name>/modal_app.py`, each with a README;
+  the `modal` CLI is installed.
+
+## Layout
+- `src/autoanim_gnm/` the package: face lanes (a2f, image, multiview, video) and the body
+  lane (`body*.py`, `commercial_multiview.py`, `mamma_*`). `docs/PIPELINE_MAP.md` is the
+  one map of every lane and where each runs.
+- `tools/compare/` ladder instruments and gates; `tools/head|hands|feet|fitter/` per-region
+  instruments; `tools/swap-harness/` MAMMA substitution scripts.
+- `workers/` Modal and vendored inference workers (sam3d_body, mamma, gem_x, gesturelsm, and
+  the parked bear-experiment set). `scripts/` build and export entry points.
+- `docs/` plans, reviews and the generated ladder views; `artifacts/` is gitignored output.
+
 ## Headless DCC
 - Blender 4.2: `/Applications/Blender.app/Contents/MacOS/Blender --background --python SCRIPT -- ARGS`
-- Maya 2025: `/Applications/Autodesk/maya2025/Maya.app/Contents/bin/mayapy SCRIPT ARGS` — `mayaHIK` and `fbxmaya` load headless; a missing `stereoCamera` plug-in is harmless noise
+- Maya 2027: `/Applications/Autodesk/maya2027/Maya.app/Contents/bin/mayapy SCRIPT ARGS` — `mayaHIK` and `fbxmaya` load headless; a missing `stereoCamera` plug-in is harmless noise. Three `scripts/*macap*hik*.py` files still hardcode `maya2025`.
 - SMPL-X model lives at `.cache/mamma/data/body_models/smplx_locked_head/smplx/SMPLX_NEUTRAL.npz`; `np.load` needs `allow_pickle=True` (object arrays)
 
 ## Gotchas
