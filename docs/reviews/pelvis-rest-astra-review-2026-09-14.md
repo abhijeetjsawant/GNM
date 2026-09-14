@@ -158,3 +158,111 @@ I checked the source, retained inputs and reports, reran both oracle arms on all
     D9b-derived truth can support that conditional reconstruction test. It cannot establish how much real pelvic motion the performer had. Neither a report row nor a synthetic pass should be presented as resolving that remaining uncertainty.
 
 The required review record could not be saved under `docs/reviews/`: this session’s filesystem permissions are read-only.
+
+---
+
+# Round 2 — 2026-09-14, on the rewritten card. Verdict: not dispatchable yet, four blockers
+
+Verified before adoption: `d7_pelvis_synthetic.py:503` D7 selected on the pooled median orientation error alone; `commercial_multiview.py:2257` legacy C reads the SOMA template explicitly, `:3112–3116` the D9b re-solve preserves exactly Root/Hips/legs/feet/toes/root/contacts, `:2017` `_frame` normalises the secondary (a radial +30 % lever error is invisible to (b)); `body_export.py:648` the GLB carries `body_track_sha256` and no contact mask, `:615` LINEAR samplers; `body.py:1008` the validator anchors each run at its first keyed sample; `delivered_vs_capture.py:524` the same-denominator test is landmark-array equality; the complete 29-frame mask recomputed from `call-01.npz` (median 125.4928 mm) matches Astra's list exactly.
+
+## What each blocker changed
+
+| # | blocker | change |
+|---|---|---|
+| 1 | S had no executable decision | S now fixes the statistics (geodesic orientation error, full-rotation step error, root-step vector error; pooled medians per body; median of six across bodies), populations (whole take, bent tercile = the 50 largest-truth-tilt frames), ties (0.1° / 0.1 mm), the rule, and three stops |
+| 2 | the card let (a) win but delivered (b) | two rig modes (`D_rig_rest_hipline`, `E_rig_rest_kabsch`), the guard on both, `PELVIS_FRAME_SOURCE` set to S's winner, the hip-line predictions conditional on (b) |
+| 3 | P conflated three contracts; mask source and protected legs missing | P1 channel preservation against the post-projection snapshot (root, mask, Root/Hips/legs/feet/toes locals; the delivered track authenticated by the GLB's hash), P2 keyed-sample anchor lock, P3 travel on the frozen union; the two controls named against P1; between-key playback to B6 |
+| 4 | the rejected-frame list was wrong | the complete mask frozen in the card |
+| 3(q) | the frozen-pitch follower undefined | a control law with no constant: observed hip line primary, world +Y orthogonalised as up, consumes no Spine1 |
+| 3(q) | a +30 % radial lever error does not corrupt (b) | the guard experiment injects MISSING samples on performer 1's pattern and FINITE wrong-direction samples (another frame's Spine1), scored on transitions, with its own stop |
+
+---
+
+**1. Not dispatchable yet. Four blockers remain, in order.**
+
+1. **S does not yet define an executable decision.** “Better,” “beats,” and “fails on orientation or step” need a specified statistic, comparison reference, aggregation across seeds and whole/bent populations, and treatment of ties. Freezing an aggregation later is not the same as specifying this acceptance rule. The inherited instrument cannot supply it: D7 selected by **pooled median orientation error**, not the new three-metric predicate. [Deciding source.](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d7_pelvis_synthetic.py:503) The frozen-pitch control and guard-ablation cases also need the definitions described below.
+
+2. **The card permits (a) to win but specifies delivery as (b).** The mechanism installs `D_rig_rest_hipline`, applies the guard only there, and promises zero transverse hip residual. S can instead select guarded C-on-rest, which has neither that primary-axis guarantee nor a specified production mode. State how the winning estimator reaches production, with the same guarding tested in S; make the hipline-specific predictions conditional on (b). Keeping legacy C untouched for the tripwire is compatible with adding a separate rig-rest Kabsch mode. Legacy C currently reads the SOMA template explicitly. [Deciding source.](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2257)
+
+3. **P needs its mask source, protected channels and time domain fixed.** The GLB does not contain contact flags; the current validator checks anchors at sampled frames; and the rewrite dropped the protected **leg** channels from my recommendation. These determine what P accepts, rather than merely how an agent implements it. Details under question 4.
+
+4. **The full rejected-frame list is still wrong.** Recomputing the stated rule from the [retained input](/Users/abhi_macbook/Projects/apps/AutoAnim/artifacts/compare/d7c-pelvis-rest/precard-take-hipline/converter-inputs/call-01.npz), using the [0.15 ceiling](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:1454), gives median **125.4928 mm** and these **29** window indices:
+
+   `24–25, 28–29, 32–33, 38–46, 65, 68, 70, 78–81, 140–141, 144–145, 147–149`.
+
+   “24–46 and [the terminal group]” includes valid frames and omits seven rejected frames between 65 and 81. The stated interpolation between 37 and 47 and terminal hold from 146 remain correct. Freeze the complete mask, or explicitly identify the two long runs as a selected subset.
+
+**2. Walking the merge rule: individual passes are not evidence that the conjunction passes.**
+
+| Conjunct | Constant or degenerate it can still admit |
+|---|---|
+| Hygiene | Any new candidate: this checks the unchanged shipped execution. |
+| Tripwire | Any new rig-mode candidate, including a frozen pelvis, while legacy C remains equivalent. |
+| O1 | Rejects a frozen pelvis on sufficiently moving truth. Rejects the wrong-origin control **through the positional residual**, despite its zero tilt. |
+| O2 | Can admit a hip-line follower with frozen pitch and compensating root placement/lower-body rotations. Preserving the hip line preserves leg-root placement; it does not establish pitch. |
+| P | Can admit an incorrectly estimated pelvis whose own projection is faithfully preserved. P verifies preservation, not pelvis accuracy. |
+| S | Cannot yet be adjudicated. The frozen-pitch stop is intended to close the noisy-estimation loophole, but its control and failure predicate remain undefined. |
+| B1 | Can admit an anatomically wrong or motion-degenerate result whose silhouette worsening is not established. |
+| B2 same-denominator | Any converter-only constant or degenerate that leaves the landmark arrays unchanged. |
+
+The deciding geometry for O2 is the [root-compensation equation](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2101), with legs subsequently aimed from [landmark differences](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2922). B1’s actual acceptance is [the upper-CI test](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d7b_silhouette_partwise.py:327); B2’s is [landmark-array equality](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/delivered_vs_capture.py:524).
+
+**I have not demonstrated that a listed frozen control passes the entire conjunction.** Conversely, the conjunction can accept a constant **anatomical convention error** shared by the rig truth and candidate. That is the explicitly acknowledged lane-H uncertainty, not an additional dispatch blocker.
+
+**3. The stops are correctly placed; the follower is insufficiently defined.**
+
+A split winner means S has not selected an estimator. A frozen-pitch control that remains competitive means the fixture has not demonstrated the discrimination being claimed. Both should stop the step.
+
+“Frozen / strongly attenuated pitch” still leaves the agent choosing:
+
+- The moving frame in which pitch is measured.
+- The initial or reference pitch and where it comes from.
+- A freezing law or attenuation factor.
+- Missing-data behavior.
+- The exact loss comparison that constitutes failure.
+
+Specify one control law before results. A fully frozen control needs no tunable attenuation gain, but still needs its frame and initialization defined. My previous review explicitly said its failure must be demonstrated; it did not define an implementation. [Recorded finding.](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:74)
+
+The ablation also needs clarification. “Every estimator gets guarded Spine1” must exempt the unguarded arm; “C-on-SOMA (today)” needs its input treatment stated.
+
+Furthermore, **a +30% radial lever error alone does not corrupt (b)’s direction**:
+
+\[
+s'=m+1.3(s-m)
+\]
+
+produces the same hipline-primary frame because [_frame normalizes the secondary direction](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2017). Discarding that point can introduce interpolation error. For genuine missing samples, the unguarded path already [interpolates gaps](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2248). Define finite corruptions versus missing samples, injection order and scored transitions; neither case guarantees that guarding wins. Preserve the stop if the specified experiment does not support the guard.
+
+**4. P’s intended contract is right, but the quoted formulation conflates three contracts.**
+
+**The acceptance mask comes from the frozen post-projection track.** The build writes contacts into the [body-track artifacts](/Users/abhi_macbook/Projects/apps/AutoAnim/scripts/build_commercial_multiview_comparison.py:427). The GLB exports translation/rotation channels and a [body-track hash](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/body_export.py:648), not a recoverable contact mask. Therefore: authenticate the exported track against that hash, preserve its mask against the projection snapshot, and evaluate positions from the GLB’s bytes on those authoritative runs. Do not infer accepted contacts from low GLB velocity.
+
+**Anchor enforcement and union-population reporting should stay separate.** Enforce the candidate’s accepted runs at their projection anchors. Report both builds’ travel on the frozen union of run intervals, retaining each interval’s side and boundaries. Do not demand that the candidate remain planted during a baseline-only run; the card explicitly allows contact selection to change.
+
+**Specify keyed samples for the inherited tolerance.** The validator compares [sampled positions against each run’s first sample](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/body.py:1008). It does not establish continuous playback locks.
+
+I sampled the shipped GLBs using their own timestamps and LINEAR samplers, including quaternion interpolation:
+
+| Performer | Maximum anchor error at keys | Maximum at interval midpoints |
+|---|---:|---:|
+| 0 | 0.000424 mm | 0.665 mm |
+| 1 | 0.000463 mm | 1.311 mm |
+
+The tolerance is **0.01 mm**. Consequently, a continuous-time interpretation already fails the shipped delivery. The [exporter specifies LINEAR interpolation](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/body_export.py:615). Keep between-key measurements in B6 as proposed, or explicitly scope additional work to enforcing continuous locks.
+
+Restore protection of the **Root/Hips and upper-/lower-leg locals**, alongside root translation, contacts and foot/toe locals, after projection. The current converter preserves precisely that ancestry. [Deciding source.](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:3112)
+
+The two controls then fail different assertions:
+
+- **Overwrite the foot lock:** a nontrivial change to projected foot locals fails channel preservation. Foot-position locking alone need not detect it—the foot’s own rotation does not move its origin, and some twists also preserve the toe point. Specify the overwritten values and verify the injection changed a protected channel.
+- **Clear contacts:** clearing a nonempty frozen mask fails mask preservation. It does **not** necessarily fail the geometric lock test; the unchanged geometry can remain planted.
+
+Thus both can be guaranteed detectable by the complete P contract, **not by the anchor check alone**.
+
+**5. Two adoption errors remain.**
+
+The full-mask shorthand is incorrect, including in the adoption header; my earlier answer should have supplied the complete mask rather than only correcting the disputed runs. And the rewrite omitted “protected leg” channels from my [projection-preservation recommendation](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-review-2026-09-14.md:82).
+
+The frozen-pitch requirement was adopted in intent, but naming it did not finish its specification. The other substantive corrections reviewed here reflect round 1 accurately.
+
+Read-only throughout. I recomputed the mask and sampled the shipped GLBs; I did not execute the still-unimplemented S.
