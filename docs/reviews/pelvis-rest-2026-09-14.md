@@ -556,7 +556,7 @@ five of six bodies**, and four frames (20, 21, 22, 24) on seed 20260904 alone. S
 cost in S's main arms is close to zero by construction on this fixture, and its win there
 proves nothing about it** — a guard that cannot lose cannot be said to have won. The guard is
 tested in **G2**, on a corruption built for it, and there it wins both metrics on every body by
-an order of magnitude (7.266° against 76.673°). That separation, not the main table, is the
+10.6x on the corrupted frames (7.266 against 76.673 deg) and **3.16x** on the transition pairs (2.590 against 8.179) -- the aggregate STEP improvement is 3.16x, not an order of magnitude, and the strict per-body wins are what stand. That separation, not the main table, is the
 evidence for shipping it.
 
 ---
@@ -745,6 +745,31 @@ never bands**:
   the card. It is a REPORT quantity by the card's own words — nothing in the merge predicate
   scores it — and it is stated rather than smoothed away.
 
+### 5A.7 The B1 attribution — the two performers rise for opposite reasons
+
+A third build was rendered through the identical pixel path, masks and frozen draws: the
+candidate's LOCAL rotations and REST with **D9b's per-frame root translation**, so the
+translation's share and the articulation's share separate. (Its contact mask is cleared,
+because `validate_body_track` refuses a track whose asserted contacts do not hold once the
+root is swapped — the same refusal that made P1's first control unbuildable. It is **not** a
+delivery.)
+
+| | both effects | = articulation | + root translation |
+|---|---|---|---|
+| performer 0, torso, whole take | +0.00715 | **+0.01191** | −0.00476 |
+| performer 0, torso, bent tercile | +0.00792 | **+0.00747** | +0.00045 |
+| performer 1, torso, whole take | +0.00303 | −0.00249 | **+0.00552** |
+| performer 1, torso, bent tercile | +0.00192 | −0.00205 | **+0.00397** |
+| performer 0, arms, whole take | −0.00019 | −0.00693 | +0.00674 |
+| performer 1, arms, whole take | −0.00068 | −0.00721 | +0.00654 |
+
+**Performer 0's torso rise is the articulation** — the new trunk tilt genuinely fits that
+outline better. **Performer 1's is the rigid root shift, and its articulation slightly hurts**,
+so that rise is not evidence about the pelvis. And **the arm cells were hiding two effects of
+opposite sign**: ~0 in B1, in fact −0.005…−0.009 of articulation cancelling +0.006…+0.008 of
+root. DIAGNOSTIC ONLY — it cannot change B1's verdict, and an attribution is not a
+justification.
+
 ### 5A.5 B5 and B6 — the delivered bytes
 
 `tools/head/head_gate.py` rerun: candidate 6.38 / 15.37 / 16.08 / 4.73 **PASS**, the two
@@ -808,66 +833,71 @@ delivery under (a) would have failed a clause that was true only of the mode tha
 
 ---
 
-## 5. Every clause, predicted / measured / verdict
+## 5. Every clause: predicted / measured / verdict
+
+**This is the CURRENT table**, after Astra's merge review at `9dda9ac` (NO MERGE) and the work
+that answered it. It carries both recorded STOPs, both post-hoc amendments, and the corrected
+numbers. The delivery figures are in §5A; the machine-readable version is
+`artifacts/compare/d7c-pelvis-rest/gate.json`, which also records, for every passing clause,
+whether flipping it to FAIL turns the merge rule.
 
 | clause | predicted | measured | verdict |
 |---|---|---|---|
-| hygiene, 8 of 8 byte-identical | 8/8 | 8/8, detections and both triangulations identical | **PASS** |
-| instrument: 6.865° on every seed | 6.865 | 6.8650 – 6.8651 | **PASS** |
-| instrument: yaw / roll beside it | 0.033–0.036 / 0.005–0.035 | 0.0334–0.0358 / 0.0051–0.0352 | **PASS** |
-| instrument: `Spine` 21 – 28 mm | 21–28 | 20.97 – 28.33 | **PASS** |
-| instrument: `Hips` 10 mm | ~10 | 9.63 – 11.56 | **PASS** |
-| instrument: torso 9.0 – 12.1 ABS | 9.0–12.1 | 8.98 – 12.09 | **PASS** |
-| instrument: unnormalised residual 85 – 107 mm | 85–107 | 84.5 – 107.2 | **PASS** |
-| instrument: take, +Y vs Spine1−hipmid 9.4 / 9.9° | 9.4 / 9.9 | 9.379 / 9.937 | **PASS** |
-| instrument: performer 1's 29 demoted frames, median 125.4928 mm | the frozen mask | identical, frame for frame | **PASS** |
-| instrument: performer 0's demoted frames | none | 0 | **PASS** |
-| the wrong-origin control reads 0.000° and is caught only by the residual | 0.000° / ~84 mm | 0.0001° / 80.4 – 96.5 mm | **PASS** (blindness realised) |
-| `frozen_upright` must-fail | fails O1 | 7.2166°, fails the 0.01° band | **PASS** (fails as required) |
-| the D9b build itself must-fail | 6.865° on every oracle frame | 6.8650 – 6.8651 | **PASS** (fails as required) |
-| the SOMA template through the new path must-fail | 6.865° | demonstrated on the CURRENT path only: `C_soma_template` reads 6.8650 – 6.8651, an execution identical to `src_default` because `src/` never moved. The card's must-fail is the C execution through the REFACTORED `_pelvis_world_frames` — the tripwire's second reading | **not reached** |
-| S: (a) vs (b) decided, not split | either | (a) wins 6/6 cells | **PASS** |
-| S: the winner beats C-on-SOMA on (i), both populations | strictly better | 9.549 vs 15.970 and 11.217 vs 15.510 | **PASS** |
-| **S: the follower ≥ 2× the winner on every body** | **≥ 2× on 6/6** | **1.45 – 2.74, 5 of 6 below 2×** | **FAIL → STOP** |
-| S: the follower ≥ 2° on every body | ≥ 2° | 15.47 – 21.11 | PASS |
-| REFACTOR TRIPWIRE | — | **not reached** | — |
-| O1, O2, O3 on the candidate | — | **not reached** | — |
-| P1, P2, P3 | — | **not reached** (the controls are BUILT in the delivery script and unrun) | — |
-| B1 … B6 | — | **not reached** | — |
-| G1, G2 at the pre-registered fixture | — | **not reached** | — |
+| hygiene: today's code rebuilds the shipped delivery | 8 of 8 | 8 of 8 | **PASS** |
+| **tripwire (i)** mode C held reproduces D9b | 8 of 8 | 8 of 8, 274.0 s, `lever_guard.applied: false` | **PASS** |
+| **tripwire (ii)** the SAME execution vs exact truth | 6.865° | 6.8650 – 6.8651° | **PASS** (as a must-fail) |
+| O1 pelvis vs truth | ≤ 0.01° (from 6.865) | max **0.0001°** | **PASS** |
+| O1 `Spine` origin, hoist-subtracted | ≤ 0.01 mm (from 21–28) | max **0.0001 mm** | **PASS** |
+| O1 `Hips` origin, hoist-subtracted | ≤ 0.01 mm (from 10) | max **0.0002 mm** | **PASS** |
+| O1 torso, ABSOLUTE, unhoisted frames | 0.00 (from 8.98–12.09) | **0.00** | **PASS** |
+| O1 unnormalised 3-point residual | ≤ 1e-6 m | **1.53 – 1.83e-7 m** | **PASS** |
+| must-fail: wrong-origin template | 0.000° tilt, ~84 mm residual | 0.0001°, 80.4 – 96.5 mm | **PASS** (blindness realised) |
+| must-fail: pelvis frozen upright | fails O1 | 7.2166° | **PASS** |
+| O2 legs, feet, toes vs the shipped FK | ≤ 0.1 mm | **0.054 – 0.077 mm** | **PASS** |
+| O2 contacts on the oracle bodies | identical | identical, 6 of 6 | **PASS** |
+| O2 hoist change | ≤ 0.05 mm | **0.008 – 0.032 mm** | **PASS** |
+| O3 the D3 gate's ALIGNED gauge, arms | REPORT | 1.32–2.72 → **0.07–0.60** | REPORT |
+| **S at the card's own fixture (σ 1.0): follower ≥ 2× every body** | ≥ 2× on 6/6 | **1.45 – 2.74×; 5 of 6 below** | **FAIL — a recorded STOP** |
+| **the calibration under its frozen monotonicity precondition** | monotone | **one 0.0135 mm decrease** | **FAIL — a recorded STOP** |
+| the same frozen evaluations under round 7's amended rule | REACHED | A 0.0135 ≤ 0.05, B 1 sign change, C σ = 0.335546875 | **PASS** (POST HOC) |
+| S reread: (a) vs (b), 3 metrics × 2 populations | decided, not split | (b) worse in **6 of 6**; ships `E_rig_rest_kabsch` | **PASS** |
+| S reread: winner vs C-on-SOMA on (i) | strictly better, both | 5.281 vs 9.456; 5.460 vs 8.717 | **PASS** |
+| S reread: follower ≥ 2× **and** ≥ 2°, every body | 6 of 6 | **2.56 – 3.20×**, 14.6 – 16.1° | **PASS** |
+| S reread: G1's AMENDED array-level claim | holds every body | holds 6/6; unconditional identity 5/6, rejections reported with lever/median/threshold | **PASS** |
+| S reread: G2 both metrics, every body | both, 6 of 6 | (i) **7.266 vs 76.673°**, (ii) **2.590 vs 8.179°**; miss rate ≤ 0.10 | **PASS** |
+| the world-vertical control vs the truth's own tilt | report; limitation if within 2° | **17.726° vs the truth PELVIS's 16.823°** | **LIMITATION APPLIES, stated** |
+| the delivery: BOTH landmark arrays byte-identical | identical | identical, both performers | **PASS** |
+| the run-report records the mode and the demoted frames | E + 0 and 29 | `E_rig_rest_kabsch`; 0 and the frozen 29-frame mask | REPORT |
+| **P1** on the take, both performers | PASS | PASS, no failing channel, GLB-authenticated | **PASS** |
+| **P1** on every oracle body | PASS | PASS, 6 of 6 | **PASS** |
+| **P2** on the take | ≤ 1e-5 m | **4.5e-7 / 2.9e-7 m**, 18 and 4 runs | **PASS** |
+| **P2** on every oracle body, from each exported GLB | ≤ 1e-5 m | **worst 4.86e-7 m**, 10–20 runs per seed | **PASS** |
+| P1 control 1 (foot locals overwritten) | must FAIL P1 | **cannot be BUILT** — `validate_body_track` refuses it; P1 detects it offline on both performers | **PASS** |
+| P1 control 2 (mask cleared) | must FAIL P1 | FAILs P1 on `root_translation_m` and `foot_contacts`, both performers | **PASS** |
+| P3 travel on the frozen union | REPORT | 51 intervals | REPORT |
+| B1 photographs, 8 cells, `ci95[1] ≥ 0` | worsening not established | met on all 8 | **PASS** |
+| B1 the MAMMA mesh oracle | bit-identical | 0.0 | **PASS** |
+| B2 `delivered_vs_capture --reference smoothed` | same denominator | TRUE | **PASS** |
+| B1 attribution (diagnostic) | — | performer 0's rise is the ARTICULATION (+0.0119 vs −0.0048); performer 1's is the ROOT (−0.0025 vs +0.0055) | REPORT |
+| B3 the hoist and the contacts | REPORT | hoist p95 12.54→13.12 / 8.72→8.09 mm; contacts (38,51)→(36,36) / (11,18)→(5,18) | REPORT |
+| B4 the pelvis and root motion | REPORT | pitch −8.783 / −9.219°; root 12.40 / 13.06 mm; step p95 14.08 / 13.33°; **0 / 1** frame over 800°/s | REPORT |
+| B5 the head gate rerun | REPORT | candidate PASS, both controls FAIL; flagged **19/150 performer 0, 23/150 performer 1** | REPORT |
+| B5b the delivered `Head` WORLD rotation, from the GLB | REPORT | between-build difference **4e-6° median, 1.3e-5 max — NOT zero** | REPORT |
+| B6 sampler times, channels, quaternions | REPORT | LINEAR, 150 frames, 4.9667 s, 1+55 channels, norms 1±4e-8, **zero** negative adjacent dots; normalised increment median **0.0°** | REPORT |
+| B6 track→GLB **positional** closure | REPORT | max **0.0005 mm** | REPORT |
+| B6 track→GLB rotational comparison | REPORT | 32.0° median — **NOT a closure**: the GLB channel is the rig local composed with the node's rest rotation | REPORT |
+| B6 hierarchy and bone lengths vs the sized skeleton | REPORT | hierarchy matches joint for joint; bone-length error **0.0 mm** on all 54 | REPORT |
+| B6 inverse binds / mesh deformation | REPORT | **NOT ESTABLISHED** — skin-at-node-rest misses POSITION by 590/156 mm on **both** builds; this reader or the exporter, and Blender renders the same files fine. Same size on D9b ⇒ **predates D7c** | REPORT |
+| B6 between-key playback (quaternions interpolated, then FK) | REPORT | inside a run **5.2 – 8.6 mm median**; the earlier 0.0003 mm was averaged composed positions and is withdrawn | REPORT |
+| B6 the `Root` / eye / finger invariants | REPORT | bit-identical, both performers — a **TRACK-ARRAY** claim | REPORT |
+| the provenance audit | no unaudited constant | `RIG_REST_PELVIS_MODES` registered; `PELVIS_FRAME_SOURCE` rewritten keeping its history | **PASS** |
+| **merge rule, twelve conjuncts, each enforced** | all PASS | all PASS; every one turns the verdict when flipped | **MERGE** |
 
-| **THE AMENDED CARD'S FIXTURE CALIBRATION** | | | |
-| the target reproduces the frozen constant | 8.7636 mm | 5.9944 / **8.7636** measured from the hygiene build's own converter inputs | **PASS** |
-| the synthetic statistic applies the same keep-rule, `ddof=0` both sides | matched | `fixture_attribution` carries the guard-kept row beside the all-frames one | **PASS** |
-| the zero-noise baseline reported first, never subtracted | reported | **1.8131 mm** through the same `observe_body` pipeline | **PASS** |
-| the bracket [0.10, 1.00] contains the target | contains | 3.0777 … 12.5108 mm | **PASS** |
-| a σ inside the 0.05 mm tolerance is found in ≤ 20 evaluations | found | **σ 0.335547 → 8.7495 mm**, \|Δ\| = 0.0141, 10 evaluations | **PASS** |
-| the ORIGINAL seeded draws preserved exactly | preserved | two independent runs: all 10 (σ, sd, per-body) triples bit-identical | **PASS** |
-| **the statistic is monotone in σ across the evaluations** | **monotone** | **one violation, 0.0135 mm, σ 0.339063 → 0.353125** | **FAIL** |
-| the calibration | CALIBRATED | **UNREACHABLE** by the frozen rule | **STOP** |
-| the reread of all of S at the calibrated σ | all clauses | **not performed** — reading S at a σ the rule rejects would leak the verdict into the rule change | — |
-| G1's amended array-level test | exercised at the calibrated σ | **written and committed; not exercised** — only the σ-0.25 / 0.35 sensitivity runs exist | — |
-| G2 at the pre-registered or a calibrated fixture | — | **not reached** | — |
-
-**One FAILED prediction, and its attribution:** the frozen-pitch follower's ≥ 2× separation.
-Attributed to the **fixture's noise amplitude**, measured at 1.8 – 3.0× the take's own recorded
-spread, against a discrimination that is unbounded without noise (winner 0.0000° vs follower
-14.401° on the bent tercile). It is **not** attributable to the estimators, to the guard, or to
-the instrument: the same instrument reproduces every pre-card figure exactly, and the (a)/(b)
-selection it produces is stable at every noise level tested.
-
-**A second FAILED prediction, from the amended card:** the calibration's monotonicity
-precondition. Attributed, to the frame, to the **synthetic keep-mask moving with σ** — at
-σ 0.339063 the guard rejects nothing on any body, and at σ 0.353125 it newly rejects one frame
-on seed 20260903 (frame 84) and one on seed 20260907 (frame 21), each the largest-lever frame
-of a body that happens to sit at the 3rd or 4th of six. Those two bodies' guard-kept sd falls
-while the four whose masks did not change all rise by 0.19 – 0.39 mm, so the median-of-six dips
-0.0135 mm. It is **not** attributable to the draws (two runs are bit-identical), to the target
-(it reproduces the frozen constant exactly), or to the bracket (which contains the target and
-whose own final sub-bracket, 0.325 → 0.332031 → 0.335547 → 0.339063, is strictly monotone).
-See section 3A.5 for the single question it hands the coordinator.
-
----
+**Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
+16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the
+coordinator re-pins that file in place at the merge), and `test_body_export::…hash_bound` and
+`test_phase4_app::test_home_and_health`, which **fail identically on the D9b worktree and are
+not this step's**. `test_provenance_audit` now passes.
 
 ## 6. What every instrument here is blind to
 
@@ -901,39 +931,42 @@ See section 3A.5 for the single question it hands the coordinator.
 
 ## 7. What is open
 
-1. **The three B1 cells where the torso ROSE with the interval clear of zero** (performer 0
-   both cuts, performer 1's whole take, +0.002 to +0.008 IoU). Improvement was **not**
-   predicted and the rise has no explanation this instrument can give. Two candidates, neither
-   settled: the 12.4 / 13.1 mm root move, which translates every skinned vertex and is the
-   kind of change these masks *can* see; or the trunk's new tilt happening to sit better
-   inside the outline on this footage. Reported as unexplained.
-2. **The hip residual under (a) is a REPORT and stays one.** Full positional p95 12.1 / 14.9
-   mm against D9b's 6.4 / 12.0. Under (b) the angular and transverse parts would be zero by
-   construction; (a) trades that for the 197 mm spine lever, which is what S decided. **No
-   band may be manufactured from it**, and the card says so.
-3. **One frame over 800°/s on performer 1**, against the card's unguarded-(b) 2 and
-   guarded-(b) 0. A REPORT quantity; nothing in the merge predicate scores it.
-4. **Two amendments in this step are POST HOC** and are recorded as such: the fixture
-   calibration (proposed after the σ-0.35 sensitivity was known) and the admissibility rule
-   (amended after the frozen precondition failed). The σ itself is target-determined and the
-   (a)/(b) ranking is stable at σ 1.00, 0.50, 0.35, 0.25 **and** 0.3355 — but agent blindness
-   during the bisection does not make the protocol independent of earlier outcomes.
-5. **Nothing in this step resolves the pelvis CONVENTION** — §6. It goes to lane H's marker
-   session, and the delivered pelvis moved by the ~7° the pelvis-frame review priced as "what
-   it costs if the convention is wrong".
-6. **G1's unconditional identity is 5 of 6 at σ 0.25 and 4 of 6 at σ 0.35**; the amended
-   array-level claim holds on every body at the calibrated σ. The additional rejections are
-   reported with their lever, median and threshold; two of them (frames 103, 104 on seed
-   20260904) sit a millimetre inside a boundary they cross by six parts in ten thousand.
-7. **The instrument-debt items the card hands on are untouched**: the four `SOMA77_REST_*`
-   constants' move to `tools/compare/` (containment is proved, the move is not made), D7's
-   moved-by-design clauses, the D3 gate's frozen references and its translation-aligned gauge,
-   and the four superseded pins in `tests/test_pelvis_frame.py`, which are re-pinned in a new
-   file but not removed from the old one.
-8. **B5 and B6 are owed as reports**, and the report page's frame player and mp4 with them.
-   Neither is in the merge predicate.
+1. **B1's three rising torso cells are now ATTRIBUTED, and the attribution is not one story.**
+   Performer 0's rise is the ARTICULATION (+0.0119 against the root's −0.0048); performer 1's
+   is the ROOT TRANSLATION (+0.0055 against the articulation's −0.0025), so performer 1's rise
+   is **not** evidence that the pelvis is better there and is not claimed as such. Both
+   performers' arm cells, which read ~0 in B1, are −0.005 to −0.009 of articulation cancelling
+   +0.006 to +0.008 of root. §5A.7.
+2. **The world-vertical control's limitation APPLIES and is stated.** Its bent-tercile error
+   (17.726°) is within 2° of the truth pelvis's own median tilt from vertical (16.823°), so on
+   this fixture it is doing little more than reporting how far from upright this motion's
+   pelvis is. S's stops are unchanged; the winner's separation from the **frozen-pitch
+   follower** — the control built for exactly this, and not upright — is what carries that
+   argument.
+3. **The inverse binds and the mesh-deformation reading are NOT ESTABLISHED.** Skinning at the
+   nodes' own rest TRS misses the `POSITION` attribute by 590 / 156 mm, identically on the
+   shipped build. Either the exporter's node rest pose is not its bind pose, or this reader's
+   glTF convention is wrong — and Blender renders the same files to sensible silhouettes, so
+   the reader is the likelier suspect. The attribution is established (it predates D7c); the
+   measurement is not. Handed to D6 **with the reader**.
+4. **The hip residual under (a) is a REPORT and stays one** — full positional p95 12.1 / 14.9
+   mm against D9b's 6.4 / 12.0. No band may be made from it.
+5. **One frame over 800°/s on performer 1**; a REPORT quantity by the card's own words.
+6. **Two amendments in this step are POST HOC** and recorded as such: the fixture calibration
+   (proposed after the σ-0.35 sensitivity was known) and the admissibility rule (amended after
+   the frozen precondition failed). The σ is target-determined and the (a)/(b) ranking is
+   stable at σ 1.00, 0.50, 0.35, 0.25 **and** 0.3355; that does not make the protocol
+   independent of earlier outcomes.
+7. **Nothing in this step resolves the pelvis CONVENTION** (§6) — lane H's marker session.
+8. **The instrument-debt items are untouched**: the four `SOMA77_REST_*` constants' move to
+   `tools/compare/` (containment proved, move not made), D7's moved-by-design clauses, the D3
+   gate's frozen references and its translation-aligned gauge, and the four superseded pins
+   left in `tests/test_pelvis_frame.py` for the coordinator to re-pin in place.
 9. **The calibration matches a CONDITIONAL LENGTH SPREAD and nothing else** — not directional
    noise, not detector realism, not camera support. Length bounds no direction.
+10. **Two pre-existing test failures** (`test_body_export::…hash_bound`,
+    `test_phase4_app::test_home_and_health`) fail identically on the D9b worktree and are not
+    this step's.
 
 ---
 

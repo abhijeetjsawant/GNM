@@ -299,6 +299,13 @@ def populations(data: dict) -> dict:
     trunk = landmarks[:, cm.JOINT_INDEX["neck"]] - hip_mid
     trunk = trunk / np.linalg.norm(trunk, axis=1)[:, None]
     tilt = np.degrees(np.arccos(np.clip(trunk[:, 1], -1.0, 1.0)))
+    # THE TRUTH PELVIS's own tilt from world vertical, which is a DIFFERENT quantity from the
+    # trunk's and is the one the world-vertical control has to be read against: that control
+    # is a pelvis frozen upright, so what it costs is the pelvis's own departure from
+    # vertical, not the trunk's. Comparing it to the trunk's 53.7 deg made the control look
+    # far better separated than it is (Astra's merge review, finding 5c).
+    pelvis_up = data["truth_pelvis"].as_matrix()[:, :, 1]
+    pelvis_tilt = np.degrees(np.arccos(np.clip(pelvis_up[:, 1], -1.0, 1.0)))
     order = np.argsort(-tilt)[:BENT_TERCILE_FRAMES]
     bent = np.zeros(len(tilt), bool)
     bent[order] = True
@@ -306,6 +313,11 @@ def populations(data: dict) -> dict:
     return {
         "whole_take": {"frames": whole, "pairs": whole[1:] & whole[:-1]},
         "bent_tercile": {"frames": bent, "pairs": bent[1:] & bent[:-1]},
+        "truth_pelvis_tilt_deg": {
+            "whole_median": round(float(np.median(pelvis_tilt)), 4),
+            "bent_median": round(float(np.median(pelvis_tilt[bent])), 4),
+            "note": ("the TRUTH PELVIS's own departure from world vertical. This, not the "
+                     "trunk's, is what a pelvis frozen upright costs.")},
         "truth_trunk_tilt_deg": {
             "whole_median": round(float(np.median(tilt)), 3),
             "whole_max": round(float(tilt.max()), 3),
@@ -324,7 +336,8 @@ def score_body(data: dict, observation: dict, arms: tuple[str, ...]) -> dict:
     hip_mid_truth = 0.5 * (landmarks[:, cm.JOINT_INDEX["left_hip"]]
                            + landmarks[:, cm.JOINT_INDEX["right_hip"]])
     pop = populations(data)
-    row: dict = {"truth_trunk_tilt_deg": pop["truth_trunk_tilt_deg"], "arms": {}}
+    row: dict = {"truth_trunk_tilt_deg": pop["truth_trunk_tilt_deg"],
+                 "truth_pelvis_tilt_deg": pop["truth_pelvis_tilt_deg"], "arms": {}}
     for arm in arms:
         quaternions = run_arm(arm, points, spine, rest)
         row["arms"][arm] = {
@@ -641,17 +654,35 @@ def main() -> int:
                           "discrimination the card claims -- a STOP, never a pass")
         return finish(report, out, stop=True)
 
-    # ... the world-vertical control against the truth's own tilt range
+    # ... the world-vertical control against the TRUTH PELVIS's own tilt. The card asks for
+    # the control to be "reported against the truth's own tilt range (reported first) and
+    # [it] is a stated limitation if within 2 deg of it". The quantity has to be the PELVIS's
+    # tilt, because the control IS a pelvis frozen upright; an earlier version compared it to
+    # the TRUNK's 53.7 deg, which is a different segment and made the control look far better
+    # separated than it is.
+    pelvis_bent = float(np.median(
+        [per_body[s]["truth_pelvis_tilt_deg"]["bent_median"] for s in per_body]))
+    world_vertical = aggregated["world_vertical"]["bent_tercile"]["i_orientation_deg"]
+    within = bool(abs(world_vertical - pelvis_bent) < WORLD_VERTICAL_LIMITATION_DEG)
     report["world_vertical_vs_truth_tilt"] = {
-        "truth_bent_tilt_median_deg": round(float(np.median(
+        "truth_PELVIS_bent_tilt_median_deg": round(pelvis_bent, 4),
+        "truth_trunk_bent_tilt_median_deg": round(float(np.median(
             [per_body[s]["truth_trunk_tilt_deg"]["bent_median"] for s in per_body])), 3),
-        "world_vertical_i_bent_deg": aggregated["world_vertical"]["bent_tercile"][
-            "i_orientation_deg"],
+        "world_vertical_i_bent_deg": world_vertical,
         "winner_i_bent_deg": aggregated[winner]["bent_tercile"]["i_orientation_deg"],
-        "stated_limitation_if_within_2_deg_of_the_tilt": bool(abs(
-            aggregated["world_vertical"]["bent_tercile"]["i_orientation_deg"]
-            - float(np.median([per_body[s]["truth_trunk_tilt_deg"]["bent_median"]
-                               for s in per_body]))) < WORLD_VERTICAL_LIMITATION_DEG),
+        "stated_limitation_if_within_2_deg_of_the_tilt": within,
+        "LIMITATION": (
+            "STATED. The world-vertical control's error on the bent tercile is within 2 deg "
+            "of the truth pelvis's OWN median departure from vertical, which means the "
+            "control is doing little more than reporting how far from upright this motion's "
+            "pelvis actually is -- so its distance from the winner is not, on this fixture, "
+            "strong evidence that the winner is measuring pelvis orientation rather than "
+            "benefiting from a mostly-upright pelvis. S's stop conditions are unchanged and "
+            "the winner's separation from the FROZEN-PITCH FOLLOWER, which is the control "
+            "built for exactly this and is not upright, is what carries that argument."
+        ) if within else (
+            "does not apply: the control's error is more than 2 deg from the truth pelvis's "
+            "own tilt"),
     }
 
     # ------------------------------------------------------------------ G1 and G2

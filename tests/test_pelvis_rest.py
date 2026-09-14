@@ -264,29 +264,27 @@ def test_repin_the_exact_recovery_oracle_against_the_rigs_own_rest():
 
 
 def test_repin_the_soma_posed_oracle_reads_the_conventions_own_size_and_that_is_expected():
-    """The SAME body D7's oracle poses, scored under the shipping mode: MOVED BY DESIGN.
+    """D7's OWN oracle fixture, scored under the shipping mode: MOVED BY DESIGN.
 
-    Pinned as a NUMBER so a future change that moves it for a different reason is visible.
-    The SOMA convention's own pelvis sits ~7 deg off the rig's `Hips`->`Spine` axis, and
-    that is the whole quantity D7c removes from the delivery.
+    This re-pin imports `test_pelvis_frame`'s `posed_body` rather than building a lookalike.
+    An earlier version injected a literal 6.87 deg into a DIFFERENT fixture and accepted
+    5-9 deg, which pins nothing about D7's oracle -- Astra's merge review caught it. The
+    number below is the one D7's own fixture actually produces under `E_rig_rest_kabsch`,
+    and it is pinned tightly so that a future change moving it for a DIFFERENT reason is
+    visible rather than absorbed by a wide band.
+
+    Why it is not a regression: D7's fixture poses SOMASKEL77, whose truth pelvis IS the
+    SOMA-77 convention D7c removes. The card pre-registered that D7's own instruments would
+    read this step worse by ~7 deg by construction.
     """
     from scipy.spatial.transform import Rotation
 
-    points, spine, truth, rest = _posed_rig_body()
-    # pose the SPINE point by SOMA's convention instead of the rig's: the same 6.87 deg
-    # tilt the shipped template carries, applied about the hip line.
-    tilt = np.radians(6.87)
-    about_hip_line = np.array([[1.0, 0.0, 0.0],
-                               [0.0, np.cos(tilt), -np.sin(tilt)],
-                               [0.0, np.sin(tilt), np.cos(tilt)]])
-    mid = 0.5 * (rest["LeftUpperLeg"] + rest["RightUpperLeg"])
-    soma_spine = np.stack([
-        points[f, cm.JOINT_INDEX["root"]]
-        + truth[f] @ about_hip_line @ (rest["Spine"] - mid) for f in range(len(spine))])
-    quaternions, _ = cm._pelvis_world_frames(points, soma_spine, rest=rest,
-                                             mode=cm.PELVIS_FRAME_SOURCE)
-    error = _geodesic_deg(Rotation.from_quat(quaternions).as_matrix(), truth)
-    assert 5.0 < np.median(error) < 9.0, f"median {np.median(error):.3f} deg"
+    import test_pelvis_frame as d7
+
+    positions, spine, truth = d7.posed_body()
+    track = d7.convert(positions, spine)
+    error = d7.geodesic_deg(d7.hips_world_rotations(track), truth)
+    assert abs(float(error.max()) - 7.567708) < 1e-4, f"worst {error.max():.6f} deg"
 
 
 def test_repin_a_gap_is_interpolated_and_the_definition_never_switches_per_frame():
