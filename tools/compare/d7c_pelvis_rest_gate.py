@@ -586,12 +586,49 @@ def take_pair(baseline: Path, candidate: Path, subject: int) -> dict:
     root_base = np.asarray(base["track"]["root_translation_m"], np.float64) - base_hoist
     root_cand = np.asarray(cand["track"]["root_translation_m"], np.float64) - cand_hoist
     forward = Rotation.from_quat(base_hips).as_matrix()[:, :, 2]
+    # THE HIP RESIDUAL, and under (a) it is a REPORT and never a band. Under (b) the
+    # observed hip line is an exact axis of the delivered frame, so the ANGULAR and
+    # TRANSVERSE parts are zero by construction and only the rig-vs-performer WIDTH
+    # mismatch survives. `E_rig_rest_kabsch` does not hold that axis exactly: the 197 mm
+    # `Spine` lever pulls against it inside one un-centred SVD, which is the whole trade the
+    # selector decided. The card is explicit that no hip-residual band may be manufactured
+    # from these numbers.
+    def hip_residual(track: dict, hips_quat: np.ndarray) -> dict:
+        matrices = Rotation.from_quat(hips_quat).as_matrix()
+        across = matrices[:, :, 0]
+        left = points[:, cm.JOINT_INDEX["left_hip"]]
+        right = points[:, cm.JOINT_INDEX["right_hip"]]
+        observed = left - right
+        unit = observed / np.linalg.norm(observed, axis=1)[:, None]
+        angular = np.degrees(np.arccos(np.clip(np.sum(unit * across, axis=1), -1.0, 1.0)))
+        hip_mid = 0.5 * (left + right)
+        rest_local = np.asarray(skeleton.rest_translations_m, np.float64)
+        mid = 0.5 * (rest_local[index("LeftUpperLeg")] + rest_local[index("RightUpperLeg")])
+        transverse, full = [], []
+        for side, sign in (("LeftUpperLeg", 1.0), ("RightUpperLeg", 1.0)):
+            modelled = hip_mid + np.einsum(
+                "nij,j->ni", matrices, rest_local[index(side)] - mid)
+            captured = left if side == "LeftUpperLeg" else right
+            delta = captured - modelled
+            along = np.sum(delta * across, axis=1)[:, None] * across
+            transverse.append(1e3 * np.linalg.norm(delta - along, axis=1))
+            full.append(1e3 * np.linalg.norm(delta, axis=1))
+        return {"angular_deg": summary(angular),
+                "transverse_mm": summary(np.concatenate(transverse)),
+                "full_positional_mm": summary(np.concatenate(full))}
+
     return {
         "landmarks_byte_identical_same_denominator": landmarks_identical,
         "rest_skeleton_moved": rest_moved,
         "pelvis_change_deg": {"angle": summary(angle),
                               "pitch_about_hip_line_signed_median": round(
                                   float(np.median(pitch)), 4)},
+        "hip_residual_REPORT_never_a_band": {
+            "note": ("under (b) the angular and transverse parts are zero by construction "
+                     "and only the width mismatch survives; `E_rig_rest_kabsch` does not "
+                     "hold the observed hip line exactly. A REPORT, per the card."),
+            "baseline": hip_residual(base["track"], base_hips),
+            "candidate": hip_residual(cand["track"], cand_hips)},
         "root_move_mm_hoist_subtracted": summary(
             1e3 * np.linalg.norm(root_cand - root_base, axis=1)),
         "root_move_fore_aft_signed_median_mm": round(float(np.median(

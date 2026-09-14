@@ -1,8 +1,9 @@
 # D7c — the pelvis on the rig's own rest
 
 **Date** 2026-09-14 · **Branch** `ladder/D7c` · **Worktree** `.claude/worktrees/ladder-D7c`
-**The step stopped twice in S and then resumed on two reviewer amendments, each frozen before
-the reading it gates. Both stops stay recorded exactly as they fell.** S at the card's own
+**MERGE.** `E_rig_rest_kabsch` ships. **The step stopped twice in S and then resumed on two
+reviewer amendments, each frozen before the reading it gates. Both stops stay recorded exactly
+as they fell**, in `selector.json` and `selector-calibrated.json`, which are immutable. S at the card's own
 fixture STOPPED on the frozen-pitch-follower clause (§3); the amended card's FIXTURE CALIBRATION
 was UNREACHABLE under its own frozen monotonicity rule (§3A); Astra round 7 ruled that STOP
 correct, amended the admissibility test post hoc in its own wording, and the same frozen
@@ -30,7 +31,10 @@ it selects nothing.
 | 3 | S, the selector, at the card's own fixture, run BEFORE the src change was chosen | **STOP** | `ee4b71f` |
 | 3A | the amended card's FIXTURE CALIBRATION, under its frozen monotonicity rule | **UNREACHABLE -> STOP** | `210405d` |
 | 3B | the SAME frozen evaluations under Astra round 7's amended admissibility rule | **REACHED**, S pending | `2d8bfcc` |
-| 3C | all of S reread at the exact calibrated σ = 0.335546875 | **PROCEED** — `E_rig_rest_kabsch` ships | this commit |
+| 3C | all of S reread at the exact calibrated σ = 0.335546875 | **PROCEED** — `E_rig_rest_kabsch` ships | `2878977` |
+| 4 | the `src/` change, the tripwire, the containment test, the tests | **PASS** — tripwire 8 of 8 | `dec1354` |
+| 5 | the delivery, O1–O3, P1–P3, B1–B6 | **PASS** — every conjunct | this commit |
+| 6 | the gate JSON, the extractor stub, the review | **MERGE** | this commit |
 | 4 | the src change | **not started** — `git diff 7e35dd0 -- src/` is EMPTY | — |
 | 5 | the delivery and the bands | **not reached** | — |
 | 6 | the gate, the extractor, the tests, the report page | **not reached** | — |
@@ -560,6 +564,228 @@ evidence for shipping it.
 
 ---
 
+## 4A. Stage 4 — the `src/` change, and the tripwire's two readings
+
+`_pelvis_world_frames` gains a `rest` parameter (the call site passes the converter's own
+dict, exactly as `_leg_root_offset` and `_joint_origin` already read it), the two rig-rest
+modes, and the pelvis lever guard. **`PELVIS_FRAME_SOURCE = "E_rig_rest_kabsch"`.** No constant
+enters either rig mode and neither reads SOMA-77's `root` landmark.
+
+### 4A.1 The refactor tripwire: ONE execution, TWO references, TWO verdicts
+
+| reference | result | verdict |
+|---|---|---|
+| against **D9b**, with the mode held at `C_kabsch_pelvis` | all **8 of 8** delivered files byte-identical to `artifacts/commercial-multiview-soma77`, 274.0 s; the mode-C report reads `lever_guard.applied: false` | **PASS** |
+| against **exact rig truth**, the same six-body C execution | **6.8650 – 6.8651°** on every seed | **PASS as a must-fail** |
+
+Never counted as two demonstrations. The guard's scope is what makes the first true: A, B and
+C read the spine array untouched.
+
+### 4A.2 O1, O2, O3 — the shipping mode, through the src path
+
+| clause | band | measured (worst of six seeds) |
+|---|---|---|
+| O1 pelvis vs truth | ≤ 0.01° (from 6.865) | **0.0001°** |
+| O1 `Spine` origin, hoist-subtracted | ≤ 0.01 mm (from 21–28) | **0.0001 mm** |
+| O1 `Hips` origin, hoist-subtracted | ≤ 0.01 mm (from 10) | **0.0002 mm** |
+| O1 torso, ABSOLUTE, unhoisted frames | 0.00 (from 8.98–12.09) | **0.00** |
+| O1 unnormalised 3-point residual | ≤ 1e-6 m | **1.53 – 1.83e-7 m** |
+| O2 legs, feet, toes vs the shipped FK | ≤ 0.1 mm | **0.054 – 0.077 mm** |
+| O2 contacts on the oracle bodies | identical | identical on all six |
+| O2 hoist change | ≤ 0.05 mm | **0.008 – 0.032 mm** |
+| O3 the D3 gate's ALIGNED gauge, arms | REPORT | **1.32–2.72 → 0.07–0.60** |
+
+**A reporting defect found and fixed inside this stage:** `arm_geometry` assumed `src_default`
+meant the SOMA template. Once `src/` shipped a rig mode that was false, and the shipping arm's
+residual was being scored under geometry it does not use — 0.10 m instead of 1.7e-7. It now
+resolves the effective mode from `PELVIS_FRAME_SOURCE`. O1's residual clause would have failed
+for a reporting reason.
+
+### 4A.3 Bit-parity with what the selector evaluated — 12 of 12
+
+On S's own frozen draws at σ = 0.335546875, the shipped branch and
+`tools/compare/d7c_pelvis_estimators.py` agree **bit for bit** on the quaternions and on the
+demoted-frame list, for six bodies × two modes. Without it the selector could choose one
+estimator and production ship another — a defect **no band in this step could see**, because
+every band scores the delivery. `git diff 8a82ee4 -- tools/compare/d7c_pelvis_estimators.py`
+is empty: the estimator was frozen through the calibration, the reread **and** this change, and
+the src branch was written to match it.
+
+### 4A.4 Containment, proved with a positive control
+
+`tests/test_pelvis_rest.py` DELETES the four `SOMA77_REST_*` constants and rebuilds: both rig
+modes bit-identical on the resolved path **and on the missing-data path**, while mode C
+**raises**. Without that second half the test cannot tell an unused constant from a constant on
+a path it never took.
+
+### 4A.5 The four superseded pins, in two classes
+
+`tests/test_pelvis_frame.py` is D7's record and is not edited (the D9b precedent). Four of its
+tests fail:
+
+* **one is MOVED BY DESIGN and the card pre-registered it** — `round_trips_the_pelvis_frame`
+  poses SOMASKEL77, whose truth pelvis **is** the convention D7c removes, and reads **7.568°**.
+  Re-pinned twice in the new file: the same exactness against the rig's own rest (< 0.01° for
+  both modes), and the SOMA-posed reading held as a NUMBER so a future change that moves it for
+  a different reason is visible;
+* **three are SIGNATURE pins** — they call `_pelvis_world_frames` with no `rest` and a rig mode
+  raises rather than inventing one. Behaviour unchanged; re-pinned with the rest supplied.
+
+`pytest tests/test_pelvis_frame.py tests/test_pelvis_rest.py tests/test_arm_origin.py
+tests/test_hoist_reaim.py -q` → **4 failed, 47 passed**.
+
+---
+
+## 5A. Stage 5 — the delivery and the bands
+
+The delivery rebuilt through the real build script, `work/` copied, **both landmark arrays
+byte-identical** on both performers (the same-denominator baseline a converter-only change
+must not move). The run-report records `mode: E_rig_rest_kabsch` and the guard's demoted
+frames: **0 on performer 0, and on performer 1 the frozen 29-frame mask, frame for frame**,
+with resolved fraction 0.807 against the 0.5 fallback.
+
+### 5A.1 P — three contracts, kept apart
+
+| contract | result |
+|---|---|
+| **P1** on the take, both performers | **PASS**, no failing channel. The delivered track is AUTHENTICATED against the GLB's own `body_track_sha256` first |
+| **P1** on **every oracle body** | **PASS**, 6 of 6 |
+| **P2** anchor lock, GLB's own arrays, keyed samples | **PASS**; worst travel **4.5e-7 / 2.9e-7 m** against the 1e-5 m band, 18 and 4 runs |
+| **P3** travel on the frozen union | REPORT, 51 intervals |
+
+**P1's control 1 cannot be built, and that is a stronger result than P1 catching it.** The
+build asserts the projection really did change a foot local (it refuses to run as a no-op),
+restores the pre-projection rotations — and `BodyTrack.__post_init__` runs
+`validate_body_track`, which raises **`left foot contact moved 0.00884243 m (limit
+0.00001000 m)`** before a single file is written. The mutation cannot reach a delivered
+artifact at all. The same thing D9b found of its lock-without-correction degenerate.
+
+So P1's *detection* of that mutation is exercised directly on the delivered bytes
+(`d7c_p1_controls.py`): applied offline, P1 fails on `local::LeftFoot` and `local::RightFoot`
+on both performers, and control 2's mask-clearing fails on `foot_contacts` on both — while the
+unmutated delivery passes the identical comparison.
+
+**AN INSTRUMENT DEFECT FOUND BY ITS OWN CONTROL, and fixed.** The first built
+`control-clear-contacts` read P1 **PASS** — because the watcher saved the snapshot *after* the
+control's mutation, so the control cleared the mask on the delivered track **and** on the
+snapshot and P1 compared two copies of the same mutation. A control its own instrument cannot
+see is worse than no control. The snapshot is now taken from the function's own return
+**before** any mutation, and the control was rebuilt. The **delivery's** P1 result is unaffected,
+and that is asserted as a measurement rather than as an argument: the delivery's snapshots
+were written by the OLD watcher, and `d7c_p1_controls.py` compares the delivered track against
+those very snapshots and reads **PASS on both performers**, while detecting both mutations
+applied to the same bytes. (In `shipped` mode there is no mutation for the ordering to
+matter to — but the reading is what settles it, not the argument.)
+
+### 5A.2 B1 the photographs — PASS on all eight cells, and a rise nobody predicted
+
+| performer | part | cut | difference | ci95 | verdict |
+|---|---|---|---|---|---|
+| 0 | arms | whole take | −0.00019 | [−0.00138, 0.00115] | PASS |
+| 0 | arms | bent tercile | +0.00079 | [−0.00094, 0.00167] | PASS |
+| 0 | torso+legs | whole take | **+0.00715** | **[0.00486, 0.01162]** | PASS |
+| 0 | torso+legs | bent tercile | **+0.00792** | **[0.00557, 0.01331]** | PASS |
+| 1 | arms | whole take | −0.00068 | [−0.00125, 0.00142] | PASS |
+| 1 | arms | bent tercile | −0.00081 | [−0.00213, 0.00125] | PASS |
+| 1 | torso+legs | whole take | **+0.00303** | **[0.00066, 0.00752]** | PASS |
+| 1 | torso+legs | bent tercile | +0.00192 | [−0.00066, 0.00360] | PASS |
+
+The clause is `ci95[1] >= 0` — **worsening not established**, which does *not* establish
+non-worsening. It is met on all eight cells. But three cells show the torso **rising with the
+interval clear of zero**, and **improvement was not predicted**: the card's reasoning is that
+a constant change of pelvis frame rotates the trunk about the hip line and a mesh can rotate
+inside its own outline. A rise therefore needs its own explanation and does not have one here.
+Two candidates, neither settled by this instrument: the root moves 12.4 / 13.1 mm
+hoist-subtracted, which translates every skinned vertex; or the trunk's new tilt happens to
+sit better inside the outline on this footage. And the card's reasoning for "not predicted"
+was too strong **on its own terms**: D7's world-vertical control *lost* 0.218 IoU on this
+instrument by rotating the pelvis to vertical — a ROTATION, not a translation — so these masks
+demonstrably *can* see a pelvis rotation of this order. A ~9° rotation moving them is
+therefore not surprising; what is unexplained is the *direction*. **It is reported as
+unexplained and no credit is taken for it.**
+The MAMMA mesh oracle agrees with the committed unsplit run to 0.0.
+
+### 5A.3 B2, and the same denominator
+
+`delivered_vs_capture.py --reference smoothed`: **same denominator TRUE**. The landmarks are
+byte-identical, so the change did no more than refit the pelvis.
+
+### 5A.4 The (a) restatement, from the GUARDED delivery
+
+The card requires every (b)-conditional prediction restated from the pre-card's (a) arm **and
+then from a guarded (a) rebuild**. Both columns, side by side — **predictions to revisit,
+never bands**:
+
+| performer 0 / 1 | pre-card, (a) UNGUARDED | **the delivery, (a) GUARDED** |
+|---|---|---|
+| pelvis pitch about the hip line, median | −8.783 / −9.260° | **−8.783 / −9.219°** |
+| pelvis change, median | 8.896 / 9.376° | **8.896 / 9.376°** |
+| root move, hoist-subtracted, median | 12.403 / 13.057 mm | **12.403 / 13.057 mm** |
+| root move, fore-aft | −12.214 / −12.839 mm | **−12.214 / −12.810 mm** |
+| `Spine` origin move | 30.525 / 30.138 mm | **30.525 / 30.138 mm** |
+| `Neck` move | 12.434 / 10.816 mm | **12.434 / 9.735 mm** |
+| leg-root midpoint on the captured hip midpoint | 0.000 mm | **0.0002 mm max** |
+| **hip residual, full positional p95** | **11.859 / 31.853 mm** | **12.069 / 14.897 mm** |
+| hoist p95, D9b → candidate | 12.54 → 13.124 / 8.718 → 7.369 | **12.54 → 13.124 / 8.718 → 8.094** |
+| contacts, D9b → candidate | (38,51) → (36,36) / (11,18) → (4,18) | **(38,51) → (36,36) / (11,18) → (5,18)** |
+| pelvis step p95 | — | **14.08 / 13.33°** |
+| frames over 800°/s | — | **0 / 1** |
+
+**What this settles, and what it does not:**
+
+* **"the leg roots on the captured hips" was never (b)-specific.** It reads 0.0002 mm under
+  (a) too, and it must: `_leg_root_offset` places the leg-root midpoint on the captured hip
+  midpoint whatever rotation the pelvis carries. The card listed it as conditional in error.
+* **"zero transverse hip residual" IS (b)-specific and does not carry.** Under (a) the hip
+  line is not an exact axis of the frame, and the hip residual is a **REPORT**: angular
+  1.68 / 1.85° median, transverse 3.10 / 3.52 mm median, full positional p95 **12.1 / 14.9 mm**
+  against D9b's 6.4 / 12.0. **No hip-residual band is manufactured from these numbers**, and
+  B2's same-denominator equality remains required and passes.
+* **The guard is worth its place on the take, and the figure is performer 1's hip residual:**
+  the pre-card's unguarded (a) read **p95 31.9 mm** and the guarded delivery reads **14.9 mm**.
+  The 29 demoted frames are where that difference lives.
+* **One frame over 800°/s on performer 1**, against unguarded (b)'s 2 and guarded (b)'s 0 in
+  the card. It is a REPORT quantity by the card's own words — nothing in the merge predicate
+  scores it — and it is stated rather than smoothed away.
+
+### 5A.5 B5 and B6 — the delivered bytes
+
+`tools/head/head_gate.py` rerun: candidate 6.38 / 15.37 / 16.08 / 4.73 **PASS**, the two
+controls FAIL as they must, the gated arms PASS with 19 of 150 frames flagged (12.7 %, under
+the 25 % ceiling). It scores the INPUT solve and **cannot prove the exporter preserved it**,
+which is why `d7c_delivered_bytes.py` reads the GLB:
+
+* **the delivered `Head` WORLD rotation is IDENTICAL between the two builds** — 105.0914° on
+  performer 0 and 83.5315° on performer 1, to four decimals. The converter places the whole
+  head-on-torso rotation on `Head` as an ABSOLUTE target, so the chain compensates for the
+  pelvis and the exporter carried it through. The input gate could not have shown this.
+* LINEAR samplers, 150 frames, 4.9667 s, one translation channel and 55 rotation channels
+  sharing one time array; quaternion norms 1 ± 4e-8; **zero negative adjacent dots** (the
+  hemisphere walk holds through the pelvis change); full rotation increments median 0.029°.
+* **track → GLB positional closure max 0.0005 mm** — the float32 floor.
+* between-key playback, two populations kept apart because they mean different things:
+  **inside** a contact run the chord is 0.0001 mm median / 0.0003 max (both keys planted, so
+  this is the sampler's own error); **at a run boundary**, where the next key is already
+  moving, 5.2 mm median / 15.5 max — playback, not a lock failure, and B6's report rather
+  than P2's clause.
+* **the three invariants hold bit-identically on both performers**: `Root`, both eyes, and
+  the finger proximals. Everything else below `Root` moved, which the card states up front.
+
+**Still owed and handed to D6:** the mesh-deformation reading on the pelvis / hip / thigh
+region (inverted or collapsed triangles, edge-length and area change against the rest). IoU
+can rise while the skin tears, and §5A.2's three rising torso cells are exactly where that
+question bites.
+
+### 5A.6 B3, and what the two hoist recoveries say
+
+Hoist p95 12.54 → 13.12 mm on performer 0 and 8.72 → 8.09 on performer 1; the lowest delivered
+foot 16.66 → 16.93 and 12.96 → 12.25 mm; contact runs listed per side. The hoist is recovered
+both by the converter's own root line and by D9's arm fit, and the two agree to 0.0001 mm at
+the median.
+
+
+---
+
 ## 4. What the card predicted that this run contradicts
 
 **The card's hip-line-specific predictions do not carry.** The card states them explicitly as
@@ -678,46 +904,39 @@ See section 3A.5 for the single question it hands the coordinator.
 
 ## 7. What is open
 
-1. **THE ONE DECISION THAT UNBLOCKS THIS STEP: does the calibration's monotonicity
-   precondition apply to ALL evaluations (its frozen wording) or to the BISECTION'S OWN FINAL
-   BRACKET (its stated rationale, "a bisection on it is not well posed")?** The bracket
-   0.325 → 0.332031 → 0.335547 → 0.339063 is strictly monotone and contains the target; the
-   single violation is 0.0135 mm — 27 % of the tolerance — and sits above both the accepted σ
-   and the target. Under the wording the calibration is unreachable and the σ-1.0 STOP stands,
-   which is what this step recorded. Under the rationale σ = 0.335547 is accepted and all of S
-   is reread at it. **Only the coordinator and Astra can make that amendment**; this agent
-   applied the wording, stopped, and does not argue it. §3A.3–3A.5.
-2. **If the precondition is amended, the reread is the next action and nothing else is:**
-   all of S at σ 0.335547 — both populations, three metrics, ties, the C-on-SOMA comparisons,
-   the every-body follower clause (never normalised per body), the world-vertical report, and
-   G1 (with its new array-level test) and G2 — all six bodies kept. One command:
-   `PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d7c_pelvis_synthetic.py --calibrate`,
-   which will reproduce the identical bisection (proved deterministic over two runs) and then
-   proceed once the precondition passes.
-3. **Even a calibrated reread may fail the 2× follower clause**, and the amended card is
-   explicit about what follows: the failure is recorded, D7c stays undelivered, and there is no
-   second reduction, no band change, and no shipping on the remaining conjuncts.
-4. **The (a) restatement is prepared but not complete.** §3A.8 restates every (b)-conditional
-   prediction from the pre-card's own **unguarded** (a) arm; the card also requires them from a
-   **GUARDED (a) rebuild** before delivery, which needs the src change and is therefore unrun.
-   Two results already settled there: "the leg roots on the captured hips" is **not**
-   (b)-specific (0.000 mm under both), and "zero transverse hip residual" **is** — under (a)
-   the hip residual reads p95 **11.9 / 31.9 mm** against (b)'s 4.2 / 5.9, so **B2's hip clause
-   is a REPORT under (a)** and no hip-residual band may be manufactured from it.
-5. **G1's amended claim is written but not exercised at a calibrated σ**, and G2 has never run
-   at the pre-registered fixture. The recorded G1 rejections are σ 0.25 seed 20260904 frame 21;
-   σ 0.35 seed 20260903 frame 84 and seed 20260904 frames 20–22 and 103–104.
-6. **Everything from the refactor tripwire onward is unrun**: the src change itself, O1/O2/O3
-   on a candidate, P1/P2/P3 (whose two controls are built and assert their own non-degeneracy
-   in the delivery script but have never been executed), B1 – B6, the containment test, the
-   extractor, the tests, the report page.
+1. **The three B1 cells where the torso ROSE with the interval clear of zero** (performer 0
+   both cuts, performer 1's whole take, +0.002 to +0.008 IoU). Improvement was **not**
+   predicted and the rise has no explanation this instrument can give. Two candidates, neither
+   settled: the 12.4 / 13.1 mm root move, which translates every skinned vertex and is the
+   kind of change these masks *can* see; or the trunk's new tilt happening to sit better
+   inside the outline on this footage. Reported as unexplained.
+2. **The hip residual under (a) is a REPORT and stays one.** Full positional p95 12.1 / 14.9
+   mm against D9b's 6.4 / 12.0. Under (b) the angular and transverse parts would be zero by
+   construction; (a) trades that for the 197 mm spine lever, which is what S decided. **No
+   band may be manufactured from it**, and the card says so.
+3. **One frame over 800°/s on performer 1**, against the card's unguarded-(b) 2 and
+   guarded-(b) 0. A REPORT quantity; nothing in the merge predicate scores it.
+4. **Two amendments in this step are POST HOC** and are recorded as such: the fixture
+   calibration (proposed after the σ-0.35 sensitivity was known) and the admissibility rule
+   (amended after the frozen precondition failed). The σ itself is target-determined and the
+   (a)/(b) ranking is stable at σ 1.00, 0.50, 0.35, 0.25 **and** 0.3355 — but agent blindness
+   during the bisection does not make the protocol independent of earlier outcomes.
+5. **Nothing in this step resolves the pelvis CONVENTION** — §6. It goes to lane H's marker
+   session, and the delivered pelvis moved by the ~7° the pelvis-frame review priced as "what
+   it costs if the convention is wrong".
+6. **G1's unconditional identity is 5 of 6 at σ 0.25 and 4 of 6 at σ 0.35**; the amended
+   array-level claim holds on every body at the calibrated σ. The additional rejections are
+   reported with their lever, median and threshold; two of them (frames 103, 104 on seed
+   20260904) sit a millimetre inside a boundary they cross by six parts in ten thousand.
 7. **The instrument-debt items the card hands on are untouched**: the four `SOMA77_REST_*`
-   constants' move to `tools/compare/`, D7's moved-by-design clauses, the D3 gate's frozen
-   references and its translation-aligned gauge.
-8. **The confound in the calibration target stands and is not resolved by it.** A guard-kept sd
-   is a conditional spread, and length bounds no direction; the amendment says so and makes no
-   harshness claim in either direction. What the calibration matches is a scalar length spread,
-   not the detector's directional behaviour.
+   constants' move to `tools/compare/` (containment is proved, the move is not made), D7's
+   moved-by-design clauses, the D3 gate's frozen references and its translation-aligned gauge,
+   and the four superseded pins in `tests/test_pelvis_frame.py`, which are re-pinned in a new
+   file but not removed from the old one.
+8. **B5 and B6 are owed as reports**, and the report page's frame player and mp4 with them.
+   Neither is in the merge predicate.
+9. **The calibration matches a CONDITIONAL LENGTH SPREAD and nothing else** — not directional
+   noise, not detector realism, not camera support. Length bounds no direction.
 
 ---
 

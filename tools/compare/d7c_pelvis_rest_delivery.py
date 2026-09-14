@@ -169,6 +169,17 @@ def install_watcher(mode: str, snapshots: Path, inputs: Path) -> dict:
 
     def projection(track, **kwargs):
         projected, diagnostics = real_projection(track, **kwargs)
+        # THE SNAPSHOT IS TAKEN HERE, from the function's OWN RETURN, BEFORE any control
+        # mutates it. Taking it afterwards was a real defect and it made a control
+        # undetectable: `control-clear-contacts` cleared the mask on the delivered track AND
+        # on the snapshot, so P1 compared two copies of the same mutation and read PASS on a
+        # build that was mutated by construction. A control that its own instrument cannot
+        # see is worse than no control.
+        honest = {
+            "root_translation_m": np.array(projected.root_translation_m, copy=True),
+            "local_rotations_xyzw": np.array(projected.local_rotations_xyzw, copy=True),
+            "foot_contacts": np.array(projected.foot_contacts, copy=True),
+        }
         note = ""
         if mode == "control-overwrite-locals":
             names = list(projected.joint_names)
@@ -205,9 +216,9 @@ def install_watcher(mode: str, snapshots: Path, inputs: Path) -> dict:
         # against the delivered npz is a comparison of the same numbers and not of a cast.
         np.savez(
             snapshots / f"projection-snapshot-{index:02d}.npz",
-            root_translation_m=np.asarray(projected.root_translation_m),
-            local_rotations_xyzw=np.asarray(projected.local_rotations_xyzw),
-            foot_contacts=np.asarray(projected.foot_contacts),
+            root_translation_m=honest["root_translation_m"],
+            local_rotations_xyzw=honest["local_rotations_xyzw"],
+            foot_contacts=honest["foot_contacts"],
             joint_names=np.array(list(projected.joint_names)),
             pre_root_translation_m=np.asarray(track.root_translation_m),
             pre_local_rotations_xyzw=np.asarray(track.local_rotations_xyzw),
