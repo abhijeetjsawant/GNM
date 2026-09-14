@@ -206,3 +206,72 @@ Verified against the worktree: `d7c_gate_report.py:220` reads saved (b)-vs-(a) c
    Playback’s rounded **0.459/0.295 versus 0.665/1.311 mm** reproduces. B1’s revised attribution agrees with its recorded intervals; “only one of four cells” at [line 764](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:764) is inconsistent with the **two** positive articulation intervals.
 
 Read-only throughout. Gate and B6 regenerated in memory; B1 was checked against its artifact, without rerendering.
+
+---
+
+# Merge review round 4 — 2026-09-14, at ladder/D7c 1673e6b. Verdict: NO MERGE (two blockers)
+
+Verified: `d7c_gate_report.py:350/358` accept empty G1/G2 body maps and a missing seed; `:433` and `:421` read saved maxima instead of the per-seed / per-run measurements; `:487` checks `len(cells) == 8`, not the eight named cells; `:570` prints a null for a removed field; `d7c_delivered_bytes.py:334` transforms the rest centroid with the averaged matrix, which is not the centroid of the transformed vertices under varying weights (Astra's rigid two-bone counter-example flips with a vertex swap; the candidate's ranges move 274–326 → 265–313 and 45–344 → 72–340); all four pinning tests use one constant affine skin; `pelvis-rest-2026-09-14.md:838` keeps the "coin toss" Kabsch claim, `:764` the false bold sentence; the closure medians are 3e-6 / 4e-6°, not 3e-6 for both.
+
+| # | finding | change |
+|---|---|---|
+| 1 | five more mutations pass (empty G1 / G2 maps, a missing G2 seed, a failing oracle P2 seed hidden by the global summary, a failing take run hidden by the subject maximum, a renamed B1 cell) | named populations and cells required everywhere; every maximum derived from, or cross-checked against, its constituent measurements |
+| 2 | the carried-tetrahedron test is not a sound LBS inversion classifier (varying weights) | after three unsound classifiers the measurement is QUALIFIED as a proxy with its failure modes stated and no inversion claim (Astra's round-3 allowance); the sound skinning-Jacobian measurement (Kavan eq. 17) is D6's instrument |
+| 4 | the Kabsch "coin toss" text, the false B1 sentence, the closure medians, the null B6 row | all corrected |
+
+---
+
+**NO MERGE at `1673e6b`. Two blockers remain, both confidence 10/10: gate enforcement and the inversion classifier.**
+
+1. **The gate still accepts missing evidence and contradictory measurements.**
+
+   I reproduced the saved MERGE verdict and **31/31 committed mutations detected**. These additional mutations, applied independently in memory, still return **MERGE**:
+
+   | New input mutation | Deciding line |
+   |---|---|
+   | Empty G1’s six-body map | `all(... for row in g1.values())` accepts zero bodies. [Line 350](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:350) |
+   | Empty G2’s six-body map—or remove only seed `20260903` | Per-body checks have no coverage requirement; retained aggregate medians pass. [Line 358](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:358) |
+   | Set oracle seed `20260903`’s `worst_travel_m` to **0.001 m**, with FAIL and a failing run; retain the global summary | `worst_o = oracle_p2["worst_travel_m_over_all_seeds"]` ignores the failing seed’s measurement. [Line 433](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:433) |
+   | Set the take’s first LeftFoot run to **0.001 m**, `holds=False`; retain the subject summary | Reads the saved subject maximum instead of the run measurements. [Line 421](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:421) |
+   | Rename performer 0’s required arm/whole-take B1 cell to `clause_duplicate` | Coverage checks `len(cells) == 8`, not the eight required identities. [Line 487](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:487) |
+
+   Require the named populations/cells and derive or cross-check maxima against their constituent measurements. The five round 3 examples are repaired; the general enforcement requirement remains unfinished.
+
+2. **The carried tetrahedron is sound for a constant affine transformation, but this implementation is not a sound general LBS inversion classifier.**
+
+   The deciding line is:
+
+   ```python
+   posed_d = apply(triangle_matrices, fourth)
+   ```
+
+   [Line 334](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:334).
+
+   With varying weights, transforming the rest centroid with the average matrix does **not** produce the centroid of the transformed vertices. That displacement contaminates the signed volume independently of the normal offset. A skinning Jacobian must account for spatially varying weights. [Kavan’s derivation, equation 17](https://skinning.org/direct-methods.pdf).
+
+   **New counterexample:** triangle `(0,0,0), (1,0,0), (0,1,0)`; two bones, identity and `Rx(60°)`; weights `(1,0), (1,0), (0,1)`. Every delivered vertex equals the same proper rigid rotation of its rest vertex. With barycentrically interpolated weights, the deformation’s Jacobian determinant at the centroid is **0.722222**, positive. Nevertheless:
+
+   - Original order: **inverted**.
+   - Swap the first two vertices: **uninverted**.
+
+   This also affects the actual candidate:
+
+   | Candidate | Recorded sampled range | After swapping two vertices |
+   |---|---:|---:|
+   | Performer 0 | 274–326 | **265–313** |
+   | Performer 1 | 45–344 | **72–340** |
+
+   All four committed tests use **one constant affine skin**, which removes the problematic centroid displacement. [Test fixture](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tests/test_pelvis_rest.py:344).
+
+   **The ranges reproduce exactly as outputs of this classifier; they do not establish inversion counts.** Consequently, the current B6 text still overclaims despite withdrawing the mechanism and tearing language. Repair the measurement or explicitly qualify it as a proxy, as round 3 allowed. No deformation acceptance band is needed.
+
+On question 4:
+
+- **The Kabsch correction was missed.** The document still says planar points make the determinant’s sign “a coin toss.” I again reproduced a proper planar Kabsch rotation with determinant **+1**, RSSD **0**. [Retained claim](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:838).
+- **The B1 correction’s bold sentence remains false:** “only PERFORMER 1’s two shares straddle zero.” Performer 0’s root shares also straddle zero, as the following sentence correctly states. [Line 764](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-2026-09-14.md:764).
+- **Rotational closure is now reconstructed appropriately.** Candidate medians reproduce as **3e-6° / 4e-6°**, maxima **1.1e-5° / 1.4e-5°**—not 3e-6° for both performers. [Performer 1 artifact](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/b6-delivered-bytes.json:806).
+- The generated gate’s B6 row still requests the removed `inverted_triangles_frame_relative` field and prints **null**. [Line 570](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:570).
+
+I regenerated **every B6 JSON value exactly**, including ranges, ever/always counts, joint percentages, area/edge statistics and closure. Focused tests: **36 passed**. I did not rerun the full suite or independently recheck the two pre-existing failures.
+
+Read-only throughout; worktree unchanged; `git diff 9dda9ac -- src/` remains empty.
