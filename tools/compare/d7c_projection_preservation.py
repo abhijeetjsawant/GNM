@@ -261,6 +261,11 @@ def oracle_anchor_lock(save: Path, arm: str = "src_default") -> dict:
             "runs": len(rows), "contacts": [int(v) for v in mask.sum(0)],
             "worst_travel_m": worst,
             "verdict": "PASS" if all(r["holds"] for r in rows) else "FAIL",
+            # EVERY RUN'S OWN MEASUREMENT, not just the count and the summary. A gate that
+            # reads `worst_travel_m` believes a number the report computed about itself;
+            # Astra's round 4 moved one seed's summary and left the runs untouched. These
+            # rows are what the gate re-derives its maximum from.
+            "run_measurements": rows,
             "failing_runs": [r for r in rows if not r["holds"]]}
         print(f"  oracle P2 {seed}: {len(rows)} runs, worst {worst:.3e} m -> "
               f"{block['seeds'][str(seed)]['verdict']}")

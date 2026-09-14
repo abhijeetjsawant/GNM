@@ -69,6 +69,30 @@ CALIBRATION_BRACKET = (0.10, 1.00)
 TIE_DEG, TIE_MM = 0.1, 0.1
 ORACLE_SEEDS = ("20260903", "20260904", "20260905", "20260906", "20260907", "20260908")
 PERFORMERS = ("subject_00", "subject_01")
+B1_CELLS = tuple(f"clause_{part}_{cut}_worsening_not_established_vs_D9b"
+                 for part in ("arm", "torso")
+                 for cut in ("whole_take", "bent_tercile"))
+FOOT_PAIRS = (("LeftFoot", "LeftToes"), ("RightFoot", "RightToes"))
+
+
+def median(values):
+    """The median of a list, computed here rather than read from a report."""
+    ordered = sorted(values)
+    if not ordered:
+        return float("nan")
+    middle = len(ordered) // 2
+    return (ordered[middle] if len(ordered) % 2
+            else 0.5 * (ordered[middle - 1] + ordered[middle]))
+
+
+def run_maximum(runs):
+    """The worst anchor travel over a list of run rows, from the runs' own numbers."""
+    worst = 0.0
+    for row in runs:
+        for key, value in row.items():
+            if key.endswith("_max_m"):
+                worst = max(worst, float(value))
+    return worst
 DELIVERED_FILES = tuple(
     f"subject-{s:02d}{suffix}" for s in (0, 1)
     for suffix in (".glb", ".body-track.json", ".body-track.npz", ".mapping.npz"))
@@ -307,12 +331,14 @@ def build(r: dict) -> dict:
             "DERIVED from the six aggregated medians and the tie rule, and cross-checked "
             "against the mode the file says it ships: a decision the numbers do not support "
             "is a SPLIT, and the card says a SPLIT STOPS the step.")
-        if rebuilt != re_.get("b_vs_a"):
-            add("S REREAD: the saved (a)/(b) classifications agree with the numbers",
-                "the recomputed cells equal the stored ones",
-                f"recomputed {rebuilt} against stored {re_.get('b_vs_a')}", "FAIL",
-                "a stored classification that disagrees with its own numbers is a corrupted "
-                "report, and the gate must not prefer either one silently")
+        stored_cells = re_.get("b_vs_a", {})
+        add("S REREAD: the saved (a)/(b) classifications agree with the numbers",
+            "the recomputed cells equal the stored ones",
+            ("they agree" if rebuilt == stored_cells
+             else f"recomputed {rebuilt} against stored {stored_cells}"),
+            verdict(rebuilt == stored_cells),
+            "a stored classification that disagrees with its own numbers is a corrupted "
+            "report, and the gate must not prefer either one silently")
         winner_arm = re_.get("winner", {}).get("arm", "a_kabsch_guarded")
         beats = []
         for population in ("whole_take", "bent_tercile"):
@@ -347,31 +373,57 @@ def build(r: dict) -> dict:
             f"{max(v['follower_i_deg'] for v in fol.values()):.2f} deg",
             verdict(ok), "the clause that stopped the step at sigma 1.0")
         g1 = re_["G1_missing_only"]["bodies"]
-        holds = all((not row["effective_masks_identical"])
-                    or row["interpolated_arrays_bit_identical"] for row in g1.values())
+        # COVERAGE BY IDENTITY. `all(...)` over an empty map is True, so the six bodies are
+        # named and checked by identity rather than counted.
+        holds = (set(g1) == set(ORACLE_SEEDS)
+                 and all((not row["effective_masks_identical"])
+                         or row["interpolated_arrays_bit_identical"] for row in g1.values()))
         add("G1 (missing-only): identical masks and retained samples => bit-identical ARRAYS",
-            "holds on every body", f"{sum(1 for row in g1.values() if not row['effective_masks_identical'])} "
-            f"of {len(g1)} bodies have a different effective mask; identity holds wherever "
-            "the masks agree", verdict(holds),
+            f"holds on all {len(ORACLE_SEEDS)} named bodies",
+            f"{len(g1)} of {len(ORACLE_SEEDS)} bodies present; "
+            f"{sum(1 for row in g1.values() if not row['effective_masks_identical'])} "
+            "have a different effective mask; identity holds wherever the masks agree",
+            verdict(holds),
             "an EQUIVALENCE and an error measurement; no superiority claim")
         g2 = re_["G2_finite_only"]
+        bodies = g2["bodies"]
+        g2_covered = set(bodies) == set(ORACLE_SEEDS)
         per_i = all(row["guarded"]["i_on_corrupted_frames_deg"]
                     < row["unguarded"]["i_on_corrupted_frames_deg"]
-                    for row in g2["bodies"].values())
+                    for row in bodies.values())
         per_ii = all(row["guarded"]["ii_on_transition_pairs_deg"]
                      < row["unguarded"]["ii_on_transition_pairs_deg"]
-                     for row in g2["bodies"].values())
-        med = g2["median_of_six"]
+                     for row in bodies.values())
+        # THE AGGREGATE IS RECOMPUTED FROM THE PER-BODY VALUES, never read. Astra's round 4
+        # removed one body and the STORED median still passed on the five that remained.
+        med = {
+            "guarded_i_deg": median([row["guarded"]["i_on_corrupted_frames_deg"]
+                                     for row in bodies.values()]),
+            "unguarded_i_deg": median([row["unguarded"]["i_on_corrupted_frames_deg"]
+                                       for row in bodies.values()]),
+            "guarded_ii_deg": median([row["guarded"]["ii_on_transition_pairs_deg"]
+                                      for row in bodies.values()]),
+            "unguarded_ii_deg": median([row["unguarded"]["ii_on_transition_pairs_deg"]
+                                        for row in bodies.values()]),
+        }
         add("G2 (finite-only): the guard beats the unguarded winner on BOTH (i) and (ii), every body",
             "both metrics, every body and the median of six",
-            f"(i) {med['guarded_i_deg']} vs {med['unguarded_i_deg']} deg; (ii) "
-            f"{med['guarded_ii_deg']} vs {med['unguarded_ii_deg']} deg; per-body wins "
-            f"{per_i} / {per_ii}",
-            verdict(per_i and per_ii
+            f"{len(bodies)} of {len(ORACLE_SEEDS)} bodies; recomputed medians (i) "
+            f"{med['guarded_i_deg']:.5f} vs {med['unguarded_i_deg']:.5f} deg, (ii) "
+            f"{med['guarded_ii_deg']:.5f} vs {med['unguarded_ii_deg']:.5f} deg; per-body "
+            f"wins {per_i} / {per_ii}",
+            verdict(g2_covered and per_i and per_ii
                     and med["guarded_i_deg"] < med["unguarded_i_deg"]
                     and med["guarded_ii_deg"] < med["unguarded_ii_deg"]),
             "where the guard EARNS its place: on the clean fixture it rejects almost nothing "
             "and cannot lose, so its win in S's main arms proves nothing about it")
+        stored_med = g2.get("median_of_six", {})
+        add("G2: the stored median-of-six agrees with the per-body values",
+            "stored == recomputed",
+            f"stored {stored_med}; recomputed "
+            + str({k: round(v, 5) for k, v in med.items()}),
+            verdict(all(abs(stored_med.get(k, float('nan')) - v) <= 1e-4
+                        for k, v in med.items())))
         wv = re_.get("world_vertical_vs_truth_tilt", {})
         if wv:
             add("the world-vertical control against the truth PELVIS's own tilt", "REPORT",
@@ -418,25 +470,58 @@ def build(r: dict) -> dict:
             f"{len(subjects)} of {len(PERFORMERS)} performers; failing "
             + str({s: row["P1_channel_preservation"]["failing_channels"]
                    for s, row in subjects.items()}), verdict(p1_ok))
-        worst = max(row["P2_anchor_lock"]["worst_travel_m"] for row in subjects.values())
+        # DERIVED FROM THE RUNS, not from the saved subject maximum: Astra's round 4 set one
+        # run to 1 mm with holds=False and left the summary alone.
+        worst = max((run_maximum(row["P2_anchor_lock"]["runs"])
+                     for row in subjects.values()), default=0.0)
+        all_hold = all(run["holds"] for row in subjects.values()
+                       for run in row["P2_anchor_lock"]["runs"])
         p2_covered = set(subjects) == set(PERFORMERS)
         add("P2 anchor lock -- the delivery, every accepted run, on the GLB's own arrays",
             f"<= {CONTACT_TOLERANCE_M} m at every run's first KEYED sample",
             f"worst {worst:.3e} m over {len(subjects)} of {len(PERFORMERS)} performers; runs "
             + str({s: len(row["P2_anchor_lock"]["runs"]) for s, row in subjects.items()}),
-            verdict(p2_covered and worst <= CONTACT_TOLERANCE_M))
+            verdict(p2_covered and all_hold and worst <= CONTACT_TOLERANCE_M))
+        # CROSS-CHECK, per Astra's general rule: an aggregate is derived from its
+        # constituents OR cross-checked against them. A stored summary that disagrees with
+        # its own runs is a corrupted report, and the gate must say so rather than quietly
+        # preferring one of the two.
+        stored = {s_: row["P2_anchor_lock"]["worst_travel_m"] for s_, row in subjects.items()}
+        derived = {s_: run_maximum(row["P2_anchor_lock"]["runs"])
+                   for s_, row in subjects.items()}
+        agree = all(abs(stored[s_] - derived[s_]) <= 1e-12 for s_ in stored)
+        add("P2 on the take: the stored per-subject maxima agree with their own runs",
+            "stored == derived", f"stored {stored}; derived {derived}", verdict(agree),
+            "a summary that disagrees with the measurements it summarises is a corrupted "
+            "report, whichever of the two happens to pass")
         add("P3 planted-foot travel on the frozen UNION of both builds' runs", "REPORT",
             f"{sum(len(row['P3_travel_report']['intervals']) for row in subjects.values())} "
             "intervals", "REPORT")
         oracle_p2 = proj.get("P2_on_the_oracle_bodies", {})
         if oracle_p2:
-            worst_o = oracle_p2["worst_travel_m_over_all_seeds"]
-            oracle_p2_covered = set(oracle_p2["seeds"]) == set(ORACLE_SEEDS)
+            # DERIVED PER SEED FROM ITS OWN RUNS. Astra's round 4 set one seed's
+            # `worst_travel_m` to 1 mm with a failing run and left the global summary alone.
+            seeds_p2 = oracle_p2["seeds"]
+            worst_o = max((run_maximum(row.get("run_measurements", []))
+                           for row in seeds_p2.values()), default=0.0)
+            all_hold_o = all(run["holds"] for row in seeds_p2.values()
+                             for run in row.get("run_measurements", []))
+            have_runs = all(row.get("run_measurements") for row in seeds_p2.values())
+            oracle_p2_covered = set(seeds_p2) == set(ORACLE_SEEDS)
             add("P2 anchor lock on EVERY ORACLE BODY, from each exported GLB's own arrays",
                 f"<= {CONTACT_TOLERANCE_M} m on all {len(ORACLE_SEEDS)} seeds",
-                f"worst {worst_o:.3e} m over {len(oracle_p2['seeds'])} seeds; runs "
-                + str({k: v["runs"] for k, v in oracle_p2["seeds"].items()}),
-                verdict(oracle_p2_covered and worst_o <= CONTACT_TOLERANCE_M))
+                f"worst {worst_o:.3e} m re-derived from the runs over "
+                f"{len(seeds_p2)} of {len(ORACLE_SEEDS)} seeds; runs "
+                + str({k: len(v.get("run_measurements", [])) for k, v in seeds_p2.items()}),
+                verdict(oracle_p2_covered and have_runs and all_hold_o
+                        and worst_o <= CONTACT_TOLERANCE_M))
+            stored_o = {k: v["worst_travel_m"] for k, v in seeds_p2.items()}
+            derived_o = {k: run_maximum(v.get("run_measurements", []))
+                         for k, v in seeds_p2.items()}
+            add("P2 on the oracle bodies: the stored per-seed maxima agree with their runs",
+                "stored == derived on every seed",
+                f"stored {stored_o}; derived {derived_o}",
+                verdict(all(abs(stored_o[k] - derived_o[k]) <= 1e-12 for k in stored_o)))
     po = r["p_oracle"].get("seeds", {})
     if po:
         ok = (set(po) == set(ORACLE_SEEDS)
@@ -480,15 +565,21 @@ def build(r: dict) -> dict:
     # -------------------------------------------------------------------------- B1
     sil = r["silhouette"].get("preregistered_clause_verdicts", {})
     if sil:
-        cells = [(s, name, cell) for s, row in sil.items() if s.startswith("subject_")
-                 for name, cell in row.items() if name.startswith("clause_")]
+        # THE EIGHT CELLS ARE NAMED. Counting them let Astra's round 4 rename one to
+        # `clause_duplicate` and keep the count at eight.
+        present = {performer: set(row) for performer, row in sil.items()
+                   if performer.startswith("subject_")}
+        b1_covered = (set(present) == set(PERFORMERS)
+                      and all(set(B1_CELLS) <= names for names in present.values()))
+        cells = [(performer, name, sil[performer][name]) for performer in PERFORMERS
+                 for name in B1_CELLS
+                 if performer in sil and name in sil[performer]]
         upper = [cell["ci95"][1] >= 0.0 for _, _, cell in cells]
-        b1_covered = ({s for s in sil if s.startswith("subject_")} == set(PERFORMERS)
-                      and len(cells) == 8)
         add("B1 the photographs: worsening NOT ESTABLISHED (ci95 upper bound >= 0), 8 cells",
             "ci95[1] >= 0 on every cell",
-            f"{sum(upper)} of {len(upper)} cells with the upper bound at or above zero, "
-            f"over {len({s for s in sil if s.startswith('subject_')})} performers",
+            f"{sum(upper)} of {len(upper)} NAMED cells with the upper bound at or above "
+            f"zero, over {len(present)} of {len(PERFORMERS)} performers "
+            f"({len(B1_CELLS) * len(PERFORMERS)} named cells required)",
             verdict(b1_covered and all(upper)),
             "it does NOT establish non-worsening; a wide interval passes it for want of power")
         oracle_cell = sil.get("clause_mamma_mesh_oracle", {})
@@ -617,6 +708,8 @@ S_STOPS = (
     "S REREAD: the frozen-pitch follower",
     "G1 (missing-only)",
     "G2 (finite-only)",
+    "G2: the stored median-of-six agrees with the per-body values",
+    "S REREAD: the saved (a)/(b) classifications agree with the numbers",
 )
 MUST_FAILS = (
     "REFACTOR TRIPWIRE (ii)",
@@ -635,9 +728,11 @@ CONJUNCTS = (
     ("every must-fail still fails", MUST_FAILS),
     ("P1 on the take",
      ("P1 channel preservation", "the UNMUTATED delivery through the same comparison")),
-    ("P2 on the take", ("P2 anchor lock -- the delivery",)),
+    ("P2 on the take", ("P2 anchor lock -- the delivery",
+                        "P2 on the take: the stored per-subject maxima agree")),
     ("P1 on every oracle body", ("P1 on EVERY ORACLE BODY",)),
-    ("P2 on every oracle body", ("P2 anchor lock on EVERY ORACLE BODY",)),
+    ("P2 on every oracle body", ("P2 anchor lock on EVERY ORACLE BODY",
+                                 "P2 on the oracle bodies: the stored per-seed maxima")),
     ("S (every stop of the reread, G1 and G2 included)", S_STOPS),
     ("B1 on both performers, oracle included",
      ("B1 the photographs", "B1 the MAMMA mesh oracle")),
@@ -694,15 +789,36 @@ INPUT_MUTATIONS = (
     ("P1 on the take", "one protected channel is marked as differing on the delivery",
      lambda r: list(r["projection"]["subjects"].values())[0][
          "P1_channel_preservation"]["failing_channels"].append("local::LeftFoot")),
-    ("P2 on the take", "one accepted run's anchor travel is raised past 1e-5 m",
+    ("P2 on the take",
+     "ASTRA ROUND 4 (iv): the take's FIRST LeftFoot RUN set to 1 mm with holds=False, the "
+     "subject's saved maximum left untouched",
+     lambda r: list(r["projection"]["subjects"].values())[0][
+         "P2_anchor_lock"]["runs"][0].update(
+             {"LeftFoot_max_m": 1.0e-3, "LeftToes_max_m": 1.0e-3, "holds": False})),
+    ("P2 on the take",
+     "CROSS-CHECK: the take's saved subject maximum alone is raised past 1e-5 m, so the "
+     "summary and its own runs disagree",
      lambda r: _set(list(r["projection"]["subjects"].values())[0],
                     ("P2_anchor_lock", "worst_travel_m"), 1.0e-3)),
     ("P1 on every oracle body", "one oracle body's root is marked as not bit-identical",
      lambda r: _set(list(r["p_oracle"]["seeds"].values())[0],
                     ("root_bit_identical",), False)),
-    ("P2 on every oracle body", "the oracle anchor lock's worst travel is raised past 1e-5 m",
-     lambda r: _set(r["projection"]["P2_on_the_oracle_bodies"],
-                    ("worst_travel_m_over_all_seeds",), 1.0e-3)),
+    ("P2 on every oracle body",
+     "ASTRA ROUND 4 (iii): seed 20260903's own run set to 1 mm with holds=False and its "
+     "verdict FAIL, the GLOBAL summary left untouched",
+     lambda r: (r["projection"]["P2_on_the_oracle_bodies"]["seeds"]["20260903"][
+         "run_measurements"][0].update(
+             {"LeftFoot_max_m": 1.0e-3, "LeftToes_max_m": 1.0e-3, "holds": False}),
+                _set(r["projection"]["P2_on_the_oracle_bodies"]["seeds"]["20260903"],
+                     ("verdict",), "FAIL"))),
+    ("P2 on every oracle body",
+     "CROSS-CHECK: one oracle seed's stored maximum alone is raised, its runs untouched",
+     lambda r: _set(r["projection"]["P2_on_the_oracle_bodies"]["seeds"]["20260905"],
+                    ("worst_travel_m",), 1.0e-3)),
+    ("P2 on every oracle body",
+     "COVERAGE: one oracle seed's run measurements emptied, leaving its summary",
+     lambda r: _set(r["projection"]["P2_on_the_oracle_bodies"]["seeds"]["20260904"],
+                    ("run_measurements",), [])),
     ("S (every stop of the reread, G1 and G2 included)",
      "ASTRA'S OWN COUNTER-EXAMPLE: (b) vs (a) set to one-better/five-worse, S_verdict SPLIT",
      mutate_ab_split),
@@ -730,6 +846,19 @@ INPUT_MUTATIONS = (
      lambda r: [_set(row, ("median_of_six_guard_kept_sd_mm",), 9.7636)
                 for row in r["calibration"]["calibration"]["bisection"]["evaluations"]
                 if row["sigma_scale"] == 0.335547]),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "ASTRA ROUND 4 (i): COVERAGE -- G1's six-body map emptied, so `all({})` is vacuous",
+     lambda r: _set(r["reread"], ("G1_missing_only", "bodies"), {})),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "ASTRA ROUND 4 (ii): COVERAGE -- G2's six-body map emptied",
+     lambda r: _set(r["reread"], ("G2_finite_only", "bodies"), {})),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "ASTRA ROUND 4 (ii): only seed 20260903 removed from G2, the stored aggregate medians "
+     "left in place",
+     lambda r: r["reread"]["G2_finite_only"]["bodies"].pop("20260903")),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "CROSS-CHECK: G2's stored median-of-six moved while the per-body values stand",
+     lambda r: _set(r["reread"]["G2_finite_only"], ("median_of_six", "guarded_i_deg"), 0.1)),
     ("S (every stop of the reread, G1 and G2 included)",
      "COVERAGE: one of the six bodies removed from the follower table",
      lambda r: r["reread"]["frozen_pitch_follower_bent_tercile"].pop(
@@ -781,6 +910,13 @@ INPUT_MUTATIONS = (
          list(r["projection"]["P2_on_the_oracle_bodies"]["seeds"])[0])),
     ("P1 on the take", "COVERAGE: one performer removed from the take's P report",
      lambda r: r["projection"]["subjects"].pop("subject_01")),
+    ("B1 on both performers, oracle included",
+     "ASTRA ROUND 4 (v): performer 0's arm/whole-take cell RENAMED to `clause_duplicate`, "
+     "so the count stays at eight",
+     lambda r: r["silhouette"]["preregistered_clause_verdicts"]["subject_00"].__setitem__(
+         "clause_duplicate",
+         r["silhouette"]["preregistered_clause_verdicts"]["subject_00"].pop(
+             "clause_arm_whole_take_worsening_not_established_vs_D9b"))),
     ("B1 on both performers, oracle included",
      "COVERAGE: one performer removed from the silhouette verdicts",
      lambda r: r["silhouette"]["preregistered_clause_verdicts"].pop("subject_01")),
