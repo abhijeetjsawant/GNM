@@ -753,6 +753,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "card written 2026-09-14 after a pre-card measurement (tools/compare/precard/d7c_*.py): the D3 oracle's pelvis reads a constant 6.865 deg pitch from the SOMA template, Spine 21-28 mm, torso 9-12 mm, all 0.000 on the rig's own rest; reviewed by Astra GPT6 in four rounds (docs/reviews/pelvis-rest-astra-review-2026-09-14.md) -- do-not-dispatch three times, every finding adopted after verification against the source; worktree .claude/worktrees/ladder-D7c on ladder/D7c, one Opus agent: hygiene, instrument first, S the selector before the src change, two rig modes with S choosing, the guard, the projection-preservation contract"
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "D7c agent STOPPED at S before any src change (ladder/D7c d146aa3..8a82ee4): hygiene 8/8, instrument reproduces the pre-card; (a) E_rig_rest_kabsch wins all six selector cells and beats C-on-SOMA; the frozen-pitch follower clears 2 deg on every body but the >= 2x clause fails on 5 of 6 (ratios 1.45-2.74) -- attributed to the fixture's noise (lever sd 20 mm vs the take's 6.6/11.1; D7's own report recorded the same 1.7-2.9x). Fixture-repair question (calibrate sigma to the take's own lever spread, the larger performer, src untouched, band untouched) sent to Astra as round 5."
     }
   ]
 }
