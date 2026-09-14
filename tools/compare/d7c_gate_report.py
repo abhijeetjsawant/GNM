@@ -4,10 +4,10 @@
 IT COMPUTES NOTHING AND IT ASSERTS NOTHING. It loads the reports each instrument wrote and
 DERIVES every verdict from the numbers in them.
 
-WHY THIS FILE HAS THREE RULES RATHER THAN A LIST OF PATCHES. Astra's merge review broke it in
-four successive rounds -- literal verdicts, then saved classifications, then partial
-populations, then stored aggregates -- and each round was answered hole by hole. The fifth
-round found six more. The holes were never the problem; the absence of a rule was. So:
+WHY THIS FILE HAS FOUR RULES RATHER THAN A LIST OF PATCHES. Astra's merge review broke it in
+six successive rounds -- literal verdicts, then saved classifications, then partial
+populations, then stored aggregates, then four unread leaves, then four more -- and each round
+was answered hole by hole. The holes were never the problem; the absence of a rule was. So:
 
   1. EVERY VALUE IS DERIVED FROM NAMED CONSTITUENTS, OR CROSS-CHECKED AGAINST THEM. An
      aggregate the gate reads without recomputing is an aggregate an attacker can write.
@@ -19,9 +19,19 @@ round found six more. The holes were never the problem; the absence of a rule wa
      `Reader`, which raises on an absent path, and the clause that needed it FAILS with the
      path named.
   3. EVERY SET IS CHECKED BY IDENTITY, NOT BY COUNT. The eight delivered files, the six oracle
-     seeds, the two performers, the eight B1 cells, the six G1/G2/follower bodies, and the
-     contact RUNS by their `(side, start, end)` identity taken from the frozen mask. A renamed
-     cell, a duplicated run and a dropped seed all survive a count.
+     seeds, the two performers, the eight B1 cells, the six G1/G2/follower bodies, the six
+     oracle arms, the seven S arms, and the contact RUNS by their `(side, start, end)`
+     identity taken from the frozen mask. A renamed cell, a duplicated run and a dropped seed
+     all survive a count.
+  4. EVERY MEASUREMENT LEAF IS READ OR JUSTIFIED BY NAME. Rules 1-3 say what the gate does
+     with what it reads; round 7 was about what it does not read at all. So `coverage_audit`
+     classifies every leaf no clause touches -- LABEL / PROVENANCE / DIAGNOSTIC / MEASUREMENT
+     -- and every MEASUREMENT leaf under a report some clause reads must be named by a family
+     in `UNREAD_MEASUREMENTS_JUSTIFIED`, or the gate reads NO MERGE. `saved_value_inventory`
+     does the same for the other direction: every boolean and string the gate CONSUMES
+     without deriving or cross-checking it, generated from the Reader's own record rather
+     than written from memory, must be named in `TRUSTED_READ_JUSTIFICATIONS`. A
+     justification that matches nothing is reported too -- a stale cover is a hole.
 
 AND IT IS PROVED RATHER THAN ASSERTED. `tools/compare/d7c_gate_fuzz.py` walks every leaf of
 every report this gate reads, mutates each one in turn, and requires NO MERGE from every leaf
@@ -38,6 +48,7 @@ recorded as POST HOC.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 from pathlib import Path
 
@@ -76,6 +87,13 @@ TIE_DEG, TIE_MM = 0.1, 0.1
 AGREEMENT = 1.0e-4                      # stored-vs-derived agreement, in each row's own unit
 
 ORACLE_SEEDS = ("20260903", "20260904", "20260905", "20260906", "20260907", "20260908")
+# The oracle's arms BY NAME, the fixture's length, and the mode the delivery ships. `src` is
+# measured as `src_default`; S chose `E_rig_rest_kabsch`; the gate requires the two to be the
+# same arm leaf for leaf rather than the same label.
+ORACLE_ARMS = ("src_default", "C_soma_template", "wrong_origin", "D_rig_rest_hipline",
+               "E_rig_rest_kabsch", "frozen_upright")
+ORACLE_FRAMES = 150
+PELVIS_MODE_SHIPPED = "E_rig_rest_kabsch"
 PERFORMERS = ("subject_00", "subject_01")
 DELIVERED_FILES = tuple(
     f"subject-{s:02d}{suffix}" for s in (0, 1)
@@ -93,6 +111,12 @@ POPULATIONS = ("whole_take", "bent_tercile")
 # the tercile's 50 frames are not contiguous. (Astra's round 6 wrote 49; every one of the 42
 # body x arm rows in the reread carries 47, and the card's own pair rule is why.)
 S_POPULATION = {"whole_take": (150, 149), "bent_tercile": (50, 47)}
+# S's arms BY NAME -- the two candidates, the unguarded variant, C-on-SOMA and the three
+# controls -- and the sigma the calibration accepted. Every arm's population is validated,
+# including the arms no clause bands.
+REREAD_ARMS = ("b_hipline_guarded", "a_kabsch_guarded", "b_hipline_unguarded", "C_on_SOMA",
+               "world_vertical", "thorax_as_pelvis", "frozen_pitch_follower")
+ACCEPTED_SIGMA = 0.335546875
 # What each P1 control must fail, BY NAME. "some nonempty list" is satisfied by a channel the
 # control never touches.
 CONTROL_CHANNELS = {
@@ -111,6 +135,21 @@ METRICS = (("i_orientation_deg", TIE_DEG), ("ii_step_deg", TIE_DEG),
            ("iii_root_step_mm", TIE_MM))
 
 
+def kind_of(node) -> str:
+    """One naming of the kinds, shared by the Reader and by the fuzzer's walk."""
+    if isinstance(node, dict):
+        return "map"
+    if isinstance(node, list):
+        return "list"
+    if isinstance(node, bool):
+        return "bool"
+    if isinstance(node, (int, float)):
+        return "number"
+    if isinstance(node, str):
+        return "string"
+    return "other"
+
+
 class Missing(Exception):
     """An absent path, an absent set member, or a value of the wrong kind."""
 
@@ -121,6 +160,11 @@ class Reader:
     def __init__(self, reports: dict) -> None:
         self.reports = reports
         self.touched: set[tuple] = set()
+        # what KIND each read leaf was, and which reads were cross-checked against a value
+        # derived from the leaf's own constituents. The saved-boolean inventory is generated
+        # from these two sets, so it is what the gate DOES and not what its author recalls.
+        self.kinds: dict[tuple, str] = {}
+        self.cross_checked: set[tuple] = set()
 
     def at(self, *path):
         node = self.reports
@@ -135,8 +179,32 @@ class Reader:
                 node = node[step]
             else:
                 raise Missing("/".join(map(str, path)))
-        self.touched.add(tuple(map(str, path)))
+        key = tuple(map(str, path))
+        self.touched.add(key)
+        self.kinds[key] = kind_of(node)
         return node
+
+    def checked(self, *path, derived, tolerance=None):
+        """A stored summary READ AND CROSS-CHECKED against a value derived from the
+        constituents beside it. A disagreement is a FAIL: a report that contradicts itself is
+        corrupt whichever half would have passed. Recorded, so the inventory is mechanical."""
+        value = self.at(*path)
+        if tolerance is None:
+            ok = value == derived
+        else:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise Missing("/".join(map(str, path)) + " is not a number")
+            ok = agrees(value, derived, tolerance)
+        if not ok:
+            raise Missing(f"{'/'.join(map(str, path))} stores {value!r} against {derived!r} "
+                          "derived from its own constituents")
+        self.cross_checked.add(tuple(map(str, path)))
+        return value
+
+    def note_cross_checked(self, *path) -> None:
+        """Record a leaf that was checked by comparison with ANOTHER leaf rather than with a
+        derived value -- the two halves of an equality are each other's cross-check."""
+        self.cross_checked.add(tuple(map(str, path)))
 
     def num(self, *path) -> float:
         value = self.at(*path)
@@ -163,11 +231,25 @@ class Reader:
             raise Missing(f"{'/'.join(map(str, path))} keys {sorted(node) if isinstance(node, dict) else node!r} != {sorted(expect)}")
         return node
 
-    def listing(self, *path, minimum=1):
+    def listing(self, *path, minimum=1, elements=False):
+        """A list. `elements=True` says the caller consumes the VALUES, not just the length,
+        and records each scalar element as read -- otherwise a banded `ci95[1]` would look
+        unread to the coverage audit while the clause bands it. Left False where a clause
+        only counts the list, so that a count is never mistaken for a reading."""
         node = self.at(*path)
         if not isinstance(node, list) or len(node) < minimum:
             raise Missing(f"{'/'.join(map(str, path))} is not a list of >= {minimum}")
+        if elements:
+            self._record_scalars(node, tuple(map(str, path)))
         return node
+
+    def _record_scalars(self, node, prefix) -> None:
+        if isinstance(node, list):
+            for index, value in enumerate(node):
+                self._record_scalars(value, prefix + (str(index),))
+        elif not isinstance(node, dict):
+            self.touched.add(prefix)
+            self.kinds[prefix] = kind_of(node)
 
 
 def median(values):
@@ -206,15 +288,42 @@ def build(reports: dict) -> dict:
         return wrap
 
     # ------------------------------------------------------------- hygiene and the tripwire
+    def built_here(report_key):
+        """THE PYTHONPATH TRAP, checked rather than assumed. `.venv` is shared with the main
+        checkout and `autoanim_gnm` is installed editable there, so a report can be a perfect
+        measurement OF THE WRONG SOURCE TREE. Every build report records the module it
+        resolved; it must live under this worktree."""
+        module = r.text(report_key, "resolved_module")
+        if not module.startswith(str(ROOT) + "/"):
+            raise Missing(f"{report_key}/resolved_module {module!r} is outside {ROOT}")
+        return module
+
     def eight_files(report_key, label):
-        node = r.named(report_key, "hygiene", "delivered_files_vs_shipped",
-                       expect=DELIVERED_FILES)
-        equal = {name: r.text(report_key, "hygiene", "delivered_files_vs_shipped", name,
-                              "rebuild")
-                 == r.text(report_key, "hygiene", "delivered_files_vs_shipped", name,
-                           "shipped")
-                 for name in DELIVERED_FILES}
-        return (f"{sum(equal.values())} of {len(DELIVERED_FILES)} named files equal {label}",
+        r.named(report_key, "hygiene", "delivered_files_vs_shipped", expect=DELIVERED_FILES)
+        equal = {}
+        for name in DELIVERED_FILES:
+            base = (report_key, "hygiene", "delivered_files_vs_shipped", name)
+            rebuilt, shipped = r.text(*base, "rebuild"), r.text(*base, "shipped")
+            equal[name] = rebuilt == shipped
+            # the per-file `identical` is a SUMMARY of the two hashes beside it.
+            r.checked(*base, "identical", derived=equal[name])
+        # and `all_delivered_files_identical` is a summary of those eight.
+        r.checked(report_key, "hygiene", "all_delivered_files_identical",
+                  derived=all(equal.values()))
+        # the observations the build consumed, and the copy rule that keeps a build from
+        # writing through a symlink into the shipped tree.
+        premises = {
+            "observations before/after": r.flag(report_key, "hygiene",
+                                                "observations_byte_identical_before_and_after_the_build"),
+            "observations vs shipped": r.flag(report_key, "hygiene",
+                                              "observations_byte_identical_to_the_shipped_build"),
+            "work copied never symlinked": r.flag(report_key, "work_copied_never_symlinked"),
+        }
+        failed = sorted(k for k, v in premises.items() if not v)
+        if failed:
+            raise Missing(f"{report_key} build premises failed: {failed}")
+        return (f"{sum(equal.values())} of {len(DELIVERED_FILES)} named files equal {label}, "
+                f"from {built_here(report_key)[len(str(ROOT)) + 1:]}",
                 all(equal.values()))
 
     @clause("hygiene: today's code rebuilds the shipped delivery byte-identically",
@@ -243,6 +352,88 @@ def build(reports: dict) -> dict:
     def over_seeds(name, *path):
         r.named("oracle", "oracle", "seeds", expect=ORACLE_SEEDS)
         return {seed: arm(seed, name, *path) for seed in ORACLE_SEEDS}
+
+    def deep_equal(path_a, path_b, *, ignore=()):
+        """Two subtrees compared LEAF BY LEAF THROUGH THE READER, so every leaf of both counts
+        as read and a difference anywhere is named."""
+        node = r.at(*path_a)
+        if isinstance(node, dict):
+            other = r.at(*path_b)
+            keys = set(node) - set(ignore)
+            if not isinstance(other, dict) or keys != set(other) - set(ignore):
+                raise Missing(f"{'/'.join(map(str, path_a))} and {'/'.join(map(str, path_b))}"
+                              f" do not carry the same fields")
+            for key in sorted(keys):
+                deep_equal((*path_a, key), (*path_b, key))
+            return
+        if isinstance(node, list):
+            other = r.listing(*path_b, minimum=0)
+            if len(other) != len(node):
+                raise Missing(f"{'/'.join(map(str, path_a))} and {'/'.join(map(str, path_b))}"
+                              f" differ in length ({len(node)} vs {len(other)})")
+            for index in range(len(node)):
+                deep_equal((*path_a, index), (*path_b, index))
+            return
+        if node != r.at(*path_b):
+            raise Missing(f"{'/'.join(map(str, path_a))} is {node!r} and "
+                          f"{'/'.join(map(str, path_b))} is {r.at(*path_b)!r}")
+        r.note_cross_checked(*path_a)
+        r.note_cross_checked(*path_b)
+
+    @clause("O1/O2 PREMISES: the six named arms, their populations, and the shipping path's "
+            "identity with the named estimator",
+            f"all {len(ORACLE_ARMS)} arms present on all {len(ORACLE_SEEDS)} seeds, "
+            f"{ORACLE_FRAMES} frames each, and `src_default` == `E_rig_rest_kabsch` leaf for "
+            "leaf",
+            "the arms the O clauses read are only as good as the fixture under them: a "
+            "missing arm, a short take, or a src path that is no longer the estimator S "
+            "chose would each leave every O band measuring something else")
+    def _():
+        r.named("oracle", "oracle", "seeds", expect=ORACLE_SEEDS)
+        shipping = r.text("oracle", "pelvis_frame_source_in_src")
+        built_here("oracle")
+        for seed in ORACLE_SEEDS:
+            r.named("oracle", "oracle", "seeds", seed, "arms", expect=ORACLE_ARMS)
+            for name in ORACLE_ARMS:
+                frames = int(r.num("oracle", "oracle", "seeds", seed, "arms", name,
+                                   "pelvis_vs_truth_deg", "angle", "n"))
+                if frames != ORACLE_FRAMES:
+                    raise Missing(f"oracle/{seed}/{name} is scored over {frames} frames, not "
+                                  f"the fixture's {ORACLE_FRAMES}")
+            # THE SHIPPING PATH IS THE NAMED ESTIMATOR, leaf for leaf and not by label. Every
+            # O band is measured on `src_default`; S chose `E_rig_rest_kabsch`. If those two
+            # were ever to part company the O clauses would be scoring an arm S never ranked.
+            deep_equal(("oracle", "oracle", "seeds", seed, "arms", "src_default"),
+                       ("oracle", "oracle", "seeds", seed, "arms", "E_rig_rest_kabsch"),
+                       ignore=("arm",))
+            mode = r.text("oracle", "oracle", "seeds", seed, "arms", "src_default",
+                          "pelvis_report", "mode")
+            if mode != shipping:
+                raise Missing(f"oracle/{seed}/src_default reports mode {mode!r} against "
+                              f"pelvis_frame_source_in_src {shipping!r}")
+            # the fixture's own landmark contract: the root landmark IS the hip midpoint and
+            # the spine landmark IS the rig's `Spine` joint.
+            offset = r.num("oracle", "oracle", "seeds", seed,
+                           "root_landmark_is_the_hip_midpoint_to_mm")
+            if offset > 1e-6 or not r.flag("oracle", "oracle", "seeds", seed,
+                                           "spine_landmark_is_the_rigs_Spine_joint"):
+                raise Missing(f"oracle/{seed} landmark contract: root offset {offset} mm")
+        return (f"{len(ORACLE_ARMS)} arms x {len(ORACLE_SEEDS)} seeds at {ORACLE_FRAMES} "
+                f"frames; src_default == E_rig_rest_kabsch leaf for leaf; ships {shipping!r}",
+                shipping == PELVIS_MODE_SHIPPED)
+
+    @clause("O1/O2 PREMISES: the bands the instrument recorded ARE the bands this gate states",
+            "the five O bands equal, to the digit")
+    def _():
+        stated = {"O1_tilt_deg": O1_TILT_DEG, "O1_origin_mm": O1_ORIGIN_MM,
+                  "O1_residual_m": O1_RESIDUAL_M, "O2_leg_mm": O2_LEG_MM,
+                  "O2_hoist_mm": O2_HOIST_MM}
+        r.named("oracle", "bands", expect=stated)
+        for name, value in stated.items():
+            if r.num("oracle", "bands", name) != value:
+                raise Missing(f"oracle/bands/{name} is {r.num('oracle', 'bands', name)}, not "
+                              f"the gate's {value}")
+        return f"{len(stated)} bands equal", True
 
     @clause("REFACTOR TRIPWIRE (ii): the SAME six-body C execution read against exact rig truth",
             f"6.865 deg on every seed, still outside O1's {O1_TILT_DEG} deg band",
@@ -309,8 +500,26 @@ def build(reports: dict) -> dict:
             "bit-identity is NOT claimed: a pelvis frame is whole-take")
     def _():
         r.named("oracle", "oracle", "seeds", expect=ORACLE_SEEDS)
-        values = {s: r.num("oracle", "oracle", "seeds", s, "O2_vs_baseline",
-                           "leg_foot_toe_max_mm") for s in ORACLE_SEEDS}
+        values = {}
+        for seed in ORACLE_SEEDS:
+            base = ("oracle", "oracle", "seeds", seed, "O2_vs_baseline")
+            # the comparison's own premises: which arm it scored, over how many samples, and
+            # that it makes NO bit-identity claim (a pelvis frame is whole-take).
+            scored = r.text(*base, "arm")
+            if scored != "src_default":
+                raise Missing(f"O2/{seed} scored arm {scored!r}, not the shipping src path")
+            samples = int(r.num(*base, "leg_foot_toe_move_mm", "n"))
+            if samples != ORACLE_FRAMES * 8:      # 8 joints: upper leg, lower leg, foot, toes
+                raise Missing(f"O2/{seed} moved {samples} samples, not "
+                              f"{ORACLE_FRAMES * 8} (8 joints x {ORACLE_FRAMES} frames)")
+            if r.flag(*base, "bit_identity_claimed"):
+                raise Missing(f"O2/{seed} claims bit identity; the card does not")
+            values[seed] = r.checked(*base, "leg_foot_toe_max_mm",
+                                     derived=r.num(*base, "leg_foot_toe_move_mm", "max"),
+                                     # the summary is written to 5 dp and the block it
+                                     # summarises to 4, so they agree to the rounding
+                                     tolerance=1e-4)
+            r.checked(*base, "within_0_1_mm", derived=values[seed] <= O2_LEG_MM)
         return (f"max {max(values.values())} mm over {len(values)} seeds",
                 max(values.values()) <= O2_LEG_MM)
 
@@ -325,8 +534,15 @@ def build(reports: dict) -> dict:
     @clause("O2 hoist change", f"<= {O2_HOIST_MM} mm on all {len(ORACLE_SEEDS)} seeds")
     def _():
         r.named("oracle", "oracle", "seeds", expect=ORACLE_SEEDS)
-        values = {s: r.num("oracle", "oracle", "seeds", s, "O2_vs_baseline",
-                           "hoist_change_mm", "max") for s in ORACLE_SEEDS}
+        values = {}
+        for seed in ORACLE_SEEDS:
+            base = ("oracle", "oracle", "seeds", seed, "O2_vs_baseline", "hoist_change_mm")
+            frames = int(r.num(*base, "n"))
+            if frames != ORACLE_FRAMES:
+                raise Missing(f"O2 hoist/{seed} is over {frames} frames, not {ORACLE_FRAMES}")
+            values[seed] = r.num(*base, "max")
+            r.checked("oracle", "oracle", "seeds", seed, "O2_vs_baseline",
+                      "hoist_within_0_05_mm", derived=values[seed] <= O2_HOIST_MM)
         return (f"max {max(values.values())} mm over {len(values)} seeds",
                 max(values.values()) <= O2_HOIST_MM)
 
@@ -345,10 +561,21 @@ def build(reports: dict) -> dict:
             "the step STOPPED here; `selector.json` is immutable")
     def _():
         rows = r.named("sigma1", "frozen_pitch_follower_bent_tercile", expect=ORACLE_SEEDS)
-        ratios = {s: r.num("sigma1", "frozen_pitch_follower_bent_tercile", s, "follower_i_deg")
-                  / r.num("sigma1", "frozen_pitch_follower_bent_tercile", s, "winner_i_deg")
-                  for s in rows}
+        if r.num("sigma1", "sigma_scale") != 1.0:
+            raise Missing("selector.json is not at sigma 1.0")
+        ratios = {}
+        for seed in ORACLE_SEEDS:
+            base = ("sigma1", "frozen_pitch_follower_bent_tercile", seed)
+            follower = r.num(*base, "follower_i_deg")
+            ratios[seed] = follower / r.num(*base, "winner_i_deg")
+            r.checked(*base, "ratio", derived=ratios[seed], tolerance=1e-2)
+            r.checked(*base, "ratio_at_least_2x", derived=ratios[seed] >= FOLLOWER_RATIO)
+            r.checked(*base, "at_least_2_deg", derived=follower >= FOLLOWER_FLOOR_DEG)
         below = [s for s, v in ratios.items() if v < FOLLOWER_RATIO]
+        r.checked("sigma1", "follower_discriminated_on_every_body",
+                  derived=not below and all(
+                      r.num("sigma1", "frozen_pitch_follower_bent_tercile", s,
+                            "follower_i_deg") >= FOLLOWER_FLOOR_DEG for s in ORACLE_SEEDS))
         return (f"{min(ratios.values()):.3f}-{max(ratios.values()):.3f}x; {len(below)} of "
                 f"{len(ratios)} below {FOLLOWER_RATIO}x", not below)
 
@@ -395,10 +622,39 @@ def build(reports: dict) -> dict:
     def _():
         evaluations = r.listing("calibration", "calibration", "bisection", "evaluations",
                                 minimum=2)
+        # the search's own parameters ARE the ones this gate states, before any statistic is
+        # read out of it.
+        for name, expect in (("target_mm", CALIBRATION_TARGET_MM),
+                             ("tolerance_mm", CALIBRATION_TAU_MM)):
+            if r.num("calibration", "calibration", "bisection", name) != expect:
+                raise Missing(f"calibration/{name} is not the gate's {expect}")
+        bracket = [float(x) for x in r.listing("calibration", "calibration", "bisection",
+                                               "bracket", minimum=2, elements=True)]
+        if tuple(bracket) != CALIBRATION_BRACKET:
+            raise Missing(f"calibration bracket {bracket} is not {CALIBRATION_BRACKET}")
+        budget = int(r.num("calibration", "calibration", "bisection", "maximum_evaluations"))
+        if len(evaluations) > budget:
+            raise Missing(f"{len(evaluations)} evaluations against a budget of {budget}")
         pairs = sorted(evaluation_median(i) for i in range(len(evaluations)))
         values = [value for _sigma, value in pairs]
         worst = max((values[i] - values[j] for i in range(len(values))
                      for j in range(i + 1, len(values)) if values[j] < values[i]), default=0.0)
+        r.checked("calibration", "calibration", "bisection",
+                  "monotone_across_the_evaluations", derived=worst <= 0.0)
+        r.checked("calibration", "calibration", "bisection", "largest_violation_mm",
+                  derived=worst, tolerance=1e-3)
+        violations = r.listing("calibration", "calibration", "bisection",
+                               "monotonicity_violations", minimum=0)
+        if bool(violations) != (worst > 0.0):
+            raise Missing(f"{len(violations)} recorded violations against a derived largest "
+                          f"decrease of {worst}")
+        # the sigma-ordered table beside the evaluations must BE the same pairs.
+        table = r.listing("calibration", "calibration", "bisection",
+                          "evaluated_in_sigma_order", minimum=2)
+        if len(table) != len(pairs) or any(
+                abs(float(row[0]) - sigma) > 5e-7 or not agrees(float(row[1]), value, 1e-3)
+                for row, (sigma, value) in zip(table, pairs)):
+            raise Missing("evaluated_in_sigma_order disagrees with the evaluations it orders")
         return (f"largest earlier-to-later decrease {worst:.4f} mm over {len(values)} "
                 "evaluations", worst <= 0.0)
 
@@ -410,7 +666,26 @@ def build(reports: dict) -> dict:
         evaluations = r.listing("calibration", "calibration", "bisection", "evaluations",
                                 minimum=2)
         target = r.num("admissibility", "admissibility", "target_mm")
-        bracket = r.listing("admissibility", "admissibility", "bracket", minimum=2)
+        bracket = r.listing("admissibility", "admissibility", "bracket", minimum=2,
+                            elements=True)
+        # the amended rule RETAINS the target, the tolerance, the bracket and the budget: all
+        # four are read here, so an amendment that quietly moved one would be a FAIL.
+        if (target != CALIBRATION_TARGET_MM
+                or r.num("admissibility", "admissibility", "tolerance_mm") != CALIBRATION_TAU_MM
+                or tuple(float(x) for x in bracket) != CALIBRATION_BRACKET):
+            raise Missing("the amended rule does not retain the frozen target, tolerance and "
+                          "bracket")
+        budget = int(r.num("admissibility", "admissibility", "evaluation_budget"))
+        order = r.listing("admissibility", "admissibility",
+                          "replay_of_the_frozen_stopping_rule", "evaluation_order_exact",
+                          minimum=2)
+        if len(order) != len(evaluations) or len(order) > budget:
+            raise Missing(f"the replay lists {len(order)} evaluations against "
+                          f"{len(evaluations)} recorded and a budget of {budget}")
+        if not r.flag("admissibility", "admissibility",
+                      "replay_of_the_frozen_stopping_rule",
+                      "replay_reproduced_every_recorded_evaluation"):
+            raise Missing("the replay did not reproduce every recorded evaluation")
         # EVERY evaluation's statistic derived from its own six bodies, because the rule
         # bands all of them (A and B) and not only the accepted one (C).
         pairs = sorted(evaluation_median(i) for i in range(len(evaluations)))
@@ -421,6 +696,10 @@ def build(reports: dict) -> dict:
         changes = sum(1 for x, y in zip(signs, signs[1:]) if x != y)
         accepted = r.num("admissibility", "admissibility",
                          "replay_of_the_frozen_stopping_rule", "accepted_sigma_scale_exact")
+        display = r.num("admissibility", "admissibility",
+                        "replay_of_the_frozen_stopping_rule", "accepted_sigma_scale_display")
+        if abs(display - accepted) > 5e-7:
+            raise Missing(f"the accepted sigma displays as {display} and is {accepted}")
         matched = [value for sigma, value in pairs if abs(sigma - accepted) <= 5e-7]
         if not matched:
             raise Missing("the accepted sigma is not among the frozen evaluations")
@@ -457,6 +736,40 @@ def build(reports: dict) -> dict:
         """THE AGGREGATE'S CONSTITUENTS, each with its population validated."""
         return {seed: body_metric(seed, arm_name, population, metric)
                 for seed in ORACLE_SEEDS}
+
+    @clause("S REREAD: at the calibration's EXACT accepted sigma, on every arm's full "
+            "population",
+            f"sigma == the accepted {ACCEPTED_SIGMA!r}, and {S_POPULATION['whole_take'][0]}/"
+            f"{S_POPULATION['whole_take'][1]} and {S_POPULATION['bent_tercile'][0]}/"
+            f"{S_POPULATION['bent_tercile'][1]} on all "
+            f"{len(REREAD_ARMS)} named arms of all {len(ORACLE_SEEDS)} bodies",
+            "S is decided in this file, so WHICH file it is matters as much as what it "
+            "says. The reread is at the calibration's own accepted sigma and is NOT the "
+            "card's pre-registered fixture; `selector.json` at sigma 1.0 is.")
+    def _():
+        accepted = r.num("admissibility", "admissibility",
+                         "replay_of_the_frozen_stopping_rule", "accepted_sigma_scale_exact")
+        sigma = r.num("reread", "sigma_scale")
+        if sigma != accepted:
+            raise Missing(f"the reread is at sigma {sigma!r} and the calibration accepted "
+                          f"{accepted!r}")
+        if r.text("reread", "sigma_scale_repr") != repr(sigma):
+            raise Missing(f"reread/sigma_scale_repr disagrees with its own sigma {sigma!r}")
+        r.checked("reread", "is_the_reread_at_the_calibrated_sigma", derived=True)
+        r.checked("reread", "is_the_pre_registered_fixture", derived=False)
+        if r.num("sigma1", "sigma_scale") != 1.0:
+            raise Missing("selector.json is not at sigma 1.0")
+        r.checked("sigma1", "is_the_pre_registered_fixture", derived=True)
+        # EVERY ARM, THE CONTROLS INCLUDED. `body_metric` validates the population of the
+        # arms the merge rule reads; this reads the rest, so an arm cannot be scored on a
+        # population that was never checked merely because no clause happens to band it.
+        for seed in ORACLE_SEEDS:
+            r.named("reread", "bodies", seed, "arms", expect=REREAD_ARMS)
+            for arm_name in REREAD_ARMS:
+                for population in POPULATIONS:
+                    body_metric(seed, arm_name, population, "i_orientation_deg")
+        return (f"sigma {sigma!r}; {len(REREAD_ARMS)} arms x {len(ORACLE_SEEDS)} bodies x "
+                f"{len(POPULATIONS)} populations at the frozen sizes", True)
 
     def aggregate(arm_name, population, metric):
         derived = median(list(per_body(arm_name, population, metric).values()))
@@ -501,15 +814,24 @@ def build(reports: dict) -> dict:
             "strictly better on (i), better-or-tied on (ii) and (iii)")
     def _():
         winner = r.text("reread", "winner", "arm")
-        beats, detail = [], []
+        beats, detail, cells = [], [], {}
         for population in POPULATIONS:
-            ours = aggregate(winner, population, "i_orientation_deg")
-            theirs = aggregate("C_on_SOMA", population, "i_orientation_deg")
-            beats.append(ours < theirs)
-            detail.append(f"{population} {ours:.5f} vs {theirs:.5f}")
-            for metric, tie in METRICS[1:]:
-                beats.append(aggregate(winner, population, metric)
-                             <= aggregate("C_on_SOMA", population, metric) + tie)
+            for metric, tie in METRICS:
+                ours = aggregate(winner, population, metric)
+                theirs = aggregate("C_on_SOMA", population, metric)
+                cells[f"{population}__{metric}"] = (
+                    "tied" if abs(ours - theirs) <= tie
+                    else "better" if ours < theirs else "worse")
+                if metric == "i_orientation_deg":
+                    beats.append(ours < theirs)
+                    detail.append(f"{population} {ours:.5f} vs {theirs:.5f}")
+                else:
+                    beats.append(ours <= theirs + tie)
+        # the stored comparison map is rebuilt cell by cell, and the summary it feeds with it
+        stored = r.named("reread", "winner_vs_C_on_SOMA", expect=cells)
+        if stored != cells:
+            raise Missing(f"winner_vs_C_on_SOMA stores {stored} against {cells} derived")
+        r.checked("reread", "winner_beats_the_constant_it_removes", derived=all(beats))
         return "; ".join(detail), all(beats)
 
     @clause("S REREAD: the frozen-pitch follower >= 2x the winner AND >= 2 deg, on EVERY body",
@@ -534,13 +856,14 @@ def build(reports: dict) -> dict:
             if winner <= 0.0:
                 raise Missing(f"bodies/{seed}/{winner_arm}/bent_tercile is not positive")
             ratios[seed] = follower / winner
+            base = ("reread", "frozen_pitch_follower_bent_tercile", seed)
             for label, derived in (("follower_i_deg", follower), ("winner_i_deg", winner),
                                    ("ratio", ratios[seed])):
-                stored = r.num("reread", "frozen_pitch_follower_bent_tercile", seed, label)
-                if not agrees(stored, derived, 1e-2):
-                    raise Missing(f"follower/{seed}/{label} stores {stored} against "
-                                  f"{derived:.5f} derived from the body rows")
+                r.checked(*base, label, derived=derived, tolerance=1e-2)
+            r.checked(*base, "ratio_at_least_2x", derived=ratios[seed] >= FOLLOWER_RATIO)
+            r.checked(*base, "at_least_2_deg", derived=follower >= FOLLOWER_FLOOR_DEG)
             ok &= (ratios[seed] >= FOLLOWER_RATIO and follower >= FOLLOWER_FLOOR_DEG)
+        r.checked("reread", "follower_discriminated_on_every_body", derived=ok)
         return (f"{len(rows)} bodies; recomputed ratios {min(ratios.values()):.3f}-"
                 f"{max(ratios.values()):.3f}x", ok)
 
@@ -549,16 +872,36 @@ def build(reports: dict) -> dict:
             "an EQUIVALENCE and an error measurement; no superiority claim")
     def _():
         rows = r.named("reread", "G1_missing_only", "bodies", expect=ORACLE_SEEDS)
-        holds, differing = True, 0
-        for seed in rows:
-            masks = r.flag("reread", "G1_missing_only", "bodies", seed,
-                           "effective_masks_identical")
-            arrays = r.flag("reread", "G1_missing_only", "bodies", seed,
-                            "interpolated_arrays_bit_identical")
+        holds, differing, unconditional, with_rejection = True, 0, True, []
+        for seed in ORACLE_SEEDS:
+            base = ("reread", "G1_missing_only", "bodies", seed)
+            masks = r.flag(*base, "effective_masks_identical")
+            arrays = r.flag(*base, "interpolated_arrays_bit_identical")
             differing += (not masks)
             holds &= ((not masks) or arrays)
+            unconditional &= arrays
+            # every per-body summary derived from the two booleans and the two lists it
+            # summarises, and the demoted count from the frames it counts.
+            r.checked(*base, "claim_holds_as_amended", derived=(not masks) or arrays)
+            demoted = r.listing(*base, "guard_additionally_demoted", minimum=0)
+            r.checked(*base, "guard_demoted_count", derived=len(demoted))
+            rejections = r.listing(*base, "additional_rejections", minimum=0)
+            if len(rejections) != len(demoted):
+                raise Missing(f"G1/{seed} demotes {len(demoted)} frames and diagnoses "
+                              f"{len(rejections)} rejections")
+            if rejections:
+                with_rejection.append(seed)
+        r.checked("reread", "G1_missing_only", "claim_holds_on_every_body_as_amended",
+                  derived=holds)
+        r.checked("reread", "G1_missing_only", "unconditional_identity_on_every_body",
+                  derived=unconditional)
+        if sorted(r.listing("reread", "G1_missing_only",
+                            "bodies_with_an_additional_rejection", minimum=0)) != with_rejection:
+            raise Missing("G1/bodies_with_an_additional_rejection disagrees with the bodies "
+                          f"that carry one ({with_rejection})")
         return (f"{len(rows)} bodies; {differing} have a different effective mask; identity "
-                "holds wherever the masks agree", holds)
+                f"holds wherever the masks agree; unconditional identity {unconditional}",
+                holds)
 
     @clause("G2 (finite-only): the guard beats the unguarded winner on BOTH (i) and (ii), every body",
             f"both metrics, all {len(ORACLE_SEEDS)} bodies and the median over them",
@@ -566,6 +909,23 @@ def build(reports: dict) -> dict:
     def _():
         rows = r.named("reread", "G2_finite_only", "bodies", expect=ORACLE_SEEDS)
         wins, samples = True, {}
+        for seed in ORACLE_SEEDS:
+            base = ("reread", "G2_finite_only", "bodies", seed)
+            # the corruption's own population, by the card's law: 20 % of the fixture.
+            corrupted = int(r.num(*base, "corrupted_frames"))
+            if corrupted != ORACLE_FRAMES // 5:
+                raise Missing(f"G2/{seed} corrupts {corrupted} frames, not the card's "
+                              f"{ORACLE_FRAMES // 5}")
+            if int(r.num(*base, "transition_pairs")) < 1:
+                raise Missing(f"G2/{seed} has no transition pairs")
+            missed = r.listing(*base, "guard_missed_corrupted_frames", minimum=0)
+            r.checked(*base, "guard_miss_rate", derived=len(missed) / corrupted,
+                      tolerance=1e-3)
+            for key, metric in (("i", "i_on_corrupted_frames_deg"),
+                                ("ii", "ii_on_transition_pairs_deg")):
+                r.checked(*base, f"guard_better_on_{key}",
+                          derived=r.num(*base, "guarded", metric)
+                          < r.num(*base, "unguarded", metric))
         for key, metric in (("i", "i_on_corrupted_frames_deg"),
                             ("ii", "ii_on_transition_pairs_deg")):
             guarded = [r.num("reread", "G2_finite_only", "bodies", s, "guarded", metric)
@@ -582,6 +942,15 @@ def build(reports: dict) -> dict:
                     raise Missing(f"G2 median_of_six/{label}_{key}_deg stores {stored} "
                                   f"against {derived:.5f} derived from {len(rows)} bodies")
             wins &= samples[key][0] < samples[key][1]
+            r.checked("reread", "G2_finite_only", f"guard_wins_{key}_on_the_median",
+                      derived=samples[key][0] < samples[key][1])
+            r.named("reread", "G2_finite_only", f"guard_wins_per_body_{key}",
+                    expect=ORACLE_SEEDS)
+            for seed in ORACLE_SEEDS:
+                r.checked("reread", "G2_finite_only", f"guard_wins_per_body_{key}", seed,
+                          derived=r.flag("reread", "G2_finite_only", "bodies", seed,
+                                         f"guard_better_on_{key}"))
+        r.checked("reread", "G2_finite_only", "guard_wins_both", derived=wins)
         return (f"{len(rows)} bodies; medians (i) {samples['i'][0]:.5f} vs "
                 f"{samples['i'][1]:.5f} deg, (ii) {samples['ii'][0]:.5f} vs "
                 f"{samples['ii'][1]:.5f} deg", wins)
@@ -589,23 +958,74 @@ def build(reports: dict) -> dict:
     @clause("the world-vertical control against the truth PELVIS's own tilt", "REPORT",
             "S's stops are unchanged; the follower carries the argument")
     def _():
-        control = r.num("reread", "world_vertical_vs_truth_tilt", "world_vertical_i_bent_deg")
-        tilt = r.num("reread", "world_vertical_vs_truth_tilt",
-                     "truth_PELVIS_bent_tilt_median_deg")
-        return (f"{control} deg against the truth pelvis's {tilt} deg; limitation applies: "
-                f"{abs(control - tilt) < 2.0}", "REPORT")
+        base = ("reread", "world_vertical_vs_truth_tilt")
+        control = r.num(*base, "world_vertical_i_bent_deg")
+        tilt = r.num(*base, "truth_PELVIS_bent_tilt_median_deg")
+        trunk = r.num(*base, "truth_trunk_bent_tilt_median_deg")
+        winner = r.num(*base, "winner_i_bent_deg")
+        r.checked(*base, "stated_limitation_if_within_2_deg_of_the_tilt",
+                  derived=abs(control - tilt) < 2.0)
+        return (f"{control} deg against the truth pelvis's {tilt} deg (trunk {trunk}); the "
+                f"winner reads {winner} deg; limitation applies: {abs(control - tilt) < 2.0}",
+                "REPORT")
 
     # ------------------------------------------------------------------- the delivery
     @clause("the delivery: BOTH landmark arrays byte-identical (the same denominator)",
             f"raw AND smoothed identical on {len(PERFORMERS)} named performers",
             "an ABSENT comparison is not a passing one")
     def _():
-        ok = True
-        for key in ("raw_triangulation_byte_identical_same_denominator",
+        # FOUR INSTRUMENTS CLAIM THIS INDEPENDENTLY and they must agree. The three build
+        # reports each write it per performer, the silhouette writes it once for the pair,
+        # and the take instrument writes its own per performer -- so a single corrupted
+        # boolean cannot carry the clause, and a DISAGREEMENT between two of them is a FAIL
+        # even if the one the gate used to read says True.
+        claims, ok = {}, True
+        for report_key in ("delivery", "hygiene", "tripwire"):
+            for key in ("raw_triangulation_byte_identical_same_denominator",
+                        "smoothed_triangulation_byte_identical"):
+                r.named(report_key, "hygiene", key, expect=PERFORMERS)
+                for performer in PERFORMERS:
+                    claims[f"{report_key}/{key}/{performer}"] = r.flag(
+                        report_key, "hygiene", key, performer)
+        for key in ("raw_triangulation_byte_identical",
                     "smoothed_triangulation_byte_identical"):
-            r.named("delivery", "hygiene", key, expect=PERFORMERS)
-            ok &= all(r.flag("delivery", "hygiene", key, s) for s in PERFORMERS)
-        return f"both arrays on {len(PERFORMERS)} performers: {ok}", ok
+            claims[f"silhouette/{key}"] = r.flag("silhouette", key)
+        r.named("take", "take", "subjects", expect=PERFORMERS)
+        for performer in PERFORMERS:
+            claims[f"take/{performer}"] = r.flag(
+                "take", "take", "subjects", performer, "vs_baseline",
+                "landmarks_byte_identical_same_denominator")
+            # AND THE REST SKELETON DID NOT MOVE. D7c is a converter-only change; a moved
+            # rest would make every joint comparison a comparison of two skeletons, which is
+            # the defect D3 shipped against.
+            claims[f"take/{performer}/rest_skeleton_unmoved"] = not r.flag(
+                "take", "take", "subjects", performer, "vs_baseline", "rest_skeleton_moved")
+        # the delivery build's own hygiene premises, read where the landmarks are read.
+        # THE CANDIDATE'S OWN FILES MUST DIFFER FROM THE SHIPPED ONES -- this report is the
+        # D7c build against D9b's delivery, so eight identical files would mean the change
+        # did nothing. Each per-file flag is cross-checked against its own two hashes.
+        r.named("delivery", "hygiene", "delivered_files_vs_shipped", expect=DELIVERED_FILES)
+        changed = 0
+        for name in DELIVERED_FILES:
+            base = ("delivery", "hygiene", "delivered_files_vs_shipped", name)
+            same = r.text(*base, "rebuild") == r.text(*base, "shipped")
+            r.checked(*base, "identical", derived=same)
+            changed += not same
+        r.checked("delivery", "hygiene", "all_delivered_files_identical", derived=not changed)
+        claims["delivery/the candidate's files differ from D9b's"] = changed == len(
+            DELIVERED_FILES)
+        claims["delivery/observations before/after"] = r.flag(
+            "delivery", "hygiene", "observations_byte_identical_before_and_after_the_build")
+        claims["delivery/observations vs shipped"] = r.flag(
+            "delivery", "hygiene", "observations_byte_identical_to_the_shipped_build")
+        claims["delivery/work copied never symlinked"] = r.flag(
+            "delivery", "work_copied_never_symlinked")
+        built_here("delivery")
+        ok = all(claims.values())
+        if not ok:
+            raise Missing("the delivery's premises do not all hold: "
+                          f"{sorted(k for k, v in claims.items() if not v)}")
+        return (f"{len(claims)} independent claims from 5 instruments, all True", ok)
 
     @clause("the delivered run-report records the mode and the guard's demoted frames",
             "E_rig_rest_kabsch; 0 and 29 demoted")
@@ -640,18 +1060,17 @@ def build(reports: dict) -> dict:
             if name.startswith("local::"):
                 value = r.num(*base, "frames_that_differ") == 0
             elif name == "foot_contacts":
-                before = [int(x) for x in r.listing(*base, "snapshot_contacts", minimum=2)]
-                after = [int(x) for x in r.listing(*base, "delivered_contacts", minimum=2)]
+                before = [int(x) for x in r.listing(*base, "snapshot_contacts", minimum=2,
+                                                    elements=True)]
+                after = [int(x) for x in r.listing(*base, "delivered_contacts", minimum=2,
+                                                   elements=True)]
                 if len(before) != 2 or len(after) != 2:
                     raise Missing(f"{'/'.join(map(str, base))} contact counts are not "
                                   f"per-side pairs: {before} and {after}")
                 value = before == after
             else:
                 value = r.flag(*base, "bit_identical")   # no constituent; see the inventory
-            stored = r.flag(*base, "bit_identical")
-            if stored != value:
-                raise Missing(f"{'/'.join(map(str, base))}/bit_identical stores {stored} "
-                              f"against {value} derived from its own constituents")
+            r.checked(*base, "bit_identical", derived=value)
             derived[name] = value
         failing = {name for name, ok in derived.items() if not ok}
         # `failing_channels` is CROSS-CHECKED against the per-channel values it summarises: a
@@ -662,12 +1081,25 @@ def build(reports: dict) -> dict:
                           f"{sorted(stored_failing)} against {sorted(failing)} derived")
         return derived, failing
 
+    def p1_verdicts(report_key, failing, *, expected):
+        """A P-report's own verdict strings, DERIVED from the channels that decided them.
+        `expected_p1` is what the arm was BUILT to do -- PASS for the delivery, FAIL for the
+        control -- so `P1_as_expected` is a comparison and not a copy."""
+        r.named(report_key, "P1_verdicts", expect=PERFORMERS)
+        seen = {}
+        for performer in PERFORMERS:
+            seen[performer] = "FAIL" if failing[performer] else "PASS"
+            r.checked(report_key, "P1_verdicts", performer, derived=seen[performer])
+        r.checked(report_key, "expected_p1", derived=expected)
+        r.checked(report_key, "P1_as_expected",
+                  derived=all(v == expected for v in seen.values()))
+
     def measured_runs(*path, field):
         rows = r.listing(*path, field, minimum=1)
         seen, worst, holds = [], 0.0, True
         for index in range(len(rows)):
             side = int(r.num(*path, field, index, "side_index"))
-            span = r.listing(*path, field, index, "run", minimum=2)
+            span = r.listing(*path, field, index, "run", minimum=2, elements=True)
             identity = (side, int(span[0]), int(span[1]))
             if identity in seen:
                 raise Missing(f"{'/'.join(map(str, path))}/{field} repeats run {identity}")
@@ -677,10 +1109,8 @@ def build(reports: dict) -> dict:
                 run_worst = max(run_worst, r.num(*path, field, index, f"{joint}_max_m"))
             worst = max(worst, run_worst)
             # `holds` is CROSS-CHECKED against the run's own numbers rather than believed.
-            stored_holds = r.flag(*path, field, index, "holds")
-            if stored_holds != (run_worst <= CONTACT_TOLERANCE_M):
-                raise Missing(f"{'/'.join(map(str, path))}/{field}[{index}] holds="
-                              f"{stored_holds} against its own {run_worst} m")
+            stored_holds = r.checked(*path, field, index, "holds",
+                                     derived=run_worst <= CONTACT_TOLERANCE_M)
             holds &= stored_holds
         return set(seen), worst, holds
 
@@ -699,17 +1129,15 @@ def build(reports: dict) -> dict:
             recomputed = r.text("projection", "subjects", performer,
                                 "P1_channel_preservation", "authentication",
                                 "recomputed_sha256")
-            saved = r.flag("projection", "subjects", performer, "P1_channel_preservation",
-                           "authentication", "authenticated")
             derived = bool(stamped) and stamped == recomputed
-            if saved != derived:
-                raise Missing(f"P1/{performer}/authenticated stores {saved} against "
-                              f"{derived} derived from the two hashes")
+            r.checked("projection", "subjects", performer, "P1_channel_preservation",
+                      "authentication", "authenticated", derived=derived)
             ok &= derived
             preserved, failed = channel_preservation(
                 "projection", "subjects", performer, "P1_channel_preservation")
             ok &= all(preserved.values()) and not failed
             failing[performer] = sorted(failed)
+        p1_verdicts("projection", failing, expected="PASS")
         return f"{len(PERFORMERS)} performers; failing {failing}", ok
 
     @clause("P2 anchor lock -- the delivery, every accepted run, on the GLB's own arrays",
@@ -720,8 +1148,14 @@ def build(reports: dict) -> dict:
         ok, worst_all, detail = True, 0.0, {}
         for performer in PERFORMERS:
             path = ("projection", "subjects", performer, "P2_anchor_lock")
+            # THE BAND THE INSTRUMENT USED IS THE BAND THIS GATE STATES. A report scored
+            # against a looser band would pass every clause below while measuring less.
+            if r.num(*path, "band_m") != CONTACT_TOLERANCE_M:
+                raise Missing(f"P2/{performer} scored against band {r.num(*path, 'band_m')} "
+                              f"m, not the gate's {CONTACT_TOLERANCE_M}")
             expected = {(int(a), int(b), int(c)) for a, b, c
-                        in r.listing(*path, "mask_run_identities", minimum=1)}
+                        in r.listing(*path, "mask_run_identities", minimum=1,
+                                     elements=True)}
             seen, worst, holds = measured_runs(*path, field="runs")
             if seen != expected:
                 raise Missing(f"P2/{performer} runs {sorted(seen)} != mask {sorted(expected)}")
@@ -732,6 +1166,10 @@ def build(reports: dict) -> dict:
             worst_all = max(worst_all, worst)
             ok &= holds and worst <= CONTACT_TOLERANCE_M
             detail[performer] = len(seen)
+        r.named("projection", "P2_verdicts", expect=PERFORMERS)
+        for performer in PERFORMERS:
+            r.checked("projection", "P2_verdicts", performer,
+                      derived="PASS" if ok else "FAIL")
         return f"worst {worst_all:.3e} m; runs {detail}", ok
 
     @clause("P2 anchor lock on EVERY ORACLE BODY, from each exported GLB's own arrays",
@@ -739,11 +1177,14 @@ def build(reports: dict) -> dict:
             "frozen mask by identity")
     def _():
         r.named("projection", "P2_on_the_oracle_bodies", "seeds", expect=ORACLE_SEEDS)
+        if r.num("projection", "P2_on_the_oracle_bodies", "band_m") != CONTACT_TOLERANCE_M:
+            raise Missing("oracle P2 scored against a band this gate does not state")
         ok, worst_all, detail = True, 0.0, {}
         for seed in ORACLE_SEEDS:
             path = ("projection", "P2_on_the_oracle_bodies", "seeds", seed)
             expected = {(int(a), int(b), int(c)) for a, b, c
-                        in r.listing(*path, "mask_run_identities", minimum=1)}
+                        in r.listing(*path, "mask_run_identities", minimum=1,
+                                     elements=True)}
             seen, worst, holds = measured_runs(*path, field="run_measurements")
             if seen != expected:
                 raise Missing(f"oracle P2/{seed} runs {sorted(seen)} != mask "
@@ -795,9 +1236,18 @@ def build(reports: dict) -> dict:
             "refused by the shipping path is STRONGER than caught by a gate")
     def _():
         r.named("p1_controls", "controls", expect=PERFORMERS)
-        failing = {s: set(r.at("p1_controls", "controls", s,
-                               "control_1_foot_locals_overwritten", "failing_channels"))
-                   for s in PERFORMERS}
+        failing = {}
+        for performer in PERFORMERS:
+            base = ("p1_controls", "controls", performer,
+                    "control_1_foot_locals_overwritten")
+            failing[performer] = set(r.at(*base, "failing_channels"))
+            # THE CONTROL'S OWN PREMISE: it must actually have changed something. A control
+            # that mutated nothing would be "detected" by a report that says so.
+            changed = int(r.num(*base, "samples_changed"))
+            if changed < 1:
+                raise Missing(f"control 1 on {performer} changed {changed} samples")
+            r.checked(*base, "P1", derived="FAIL" if failing[performer] else "PASS")
+            r.checked(*base, "detected_as_required", derived=bool(failing[performer]))
         # THE NAMED CHANNELS, not "some nonempty list". Astra's round 6 replaced performer
         # 0's failing list with ["local::Head"] -- a channel this control never touches, and
         # not even one P1 protects -- and the clause still passed.
@@ -812,9 +1262,22 @@ def build(reports: dict) -> dict:
             "must FAIL P1 on the mask")
     def _():
         r.named("p1_controls", "controls", expect=PERFORMERS)
-        failing = {s: set(r.at("p1_controls", "controls", s,
-                               "control_2_contact_mask_cleared", "failing_channels"))
-                   for s in PERFORMERS}
+        failing, detected = {}, True
+        for performer in PERFORMERS:
+            base = ("p1_controls", "controls", performer, "control_2_contact_mask_cleared")
+            failing[performer] = set(r.at(*base, "failing_channels"))
+            # the control CLEARS a mask, so the mask must have been nonempty on both sides.
+            nonempty = [int(x) for x in r.listing(*base, "mask_was_nonempty", minimum=2,
+                                                  elements=True)]
+            if len(nonempty) != 2 or min(nonempty) < 1:
+                raise Missing(f"control 2 on {performer} cleared a mask that was {nonempty}")
+            r.checked(*base, "P1", derived="FAIL" if failing[performer] else "PASS")
+            r.checked(*base, "detected_as_required", derived=bool(failing[performer]))
+            detected &= bool(failing[performer]) and bool(
+                r.at("p1_controls", "controls", performer,
+                     "control_1_foot_locals_overwritten", "failing_channels"))
+        r.checked("p1_controls", "both_controls_detected_on_both_performers",
+                  derived=detected)
         expected = CONTROL_CHANNELS["control_2_contact_mask_cleared"]
         return (str({s: sorted(v) for s, v in failing.items()}),
                 all(seen == expected and seen <= PROTECTED_CHANNELS
@@ -823,8 +1286,11 @@ def build(reports: dict) -> dict:
     @clause("the UNMUTATED delivery through the same comparison", "PASS")
     def _():
         r.named("p1_controls", "controls", expect=PERFORMERS)
-        failing = {s: r.at("p1_controls", "controls", s, "the_unmutated_delivery",
-                           "failing_channels") for s in PERFORMERS}
+        failing = {}
+        for performer in PERFORMERS:
+            base = ("p1_controls", "controls", performer, "the_unmutated_delivery")
+            failing[performer] = r.at(*base, "failing_channels")
+            r.checked(*base, "P1", derived="FAIL" if failing[performer] else "PASS")
         return str(failing), not any(failing.values())
 
     @clause("P1's CONTROL 2, BUILT and run through the P instrument", "must FAIL P1",
@@ -838,6 +1304,7 @@ def build(reports: dict) -> dict:
             # boolean cannot stand in for one the instrument actually caught.
             _preserved, failing[performer] = channel_preservation(
                 "control2", "subjects", performer, "P1_channel_preservation")
+        p1_verdicts("control2", failing, expected="FAIL")
         return (str({s: sorted(v) for s, v in failing.items()}),
                 all(seen == CONTROL_2_BUILT_CHANNELS and seen <= PROTECTED_CHANNELS
                     for seen in failing.values()))
@@ -848,10 +1315,34 @@ def build(reports: dict) -> dict:
             "it does NOT establish non-worsening; a wide interval passes it for want of power")
     def _():
         ok, seen = True, 0
+        # THE SILHOUETTE IS AN INSTRUMENT, NEVER A SELECTOR. It scores the MESH against the
+        # photographs and no constant here was chosen on it.
+        if not r.flag("silhouette", "instrument_only"):
+            raise Missing("the silhouette report does not declare itself instrument-only")
+        r.named("silhouette", "preregistered_clause_verdicts", expect=(*PERFORMERS,
+                "clause_mamma_mesh_oracle"))
         for performer in PERFORMERS:
             for name in B1_CELLS:
-                interval = r.listing("silhouette", "preregistered_clause_verdicts",
-                                     performer, name, "ci95", minimum=2)
+                base = ("silhouette", "preregistered_clause_verdicts", performer, name)
+                interval = r.listing(*base, "ci95", minimum=2, elements=True)
+                # EACH CELL'S OWN POPULATION, by the cut it names: the whole take or the
+                # bent tercile. A cell scored over a different number of photographs is a
+                # different measurement whatever its interval says.
+                cut = "whole_take" if "whole_take" in name else "bent_tercile"
+                frames = int(r.num(*base, "cut_frames"))
+                if frames != S_POPULATION[cut][0]:
+                    raise Missing(f"B1/{performer}/{name} is over {frames} frames, not the "
+                                  f"cut's {S_POPULATION[cut][0]}")
+                # the point estimate and the interval that summarises it, and the cell's own
+                # "rose with the interval clear of zero" flag derived from both.
+                difference = r.num(*base, "difference")
+                if not float(interval[0]) <= difference <= float(interval[1]):
+                    raise Missing(f"B1/{performer}/{name} difference {difference} is outside "
+                                  f"its own interval {interval}")
+                r.checked(*base, "rose_with_ci_clear_of_zero",
+                          derived=difference > 0.0 and float(interval[0]) > 0.0)
+                r.checked(*base, "verdict",
+                          derived="PASS" if float(interval[1]) >= 0.0 else "FAIL")
                 ok &= float(interval[1]) >= 0.0
                 seen += 1
         return f"{seen} of {len(B1_CELLS) * len(PERFORMERS)} named cells checked", ok
@@ -881,10 +1372,7 @@ def build(reports: dict) -> dict:
                     "b2", "triangulated_landmarks_byte_identical_across_arms", performer,
                     build_name)
         derived = all(identical.values())
-        stored = r.flag("b2", "same_denominator")
-        if stored != derived:
-            raise Missing(f"b2/same_denominator stores {stored} against {derived} derived "
-                          f"from {len(identical)} per-subject per-build entries")
+        r.checked("b2", "same_denominator", derived=derived)
         return (f"{sum(identical.values())} of {len(identical)} subject x build arrays "
                 f"byte-identical", derived)
 
@@ -1005,13 +1493,23 @@ def build(reports: dict) -> dict:
     return {
         "clauses": clauses, "conjuncts": conjuncts, "not_yet_measured": missing,
         "touched": sorted("/".join(path) for path in r.touched),
+        "kinds": dict(r.kinds), "cross_checked": set(r.cross_checked),
         "verdict": ("MERGE" if not missing and all(v == "PASS" for v in conjuncts.values())
                     else "INCOMPLETE" if missing else "NO MERGE"),
     }
 
 
+# THE TWO CLAUSES THAT READ FAIL ON THE UNMUTATED REPORTS, BY NAME. The fuzzer pins its
+# "historical FAIL" class to exactly these: deriving that class from "whichever clauses fail
+# today" would let a NEW clause that accidentally fails at the baseline absorb every leaf it
+# reads into a class that is excused by construction.
+RECORDED_STOPS = (
+    "S at the CARD'S OWN FIXTURE (sigma 1.0): the frozen-pitch follower >= 2x on EVERY body",
+    "the amended card's FIXTURE CALIBRATION, under its own frozen monotonicity precondition",
+)
 S_STOPS = (
     "the SAME frozen evaluations under Astra round 7's amended admissibility rule",
+    "S REREAD: at the calibration's EXACT accepted sigma",
     "S REREAD: (a) vs (b)",
     "S REREAD: the winner strictly better than C-on-SOMA",
     "S REREAD: the frozen-pitch follower",
@@ -1030,6 +1528,8 @@ CONJUNCTS = (
     ("hygiene", ("hygiene:",)),
     ("the refactor tripwire (both readings)",
      ("REFACTOR TRIPWIRE (i)", "REFACTOR TRIPWIRE (ii)")),
+    ("the oracle's own premises (the arms, the populations, the bands)",
+     ("O1/O2 PREMISES:",)),
     ("O1", ("O1 ",)),
     ("O2", ("O2 ",)),
     ("every must-fail still fails", MUST_FAILS),
@@ -1044,38 +1544,460 @@ CONJUNCTS = (
     ("the same denominator (B2 and both landmark arrays)",
      ("B2 `delivered_vs_capture.py", "the delivery: BOTH landmark arrays byte-identical")),
 )
-# EVERY SAVED BOOLEAN THE GATE STILL CONSUMES, and why each is acceptable. Astra's round 6
-# asked the question of all of them; these are the ones that survive it, and each survives
-# because the arrays it summarises are NOT in any report -- so the gate can either believe the
-# boolean or drop the clause, and dropping the clause would lose the measurement entirely.
-# Every other saved boolean or status string the gate reads is now derived or cross-checked:
-# `authenticated` (from the two hashes), `holds` (from each run's own maximum),
-# `failing_channels` on both P1 reports (from the per-channel flags), `pelvis_mode_held` (from
-# the converter's own recorded modes), `winner/arm` against `winner/mode`, `b_vs_a` and
-# `S_verdict` (from the aggregated medians), every stored aggregate (from its constituents),
-# and the follower's three stored numbers (from the body rows).
-SAVED_BOOLEANS_STILL_TRUSTED = {
-    "oracle/.../O2_vs_baseline/contacts_identical":
-        "a `np.array_equal` over two [frame, 2] contact masks. Neither mask is in any report, "
-        "so it cannot be recomputed here; it IS cross-checked in spirit by P1 on the same six "
-        "bodies, which compares the delivered contact array against the projection's own "
-        "return bit for bit.",
-    "reread/G1_missing_only/.../effective_masks_identical and interpolated_arrays_bit_identical":
-        "two `np.array_equal` results over [frame] masks and [frame, 3] interpolated arrays "
-        "that exist only inside the selector's run. The clause is an EQUIVALENCE check and "
-        "carries no band; the alternative to trusting them is not measuring G1 at all.",
-    "delivery/hygiene/raw_ and smoothed_triangulation_byte_identical":
-        "`np.array_equal` over two [frame, 19, 3] landmark arrays held in the build's memory. "
-        "The delivered `.npz` files carry the arrays, so this is re-derivable IN PRINCIPLE and "
-        "is owed as instrument debt; today the gate reads the booleans. Note that B2's own "
-        "same-denominator clause, computed by a different instrument on the same files, is a "
-        "conjunct beside it, so a single corrupted boolean does not carry the clause alone.",
-}
+# The hand-written inventory that used to stand here is GONE. It claimed "every other saved
+# boolean is derived or cross-checked" and Astra's round 7 showed that was false -- the oracle
+# P1 clause alone consumes ten more per body. An inventory written from memory is a claim about
+# the author, not about the gate, so the inventory is now GENERATED from the Reader's own
+# record by `saved_value_inventory`, and every family it finds must be named in
+# `TRUSTED_READ_JUSTIFICATIONS` below or the gate reads NO MERGE.
+# EVERY MEASUREMENT LEAF THE GATE DOES NOT READ, BY FAMILY, WITH THE REASON. `**` matches any
+# tail; `*` matches one segment; `<seed>`, `<subject>` and `<i>` are the normalised forms.
+# A family here is a family the CARD does not band -- not one the gate found inconvenient.
+UNREAD_MEASUREMENTS_JUSTIFIED = (
+    # --- the report blocks. The card: "O3, B3, B4, B5, B6 report".
+    ("take/**", "B2/B4 REPORT blocks. The card reports the take's pelvis and root motion and "
+                "bands nothing in it; the clauses that read it carry verdict REPORT."),
+    ("b3/**", "B3 REPORTED: the hoist and the contacts. No band."),
+    ("b6/**", "B5b/B6 REPORTED: the delivered bytes, the closures, the head world rotation "
+              "and the carried-tetrahedron PROXY, which makes no inversion claim."),
+    ("b1_attribution/**", "B1's attribution is a DIAGNOSTIC decomposition, explicitly a "
+                          "point estimate; only the three rising torso cells' shares are "
+                          "quoted and the clause that reads them is REPORT."),
+    ("b2/subjects/**", "B2's per-joint distances to MAMMA. B2 is a MAMMA-referenced "
+                       "instrument: its one banded clause is the same-denominator one, and "
+                       "no constant is selected on any of it."),
+    ("b2/bootstrap/**", "the block bootstrap's own parameters, reported beside the "
+                        "intervals they produced."),
+    # --- the oracle's controls and diagnostics
+    ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/angle/*",
+     "the order statistics of an arm's tilt other than the one its clause bands. O1 bands "
+     "the MAX on the shipping arm; each must-fail control is banded on the statistic the "
+     "card names for it, and the rest are reported beside them."),
+    ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/pitch_signed_median",
+     "the SIGNED pitch, reported so the direction of a tilt is legible; the bands are on "
+     "the unsigned angle."),
+    ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_worst_frame_deg",
+     "the index of the worst frame: a pointer into the take, not a measurement of it."),
+    ("oracle/oracle/seeds/<seed>/arms/*/penetration_before_mm",
+     "the ground penetration before the hoist, reported; D9b's contact projection owns it."),
+    ("oracle/oracle/seeds/<seed>/arms/*/hoisted_frames",
+     "how many frames the contact projection lifted, reported; O2 bands the hoist CHANGE."),
+    ("oracle/oracle/seeds/<seed>/arms/*/ALIGNED_rc_score_groups_mm/*",
+     "the D3 gate's leg-root-ALIGNED gauge, which D9b established is blind to a root move. "
+     "O3 reports the arms row and no band reads any of it."),
+    ("oracle/oracle/seeds/<seed>/arms/*/ABSOLUTE_groups_mm/**",
+     "the absolute-frame companion rows other than the torso one O1 bands."),
+    ("oracle/oracle/seeds/<seed>/arms/*/hips_origin_miss_mm/**",
+     "the order statistics other than the max O1 bands."),
+    ("oracle/oracle/seeds/<seed>/arms/*/spine_origin_miss_mm/**",
+     "the order statistics other than the max O1 bands."),
+    ("oracle/oracle/seeds/<seed>/arms/*/three_point_residual_m/*",
+     "the order statistics other than the max O1 bands and the median the wrong-origin "
+     "control is quoted on."),
+    ("oracle/oracle/seeds/<seed>/arms/*/neck_miss_mm/**",
+     "the neck, which D7b owns; D7c neither moves nor bands it."),
+    ("oracle/oracle/seeds/<seed>/arms/*/hoist_mm/**",
+     "the hoist's own distribution per arm, reported; O2 bands the CHANGE between builds."),
+    ("oracle/oracle/seeds/<seed>/arms/*/contacts/**",
+     "the contact mask per arm, reported; O2 bands its identity between builds."),
+    ("oracle/oracle/seeds/<seed>/arms/*/fit_geometry/**",
+     "the template each arm fitted, reported so an arm's geometry is legible beside its "
+     "score. The shipping arm's is read leaf for leaf by the src == E identity."),
+    ("oracle/oracle/seeds/<seed>/arms/*/pelvis_report/**",
+     "the converter's own run report per arm, reported; the shipping arm's mode is read and "
+     "the delivery's guard counts are banded in their own clause."),
+    ("oracle/oracle/seeds/<seed>/arms/D_rig_rest_hipline/**",
+     "the mode S RANKED AND DID NOT CHOOSE. Its ranking is S's business and is made in the "
+     "selector files on the noise fixture; the O bands are on the arm that ships."),
+    ("oracle/oracle/seeds/<seed>/factors/**",
+     "the per-seed sizing factors that MAKE the fixture: inputs to it, not measurements of "
+     "the candidate."),
+    ("oracle/oracle/seeds/<seed>/rig_rest_mm/**",
+     "the fixture's own rest geometry, an input to it."),
+    ("oracle/oracle/seeds/<seed>/O2_vs_baseline/*/median", "the order statistics other than "
+     "the max O2 bands."),
+    ("oracle/oracle/seeds/<seed>/O2_vs_baseline/*/p95", "the order statistics other than the "
+     "max O2 bands."),
+    # --- S's controls and its fourth metric
+    ("reread/bodies/<seed>/arms/*/*/iii_rotational_compensation_step_mm",
+     "a FOURTH metric, reported beside the card's three. S's rule is stated on (i), (ii) and "
+     "(iii) and adding a fourth after the fact would be choosing the metric that wins."),
+    ("reread/aggregated_median_of_six/*/*/iii_rotational_compensation_step_mm",
+     "the same fourth metric's aggregate."),
+    ("reread/bodies/<seed>/arms/world_vertical/**",
+     "a CONTROL arm the merge rule does not read: report-only by the card. Its population is "
+     "validated with every other arm's, and its one quoted number has its own REPORT clause."),
+    ("reread/bodies/<seed>/arms/thorax_as_pelvis/**",
+     "a CONTROL arm the merge rule does not read: report-only by the card."),
+    ("reread/bodies/<seed>/arms/b_hipline_unguarded/**",
+     "the unguarded variant, which G2 scores on its own corrupted fixture rather than on S's "
+     "three metrics; its populations are validated with every other arm's."),
+    ("reread/bodies/<seed>/arms/frozen_pitch_follower/*/ii_step_deg",
+     "the follower is the control for metric (i); (ii) and (iii) are reported beside it."),
+    ("reread/bodies/<seed>/arms/frozen_pitch_follower/*/iii_root_step_mm",
+     "the follower is the control for metric (i); (ii) and (iii) are reported beside it."),
+    ("reread/G1_missing_only/bodies/<seed>/recovery_error_on_missing_frames_i_deg",
+     "G1's own text: the recovery error is REPORTED, never banded."),
+    ("reread/G1_missing_only/bodies/<seed>/recovery_error_on_transition_pairs_ii_deg",
+     "G1's own text: the recovery error is REPORTED, never banded."),
+    ("reread/G1_missing_only/bodies/<seed>/i_deg_elsewhere",
+     "the error away from the missing pattern, reported as the comparison's floor."),
+    ("reread/G1_missing_only/bodies/<seed>/quaternions_bit_identical",
+     "the amended G1 claim is about the INTERPOLATED ARRAYS; the quaternion identity is a "
+     "stronger statement reported beside it and the amendment says why it does not hold "
+     "unconditionally."),
+    ("reread/G1_missing_only/bodies/<seed>/additional_rejections/**",
+     "each additional rejection's own lever, median and threshold: the DIAGNOSIS of a "
+     "rejection, which the card requires be diagnosed and never selected away. The count is "
+     "cross-checked against the demoted list."),
+    ("reread/G2_finite_only/bodies/<seed>/guard_demoted_count",
+     "how many frames the guard demoted on the corrupted fixture; G2 bands the two errors, "
+     "not the count, and the false-positive list beside it is reported."),
+    ("reread/G2_finite_only/bodies/<seed>/*/i_elsewhere_deg",
+     "the error away from the corrupted frames, reported as the comparison's floor."),
+    ("reread/G2_finite_only/bodies/<seed>/runs/**",
+     "where the corruption was placed, an input to the fixture."),
+    ("reread/G2_finite_only/bodies/<seed>/guard_demoted_uncorrupted_frames/**",
+     "the guard's false positives, reported; G2 bands the two errors."),
+    ("reread/G2_finite_only/bodies/<seed>/guard_missed_corrupted_frames/**",
+     "the guard's misses, reported; the miss RATE is cross-checked against this list."),
+    ("reread/noise/**", "the noise model that MAKES the fixture: an input to S, not a "
+                        "measurement of a candidate."),
+    ("reread/fixture_attribution/**", "what the fixture is attributed to, a provenance "
+                                      "block."),
+    # --- the sigma-1.0 fixture, an immutable recorded STOP
+    ("sigma1/**",
+     "`selector.json` is the card's own pre-registered fixture and an IMMUTABLE RECORDED "
+     "STOP. The gate reads its follower table, which is the clause that stopped the step, "
+     "its sigma and its fixture flag; everything else in it is the same shape as the "
+     "reread's and is preserved, not re-banded."),
+    # --- the calibration's frozen record
+    ("calibration/**",
+     "`selector-calibrated.json` is IMMUTABLE. Its bisection parameters, every evaluation's "
+     "six bodies and its monotonicity record are read and cross-checked; what remains is the "
+     "per-evaluation bookkeeping of a search whose verdict is recorded UNREACHABLE."),
+    ("admissibility/**",
+     "the amended rule's own record. Its target, tolerance, bracket, budget, replay order, "
+     "accepted sigma and all six body values per evaluation are read; what remains is the "
+     "amendment's prose and its POST HOC declaration."),
+    # --- the builds
+    ("*/build_seconds", "wall-clock build time: a property of this machine, not of the "
+                        "artifact."),
+    ("control2/**", "the built control's remaining fields mirror the delivery report's; its "
+                    "channels, its verdicts and its expectation are read."),
+    # --- the photographs
+    ("silhouette/statistics/**",
+     "the silhouette's per-frame overlap statistics. B1 is stated on the eight "
+     "pre-registered cells, whose intervals, point estimates and populations are read; the "
+     "underlying per-frame rows are reported."),
+    ("silhouette/subjects/**", "the per-subject overlap rows the eight cells summarise."),
+    ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/pitch_about_hip_line/*",
+     "the tilt decomposed onto the hip line, reported so the DIRECTION of a control's error "
+     "is legible; O1 and both must-fail clauses band the total angle. The shipping arm's "
+     "decomposition is read leaf for leaf by the src == E identity."),
+    ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/roll/*",
+     "the same decomposition, about the forward axis."),
+    ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/yaw/*",
+     "the same decomposition, about the vertical."),
+    ("projection/P2_on_the_oracle_bodies/seeds/<seed>/contacts/<i>",
+     "how many contact frames each side carries on an oracle body, reported. P2 bands the "
+     "travel at each run's first keyed sample, and the RUNS are checked by identity against "
+     "the frozen mask -- which is the stronger statement."),
+    ("reread/G1_missing_only/bodies/<seed>/guard_additionally_demoted/<i>",
+     "which frames the guard additionally demoted; the COUNT is cross-checked against this "
+     "list and each one is diagnosed in `additional_rejections`."),
+    ("reread/G1_missing_only/pattern/<i>",
+     "the missing-frame pattern that MAKES the G1 fixture: an input to it."),
+    ("reread/aggregated_median_of_six/b_hipline_unguarded/**",
+     "the aggregate of an arm outside the merge rule: report-only by the card."),
+    ("reread/aggregated_median_of_six/world_vertical/**",
+     "the aggregate of a CONTROL arm outside the merge rule: report-only by the card."),
+    ("reread/aggregated_median_of_six/thorax_as_pelvis/**",
+     "the aggregate of a CONTROL arm outside the merge rule: report-only by the card."),
+    ("reread/aggregated_median_of_six/frozen_pitch_follower/**",
+     "the follower's aggregates. Its clause is stated PER BODY on the bent tercile -- a "
+     "median over six would hide the body that failed -- and is derived from the body rows."),
+    ("reread/bodies/<seed>/truth_pelvis_tilt_deg/**",
+     "the fixture's own truth tilt, an input to S and the reference the world-vertical "
+     "control's stated limitation is read against."),
+    ("reread/bodies/<seed>/truth_trunk_tilt_deg/**", "the same, for the trunk."),
+    ("silhouette/preregistered_clause_verdicts/<subject>/reported_*/**",
+     "the REPORTED silhouette cells, which the card does not band: B1 is stated on the eight "
+     "pre-registered worsening-not-established cells and those are read by name."),
+    ("silhouette/masks_copied_never_shared/**",
+     "the silhouette's own copy rule per mask file, reported."),
+    # --- P
+    ("projection/subjects/<subject>/P3_travel_report/**",
+     "P3 is a TRAVEL REPORT by the card and carries no band; its interval count is read."),
+    ("projection/subjects/<subject>/P2_anchor_lock/runs/<i>/**",
+     "each run's remaining per-joint maxima; both named joints per side are read and the "
+     "run's own `holds` is cross-checked against them."),
+    ("projection/P2_on_the_oracle_bodies/seeds/<seed>/run_measurements/<i>/**",
+     "the same, on the oracle bodies."),
+)
+# EVERY BOOLEAN AND STRING THE GATE CONSUMES WITHOUT DERIVING OR CROSS-CHECKING IT, BY FAMILY.
+# This table is checked against the Reader's own record on every run: a family that no longer
+# appears is reported, and a trusted read with no entry here FAILS the gate.
+TRUSTED_READ_JUSTIFICATIONS = (
+    ("*/hygiene/delivered_files_vs_shipped/*/rebuild",
+     "one of the two hashes the file-identity clause compares AGAINST EACH OTHER; neither is "
+     "believed on its own."),
+    ("*/hygiene/delivered_files_vs_shipped/*/shipped", "the other half of that comparison."),
+    ("*/resolved_module",
+     "the module path the instrument resolved. It is not believed: it is REQUIRED to lie "
+     "under this worktree, which is the PYTHONPATH trap made into a check."),
+    ("projection/subjects/<subject>/P1_channel_preservation/authentication/glb_body_track_sha256",
+     "one of the two hashes the authentication clause compares against each other."),
+    ("projection/subjects/<subject>/P1_channel_preservation/authentication/recomputed_sha256",
+     "the other half of that comparison."),
+    ("*/subjects/<subject>/P1_channel_preservation/channels/root_translation_m/bit_identical",
+     "an `np.array_equal` over two [frame, 3] root arrays. The report carries no per-frame "
+     "constituent for this channel -- unlike every local, which carries `frames_that_differ` "
+     "-- so the gate can believe it or drop the channel. Owed as instrument debt."),
+    ("p_oracle/seeds/<seed>/*",
+     "the oracle P1 report is BOOLEANS ONLY: ten `np.array_equal` results per body over the "
+     "delivered arrays against the projection's own return. None of the arrays is in any "
+     "report, so none can be recomputed here. `failing_channels` IS cross-checked against "
+     "them, and the same comparison is made with constituents on the delivery, where the "
+     "channels carry their own frame counts."),
+    ("oracle/oracle/seeds/<seed>/O2_vs_baseline/contacts_identical",
+     "an `np.array_equal` over two [frame, 2] contact masks held in the instrument's memory. "
+     "P1 makes the same comparison on the same six bodies from the delivered bytes."),
+    ("oracle/oracle/seeds/<seed>/spine_landmark_is_the_rigs_Spine_joint",
+     "the fixture's own landmark contract, asserted by the instrument that built the "
+     "fixture; the companion root offset is read as a number and required to be zero."),
+    ("reread/G1_missing_only/bodies/<seed>/effective_masks_identical",
+     "an `np.array_equal` over two [frame] masks that exist only inside the selector's run. "
+     "The G1 clause is an EQUIVALENCE check and carries no band; the alternative to trusting "
+     "it is not measuring G1 at all."),
+    ("reread/G1_missing_only/bodies/<seed>/interpolated_arrays_bit_identical",
+     "the same, over the [frame, 3] interpolated arrays."),
+    ("*/hygiene/raw_triangulation_byte_identical_same_denominator/<subject>",
+     "`np.array_equal` over two [frame, 19, 3] landmark arrays in the build's memory. FIVE "
+     "instruments write this claim independently and the clause requires all of them; "
+     "re-deriving it from the delivered `.npz` is owed as instrument debt."),
+    ("*/hygiene/smoothed_triangulation_byte_identical/<subject>", "the same, smoothed."),
+    ("silhouette/raw_triangulation_byte_identical", "the silhouette's own copy of it."),
+    ("silhouette/smoothed_triangulation_byte_identical", "the silhouette's own copy of it."),
+    ("take/take/subjects/<subject>/vs_baseline/landmarks_byte_identical_same_denominator",
+     "the take instrument's own copy of it."),
+    ("take/take/subjects/<subject>/vs_baseline/rest_skeleton_moved",
+     "an equality over the two builds' rest translations, held in the instrument's memory; "
+     "required to be FALSE, which is what makes D7c a converter-only change."),
+    ("*/work_copied_never_symlinked",
+     "the build's own copy rule: it records that the work tree was copied rather than "
+     "symlinked into the shipped delivery. Required True."),
+    ("*/hygiene/observations_byte_identical_before_and_after_the_build",
+     "`np.array_equal` over the observation files the build consumed. Required True."),
+    ("*/hygiene/observations_byte_identical_to_the_shipped_build", "the same, against the "
+     "shipped build's own inputs. Required True."),
+    ("silhouette/instrument_only",
+     "the silhouette's own declaration that it selects nothing. Required True."),
+    ("admissibility/admissibility/replay_of_the_frozen_stopping_rule/"
+     "replay_reproduced_every_recorded_evaluation",
+     "the replay's own claim that it reproduced every recorded evaluation. Required True; "
+     "the evaluations it replays are read and cross-checked against the amended file's "
+     "independent copy of all six body values."),
+    ("oracle/pelvis_frame_source_in_src",
+     "the mode the instrument resolved from src. It is not believed: it is compared against "
+     "the mode the converter recorded on every seed AND against the arm the src path "
+     "reproduces leaf for leaf."),
+    ("oracle/oracle/seeds/<seed>/arms/src_default/pelvis_report/mode",
+     "the converter's own recorded mode, the other half of that comparison."),
+    ("tripwire/pelvis_mode_held",
+     "the mode the tripwire requested; compared against the modes the converter recorded."),
+    ("tripwire/diagnostics/pelvis_frame/<i>/mode", "the other half of that comparison."),
+    ("delivery/diagnostics/pelvis_frame/<i>/mode",
+     "the mode the delivered run report records, required to be the shipping mode on both "
+     "performers."),
+    ("reread/sigma_scale_repr",
+     "the sigma's exact repr, compared against the sigma it spells."),
+    ("reread/winner/arm", "compared against `winner/mode` through the named mapping, and "
+                          "against the mode the six cells imply."),
+    ("reread/winner/mode", "the other half of that comparison."),
+    ("reread/S_verdict", "S's own verdict string, required to be PROCEED beside the six "
+                         "cells the gate recomputes."),
+    ("b2/triangulated_landmarks_byte_identical_across_arms/<subject>/*",
+     "`np.array_equal` over the triangulated landmark arrays of one build, per subject. "
+     "These ARE the constituents `same_denominator` is derived from, and four other "
+     "instruments make the same claim in the clause beside this one."),
+    ("oracle/oracle/seeds/<seed>/O2_vs_baseline/arm",
+     "which arm O2 scored; required to be the shipping src path."),
+    ("oracle/oracle/seeds/<seed>/O2_vs_baseline/bit_identity_claimed",
+     "the instrument's own declaration that it claims no bit identity; required FALSE, "
+     "because a pelvis frame is whole-take and O2 is a band, not an identity."),
+    ("b6/builds/D7c/<subject>/invariants_vs_the_other_build_TRACK_ARRAYS/*",
+     "`np.array_equal` results over track arrays, inside a REPORT clause that makes no "
+     "band."),
+)
 OUTSIDE = {
     "the delivered run-report records the mode and the guard's demoted frames":
         "a REPORT clause; the card does not band the diagnostics block. Astra's round 2 "
         "accepted this exclusion explicitly.",
 }
+
+
+# --------------------------------------------------------------- the coverage audit
+# Astra's round 7: INVERT THE UNREAD CLASS. Six rounds of review found stored summaries the
+# gate read instead of their constituents, one family at a time, and each round was answered
+# by reading that family. The class only ends when the gate can say, of EVERY leaf in every
+# report it reads, either "a clause reads it" or "here is why it is not a measurement I band".
+#
+# So every leaf the gate does not read is classified:
+#
+#   LABEL        a string that names something (a title, a rule, a note)
+#   PROVENANCE   a string that identifies an input or an output (a hash, a path, a mode)
+#   DIAGNOSTIC   a number or boolean inside a subtree the card puts outside the predicate
+#   MEASUREMENT  any other number or boolean -- something that summarises or constitutes a
+#                measurement
+#
+# and every MEASUREMENT leaf under a report any clause reads is a GAP unless a justification
+# below names it. The justifications are PATTERNS over normalised paths, so they are families
+# and not a list of 9,000 leaves; a pattern that matches nothing is reported too, because a
+# stale justification is a hole that looks like a cover.
+DIAGNOSTIC_SEGMENTS = {"diagnostics", "blind_to", "note", "notes", "definitions",
+                       "truth_motion_blind_spot", "sensitivity_note", "denominator_note",
+                       "landmark_note", "keep_mask_diagnosis", "what_it_is", "watcher"}
+PROVENANCE_WORDS = ("sha", "hash", "path", "module", "file", "dir", "source", "repr", "mode",
+                    "arm", "seed", "version", "commit", "time", "stamp", "output")
+
+
+def normalise(path) -> str:
+    """One naming for a family of leaves: seeds, performers and list indices collapse."""
+    out = []
+    for step in map(str, path):
+        if step in ORACLE_SEEDS:
+            out.append("<seed>")
+        elif step in PERFORMERS:
+            out.append("<subject>")
+        elif step.lstrip("-").isdigit():
+            out.append("<i>")
+        else:
+            out.append(step)
+    return "/".join(out)
+
+
+def classify_leaf(path, kind) -> str:
+    if kind in ("map", "list"):
+        return "CONTAINER"
+    if any(step in DIAGNOSTIC_SEGMENTS for step in map(str, path)):
+        return "DIAGNOSTIC"
+    if kind == "string":
+        last = str(path[-1]).lower()
+        return ("PROVENANCE" if any(word in last for word in PROVENANCE_WORDS)
+                else "LABEL")
+    if kind in ("number", "bool"):
+        return "MEASUREMENT"
+    return "LABEL"
+
+
+def matches(pattern, normalised) -> bool:
+    """Segment by segment. `**` matches any remaining tail; within one segment the usual
+    glob applies, so `reported_*` names a family of sibling keys."""
+    want, have = pattern.split("/"), normalised.split("/")
+    for index, step in enumerate(want):
+        if step == "**":
+            return True
+        if index >= len(have) or not fnmatch.fnmatchcase(have[index], step):
+            return False
+    return len(have) == len(want)
+
+
+def justification_for(normalised, table):
+    for pattern, reason in table:
+        if matches(pattern, normalised):
+            return pattern, reason
+    return None, None
+
+
+def walk_leaves(node, path=()):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield from walk_leaves(value, path + (str(key),))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from walk_leaves(value, path + (str(index),))
+    else:
+        yield path, kind_of(node)
+
+
+def coverage_audit(reports: dict, built: dict) -> dict:
+    """Every leaf the gate does not read, classified, and every MEASUREMENT one justified."""
+    touched = {tuple(p.split("/")) for p in built["touched"]}
+    read_reports = {p[0] for p in touched}
+    classes: dict[str, int] = {}
+    per_subtree: dict[str, dict[str, int]] = {}
+    gaps: dict[str, int] = {}
+    used: set[str] = set()
+    for path, kind in walk_leaves(reports):
+        if not path or path in touched:
+            continue
+        label = classify_leaf(path, kind)
+        classes[label] = classes.get(label, 0) + 1
+        per_subtree.setdefault(path[0], {})
+        per_subtree[path[0]][label] = per_subtree[path[0]].get(label, 0) + 1
+        if label != "MEASUREMENT" or path[0] not in read_reports:
+            continue
+        pattern, _reason = justification_for(normalise(path), UNREAD_MEASUREMENTS_JUSTIFIED)
+        if pattern is None:
+            key = normalise(path)
+            gaps[key] = gaps.get(key, 0) + 1
+        else:
+            used.add(pattern)
+    dead = [pattern for pattern, _ in UNREAD_MEASUREMENTS_JUSTIFIED if pattern not in used]
+    return {
+        "rule": ("every leaf no clause reads is classified LABEL / PROVENANCE / DIAGNOSTIC / "
+                 "MEASUREMENT; every MEASUREMENT leaf under a report any clause reads is a "
+                 "GAP unless a justification names its family"),
+        "reports_read_by_some_clause": sorted(read_reports),
+        "leaves_read_by_a_clause": len(touched),
+        "unread_by_class": classes,
+        "unread_by_report_and_class": per_subtree,
+        "justified_families": len(used),
+        "justifications": [{"pattern": p, "why": w} for p, w in
+                           UNREAD_MEASUREMENTS_JUSTIFIED],
+        "justifications_matching_nothing": dead,
+        "gaps": sorted(gaps),
+        "gap_leaves": sum(gaps.values()),
+        "verdict": ("COVERED" if not gaps and not dead else "GAPS"),
+    }
+
+
+def saved_value_inventory(built: dict) -> dict:
+    """The inventory REGENERATED FROM THE GATE'S READS, never from memory.
+
+    Astra's round 7: the hand-written list claimed "every other saved boolean is derived or
+    cross-checked" and that was false -- the oracle P1 clause consumes ten more. So the
+    inventory is now the set difference the Reader itself records: every boolean and string
+    the gate consumed, minus every one it cross-checked against a derived value. Each
+    surviving family must be named below, and one that is not is reported as unjustified.
+    """
+    trusted, used = {}, set()
+    for path, kind in built["kinds"].items():
+        if kind not in ("bool", "string") or path in built["cross_checked"]:
+            continue
+        key = normalise(path)
+        trusted.setdefault(key, 0)
+        trusted[key] += 1
+    rows, unjustified = [], []
+    for key in sorted(trusted):
+        pattern, reason = justification_for(key, TRUSTED_READ_JUSTIFICATIONS)
+        if pattern is None:
+            unjustified.append(key)
+        else:
+            used.add(pattern)
+            rows.append({"family": key, "leaves": trusted[key], "why": reason})
+    return {
+        "method": ("generated from the Reader's own record: every boolean and string the "
+                   "gate read, minus every one it cross-checked against a value derived "
+                   "from that leaf's own constituents"),
+        "cross_checked_reads": len(built["cross_checked"]),
+        "trusted_families": rows,
+        "justifications_matching_nothing": [p for p, _ in TRUSTED_READ_JUSTIFICATIONS
+                                            if p not in used],
+        "unjustified": unjustified,
+        "verdict": "NAMED" if not unjustified else "UNJUSTIFIED READS",
+    }
 
 
 def load_all() -> dict:
@@ -1089,6 +2011,8 @@ def load_all() -> dict:
 def main() -> int:
     reports = load_all()
     built = build(reports)
+    coverage = coverage_audit(reports, built)
+    inventory = saved_value_inventory(built)
     fuzz_path = BASE / "gate-fuzz.json"
     fuzz = json.loads(fuzz_path.read_text()) if fuzz_path.exists() else {
         "status": "not run -- `tools/compare/d7c_gate_fuzz.py` has not been executed"}
@@ -1096,12 +2020,15 @@ def main() -> int:
         "title": ("D7c -- the pelvis on the rig's own rest. Every clause, predicted / "
                   "measured / verdict, DERIVED from the reports."),
         "shipping_mode": "E_rig_rest_kabsch",
-        "three_rules": [
+        "four_rules": [
             "every value is DERIVED from named constituents or CROSS-CHECKED against them; a "
             "stored summary that disagrees with its constituents is a FAIL",
             "a MISSING field or set member is a FAIL, never a no-op",
-            "every set is checked by IDENTITY -- files, seeds, performers, cells, and contact "
-            "runs by their (side, start, end) identity from the frozen mask",
+            "every set is checked by IDENTITY -- files, seeds, performers, cells, arms, and "
+            "contact runs by their (side, start, end) identity from the frozen mask",
+            "every MEASUREMENT leaf no clause reads is justified BY NAME, and every boolean "
+            "or string the gate consumes without deriving it is named in an inventory "
+            "GENERATED from the gate's own reads",
         ],
         "the_two_recorded_stops": (
             "S at the card's own fixture (sigma 1.0) and the calibration under its own frozen "
@@ -1117,16 +2044,30 @@ def main() -> int:
             "verdict": built["verdict"],
         },
         "deliberately_outside_the_predicate": OUTSIDE,
-        "saved_booleans_still_trusted": SAVED_BOOLEANS_STILL_TRUSTED,
+        "measurement_coverage": coverage,
+        "saved_value_inventory": inventory,
         "leaf_level_fuzz": fuzz,
     }
+    if coverage["verdict"] != "COVERED" or inventory["verdict"] != "NAMED":
+        report["merge_rule"]["verdict"] = "NO MERGE"
+        report["merge_rule"]["coverage_blocked"] = (
+            f"{coverage['gap_leaves']} unjustified MEASUREMENT leaves and "
+            f"{len(inventory['unjustified'])} unjustified trusted reads")
     (BASE / "gate.json").write_text(json.dumps(report, indent=1))
     for entry in built["clauses"]:
         print(f"{entry['verdict']:7s} {entry['clause'][:74]:74s} "
               f"{str(entry['measured'])[:44]}")
     print()
     print("MERGE RULE:", json.dumps(built["conjuncts"], indent=1))
-    print("verdict:", built["verdict"], "| missing:", built["not_yet_measured"])
+    print(f"coverage: {coverage['verdict']} -- {coverage['gap_leaves']} unjustified "
+          f"MEASUREMENT leaves in {len(coverage['gaps'])} families, "
+          f"{len(coverage['justifications_matching_nothing'])} justifications matching "
+          f"nothing; {coverage['leaves_read_by_a_clause']} leaves read by a clause")
+    print(f"saved values: {inventory['verdict']} -- {len(inventory['trusted_families'])} "
+          f"trusted families named, {inventory['cross_checked_reads']} reads cross-checked, "
+          f"{len(inventory['unjustified'])} unjustified")
+    print("verdict:", report["merge_rule"]["verdict"],
+          "| missing:", built["not_yet_measured"])
     print(f"fuzz: {fuzz.get('summary', fuzz.get('status'))}")
     print(f"\nwrote {BASE / 'gate.json'}")
     return 0

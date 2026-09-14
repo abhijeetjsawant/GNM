@@ -61,7 +61,8 @@ if str(ROOT / "tools/compare") not in sys.path:
     sys.path.insert(0, str(ROOT / "tools/compare"))
 
 from d7c_gate_report import (  # noqa: E402
-    BASE, CONJUNCTS, OUTSIDE, build, load_all)
+    BASE, CONJUNCTS, OUTSIDE, RECORDED_STOPS, UNREAD_MEASUREMENTS_JUSTIFIED, build,
+    classify_leaf, coverage_audit, justification_for, kind_of, load_all, normalise)
 
 BIG = 1.0e6
 FAR = 1.0e12
@@ -70,23 +71,14 @@ SENTINEL = object()
 
 
 def walk(node, path=()):
-    """Every leaf and every container, as (path, kind)."""
+    """Every leaf and every container, as (path, kind). The kinds are the gate's own."""
+    yield path, kind_of(node)
     if isinstance(node, dict):
-        yield path, "map"
         for key, value in list(node.items()):
             yield from walk(value, path + (key,))
     elif isinstance(node, list):
-        yield path, "list"
         for index, value in enumerate(node):
             yield from walk(value, path + (index,))
-    elif isinstance(node, bool):
-        yield path, "bool"
-    elif isinstance(node, (int, float)):
-        yield path, "number"
-    elif isinstance(node, str):
-        yield path, "string"
-    else:
-        yield path, "other"
 
 
 def fetch(reports, path):
@@ -129,12 +121,72 @@ def mutations_for(kind, value):
     return []
 
 
+BUCKETS = ("enforced", "moves_a_conjunct_clause_without_turning_the_verdict",
+           "report_only", "diagnostics_clause_only", "historical_FAIL_clause_only",
+           "read_by_no_clause")
+
+
+def merge(parts, out_path) -> int:
+    """Join the chunk reports into the one report `gate.json` embeds. Nothing is recomputed:
+    the rows are concatenated and the counts summed, and the chunks must tile the target list
+    exactly -- a missing or overlapping chunk is an error, not a smaller fuzz."""
+    chunks = sorted((json.loads(path.read_text()) for path in parts),
+                    key=lambda c: c["visited"]["start"])
+    at, joined = 0, None
+    for chunk in chunks:
+        if chunk["visited"]["start"] != at:
+            raise SystemExit(f"chunk starts at {chunk['visited']['start']}, not {at}: the "
+                             "chunks do not tile the target list")
+        at += chunk["visited"]["total"]
+        if joined is None:
+            joined = {k: v for k, v in chunk.items() if k not in BUCKETS}
+            joined.update({name: list(chunk[name]) for name in BUCKETS})
+            continue
+        for name in BUCKETS:
+            joined[name].extend(chunk[name])
+        for key in ("leaves", "containers", "total"):
+            joined["visited"][key] += chunk["visited"][key]
+        for label, count in chunk["unread_by_class"].items():
+            joined["unread_by_class"][label] = (
+                joined["unread_by_class"].get(label, 0) + count)
+    if at != joined["visited"]["of"]:
+        raise SystemExit(f"the chunks cover {at} of {joined['visited']['of']} targets")
+    gaps = joined["moves_a_conjunct_clause_without_turning_the_verdict"]
+    failures = [row for row in joined["enforced"] if "monotone_check" in row]
+    joined["counts"] = {name: len(joined[name]) for name in BUCKETS}
+    joined["gaps"] = len(gaps)
+    joined["monotone_check_failures"] = len(failures)
+    joined["monotone_check_failing_leaves"] = failures[:20]
+    joined["summary"] = (
+        f"{joined['visited']['total']} visited ({joined['visited']['leaves']} leaves + "
+        f"{joined['visited']['containers']} containers): {len(joined['enforced'])} enforced, "
+        f"{len(gaps)} gaps, {len(joined['report_only'])} REPORT-only, "
+        f"{len(joined['diagnostics_clause_only'])} diagnostics, "
+        f"{len(joined['historical_FAIL_clause_only'])} historical-FAIL, "
+        f"{len(joined['read_by_no_clause'])} read by no clause")
+    joined["merged_from"] = [str(path) for path in parts]
+    out_path.write_text(json.dumps(joined, indent=1))
+    print(joined["summary"])
+    print(f"wrote {out_path}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=BASE / "gate-fuzz.json")
     parser.add_argument("--limit", type=int, default=0,
                         help="stop after this many leaves (0 = every leaf)")
+    parser.add_argument("--start", type=int, default=0,
+                        help="skip this many targets first, so the run can be SPLIT INTO "
+                             "CHUNKS. The whole fuzz is ~64,000 gate builds at 9 ms each, "
+                             "which is at the shell's own timeout; backgrounding it is worse "
+                             "(the harness restarts a backgrounded run), so it is split and "
+                             "merged instead.")
+    parser.add_argument("--merge", type=Path, nargs="*", default=None,
+                        help="merge chunk reports written by --start/--limit into one")
     args = parser.parse_args()
+    if args.merge:
+        return merge(args.merge, args.out)
 
     reports = load_all()
     clean = build(reports)
@@ -149,15 +201,26 @@ def main() -> int:
         for prefix in prefixes:
             in_conjunct.update(c for c in status_of if c.startswith(prefix))
     excluded = set(OUTSIDE)
-    historical = {c for c in status_of if status_of[c] == "FAIL"}
+    # THE PRESERVED STOPS BY NAME, not "whichever clauses fail today". Deriving this class
+    # from the baseline verdicts would let a new clause that accidentally FAILS on the
+    # unmutated reports absorb every leaf it reads into a class excused by construction.
+    historical = set(RECORDED_STOPS)
+    failing_now = {c for c in status_of if status_of[c] == "FAIL"}
+    if failing_now != historical:
+        print("the baseline FAIL set is not the two recorded STOPs: "
+              f"{sorted(failing_now ^ historical)}")
+    read_reports = {p.split("/")[0] for p in clean["touched"]}
 
     targets = [(path, kind) for path, kind in walk(reports) if path]
+    total_targets = len(targets)
+    targets = targets[args.start:]
     if args.limit:
         targets = targets[:args.limit]
     buckets = {"enforced": [], "moves_a_conjunct_clause_without_turning_the_verdict": [],
                "report_only": [], "diagnostics_clause_only": [],
                "historical_FAIL_clause_only": [], "read_by_no_clause": []}
     leaves = containers = 0
+    unread_classes: dict[str, int] = {}
     for path, kind in targets:
         parent, key = fetch(reports, path)
         original = parent[key]
@@ -255,8 +318,37 @@ def main() -> int:
                                     "preserved STOP")
             buckets["moves_a_conjunct_clause_without_turning_the_verdict"].append(row)
         else:
-            row["justification"] = ("read by no clause: a label, a provenance string, a "
-                                    "diagnostics field or a note")
+            # THE UNREAD CLASS, INVERTED (Astra round 7). "Read by no clause" was a single
+            # bucket of 15,618 rows and a reviewer found four measurements hiding in it in
+            # one round, which is the definition of a class that proves nothing. Every
+            # unread leaf is now classified by WHAT IT IS, and every MEASUREMENT leaf under
+            # a report some clause reads is a GAP unless the gate's own inventory names its
+            # family.
+            label = classify_leaf(path, kind)
+            row["class"] = label
+            row["subtree"] = str(path[0])
+            if label == "MEASUREMENT" and str(path[0]) in read_reports:
+                pattern, reason = justification_for(normalise(path),
+                                                    UNREAD_MEASUREMENTS_JUSTIFIED)
+                if pattern is None:
+                    row["justification"] = ("GAP: an unread MEASUREMENT leaf under a report "
+                                            "a clause reads, with no justification named in "
+                                            "the gate's inventory")
+                    buckets["moves_a_conjunct_clause_without_turning_the_verdict"].append(row)
+                    unread_classes["MEASUREMENT justified"] = unread_classes.get(
+                        "MEASUREMENT justified", 0)
+                    continue
+                row["justification"] = f"{pattern}: {reason}"
+                label = "MEASUREMENT justified"
+            else:
+                row["justification"] = {
+                    "LABEL": "a name, a rule or a note; not a measurement",
+                    "PROVENANCE": "identifies an input or an output; not a measurement",
+                    "DIAGNOSTIC": "inside a subtree the card puts outside the predicate",
+                    "MEASUREMENT": "in a report no clause reads at all",
+                    "CONTAINER": "a container whose leaves are classified individually",
+                }[label]
+            unread_classes[label] = unread_classes.get(label, 0) + 1
             buckets["read_by_no_clause"].append(row)
 
     gaps = buckets["moves_a_conjunct_clause_without_turning_the_verdict"]
@@ -278,7 +370,16 @@ def main() -> int:
         "what_a_pass_does_not_prove": (
             "that the gate reads the RIGHT things. Only that what it reads, it depends on. "
             "Choosing the clauses remains the card's job."),
-        "visited": {"total": len(targets), "leaves": leaves, "containers": containers},
+        "the_unread_class_inverted": (
+            "every leaf no clause reads is classified LABEL / PROVENANCE / DIAGNOSTIC / "
+            "MEASUREMENT and tagged with the report it lives in. A MEASUREMENT leaf under a "
+            "report some clause reads is a GAP unless the gate's own inventory names its "
+            "family -- which is the check that ends the class Astra found four members of in "
+            "each of rounds 6 and 7."),
+        "unread_by_class": unread_classes,
+        "coverage_audit": coverage_audit(load_all(), clean),
+        "visited": {"total": len(targets), "leaves": leaves, "containers": containers,
+                    "of": total_targets, "start": args.start},
         "counts": {name: len(rows) for name, rows in buckets.items()},
         "gaps": len(gaps),
         "monotone_check": (
