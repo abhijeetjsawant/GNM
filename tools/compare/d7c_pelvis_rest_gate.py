@@ -77,6 +77,10 @@ if not str(Path(autoanim_gnm.__file__).resolve()).startswith(str(ROOT)):
         f"worktree ({ROOT}). Re-run with PYTHONPATH=$PWD/src.")
 
 import autoanim_gnm.commercial_multiview as cm  # noqa: E402
+
+if str(ROOT / "tools/compare") not in sys.path:                      # noqa: E402
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+from d7c_source_fingerprint import fingerprint_now as source_fingerprint  # noqa: E402
 from autoanim_gnm.body import (  # noqa: E402
     DETAILED_HUMANOID, forward_kinematics_positions, skeleton_for_track_dict,
     _quaternion_multiply)
@@ -668,11 +672,21 @@ def main() -> int:
     parser.add_argument("--take-label", default="build")
     parser.add_argument("--take-baseline", type=Path)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--src-stage", choices=("pre_change", "refactored"),
+                        default="refactored",
+                        help="which source stage this instrument run belongs to; stated by "
+                             "the operator and checked by the gate against the converter's "
+                             "hash and git")
     args = parser.parse_args()
 
     report: dict = {
         "title": "D7c -- the pelvis on the rig's own rest",
         "resolved_module": str(Path(cm.__file__).resolve()),
+        # THE SAME BUILD-TIME CONTRACT THE BUILD REPORTS CARRY. This producer emitted none at
+        # all until Astra's round 9, so every instrument report had to be stamped after the
+        # fact; a run from here records its own.
+        "source_fingerprint": source_fingerprint(cm.PELVIS_FRAME_SOURCE,
+                                                 stage=args.src_stage),
         "pelvis_frame_source_in_src": cm.PELVIS_FRAME_SOURCE,
         "bands": {"O1_tilt_deg": O1_TILT_DEG, "O1_origin_mm": O1_ORIGIN_MM,
                   "O1_residual_m": O1_RESIDUAL_M, "O2_leg_mm": O2_LEG_MM,

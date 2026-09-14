@@ -81,6 +81,7 @@ import silhouette as sil  # noqa: E402
 import silhouette_partwise as pw  # noqa: E402
 import d7_silhouette_partwise as p7  # noqa: E402
 import d9b_hoist_gate as gate  # noqa: E402
+from d7c_source_fingerprint import fingerprint_now as source_fingerprint  # noqa: E402
 from autoanim_gnm.commercial_multiview import JOINT_INDEX, load_camera_rig  # noqa: E402
 
 OUT_DIR = ROOT / "artifacts/compare/d7c-pelvis-rest"
@@ -286,8 +287,23 @@ def main() -> int:
             PER_FRAME, population=population,
             **{f"{n}|{k}": stats[n][k] for n in names for k in KEYS})
 
+    # THE CACHE THE READER ACTUALLY LOADED, by name and content. `masks_copied_never_shared`
+    # proves every cache in the work directory is a faithful copy; it does not say WHICH one
+    # was consumed, and Astra's round 9 deleted the consumed entry from that map with every
+    # clause unchanged. `sil.MaskStore` builds its path deterministically from the scale and
+    # the camera set (silhouette.py:244), so the same name is computed here and hashed.
+    consumed = (MASK_WORK / f"masks-{sil.NATIVE[0] // SCALE}x{sil.NATIVE[1] // SCALE}-"
+                f"{'_'.join(cams)}.npz")
+    if not consumed.exists():
+        raise SystemExit(f"the mask cache the reader loads is missing: {consumed}")
+
     rng = np.random.default_rng(SEED)
     draws = pw.block_draws(rng, frames)
+    # ONE DRAW LIST FOR THE WHOLE TAKE, hashed. Equal `draws_used` counts are consistency,
+    # not identity -- round 8's own lesson, applied to itself. This hash is what every cut
+    # and every part is then indexed from.
+    draw_list_sha256 = sha256(
+        np.concatenate([np.asarray(d, dtype=np.int64) for d in draws]).tobytes()).hexdigest()
     report: dict = {
         "title": "D9b B3 -- the photographs, part-wise, ARMS and TORSO+LEGS",
         "instrument_only": True,
@@ -297,6 +313,11 @@ def main() -> int:
         "builds": {label: str(delivery.relative_to(ROOT)) for label, delivery, _ in BUILDS},
         "delivered_glb_sha256": glb_digests,
         "masks_copied_never_shared": copies,
+        "mask_cache_consumed": {"name": f"mask/{consumed.name}",
+                                "sha256": digest(consumed),
+                                "loaded_by": "silhouette.MaskStore at the scale and camera "
+                                             "set this run scored"},
+        "source_fingerprint": source_fingerprint("E_rig_rest_kabsch", stage="refactored"),
         "meshes_exported_fresh": ("both arms, through the real Blender path into this "
                                   "step's own work directories."),
         "raw_triangulation_byte_identical": raw_identical,
@@ -306,6 +327,12 @@ def main() -> int:
             "change on byte-identical landmarks cannot move either."),
         "statistics": {"moving_block": BLOCK, "draws": DRAWS, "seed": SEED,
                        "every_arm_on_identical_draws": True,
+                       "draw_list_sha256": draw_list_sha256,
+                       "draw_identity_note": (
+                           "ONE list, built once from the seed and indexed by every cut and "
+                           "every part. Each cell publishes the sha256 of the draws that "
+                           "survived its own cut's five-frame floor, so identity is checkable "
+                           "rather than inferred from equal counts."),
                        "lag1_autocorrelation_on_this_take": 0.99},
         "subjects": {},
     }
@@ -339,6 +366,11 @@ def main() -> int:
                         float(np.median(series[part][arm_name][mask_frames])), 5)
                 cell[f"{part}_D7c_minus_D9b"] = pw.paired(
                     series[part]["D7c"], series[part]["D9b"], mask_frames, draws)
+                # the identity of the draws THIS cell used, not merely how many
+                cell[f"{part}_D7c_minus_D9b"]["draws_sha256"] = sha256(
+                    np.concatenate([idx[mask_frames[idx]] for idx in draws
+                                    if int(mask_frames[idx].sum()) >= 5]
+                                   ).astype(np.int64).tobytes()).hexdigest()
         report["subjects"][f"subject_{s:02d}"] = row
 
         subject_verdicts: dict = {}

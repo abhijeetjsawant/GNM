@@ -59,7 +59,8 @@ BASE = ROOT / "artifacts/compare/d7c-pelvis-rest"
 if str(ROOT / "tools/compare") not in sys.path:
     sys.path.insert(0, str(ROOT / "tools/compare"))
 from d7c_source_fingerprint import (  # noqa: E402
-    BUILD_STAGES, RETAINED, hash_file, resolved_converter_sha)
+    BUILD_STAGES, RETAINED, SRC_CHANGE_COMMIT, hash_file, is_ancestor,
+    resolved_converter_sha)
 
 # THE CONVERTER THIS RUN RESOLVES, hashed once. Every "refactored" build report must name it;
 # the historical hygiene arm must name the retained pre-change module instead, and must NOT
@@ -83,6 +84,8 @@ REPORTS = {
     "projection": "projection-preservation.json",
     "p_oracle": "projection-preservation-oracle.json",
     "control2": "projection-preservation-control-clear-contacts.json",
+    # the control's own BUILD report, loaded so its source stage is checked with the rest
+    "control2_build": "control-clear-contacts-build.json",
     "p1_controls": "p1-controls.json",
     "silhouette": "silhouette-partwise.json",
     "b1_attribution": "b1-attribution.json",
@@ -90,6 +93,10 @@ REPORTS = {
     "b3": "b3-hoist-and-contacts.json",
     "b6": "b6-delivered-bytes.json",
 }
+
+# which loaded report each named stage file is, so the order clause can reach every one of
+# them by identity rather than by whichever the gate happens to check
+REPORT_BY_FILE = {name: key for key, name in REPORTS.items()}
 
 # The bands, restated beside the numbers they test. None is new and none is moved.
 O1_TILT_DEG, O1_ORIGIN_MM, O1_RESIDUAL_M = 0.01, 0.01, 1.0e-6
@@ -344,25 +351,30 @@ def build(reports: dict) -> dict:
         expected = BUILD_STAGES.get(REPORTS[report_key])
         if expected is not None and (stage, mode) != expected:
             raise Missing(f"{report_key} is stage {(stage, mode)}, not the card's {expected}")
-        # THE ORDER, which is the one thing an after-the-fact stamp cannot manufacture. The
-        # hashes were taken from the bytes the gate compares against, so a refactored stage
-        # agrees by construction; the historical arm's claim to have run on the PRE-change
-        # module rests on its log preceding every refactored stage's log and the src-change
-        # commit. Ordering evidence, not proof -- an uncommitted edit leaves no timestamp.
-        when = r.num(report_key, "source_fingerprint", "build_order", "log_mtime")
-        if stage == "pre_change":
-            commit = r.num(report_key, "source_fingerprint", "build_order",
-                           "src_change_commit_time")
-            others = r.at(report_key, "source_fingerprint", "build_order",
-                          "refactored_stage_log_mtimes")
-            if not isinstance(others, dict) or not others:
-                raise Missing(f"{report_key} records no refactored stage to be earlier than")
-            later = {name: r.num(report_key, "source_fingerprint", "build_order",
-                                 "refactored_stage_log_mtimes", name) for name in others}
-            if when >= commit or any(when >= t for t in later.values()):
-                raise Missing(f"{report_key} ran at {int(when)}, not before the src change "
-                              f"at {int(commit)} and every refactored stage "
-                              f"{sorted(int(t) for t in later.values())}")
+        # THE STAMP'S OWN KIND, and for a GENUINE one an anchor git can check. A
+        # retrospective stamp's hash was taken from the bytes the gate compares against, so
+        # it agrees by construction; a genuine stamp records the commit the build ran on, and
+        # `git merge-base --is-ancestor` then decides whether that build could have seen the
+        # src change at all. The cross-stage ORDER is derived in its own clause, from each
+        # stage's own value -- this one used to read hygiene's duplicated copy of everybody
+        # else's times, which Astra's round 9 broke by moving the tripwire's own.
+        retrospective = r.flag(report_key, "source_fingerprint", "retrospective")
+        r.num(report_key, "source_fingerprint", "build_order", "stage_time")
+        head = r.text(report_key, "source_fingerprint", "build_order", "head_commit")
+        if retrospective:
+            if head:
+                raise Missing(f"{report_key} is marked retrospective and yet names a build "
+                              f"commit {head[:12]}; a stamp filled from the branch's bytes "
+                              "knows no such thing")
+        else:
+            if not head:
+                raise Missing(f"{report_key} carries a GENUINE stamp with no head commit")
+            if stage == "pre_change" and not is_ancestor(head, SRC_CHANGE_COMMIT):
+                raise Missing(f"{report_key} claims the pre-change stage from commit "
+                              f"{head[:12]}, which is not an ancestor of {SRC_CHANGE_COMMIT}")
+            if stage == "refactored" and not is_ancestor(SRC_CHANGE_COMMIT, head):
+                raise Missing(f"{report_key} claims the refactored stage from commit "
+                              f"{head[:12]}, which does not descend from {SRC_CHANGE_COMMIT}")
         # the path is kept as PROVENANCE and nothing else: it names the tree, it proves none.
         return f"{stage} {recorded[:12]} ({mode})"
 
@@ -491,6 +503,44 @@ def build(reports: dict) -> dict:
         return (f"{len(ORACLE_ARMS)} arms x {len(ORACLE_SEEDS)} seeds at {ORACLE_FRAMES} "
                 f"frames; src_default == E_rig_rest_kabsch leaf for leaf; ships {shipping!r}",
                 shipping == PELVIS_MODE_SHIPPED)
+
+    @clause("PROVENANCE: the stages in order, each from its OWN record",
+            f"all {len(BUILD_STAGES)} named stage reports present, the pre-change arm "
+            "earliest and before the src change",
+            "a stage that could not have run when it says it did is measuring another "
+            "source tree, whatever its hash agrees with")
+    def _():
+        times, kinds = {}, {}
+        for name, (stage, _mode) in sorted(BUILD_STAGES.items()):
+            key = REPORT_BY_FILE.get(name)
+            if key is None:
+                raise Missing(f"{name} is a named stage the gate does not load")
+            times[name] = (stage, r.num(key, "source_fingerprint", "build_order",
+                                        "stage_time"))
+            kinds[name] = ("retrospective" if r.flag(key, "source_fingerprint",
+                                                     "retrospective") else "genuine")
+        historical = {n: t for n, (st, t) in times.items() if st == "pre_change"}
+        later = {n: t for n, (st, t) in times.items() if st == "refactored"}
+        if not historical or not later:
+            raise Missing(f"the stages are {[st for st, _ in times.values()]}; the order "
+                          "needs a pre-change arm and something after it")
+        # EACH STAGE'S OWN VALUE. Round 9 set the tripwire's own `stage_time` one second
+        # before hygiene's and the gate did not notice, because it was comparing hygiene's
+        # copy of everybody else's times against hygiene's own.
+        commit = r.num(REPORT_BY_FILE[next(iter(historical))], "source_fingerprint",
+                       "build_order", "src_change_commit_time")
+        for name, when in historical.items():
+            if when >= commit or any(when >= other for other in later.values()):
+                raise Missing(f"{name} ran at {int(when)}, not before the src change at "
+                              f"{int(commit)} and every later stage "
+                              f"{sorted(int(t) for t in later.values())}")
+        genuine = sorted(n for n, k in kinds.items() if k == "genuine")
+        if not genuine:
+            raise Missing("no stage carries a genuine build-time stamp; the producer-to-gate "
+                          "contract has never been exercised")
+        return (f"{len(times)} stages, {len(genuine)} genuine ({', '.join(genuine)}) and "
+                f"{len(times) - len(genuine)} retrospective; the pre-change arm is earliest",
+                True)
 
     @clause("O1/O2 PREMISES: the bands the instrument recorded ARE the bands this gate states",
             "the five O bands equal, to the digit")
@@ -1526,16 +1576,29 @@ def build(reports: dict) -> dict:
         # photographs and no constant here was chosen on it.
         if not r.flag("silhouette", "instrument_only"):
             raise Missing("the silhouette report does not declare itself instrument-only")
+        built_here("silhouette")     # the photographs' instrument, stamped like every stage
         # AND THE PHOTOGRAPHS ARE THE SAME PHOTOGRAPHS: the mask cache this run read is the
         # one the earlier runs read, byte for byte. The MAMMA oracle's own agreement is the
         # other half of that argument and is banded in the clause below.
+        # BY IDENTITY, and the one that was CONSUMED. Requiring a nonempty map of faithful
+        # copies says nothing about which cache the reader loaded: Astra's round 9 deleted
+        # the consumed entry and every clause was unchanged. The producer now records the
+        # name `silhouette.MaskStore` builds for this scale and camera set, and its hash.
+        consumed = r.text("silhouette", "mask_cache_consumed", "name")
         masks = r.at("silhouette", "masks_copied_never_shared")
-        if not isinstance(masks, dict) or not masks:
-            raise Missing("silhouette/masks_copied_never_shared is empty")
+        if not isinstance(masks, dict) or consumed not in masks:
+            raise Missing(f"the cache the reader loaded, {consumed}, is not among the "
+                          f"proven copies {sorted(masks) if isinstance(masks, dict) else masks}")
         for name in sorted(masks):
             if not r.flag("silhouette", "masks_copied_never_shared", name, "byte_identical"):
                 raise Missing(f"the silhouette read a mask cache that is not byte-identical: "
                               f"{name}")
+        # and the recorded hash is the hash of the file that is there now
+        recorded = r.text("silhouette", "mask_cache_consumed", "sha256")
+        on_disk = BASE / "silhouette-work" / consumed.split("/")[-1]
+        if not on_disk.exists() or hash_file(on_disk) != recorded:
+            raise Missing(f"{consumed} hashes {hash_file(on_disk)[:12] if on_disk.exists() else 'ABSENT'} "
+                          f"against the recorded {recorded[:12]}")
         draws = int(r.num("silhouette", "statistics", "draws"))
         shortfall = {}
         r.named("silhouette", "subjects", expect=PERFORMERS)
@@ -1557,21 +1620,24 @@ def build(reports: dict) -> dict:
                 if frames != B1_CUT_FRAMES[cut]:
                     raise Missing(f"B1/{performer}/{name} is over {frames} photographs, not "
                                   f"the cut's {B1_CUT_FRAMES[cut]}")
-                # THE SAME DRAWS, MEASURED. Every part of a cut must report the same
-                # `draws_used` -- that identity IS the card's identical-draws requirement
-                # made observable, and `silhouette_partwise.py:405` builds ONE draw list for
-                # the whole take that every cut and every part then indexes. The count falls
-                # below the requested number because `:414` drops a draw whose resampled
-                # frames land fewer than FIVE times inside the cut, so the smallest cuts lose
-                # the most (performer 1's 22 hoisted frames keep 1,838 of 2,000). Reported,
-                # never banded.
-                used = int(r.num(*source, "draws_used"))
-                siblings = {int(r.num("silhouette", "subjects", performer, "cuts", cut,
-                                      f"{other}_D7c_minus_D9b", "draws_used"))
+                # THE SAME DRAWS, BY IDENTITY. Equal `draws_used` counts are CONSISTENCY,
+                # not identity -- the same mistake round 8 caught in the contact counts, made
+                # again one round later. `silhouette_partwise.py:405` builds ONE list for the
+                # whole take that every cut and part indexes, and each cell now publishes the
+                # sha256 of the draws that survived its own cut's five-frame floor
+                # (`:414` drops a draw landing fewer than FIVE times inside the cut, so the
+                # smallest cuts lose the most -- performer 1's 22 hoisted frames keep 1,838
+                # of 2,000). The hashes must agree across the parts of a cut; the counts are
+                # reported beside them and band nothing.
+                identity = {r.text("silhouette", "subjects", performer, "cuts", cut,
+                                   f"{other}_D7c_minus_D9b", "draws_sha256")
                             for other in ("torso", "arm", "whole")}
-                if len(siblings) != 1 or not 1 <= used <= draws:
-                    raise Missing(f"B1/{performer}/{cut} used {sorted(siblings)} draws "
-                                  f"across its parts, against the run's {draws}")
+                if len(identity) != 1:
+                    raise Missing(f"B1/{performer}/{cut} scored its parts on DIFFERENT draws: "
+                                  f"{sorted(h[:12] for h in identity)}")
+                used = int(r.num(*source, "draws_used"))
+                if not 1 <= used <= draws:
+                    raise Missing(f"B1/{performer}/{cut} used {used} of the run's {draws}")
                 shortfall[f"{performer}/{cut}"] = draws - used
                 if not float(interval[0]) <= difference <= float(interval[1]):
                     raise Missing(f"B1/{performer}/{name} difference {difference} is outside "
@@ -1602,6 +1668,9 @@ def build(reports: dict) -> dict:
     def _():
         if not r.flag("silhouette", "statistics", "every_arm_on_identical_draws"):
             raise Missing("the silhouette did not score every arm on identical draws")
+        # THE LIST ITSELF, hashed by the producer. The flag is the claim; this is the thing.
+        if len(r.text("silhouette", "statistics", "draw_list_sha256")) != 64:
+            raise Missing("the silhouette publishes no hash of its shared draw list")
         draws = int(r.num("silhouette", "statistics", "draws"))
         block = int(r.num("silhouette", "statistics", "moving_block"))
         seed = int(r.num("silhouette", "statistics", "seed"))
@@ -1821,6 +1890,7 @@ CONJUNCTS = (
     ("hygiene", ("hygiene:",)),
     ("the refactor tripwire (both readings)",
      ("REFACTOR TRIPWIRE (i)", "REFACTOR TRIPWIRE (ii)")),
+    ("every stage's source, in order", ("PROVENANCE:",)),
     ("the oracle's own premises (the arms, the populations, the bands)",
      ("O1/O2 PREMISES:",)),
     ("O1", ("O1 ",)),
@@ -1859,9 +1929,11 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
     ("b1_attribution/**", "B1's attribution is a DIAGNOSTIC decomposition, explicitly a "
                           "point estimate; only the three rising torso cells' shares are "
                           "quoted and the clause that reads them is REPORT."),
-    ("b2/subjects/**", "B2's per-joint distances to MAMMA. B2 is a MAMMA-referenced "
-                       "instrument: its one banded clause is the same-denominator one, and "
-                       "no constant is selected on any of it."),
+    ("b2/subjects/**",
+     "B2's per-joint distances from the DELIVERY to the take's own captured landmarks "
+     "(`delivered_vs_capture.py:531`) -- OURS, not MAMMA's; the earlier note calling them "
+     "MAMMA-referenced was wrong and is withdrawn. B2's share of the merge rule is its "
+     "same-denominator clause alone; these rows are reported beside it."),
     # --- the oracle's controls and diagnostics
     ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/angle/*",
      "the order statistics of an arm's tilt other than the one its clause bands. O1 bands "
@@ -2019,6 +2091,10 @@ UNREAD_MEASUREMENTS_JUSTIFIED = (
                         "artifact."),
     ("control2/**", "the built control's remaining fields mirror the delivery report's; its "
                     "channels, its verdicts and its expectation are read."),
+    ("control2_build/**",
+     "the control BUILD's own report. It is loaded so that its source stage is checked in "
+     "order with every other stage; what the control must DO is banded on the P report "
+     "beside it, where its channels are read."),
     # --- the photographs
     ("silhouette/subjects/**", "the per-subject overlap rows the eight cells summarise."),
     ("oracle/oracle/seeds/<seed>/arms/*/pelvis_vs_truth_deg/pitch_about_hip_line/*",
@@ -2107,6 +2183,29 @@ WHY_NOT_BANDED = {
     "not a property of the artifact":
         "wall-clock time and the like: a property of the machine that ran the build.",
 }
+# AND A REASON IS LEGAL ONLY WHERE THE CARD GIVES IT. Round 8 checked the vocabulary and
+# round 9 broke that in one move: `silhouette/subjects/**` was relabelled "a preserved
+# recorded STOP" while still grouped under B1 -- a reason the card gives S's immutable files
+# and gives B1 nowhere -- and the audit read COVERED. Membership in a vocabulary is not
+# applicability. These sets are written out, not derived: each names the conjuncts whose CARD
+# LINE carries that exclusion.
+WHY_LEGAL_FOR = {
+    "the card reports it": {
+        "B1 (diagnostic)", "B1 on both performers", "B2/B4 (report)", "B3 (report)",
+        "B5/B6 (report)", "O1 (D7b's, not this step's)", "O3 (report)", "P3 (report)", "S",
+        "the same denominator (B2 and both landmark arrays)"},
+    "an order statistic the band does not name": {
+        "O1", "O2", "P2 on the take", "P2 on every oracle body"},
+    "a control arm outside the merge rule": {"O1", "S", "every must-fail still fails"},
+    "a diagnostic beside a banded value": {
+        "B1 on both performers", "O1", "O2", "P2 on every oracle body", "S"},
+    "a fixture input": {"O1", "S"},
+    # the two IMMUTABLE selector files and the POST HOC amendment are S's alone
+    "a preserved recorded STOP": {"S"},
+    "an amendment's own working": {"S"},
+    "not a property of the artifact": {"hygiene / the tripwire"},
+}
+
 FAMILY_SWEEP = {
     'take/**':
         ('B2/B4 (report)',
@@ -2330,6 +2429,9 @@ FAMILY_SWEEP = {
     'control2/**':
         ('every must-fail still fails',
          'a control arm outside the merge rule'),
+    'control2_build/**':
+        ('every must-fail still fails',
+         'a control arm outside the merge rule'),
     'silhouette/subjects/**':
         ('B1 on both performers',
          'the card reports it'),
@@ -2367,6 +2469,16 @@ TRUSTED_READ_JUSTIFICATIONS = (
      "COMPARED against the module this run resolves -- equal for the refactored stages, "
      "and for the historical hygiene arm required to differ from it and to equal the "
      "retained pre-change copy on this branch."),
+    ("*/source_fingerprint/retrospective",
+     "whether this stamp was written by the producer at build time or filled afterwards from "
+     "the branch's bytes. It is not believed: it DECIDES which evidence the gate then "
+     "demands -- a genuine stamp must carry a head commit that git places on the right side "
+     "of the src change, and a retrospective one must carry none, because a stamp filled "
+     "from the branch knows no such thing."),
+    ("*/source_fingerprint/build_order/head_commit",
+     "the commit the build ran on. Checked with `git merge-base --is-ancestor` against the "
+     "src-change commit, which is the one ordering claim git can settle; empty on a "
+     "retrospective stamp, and the gate requires it to be empty there."),
     ("*/source_fingerprint/stage",
      "which source stage the report belongs to; compared against the card's own table of "
      "stages, and it decides which way the hash comparison must come out."),
@@ -2444,6 +2556,22 @@ TRUSTED_READ_JUSTIFICATIONS = (
     ("reread/winner/mode", "the other half of that comparison."),
     ("reread/S_verdict", "S's own verdict string, required to be PROCEED beside the six "
                          "cells the gate recomputes."),
+    ("silhouette/subjects/<subject>/cuts/*/*_D7c_minus_D9b/draws_sha256",
+     "the sha256 of the draws one cell actually used. Not believed on its own: the three "
+     "parts of a cut are required to carry the SAME hash, which is what makes identical "
+     "draws an identity rather than the equal-count consistency round 8 caught me calling "
+     "one."),
+    ("silhouette/statistics/draw_list_sha256",
+     "the sha256 of the one shared draw list every cut and part indexes. Read as evidence "
+     "the list exists and is published; the per-cell hashes above are what the clause "
+     "compares."),
+    ("silhouette/mask_cache_consumed/name",
+     "the name `silhouette.MaskStore` builds for this scale and camera set -- the cache the "
+     "reader actually loaded. It is not believed: it must appear in the proven-copies map by "
+     "identity, and the gate re-hashes the file on disk."),
+    ("silhouette/mask_cache_consumed/sha256",
+     "the hash of that cache as the producer read it; the gate re-hashes the file and "
+     "requires agreement."),
     ("silhouette/statistics/every_arm_on_identical_draws",
      "the silhouette's own declaration that every arm was scored on the same bootstrap "
      "draws. It is not believed on its own: the card BANDS identical draws, so its clause "
@@ -2594,11 +2722,18 @@ def coverage_audit(reports: dict, built: dict) -> dict:
     # RULE 5, MECHANICAL: every family swept against the card's merge rule. A family with no
     # sweep row, or one whose reason is not a reason THE CARD gives, is a hole and not a
     # justification -- which is what round 8's three escapes were.
-    unswept, by_conjunct = [], {}
+    unswept, illegal, by_conjunct = [], [], {}
     for pattern, _reason in UNREAD_MEASUREMENTS_JUSTIFIED:
         row = FAMILY_SWEEP.get(pattern)
         if row is None or row[1] not in WHY_NOT_BANDED:
             unswept.append(pattern)
+            continue
+        # THE REASON MUST BE ONE THE CARD GIVES FOR THIS CONJUNCT, not merely a reason the
+        # card gives somewhere. Vocabulary membership was round 8's check and round 9 walked
+        # through it.
+        if row[0] not in WHY_LEGAL_FOR.get(row[1], set()):
+            illegal.append({"family": pattern, "conjunct": row[0], "why": row[1],
+                            "legal_for": sorted(WHY_LEGAL_FOR.get(row[1], set()))})
             continue
         by_conjunct.setdefault(row[0], []).append({"family": pattern, "why": row[1]})
     stale_sweep = [pattern for pattern in FAMILY_SWEEP
@@ -2632,14 +2767,16 @@ def coverage_audit(reports: dict, built: dict) -> dict:
             "why_not_banded": WHY_NOT_BANDED,
             "families_by_conjunct": {k: by_conjunct[k] for k in sorted(by_conjunct)},
             "families_swept": sum(len(v) for v in by_conjunct.values()),
+            "why_legal_for": {k: sorted(v) for k, v in WHY_LEGAL_FOR.items()},
             "families_with_no_sweep_row_or_a_reason_the_card_does_not_give": unswept,
+            "families_whose_reason_is_not_legal_for_their_conjunct": illegal,
             "sweep_rows_matching_no_family": stale_sweep,
         },
         "justifications_matching_nothing": dead,
         "gaps": sorted(gaps),
         "gap_leaves": sum(gaps.values()),
         "verdict": ("COVERED" if not gaps and not dead and not unswept and not stale_sweep
-                    else "GAPS"),
+                    and not illegal else "GAPS"),
     }
 
 
@@ -2750,7 +2887,9 @@ def main() -> int:
     print(f"the sweep: {sweep['families_swept']} families across "
           f"{len(sweep['families_by_conjunct'])} conjuncts, "
           f"{len(sweep['families_with_no_sweep_row_or_a_reason_the_card_does_not_give'])} "
-          f"unswept, {len(sweep['sweep_rows_matching_no_family'])} stale rows")
+          f"unswept, "
+          f"{len(sweep['families_whose_reason_is_not_legal_for_their_conjunct'])} illegal, "
+          f"{len(sweep['sweep_rows_matching_no_family'])} stale rows")
     print(f"saved values: {inventory['verdict']} -- {len(inventory['trusted_families'])} "
           f"trusted families named, {inventory['cross_checked_reads']} reads cross-checked, "
           f"{len(inventory['unjustified'])} unjustified")

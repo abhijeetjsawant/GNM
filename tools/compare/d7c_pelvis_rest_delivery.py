@@ -261,6 +261,12 @@ def main() -> int:
                              "reproduce the D9b delivery bit for bit, 8 of 8.")
     parser.add_argument("--src-state", default="",
                         help="what src/ carried on this arm, recorded verbatim")
+    parser.add_argument("--src-stage", choices=("pre_change", "refactored"), default=None,
+                        help="WHICH SOURCE STAGE this build is, stated by the operator and "
+                             "verified by the gate against the converter's hash and git. It "
+                             "is an input, never inferred: a producer that decided its own "
+                             "stage from the gate's own reference file would only ever agree "
+                             "with itself.")
     parser.add_argument("--expect-byte-identical", action="store_true",
                         help="assert every delivered file matches the shipped delivery; "
                              "the hygiene arm, run with src/ UNCHANGED")
@@ -351,7 +357,8 @@ def main() -> int:
         # `tools/compare/d7c_source_fingerprint.py` for why, and for the three stages the
         # gate must keep apart.
         "source_fingerprint": source_fingerprint(
-            args.pelvis_mode if args.pelvis_mode is not None else saved_source),
+            args.pelvis_mode if args.pelvis_mode is not None else saved_source,
+            stage=args.src_stage or "refactored"),
         "src_state": args.src_state or ("UNCHANGED (hygiene arm)"
                                         if args.expect_byte_identical else "unrecorded"),
         "build_seconds": round(elapsed, 1),
