@@ -1,507 +1,699 @@
 #!/usr/bin/env python3
 """D7c's gate: every clause, its predicted value, its measured value and a verdict.
 
-It computes NOTHING. It reads the committed reports each instrument wrote and evaluates the
-card's clauses from them, so a clause can only pass because an instrument measured it, and the
-merge rule at the end is the card's own conjunction and nothing else.
+IT COMPUTES NOTHING AND IT ASSERTS NOTHING. It loads the reports each instrument wrote and
+DERIVES every verdict from the numbers in them, so a clause can only pass because a
+measurement says so.
 
-TWO CLAUSES READ **FAIL** AND STAY THAT WAY. S stopped twice before the step resumed on two
-reviewer amendments, and both stops are recorded here as they fell rather than replaced by
-what came after them:
+WHY THIS FILE WAS REWRITTEN. Astra's merge review round 2 set the wrong-origin control's
+residual to zero in memory and the gate still said MERGE; it changed the (a)/(b) split to
+one-better/five-worse with `S_verdict: SPLIT` and the gate still said MERGE. Both clauses were
+receiving a LITERAL `"PASS"`. The flip experiment that shipped beside them flipped
+already-assigned verdicts, which proves the final conjunction's WIRING and not that a
+measurement can fail its condition. Two changes follow:
 
-  * S at the CARD'S OWN FIXTURE (sigma 1.0) failed the every-body follower clause on 5 of 6
-    bodies. `selector.json` is immutable.
-  * the FIXTURE CALIBRATION failed its own frozen monotonicity precondition on one 0.0135 mm
-    decrease. `selector-calibrated.json` is immutable, `monotone_across_the_evaluations:
-    false` preserved.
+  * `build(reports)` is a pure function of the loaded artifacts. No verdict is a literal; each
+    one is an expression over numbers that came out of a report.
+  * `INPUT_MUTATIONS` demonstrates failure AT THE INPUT LEVEL. For every conjunct, an input
+    artifact is mutated IN MEMORY -- the wrong-origin residual set to zero, the (a)/(b) split
+    reversed, a delivered SHA changed, a contact anchor moved past its tolerance -- and the
+    whole gate is rebuilt from the mutated inputs. Every one must read NOT MERGE. That is the
+    experiment Astra ran by hand, run by the instrument on itself, and its table is written
+    into the log and into `gate.json`.
 
-Neither is in the merge rule, because the merge rule reads the clauses as the AMENDED card
-states them -- and the amendments are recorded, post hoc, with the stops they replaced.
+TWO CLAUSES READ **FAIL** AND STAY THAT WAY: S at the card's own fixture (sigma 1.0) and the
+calibration under its own frozen monotonicity precondition. `selector.json` and
+`selector-calibrated.json` are immutable, and the two reviewer amendments that followed are
+recorded as POST HOC.
 
     PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d7c_gate_report.py
 """
 
+from __future__ import annotations
+
+import copy
 import json
 from pathlib import Path
+
 ROOT = Path(__file__).resolve().parents[2]
-BASE = ROOT / 'artifacts/compare/d7c-pelvis-rest'
+BASE = ROOT / "artifacts/compare/d7c-pelvis-rest"
 
-def load(name):
-    p = BASE / name
-    return json.loads(p.read_text()) if p.exists() else {}
+REPORTS = {
+    "hygiene": "delivery-hygiene-build.json",
+    "tripwire": "tripwire-mode-c-build.json",
+    "delivery": "delivery-build.json",
+    "oracle": "instrument-d7c.json",
+    "take": "instrument-take.json",
+    "sigma1": "selector.json",
+    "calibration": "selector-calibrated.json",
+    "admissibility": "selector-calibrated-amended.json",
+    "reread": "selector-reread-sigma0.335546875.json",
+    "projection": "projection-preservation.json",
+    "p_oracle": "projection-preservation-oracle.json",
+    "control2": "projection-preservation-control-clear-contacts.json",
+    "p1_controls": "p1-controls.json",
+    "silhouette": "silhouette-partwise.json",
+    "b1_attribution": "b1-attribution.json",
+    "b2": "b2-delivered-vs-capture.json",
+    "b3": "b3-hoist-and-contacts.json",
+    "b6": "b6-delivered-bytes.json",
+}
 
-hyg = load('delivery-hygiene-build.json')
-trip = load('tripwire-mode-c-build.json')
-deliv = load('delivery-build.json')
-inst_s = load('instrument-shipped.json')
-inst_c = load('instrument-d7c.json')
-sel = load('selector.json')
-cal = load('selector-calibrated.json')
-cal_a = load('selector-calibrated-amended.json')
-reread = load('selector-reread-sigma0.335546875.json')
-proj = load('projection-preservation.json')
-p_oracle = load('projection-preservation-oracle.json')
-proj_c2 = load('projection-preservation-control-clear-contacts.json')
-p1_ctrl = load('p1-controls.json')
-sil = load('silhouette-partwise.json')
-b2 = load('b2-delivered-vs-capture.json')
-b3 = load('b3-hoist-and-contacts.json')
+# The bands, restated here so the derivation is visible beside the number it tests. None is
+# new and none is moved; each is the card's.
+O1_TILT_DEG, O1_ORIGIN_MM, O1_RESIDUAL_M = 0.01, 0.01, 1.0e-6
+O2_LEG_MM, O2_HOIST_MM = 0.1, 0.05
+CONTACT_TOLERANCE_M = 1.0e-5
+FOLLOWER_RATIO, FOLLOWER_FLOOR_DEG = 2.0, 2.0
+CALIBRATION_TAU_MM = 0.05
 
-seeds = list((inst_c.get('oracle', {}).get('seeds') or {}).keys())
-def arm(seed, name): return inst_c['oracle']['seeds'][seed]['arms'][name]
 
-clauses = []
-def add(name, predicted, measured, verdict, note=""):
-    clauses.append({"clause": name, "predicted": predicted, "measured": measured,
-                    "verdict": verdict, **({"note": note} if note else {})})
+def load_all() -> dict:
+    out = {}
+    for key, name in REPORTS.items():
+        path = BASE / name
+        out[key] = json.loads(path.read_text()) if path.exists() else {}
+    return out
 
-# hygiene
-add("hygiene: today's code rebuilds the shipped delivery byte-identically",
-    "8 of 8", f"8 of 8 = {hyg.get('hygiene',{}).get('all_delivered_files_identical')}",
-    "PASS" if hyg.get('hygiene',{}).get('all_delivered_files_identical') else "FAIL")
-# tripwire
-add("REFACTOR TRIPWIRE: mode C held, the refactored function reproduces D9b bit for bit",
-    "8 of 8 byte-identical",
-    f"8 of 8 = {trip.get('hygiene',{}).get('all_delivered_files_identical')}, mode held "
-    f"{trip.get('pelvis_mode_held')}, {trip.get('build_seconds')} s",
-    "PASS" if trip.get('hygiene',{}).get('all_delivered_files_identical') else "FAIL")
-if seeds:
-    ctilts = [arm(s,'C_soma_template')['pelvis_vs_truth_deg']['angle']['median'] for s in seeds]
-    add("the SAME six-body C execution read against exact rig truth (the must-fail)",
-        "6.865 deg on every seed", f"{min(ctilts):.4f}-{max(ctilts):.4f} deg",
-        "PASS" if all(abs(v-6.865)<0.01 for v in ctilts) else "FAIL",
-        "ONE execution, two references, two verdicts. Never counted as two demonstrations.")
-    # O1
-    tmax = max(arm(s,'src_default')['pelvis_vs_truth_deg']['angle']['max'] for s in seeds)
-    rmax = max(arm(s,'src_default')['three_point_residual_m']['max'] for s in seeds)
-    smax = max(arm(s,'src_default')['spine_origin_miss_mm']['hoist_subtracted']['max'] for s in seeds)
-    hmax = max(arm(s,'src_default')['hips_origin_miss_mm']['hoist_subtracted']['max'] for s in seeds)
-    tor = [arm(s,'src_default')['ABSOLUTE_groups_mm']['unhoisted_frames']['torso'] for s in seeds]
-    add("O1 pelvis vs truth, every seed, every frame", "<= 0.01 deg (from 6.865)",
-        f"max {tmax} deg", "PASS" if tmax <= 0.01 else "FAIL")
-    add("O1 `Spine` origin miss, hoist-subtracted", "<= 0.01 mm (from 21-28)",
-        f"max {smax} mm", "PASS" if smax <= 0.01 else "FAIL")
-    add("O1 `Hips` origin miss, hoist-subtracted", "<= 0.01 mm (from 10)",
-        f"max {hmax} mm", "PASS" if hmax <= 0.01 else "FAIL")
-    add("O1 torso on the unhoisted frames, ABSOLUTE row", "0.00 (from 8.98-12.09)",
-        f"{max(tor)}", "PASS" if max(tor) <= 0.01 else "FAIL")
-    add("O1 unnormalised three-point positional residual", "<= 1e-6 m",
-        f"max {rmax:.3e} m", "PASS" if rmax <= 1e-6 else "FAIL",
-        "the clause that discriminates the wrong-origin control")
-    wt = max(arm(s,'wrong_origin')['pelvis_vs_truth_deg']['angle']['max'] for s in seeds)
-    wr = min(arm(s,'wrong_origin')['three_point_residual_m']['max'] for s in seeds)
-    add("must-fail: the WRONG-ORIGIN template (a KNOWN BLINDNESS realised)",
-        "0.000 deg of tilt, ~84 mm of residual",
-        f"tilt max {wt} deg, residual min {1e3*wr:.1f} mm", "PASS",
-        "it PASSES the tilt band and FAILS on the residual. A tilt band, or a residual "
-        "between NORMALISED frames, would both let it through.")
-    fz = [arm(s,'frozen_upright')['pelvis_vs_truth_deg']['angle']['median'] for s in seeds]
-    add("must-fail: a pelvis frozen upright (D7's control)", "fails O1",
-        f"{min(fz):.4f}-{max(fz):.4f} deg", "PASS" if min(fz) > 0.01 else "FAIL")
-    # O2
-    o2 = [inst_c['oracle']['seeds'][s]['O2_vs_baseline'] for s in seeds]
-    add("O2 legs, feet and toes vs the shipped build's FK", "<= 0.1 mm per seed",
-        f"max {max(r['leg_foot_toe_max_mm'] for r in o2)} mm",
-        "PASS" if all(r['within_0_1_mm'] for r in o2) else "FAIL",
-        "bit-identity is NOT claimed: a pelvis frame is whole-take")
-    add("O2 contacts identical on the oracle bodies", "identical",
-        f"{all(r['contacts_identical'] for r in o2)}",
-        "PASS" if all(r['contacts_identical'] for r in o2) else "FAIL")
-    add("O2 hoist change", "<= 0.05 mm",
-        f"max {max(r['hoist_change_mm']['max'] for r in o2)} mm",
-        "PASS" if all(r['hoist_within_0_05_mm'] for r in o2) else "FAIL")
-    # O3 reported
-    o3o = [arm(s,'src_default')['ALIGNED_rc_score_groups_mm']['arms'] for s in seeds]
-    o3c = [arm(s,'C_soma_template')['ALIGNED_rc_score_groups_mm']['arms'] for s in seeds]
-    add("O3 the D3 gate's own leg-root-ALIGNED gauge, arms (REPORTED)",
-        "1.32-2.72 -> 0.07-0.60",
-        f"{min(o3c)}-{max(o3c)} -> {min(o3o)}-{max(o3o)}", "REPORT",
-        "that gauge subtracts the leg-root midpoint per frame and is blind to a root move; "
-        "no band reads it, and the 0.5 band stays a standing FAIL on the one seed at 0.60")
 
-# ---------------------------------------------------------------------------- S, the selector
-if sel:
-    fol = sel.get('frozen_pitch_follower_bent_tercile', {})
-    add("S at the CARD'S OWN FIXTURE (sigma 1.0): the frozen-pitch follower >= 2x on EVERY body",
-        ">= 2x on 6 of 6",
-        f"{min(r['ratio'] for r in fol.values()):.3f}-{max(r['ratio'] for r in fol.values()):.3f}x; "
-        f"{sum(1 for r in fol.values() if not r['ratio_at_least_2x'])} of 6 below 2x",
-        "FAIL", "the step STOPPED here and the stop stays recorded in `selector.json`. "
-                "Attributed to the fixture's noise amplitude: without noise both rig modes "
-                "read 0.0000 deg and the follower 14.401 deg, an unbounded separation.")
-if cal:
-    b = cal.get('calibration', {}).get('bisection', {})
-    add("the amended card's FIXTURE CALIBRATION, under its own frozen monotonicity precondition",
-        "monotone across the evaluations",
-        f"one violation, {b.get('largest_violation_mm')} mm; status {b.get('status')}",
-        "FAIL", "the step STOPPED again and `selector-calibrated.json` keeps "
-                "`monotone_across_the_evaluations: false`. Diagnosed to the frame: two "
-                "single-frame keep-mask rejections on the two median-defining bodies.")
-if cal_a:
-    ad = cal_a.get('admissibility', {})
-    ck = ad.get('checks', {})
-    add("the SAME frozen evaluations under Astra round 7's amended admissibility rule",
-        "REACHED", f"{ad.get('verdict')}; A {ck.get('A_no_earlier_to_later_decrease_over_tau',{}).get('largest_decrease_mm')} mm <= 0.05, "
-        f"B {ck.get('B_at_most_one_sign_change_of_statistic_minus_target',{}).get('sign_changes')} sign change, "
-        f"C sigma {cal_a.get('the_accepted_sigma',{}).get('exact_evaluated_value')}",
-        "PASS" if ad.get('verdict') == 'REACHED' else "FAIL",
-        "an OBSERVED TOLERANCE MATCH, never global monotonicity or uniqueness. The "
-        "amendment is POST HOC and is recorded as such. Calibration REACHED leaves S PENDING.")
-if reread:
-    agg = reread.get('aggregated_median_of_six', {})
-    w = reread.get('winner', {})
-    fol = reread.get('frozen_pitch_follower_bent_tercile', {})
-    add("S REREAD at the exact calibrated sigma: (a) vs (b), all three metrics, both populations",
-        "better-or-tied on all, strictly better on one, else SPLIT",
-        f"(b) worse in {sum(1 for v in reread['b_vs_a'].values() if v=='worse')} of 6 cells; "
-        f"ships {w.get('mode')}",
-        "PASS", "the SAME ranking (a) held at sigma 1.00, 0.50, 0.35 and 0.25 -- the shipping "
-                "selection is stable across every fixture tested")
-    add("S REREAD: the winner strictly better than C-on-SOMA on (i), both populations",
-        "strictly better", f"whole {agg['a_kabsch_guarded']['whole_take']['i_orientation_deg']} "
-        f"vs {agg['C_on_SOMA']['whole_take']['i_orientation_deg']}; bent "
-        f"{agg['a_kabsch_guarded']['bent_tercile']['i_orientation_deg']} vs "
-        f"{agg['C_on_SOMA']['bent_tercile']['i_orientation_deg']}",
-        "PASS" if reread.get('winner_beats_the_constant_it_removes') else "FAIL")
-    add("S REREAD: the frozen-pitch follower >= 2x the winner AND >= 2 deg, on EVERY body",
-        ">= 2x and >= 2 deg on 6 of 6",
-        f"{min(r['ratio'] for r in fol.values()):.3f}-{max(r['ratio'] for r in fol.values()):.3f}x, "
-        f"{min(r['follower_i_deg'] for r in fol.values()):.2f}-{max(r['follower_i_deg'] for r in fol.values()):.2f} deg",
-        "PASS" if reread.get('follower_discriminated_on_every_body') else "FAIL",
-        "the clause that stopped the step at sigma 1.0. The follower's own error barely "
-        "moved; what moved is the winner.")
-    g1 = reread.get('G1_missing_only', {})
-    add("G1 (missing-only): the AMENDED claim -- identical masks and retained samples => "
-        "bit-identical INTERPOLATED ARRAYS",
-        "holds on every body",
-        f"{g1.get('claim_holds_on_every_body_as_amended')}; unconditional identity "
-        f"{g1.get('unconditional_identity_on_every_body')}, extra rejections on "
-        f"{g1.get('bodies_with_an_additional_rejection')}",
-        "PASS" if g1.get('claim_holds_on_every_body_as_amended') else "FAIL",
-        "an EQUIVALENCE and an error measurement; no superiority claim. Every additional "
-        "finite rejection is reported with its lever, median and threshold.")
-    g2 = reread.get('G2_finite_only', {})
-    m = g2.get('median_of_six', {})
-    add("G2 (finite-only): the guard beats the unguarded winner on BOTH (i) and (ii), every body",
-        "both metrics, every body and the median of six",
-        f"(i) {m.get('guarded_i_deg')} vs {m.get('unguarded_i_deg')} deg; (ii) "
-        f"{m.get('guarded_ii_deg')} vs {m.get('unguarded_ii_deg')} deg; miss rate up to "
-        f"{max(r['guard_miss_rate'] for r in g2.get('bodies',{}).values()) if g2.get('bodies') else None}",
-        "PASS" if g2.get('guard_wins_both') else "FAIL",
-        "where the guard EARNS its place. On the clean fixture it rejects almost nothing and "
-        "cannot lose, so its win in S's main arms proves nothing about it -- this does.")
+def verdict(condition: bool) -> str:
+    return "PASS" if condition else "FAIL"
 
-# ------------------------------------------------------------------------------ the delivery
-if deliv:
-    h = deliv.get('hygiene', {})
-    same = all(h.get('raw_triangulation_byte_identical_same_denominator', {}).values()) and \
-           all(h.get('smoothed_triangulation_byte_identical', {}).values())
+
+def build(r: dict) -> dict:
+    """Every clause, derived. A pure function of the loaded reports."""
+    clauses: list[dict] = []
+
+    def add(name, predicted, measured, value, note=""):
+        clauses.append({"clause": name, "predicted": predicted, "measured": measured,
+                        "verdict": value, **({"note": note} if note else {})})
+
+    # ------------------------------------------------------------------------- hygiene
+    files = r["hygiene"].get("hygiene", {}).get("delivered_files_vs_shipped", {})
+    identical = [row["rebuild"] == row["shipped"] for row in files.values()]
+    add("hygiene: today's code rebuilds the shipped delivery byte-identically",
+        "8 of 8", f"{sum(identical)} of {len(identical)} SHAs equal",
+        verdict(bool(identical) and all(identical)))
+
+    # ------------------------------------------------------------------------ tripwire
+    trip = r["tripwire"].get("hygiene", {}).get("delivered_files_vs_shipped", {})
+    trip_identical = [row["rebuild"] == row["shipped"] for row in trip.values()]
+    held = r["tripwire"].get("pelvis_mode_held")
+    add("REFACTOR TRIPWIRE (i): mode C held, the refactored function reproduces D9b",
+        "8 of 8 with the mode held at C_kabsch_pelvis",
+        f"{sum(trip_identical)} of {len(trip_identical)} SHAs equal, mode held {held!r}",
+        verdict(bool(trip_identical) and all(trip_identical)
+                and held == "C_kabsch_pelvis"))
+
+    seeds = list((r["oracle"].get("oracle", {}).get("seeds") or {}).keys())
+
+    def arm(seed, name, *path):
+        node = r["oracle"]["oracle"]["seeds"][seed]["arms"][name]
+        for key in path:
+            node = node[key]
+        return node
+
+    if seeds:
+        c_tilt = [arm(s, "C_soma_template", "pelvis_vs_truth_deg", "angle", "median")
+                  for s in seeds]
+        add("REFACTOR TRIPWIRE (ii): the SAME six-body C execution read against exact rig truth",
+            f"6.865 deg on every seed, i.e. still failing O1's {O1_TILT_DEG} deg band",
+            f"{min(c_tilt):.4f}-{max(c_tilt):.4f} deg",
+            verdict(min(c_tilt) > O1_TILT_DEG),
+            "ONE execution, two references, two verdicts. If this execution ever came within "
+            "the O1 band the tripwire would be comparing against something that is no longer "
+            "the defect.")
+
+        # ----------------------------------------------------------------------- O1
+        tmax = max(arm(s, "src_default", "pelvis_vs_truth_deg", "angle", "max") for s in seeds)
+        smax = max(arm(s, "src_default", "spine_origin_miss_mm", "hoist_subtracted", "max")
+                   for s in seeds)
+        hmax = max(arm(s, "src_default", "hips_origin_miss_mm", "hoist_subtracted", "max")
+                   for s in seeds)
+        tor = [arm(s, "src_default", "ABSOLUTE_groups_mm", "unhoisted_frames", "torso")
+               for s in seeds]
+        rmax = max(arm(s, "src_default", "three_point_residual_m", "max") for s in seeds)
+        add("O1 pelvis vs truth, every seed, every frame", f"<= {O1_TILT_DEG} deg (from 6.865)",
+            f"max {tmax} deg", verdict(tmax <= O1_TILT_DEG))
+        add("O1 `Spine` origin miss, hoist-subtracted", f"<= {O1_ORIGIN_MM} mm (from 21-28)",
+            f"max {smax} mm", verdict(smax <= O1_ORIGIN_MM))
+        add("O1 `Hips` origin miss, hoist-subtracted", f"<= {O1_ORIGIN_MM} mm (from 10)",
+            f"max {hmax} mm", verdict(hmax <= O1_ORIGIN_MM))
+        add("O1 torso on the unhoisted frames, ABSOLUTE row", "0.00 (from 8.98-12.09)",
+            f"{max(tor)}", verdict(max(tor) <= O1_ORIGIN_MM))
+        add("O1 unnormalised three-point positional residual", f"<= {O1_RESIDUAL_M} m",
+            f"max {rmax:.3e} m", verdict(rmax <= O1_RESIDUAL_M),
+            "the clause that discriminates the wrong-origin control")
+
+        # ------------------------------------------------------- the must-fails, DERIVED
+        wt = max(arm(s, "wrong_origin", "pelvis_vs_truth_deg", "angle", "max") for s in seeds)
+        wr = min(arm(s, "wrong_origin", "three_point_residual_m", "max") for s in seeds)
+        add("must-fail: the WRONG-ORIGIN template (a KNOWN BLINDNESS realised)",
+            "invisible to the tilt band AND caught by the residual band",
+            f"tilt max {wt} deg (inside the {O1_TILT_DEG} band), residual min "
+            f"{1e3 * wr:.1f} mm (outside the {O1_RESIDUAL_M} m band)",
+            verdict(wt <= O1_TILT_DEG and wr > O1_RESIDUAL_M),
+            "DERIVED, and it is the clause Astra's counter-example broke: with the residual "
+            "set to zero this control is caught by NOTHING, and the residual band it is the "
+            "sole evidence for means nothing either. The verdict now reads that.")
+        fz = [arm(s, "frozen_upright", "pelvis_vs_truth_deg", "angle", "median")
+              for s in seeds]
+        add("must-fail: a pelvis frozen upright (D7's control)", "fails O1's tilt band",
+            f"{min(fz):.4f}-{max(fz):.4f} deg", verdict(min(fz) > O1_TILT_DEG))
+
+        # ----------------------------------------------------------------------- O2
+        o2 = [r["oracle"]["oracle"]["seeds"][s]["O2_vs_baseline"] for s in seeds]
+        leg = max(row["leg_foot_toe_max_mm"] for row in o2)
+        hoist = max(row["hoist_change_mm"]["max"] for row in o2)
+        contacts = all(row["contacts_identical"] for row in o2)
+        add("O2 legs, feet and toes vs the shipped build's FK", f"<= {O2_LEG_MM} mm per seed",
+            f"max {leg} mm", verdict(leg <= O2_LEG_MM),
+            "bit-identity is NOT claimed: a pelvis frame is whole-take")
+        add("O2 contacts identical on the oracle bodies", "identical", f"{contacts}",
+            verdict(contacts))
+        add("O2 hoist change", f"<= {O2_HOIST_MM} mm", f"max {hoist} mm",
+            verdict(hoist <= O2_HOIST_MM))
+        o3o = [arm(s, "src_default", "ALIGNED_rc_score_groups_mm", "arms") for s in seeds]
+        o3c = [arm(s, "C_soma_template", "ALIGNED_rc_score_groups_mm", "arms") for s in seeds]
+        add("O3 the D3 gate's own leg-root-ALIGNED gauge, arms (REPORTED)",
+            "1.32-2.72 -> 0.07-0.60", f"{min(o3c)}-{max(o3c)} -> {min(o3o)}-{max(o3o)}",
+            "REPORT", "that gauge subtracts the leg-root midpoint per frame and is blind to a "
+                      "root move; no band reads it")
+
+    # -------------------------------------------------------------- the two recorded STOPs
+    fol1 = r["sigma1"].get("frozen_pitch_follower_bent_tercile", {})
+    if fol1:
+        below = [s for s, row in fol1.items() if row["ratio"] < FOLLOWER_RATIO]
+        add("S at the CARD'S OWN FIXTURE (sigma 1.0): the frozen-pitch follower >= 2x on EVERY body",
+            f">= {FOLLOWER_RATIO}x on 6 of 6",
+            f"{min(v['ratio'] for v in fol1.values()):.3f}-"
+            f"{max(v['ratio'] for v in fol1.values()):.3f}x; {len(below)} of "
+            f"{len(fol1)} below {FOLLOWER_RATIO}x",
+            verdict(not below),
+            "the step STOPPED here and the stop stays recorded in `selector.json`, which is "
+            "immutable. Attributed to the fixture's noise amplitude.")
+    bis = r["calibration"].get("calibration", {}).get("bisection", {})
+    if bis:
+        add("the amended card's FIXTURE CALIBRATION, under its own frozen monotonicity precondition",
+            "monotone across the evaluations",
+            f"largest decrease {bis.get('largest_violation_mm')} mm; status "
+            f"{bis.get('status')}",
+            verdict(bool(bis.get("monotone_across_the_evaluations"))),
+            "the step STOPPED again; `selector-calibrated.json` keeps "
+            "`monotone_across_the_evaluations: false`. Diagnosed to the frame.")
+    checks = r["admissibility"].get("admissibility", {}).get("checks", {})
+    if checks:
+        a = checks["A_no_earlier_to_later_decrease_over_tau"]["largest_decrease_mm"]
+        b = checks["B_at_most_one_sign_change_of_statistic_minus_target"]["sign_changes"]
+        c = checks["C_the_unchanged_stopping_rule_found_a_value_within_tau"][
+            "accepted_sigma_scale_exact"]
+        add("the SAME frozen evaluations under Astra round 7's amended admissibility rule",
+            f"A <= {CALIBRATION_TAU_MM} mm, B <= 1 sign change, C a sigma inside tolerance",
+            f"A {a} mm, B {b} sign change(s), C sigma {c}",
+            verdict(a <= CALIBRATION_TAU_MM and b <= 1 and c is not None),
+            "an OBSERVED TOLERANCE MATCH, never monotonicity or uniqueness. POST HOC.")
+
+    # ------------------------------------------------------------------------ S, reread
+    re_ = r["reread"]
+    if re_:
+        agg = re_["aggregated_median_of_six"]
+        bva = list(re_["b_vs_a"].values())
+        decided = (all(v in ("worse", "tied") for v in bva) and "worse" in bva) or \
+                  (all(v in ("better", "tied") for v in bva) and "better" in bva)
+        add("S REREAD: (a) vs (b), all three metrics, both populations",
+            "one of them better-or-tied everywhere and strictly better somewhere, else SPLIT",
+            f"b_vs_a = {bva}; S_verdict {re_.get('S_verdict')}; ships "
+            f"{re_.get('winner', {}).get('mode')}",
+            verdict(decided and re_.get("S_verdict") == "PROCEED"
+                    and bool(re_.get("winner"))),
+            "DERIVED from the six cells and the verdict, and it is the second clause Astra's "
+            "counter-example broke: one-better/five-worse with S_verdict SPLIT is exactly the "
+            "card's SPLIT, which STOPS the step.")
+        winner_arm = re_.get("winner", {}).get("arm", "a_kabsch_guarded")
+        beats = []
+        for population in ("whole_take", "bent_tercile"):
+            beats.append(agg[winner_arm][population]["i_orientation_deg"]
+                         < agg["C_on_SOMA"][population]["i_orientation_deg"])
+            for metric, tie in (("ii_step_deg", 0.1), ("iii_root_step_mm", 0.1)):
+                beats.append(agg[winner_arm][population][metric]
+                             <= agg["C_on_SOMA"][population][metric] + tie)
+        add("S REREAD: the winner strictly better than C-on-SOMA on (i), both populations",
+            "strictly better on (i), better-or-tied on (ii) and (iii)",
+            f"whole {agg[winner_arm]['whole_take']['i_orientation_deg']} vs "
+            f"{agg['C_on_SOMA']['whole_take']['i_orientation_deg']}; bent "
+            f"{agg[winner_arm]['bent_tercile']['i_orientation_deg']} vs "
+            f"{agg['C_on_SOMA']['bent_tercile']['i_orientation_deg']}",
+            verdict(all(beats)))
+        fol = re_["frozen_pitch_follower_bent_tercile"]
+        ok = all(v["ratio"] >= FOLLOWER_RATIO and v["follower_i_deg"] >= FOLLOWER_FLOOR_DEG
+                 for v in fol.values())
+        add("S REREAD: the frozen-pitch follower >= 2x the winner AND >= 2 deg, on EVERY body",
+            f">= {FOLLOWER_RATIO}x and >= {FOLLOWER_FLOOR_DEG} deg on 6 of 6",
+            f"{min(v['ratio'] for v in fol.values()):.3f}-"
+            f"{max(v['ratio'] for v in fol.values()):.3f}x, "
+            f"{min(v['follower_i_deg'] for v in fol.values()):.2f}-"
+            f"{max(v['follower_i_deg'] for v in fol.values()):.2f} deg",
+            verdict(ok), "the clause that stopped the step at sigma 1.0")
+        g1 = re_["G1_missing_only"]["bodies"]
+        holds = all((not row["effective_masks_identical"])
+                    or row["interpolated_arrays_bit_identical"] for row in g1.values())
+        add("G1 (missing-only): identical masks and retained samples => bit-identical ARRAYS",
+            "holds on every body", f"{sum(1 for row in g1.values() if not row['effective_masks_identical'])} "
+            f"of {len(g1)} bodies have a different effective mask; identity holds wherever "
+            "the masks agree", verdict(holds),
+            "an EQUIVALENCE and an error measurement; no superiority claim")
+        g2 = re_["G2_finite_only"]
+        per_i = all(row["guarded"]["i_on_corrupted_frames_deg"]
+                    < row["unguarded"]["i_on_corrupted_frames_deg"]
+                    for row in g2["bodies"].values())
+        per_ii = all(row["guarded"]["ii_on_transition_pairs_deg"]
+                     < row["unguarded"]["ii_on_transition_pairs_deg"]
+                     for row in g2["bodies"].values())
+        med = g2["median_of_six"]
+        add("G2 (finite-only): the guard beats the unguarded winner on BOTH (i) and (ii), every body",
+            "both metrics, every body and the median of six",
+            f"(i) {med['guarded_i_deg']} vs {med['unguarded_i_deg']} deg; (ii) "
+            f"{med['guarded_ii_deg']} vs {med['unguarded_ii_deg']} deg; per-body wins "
+            f"{per_i} / {per_ii}",
+            verdict(per_i and per_ii
+                    and med["guarded_i_deg"] < med["unguarded_i_deg"]
+                    and med["guarded_ii_deg"] < med["unguarded_ii_deg"]),
+            "where the guard EARNS its place: on the clean fixture it rejects almost nothing "
+            "and cannot lose, so its win in S's main arms proves nothing about it")
+        wv = re_.get("world_vertical_vs_truth_tilt", {})
+        if wv:
+            add("the world-vertical control against the truth PELVIS's own tilt", "REPORT",
+                f"{wv.get('world_vertical_i_bent_deg')} deg against the truth pelvis's "
+                f"{wv.get('truth_PELVIS_bent_tilt_median_deg')} deg -- limitation applies: "
+                f"{wv.get('stated_limitation_if_within_2_deg_of_the_tilt')}",
+                "REPORT", "S's stops are unchanged; the follower carries the argument")
+
+    # -------------------------------------------------------------------- the delivery
+    hyg = r["delivery"].get("hygiene", {})
+    same = (all(hyg.get("raw_triangulation_byte_identical_same_denominator", {}).values())
+            and all(hyg.get("smoothed_triangulation_byte_identical", {}).values()))
     add("the delivery: BOTH landmark arrays byte-identical (the same denominator)",
-        "raw AND smoothed identical", f"{same}", "PASS" if same else "FAIL",
-        "a converter-only change cannot move either array; if it did, the change did more "
-        "than refit the pelvis")
-    pf = deliv.get('diagnostics', {}).get('pelvis_frame', [])
+        "raw AND smoothed identical", f"{same}", verdict(bool(same)),
+        "a converter-only change cannot move either array")
+    pf = r["delivery"].get("diagnostics", {}).get("pelvis_frame", [])
     if pf:
         add("the delivered run-report records the mode and the guard's demoted frames",
             "E_rig_rest_kabsch; 0 and 29 demoted",
             f"{pf[0]['mode']}; demoted {pf[0]['lever_guard']['demoted_count']} and "
-            f"{pf[1]['lever_guard']['demoted_count']}, medians "
-            f"{pf[0]['lever_guard']['pre_guard_median_mm']} / "
-            f"{pf[1]['lever_guard']['pre_guard_median_mm']} mm",
-            "PASS", "frame for frame the mask the card froze")
+            f"{pf[1]['lever_guard']['demoted_count']}",
+            verdict(all(row["mode"] == "E_rig_rest_kabsch" for row in pf)
+                    and [row["lever_guard"]["demoted_count"] for row in pf] == [0, 29]))
 
-# ------------------------------------------------------------------------------------ P
-if proj:
-    add("P1 channel preservation -- the delivery, both performers", "PASS",
-        f"{proj.get('P1_verdicts')}; failing channels "
-        + str({s: r['P1_channel_preservation']['failing_channels']
-               for s, r in proj['subjects'].items()}),
-        "PASS" if proj.get('P1_as_expected') else "FAIL",
-        "the delivered track is AUTHENTICATED against the GLB's own `body_track_sha256` "
-        "before the comparison, so it is the track the shipped file was written from")
-    add("P2 anchor lock -- the delivery, every accepted run, on the GLB's own arrays",
-        "<= 1e-5 m at the run's first KEYED sample",
-        f"{proj.get('P2_verdicts')}; worst "
-        + str({s: r['P2_anchor_lock']['worst_travel_m'] for s, r in proj['subjects'].items()})
-        + "; runs " + str({s: len(r['P2_anchor_lock']['runs']) for s, r in proj['subjects'].items()}),
-        "PASS" if all(v == 'PASS' for v in proj.get('P2_verdicts', {}).values()) else "FAIL",
-        "KEYED samples only: the samplers are LINEAR and between-key playback is B6's report")
-if proj.get("P2_on_the_oracle_bodies"):
-    block = proj["P2_on_the_oracle_bodies"]
-    add("P2 anchor lock on EVERY ORACLE BODY, from each exported GLB's own arrays",
-        f"<= {block['band_m']} m at every accepted run's first KEYED sample",
-        f"{block['verdict']}; worst over all six seeds "
-        f"{block['worst_travel_m_over_all_seeds']:.3e} m; runs "
-        + str({k: v['runs'] for k, v in block['seeds'].items()}),
-        block["verdict"],
-        "the card says P1 AND P2 on the take AND every seed. The first pass measured only "
-        "channel preservation on the six bodies; this is the missing half, and it reads the "
-        "EXPORTED file rather than the track.")
-if p_oracle:
-    add("P1 on EVERY ORACLE BODY (the card says the take AND every oracle body)",
-        "PASS on all six", f"{p_oracle.get('verdict')} on "
-        f"{sum(1 for r in p_oracle['seeds'].values() if r['verdict']=='PASS')} of "
-        f"{len(p_oracle['seeds'])}",
-        p_oracle.get('verdict', 'FAIL'))
-if p1_ctrl:
-    rows = p1_ctrl.get('controls', {})
-    add("P1's CONTROL 1 -- the projection's foot locals overwritten",
-        "must FAIL P1",
-        "the SHIPPING PATH REFUSES TO BUILD IT: `validate_body_track` raised `left foot "
-        "contact moved 0.00884243 m (limit 0.00001000 m)` before a file was written. "
-        "Applied to the delivered bytes instead, P1 detects it on both performers: "
-        + str({s: r['control_1_foot_locals_overwritten']['failing_channels']
-               for s, r in rows.items()}),
-        "PASS",
-        "refused by the shipping path is STRONGER than caught by a gate; the build's own "
-        "no-op assertion had already passed, so the projection really did change a foot local")
-    add("P1's CONTROL 2 -- the nonempty contact mask cleared", "must FAIL P1 on the mask",
-        str({s: r['control_2_contact_mask_cleared']['failing_channels']
-             for s, r in rows.items()}),
-        "PASS" if p1_ctrl.get('both_controls_detected_on_both_performers') else "FAIL",
-        "it may PASS P2 -- the geometry stays planted and there is nothing left to check. "
-        "That is why P1 exists and why the anchor check alone guarantees neither.")
-if proj_c2:
-    add("P1's CONTROL 2, BUILT and run through the P instrument", "must FAIL P1",
-        f"{proj_c2.get('P1_verdicts')}; failing "
-        + str({s: r['P1_channel_preservation']['failing_channels']
-               for s, r in proj_c2['subjects'].items()})
-        + f"; P2 {proj_c2.get('P2_verdicts')}",
-        "PASS" if proj_c2.get('P1_as_expected') else "FAIL",
-        "the card says it MAY pass P2; here it fails P2 too, because the honest snapshot mask "
-        "declares runs the cleared build never planted. An INSTRUMENT DEFECT was found by "
-        "this very control: the first build read P1 PASS because the watcher saved the "
-        "snapshot AFTER the mutation, so the control corrupted both sides. The snapshot is "
-        "now taken from the function's own return BEFORE any mutation.")
-if p1_ctrl:
-    add("the UNMUTATED delivery through the same comparison", "PASS",
-        str({s: r['the_unmutated_delivery']['P1'] for s, r in rows.items()}), "PASS")
-if proj:
-    add("P3 planted-foot travel on the frozen UNION of both builds' runs", "REPORT",
-        f"{sum(len(r['P3_travel_report']['intervals']) for r in proj['subjects'].values())} intervals",
-        "REPORT", "a contact the candidate LOSES stays in the comparison")
+    # --------------------------------------------------------------------------- P
+    proj = r["projection"]
+    if proj:
+        subjects = proj["subjects"]
+        p1_ok = all(row["P1_channel_preservation"]["authentication"]["authenticated"]
+                    and not row["P1_channel_preservation"]["failing_channels"]
+                    for row in subjects.values())
+        add("P1 channel preservation -- the delivery, both performers",
+            "every protected channel bit-identical, on an AUTHENTICATED track",
+            str({s: row["P1_channel_preservation"]["failing_channels"]
+                 for s, row in subjects.items()}), verdict(p1_ok))
+        worst = max(row["P2_anchor_lock"]["worst_travel_m"] for row in subjects.values())
+        add("P2 anchor lock -- the delivery, every accepted run, on the GLB's own arrays",
+            f"<= {CONTACT_TOLERANCE_M} m at every run's first KEYED sample",
+            f"worst {worst:.3e} m; runs "
+            + str({s: len(row["P2_anchor_lock"]["runs"]) for s, row in subjects.items()}),
+            verdict(worst <= CONTACT_TOLERANCE_M))
+        add("P3 planted-foot travel on the frozen UNION of both builds' runs", "REPORT",
+            f"{sum(len(row['P3_travel_report']['intervals']) for row in subjects.values())} "
+            "intervals", "REPORT")
+        oracle_p2 = proj.get("P2_on_the_oracle_bodies", {})
+        if oracle_p2:
+            worst_o = oracle_p2["worst_travel_m_over_all_seeds"]
+            add("P2 anchor lock on EVERY ORACLE BODY, from each exported GLB's own arrays",
+                f"<= {CONTACT_TOLERANCE_M} m", f"worst {worst_o:.3e} m; runs "
+                + str({k: v["runs"] for k, v in oracle_p2["seeds"].items()}),
+                verdict(worst_o <= CONTACT_TOLERANCE_M))
+    po = r["p_oracle"].get("seeds", {})
+    if po:
+        ok = all(row["root_bit_identical"] and row["contacts_bit_identical"]
+                 and not row["failing_channels"] for row in po.values())
+        add("P1 on EVERY ORACLE BODY (the card says the take AND every oracle body)",
+            "every protected channel bit-identical on all six",
+            f"{sum(1 for row in po.values() if not row['failing_channels'])} of {len(po)} clean",
+            verdict(ok))
+    ctrl = r["p1_controls"].get("controls", {})
+    if ctrl:
+        c1 = all(row["control_1_foot_locals_overwritten"]["failing_channels"]
+                 for row in ctrl.values())
+        c2 = all(row["control_2_contact_mask_cleared"]["failing_channels"]
+                 for row in ctrl.values())
+        clean = all(not row["the_unmutated_delivery"]["failing_channels"]
+                    for row in ctrl.values())
+        add("P1's CONTROL 1 -- the projection's foot locals overwritten", "must FAIL P1",
+            "the SHIPPING PATH REFUSES TO BUILD IT (`validate_body_track`: left foot contact "
+            "moved 0.00884243 m). Applied to the delivered bytes instead, P1 detects it: "
+            + str({s: row["control_1_foot_locals_overwritten"]["failing_channels"]
+                   for s, row in ctrl.items()}), verdict(c1),
+            "refused by the shipping path is STRONGER than caught by a gate")
+        add("P1's CONTROL 2 -- the nonempty contact mask cleared (offline)",
+            "must FAIL P1 on the mask",
+            str({s: row["control_2_contact_mask_cleared"]["failing_channels"]
+                 for s, row in ctrl.items()}), verdict(c2))
+        add("the UNMUTATED delivery through the same comparison", "PASS",
+            str({s: row["the_unmutated_delivery"]["P1"] for s, row in ctrl.items()}),
+            verdict(clean))
+    c2b = r["control2"].get("subjects", {})
+    if c2b:
+        ok = all(row["P1_channel_preservation"]["failing_channels"] for row in c2b.values())
+        add("P1's CONTROL 2, BUILT and run through the P instrument", "must FAIL P1",
+            str({s: row["P1_channel_preservation"]["failing_channels"]
+                 for s, row in c2b.items()}), verdict(ok),
+            "an INSTRUMENT DEFECT was found by this very control: the first build read P1 "
+            "PASS because the watcher saved the snapshot AFTER the mutation")
 
-# ------------------------------------------------------------------------------------ B1
-if sil:
-    v = sil.get('preregistered_clause_verdicts', {})
-    rows = {k: {kk: vv['verdict'] for kk, vv in r.items() if kk.startswith('clause_')}
-            for k, r in v.items() if k.startswith('subject_')}
-    ok = all(x == 'PASS' for r in rows.values() for x in r.values())
-    add("B1 the photographs: worsening NOT ESTABLISHED (ci95 upper bound >= 0), both parts, "
-        "both cuts, both performers", "ci95[1] >= 0 on every cell", json.dumps(rows),
-        "PASS" if ok else "FAIL",
-        "it does NOT establish non-worsening; a wide interval passes it for want of power. "
-        "Improvement is NOT predicted: a mesh can rotate inside its own outline.")
-    add("B1 the MAMMA mesh oracle bit-identical", "< 1e-9",
-        str(sil.get('preregistered_clause_verdicts', {}).get('clause_mamma_mesh_oracle', {})
-            .get('this_instruments_split_oracle_vs_the_committed_unsplit_one_worst_abs_difference')),
-        sil.get('preregistered_clause_verdicts', {}).get('clause_mamma_mesh_oracle', {}).get('verdict', '?'))
+    # -------------------------------------------------------------------------- B1
+    sil = r["silhouette"].get("preregistered_clause_verdicts", {})
+    if sil:
+        cells = [(s, name, cell) for s, row in sil.items() if s.startswith("subject_")
+                 for name, cell in row.items() if name.startswith("clause_")]
+        upper = [cell["ci95"][1] >= 0.0 for _, _, cell in cells]
+        add("B1 the photographs: worsening NOT ESTABLISHED (ci95 upper bound >= 0), 8 cells",
+            "ci95[1] >= 0 on every cell",
+            f"{sum(upper)} of {len(upper)} cells with the upper bound at or above zero",
+            verdict(bool(upper) and all(upper)),
+            "it does NOT establish non-worsening; a wide interval passes it for want of power")
+        oracle_cell = sil.get("clause_mamma_mesh_oracle", {})
+        worst = oracle_cell.get(
+            "this_instruments_split_oracle_vs_the_committed_unsplit_one_worst_abs_difference")
+        add("B1 the MAMMA mesh oracle bit-identical", "< 1e-9", str(worst),
+            verdict(worst is not None and worst < 1e-9))
 
-# ------------------------------------------------------------------------------------ B2
-if b2:
-    same = b2.get('same_denominator')
-    if isinstance(same, dict):
-        same = same.get('verdict', same)
-    add("B2 `delivered_vs_capture.py --reference smoothed`: the same-denominator clause",
-        "PASS (landmarks byte-identical)", str(same),
-        "PASS" if str(same).upper() in ("TRUE", "PASS") else "FAIL",
-        "CHANGED would mean the change did more than refit the pelvis")
+    # -------------------------------------------------------------------------- B2
+    b2_same = r["b2"].get("same_denominator")
+    if b2_same is not None:
+        if isinstance(b2_same, dict):
+            b2_same = b2_same.get("verdict", b2_same)
+        add("B2 `delivered_vs_capture.py --reference smoothed`: the same-denominator clause",
+            "PASS (landmarks byte-identical)", str(b2_same),
+            verdict(str(b2_same).upper() in ("TRUE", "PASS")),
+            "CHANGED would mean the change did more than refit the pelvis")
 
-take = load('instrument-take.json').get('take', {}).get('subjects', {})
-if take:
-    add("B4 the pelvis and the root's motion (REPORTED, never banded)", "REPORT",
-        "; ".join(f"{s}: pitch {r['vs_baseline']['pelvis_change_deg']['pitch_about_hip_line_signed_median']} deg, "
-                  f"root {r['vs_baseline']['root_move_mm_hoist_subtracted']['median']} mm hoist-subtracted, "
-                  f"step p95 {r['pelvis_step_deg_per_frame']['p95']} deg, "
-                  f"{r['frames_over_800_deg_per_s']} frame(s) over 800 deg/s"
-                  for s, r in take.items()), "REPORT",
-        "the root is not an observed centre-of-mass trajectory and no speed ceiling is "
-        "invented; the 800 deg/s line is a physical REFERENCE, not a band")
-    add("B4 the leg-root midpoint stays on the captured hip midpoint", "0.0 mm",
-        "; ".join(f"{s}: max {r['leg_roots_on_captured_hip_midpoint_mm']['max']} mm"
-                  for s, r in take.items()), "REPORT",
-        "NOT (b)-specific: `_leg_root_offset` places them whatever rotation the pelvis "
-        "carries, and the card listed this as conditional on (b) in error")
-    add("B2/B4 the hip residual under (a) -- a REPORT, and NO band may be made from it",
-        "REPORT (under (b) the angular and transverse parts are zero by construction)",
-        "; ".join(f"{s}: full p95 {r['vs_baseline']['hip_residual_REPORT_never_a_band']['baseline']['full_positional_mm']['p95']}"
-                  f" -> {r['vs_baseline']['hip_residual_REPORT_never_a_band']['candidate']['full_positional_mm']['p95']} mm"
-                  for s, r in take.items()), "REPORT",
-        "`E_rig_rest_kabsch` does not hold the observed hip line exactly: the 197 mm `Spine` "
-        "lever pulls against it inside one un-centred SVD, which is the trade S decided")
-b6 = load('b6-delivered-bytes.json')
-if b6:
-    r = b6['builds']['D7c']
-    add("B6 the delivered bytes (REPORT)", "REPORT",
-        f"LINEAR samplers, {r['subject_00']['sampler_input_times']['frames']} frames, "
-        f"{r['subject_00']['duration_s']:.4f} s, 1 translation + 55 rotation channels sharing "
-        f"one time array; quaternion norms 1 +- 4e-8; ZERO negative adjacent dots; "
-        f"track->GLB positional closure max "
-        f"{r['subject_00']['track_to_glb_closure']['positional_mm']['max']} mm; between-key "
-        f"chord INSIDE a contact run max "
-        f"{r['subject_00']['between_key_playback_mm']['inside_a_contact_run']['LeftFoot']['median']}"
-        f" mm median (LeftFoot, inside a run; the quaternions are interpolated and FK re-run)",
-        "REPORT", "handed to D6 with the mesh-deformation reading still owed")
-    add("B6 the `Root` / eye / finger local invariants vs D9b (a TRACK-ARRAY claim)", "bit-identical",
-        str(r['subject_00']['invariants_vs_the_other_build_TRACK_ARRAYS']), "REPORT",
-        "the only three things a pelvis frame must not touch; the card says everything else "
-        "below `Root` may move on every frame")
-    add("B5b the delivered `Head` WORLD rotation, from the GLB's own bytes", "REPORT",
-        str(b6.get('B5b_head_world_between_builds')), "REPORT",
-        "IDENTICAL between the builds: the converter places the whole head-on-torso rotation "
-        "on `Head` as an ABSOLUTE target, so the chain compensates for the pelvis and the "
-        "exporter preserved it. The head gate scores the INPUT solve and could not have "
-        "shown this.")
-if b3:
-    add("B3 the hoist and the contacts (REPORTED)", "REPORT",
-        "; ".join(f"{label} {s}: hoist p95 {r['hoist_mm']['p95']} mm, contacts {r['contacts']['count']}"
-                  for label, blk in b3['arms'].items() for s, r in blk['subjects'].items()),
-        "REPORT", "every root figure read hoist-subtracted; the hoist is recovered BOTH by "
-                  "the converter's root line and by D9's arm fit")
+    # --------------------------------------------------------------- the REPORT blocks
+    take = r["take"].get("take", {}).get("subjects", {})
+    if take:
+        add("B4 the pelvis and the root's motion (REPORTED, never banded)", "REPORT",
+            "; ".join(
+                f"{s}: pitch {row['vs_baseline']['pelvis_change_deg']['pitch_about_hip_line_signed_median']} deg, "
+                f"root {row['vs_baseline']['root_move_mm_hoist_subtracted']['median']} mm, "
+                f"step p95 {row['pelvis_step_deg_per_frame']['p95']} deg, "
+                f"{row['frames_over_800_deg_per_s']} frame(s) over 800 deg/s"
+                for s, row in take.items()), "REPORT",
+            "the 800 deg/s line is a physical REFERENCE, not a band")
+        add("B4 the leg-root midpoint stays on the captured hip midpoint", "0.0 mm",
+            "; ".join(f"{s}: max {row['leg_roots_on_captured_hip_midpoint_mm']['max']} mm"
+                      for s, row in take.items()), "REPORT",
+            "NOT (b)-specific: the card listed this as conditional on (b) in error")
+        add("B2/B4 the hip residual under (a) -- a REPORT, and NO band may be made from it",
+            "REPORT", "; ".join(
+                f"{s}: full p95 "
+                f"{row['vs_baseline']['hip_residual_REPORT_never_a_band']['baseline']['full_positional_mm']['p95']}"
+                f" -> {row['vs_baseline']['hip_residual_REPORT_never_a_band']['candidate']['full_positional_mm']['p95']} mm"
+                for s, row in take.items()), "REPORT")
+    att = r["b1_attribution"].get("subjects", {})
+    if att:
+        rows = []
+        for s, row in att.items():
+            cell = row["torso"]["whole_take"]
+            rows.append(
+                f"{s}: both {cell['candidate_minus_D9b__both_effects']['median_difference']:+.5f} "
+                f"= articulation "
+                f"{cell['ablation_minus_D9b__the_ARTICULATION_alone']['median_difference']:+.5f} "
+                f"+ root "
+                f"{cell['candidate_minus_ablation__the_ROOT_TRANSLATION_alone']['median_difference']:+.5f} "
+                f"(root CI "
+                f"{cell['candidate_minus_ablation__the_ROOT_TRANSLATION_alone']['ci95']})")
+        add("B1 attribution of the three rising torso cells (DIAGNOSTIC)", "REPORT",
+            "; ".join(rows), "REPORT",
+            "a POINT-ESTIMATE decomposition. Performer 1's root share has a CI through zero, "
+            "so a definite positive root effect is NOT established.")
+    b6 = r["b6"].get("builds", {}).get("D7c", {})
+    if b6:
+        row = b6["subject_00"]
+        add("B6 the delivered bytes (REPORT)", "REPORT",
+            f"LINEAR samplers, {row['sampler_input_times']['frames']} frames, "
+            f"{row['duration_s']:.4f} s, 1 translation + 55 rotation channels; quaternion "
+            f"norms 1 +- 4e-8; ZERO negative adjacent dots; track->GLB positional closure max "
+            f"{row['track_to_glb_closure']['positional_mm']['max']} mm", "REPORT")
+        closure = row["track_to_glb_closure"].get("rotational_deg_frame_corrected")
+        if closure:
+            add("B6 track->GLB ROTATIONAL closure, after undoing the exporter's bind change",
+                "REPORT", f"median {closure['median']} deg, max {closure['max']} deg",
+                "REPORT", "the raw comparison is 32 deg and is a change of FRAME, not an error")
+        playback = row.get("between_key_playback_mm", {})
+        if playback:
+            add("B6 between-key playback (rotation AND translation interpolated)", "REPORT",
+                json.dumps(playback.get("maxima_mm", {})), "REPORT",
+                "B6's report, never P2's clause, which reads KEYED samples only")
+        mesh = row.get("mesh_deformation_pelvis_hip_thigh", {})
+        if mesh:
+            add("B6 the mesh-deformation reading on the pelvis / hip / thigh region", "REPORT",
+                json.dumps({k: mesh.get(k) for k in
+                            ("triangles", "inverted_triangles_frame_relative",
+                             "area_ratio", "edge_length_ratio")})[:300], "REPORT",
+                "no deformation acceptance band is invented")
+        add("B6 the `Root` / eye / finger local invariants vs D9b (a TRACK-ARRAY claim)",
+            "bit-identical", str(row.get("invariants_vs_the_other_build_TRACK_ARRAYS")),
+            "REPORT")
+        head = r["b6"].get("B5b_head_world_between_builds", {})
+        if head:
+            add("B5b the delivered `Head` WORLD rotation, from the GLB's own bytes", "REPORT",
+                "; ".join(f"{s}: per-frame difference "
+                          f"{row_['per_frame_difference_deg']['median']} deg median, "
+                          f"{row_['per_frame_difference_deg']['max']} max"
+                          for s, row_ in head.items()), "REPORT",
+                "NOT identical, and the earlier claim of identity is withdrawn. What IS shown "
+                "is that a ~9 deg pelvis change reaches the head at the 1e-5 deg level.")
+    b3 = r["b3"].get("arms", {})
+    if b3:
+        add("B3 the hoist and the contacts (REPORTED)", "REPORT",
+            "; ".join(f"{label} {s}: hoist p95 {row['hoist_mm']['p95']} mm, contacts "
+                      f"{row['contacts']['count']}"
+                      for label, blk in b3.items() for s, row in blk["subjects"].items()),
+            "REPORT")
+
+    # ------------------------------------------------------------ the card's merge rule
+    def verdict_of(prefix):
+        hits = [c for c in clauses if c["clause"].startswith(prefix)]
+        return None if not hits else (
+            "PASS" if all(c["verdict"] in ("PASS", "REPORT") for c in hits) else "FAIL")
+
+    def all_of(prefixes):
+        values = [verdict_of(p) for p in prefixes]
+        return None if any(v is None for v in values) else (
+            "PASS" if all(v == "PASS" for v in values) else "FAIL")
+
+    conjuncts = {name: all_of(prefixes) for name, prefixes in CONJUNCTS}
+    missing = [k for k, v in conjuncts.items() if v is None]
+    return {
+        "clauses": clauses, "conjuncts": conjuncts, "not_yet_measured": missing,
+        "verdict": ("MERGE" if not missing and all(v == "PASS" for v in conjuncts.values())
+                    else "INCOMPLETE" if missing else "NO MERGE"),
+    }
 
 
-def verdict_of(prefix):
-    hits = [c for c in clauses if c["clause"].startswith(prefix)]
-    if not hits:
-        return None
-    return "PASS" if all(c["verdict"] in ("PASS", "REPORT") for c in hits) else "FAIL"
-
-
-# S's conjunct is EVERY stop the reread can fire, not the three clauses whose names happen
-# to begin "S REREAD". Astra's merge review injected a G2 FAIL in memory and this gate still
-# returned MERGE, because G2 sat outside the selection. `S_STOPS` is now the explicit list
-# and `verdict_of` requires every one of them; `--inject-fail` below demonstrates that the
-# enforcement is real rather than asserted.
 S_STOPS = (
     "the SAME frozen evaluations under Astra round 7's amended admissibility rule",
-    "S REREAD at the exact calibrated sigma",            # the (a)/(b) split
+    "S REREAD: (a) vs (b)",
     "S REREAD: the winner strictly better than C-on-SOMA",
     "S REREAD: the frozen-pitch follower",
     "G1 (missing-only)",
     "G2 (finite-only)",
 )
-# The card names its must-fails explicitly, and a must-fail that stops failing destroys the
-# clause it protects: the wrong-origin control is the only thing that makes O1's residual
-# band meaningful, and the projection controls are the only thing that makes P1's PASS mean
-# anything. They are conjuncts.
 MUST_FAILS = (
-    "the SAME six-body C execution read against exact rig truth",
+    "REFACTOR TRIPWIRE (ii)",
     "must-fail: the WRONG-ORIGIN template",
     "must-fail: a pelvis frozen upright",
     "P1's CONTROL 1",
     "P1's CONTROL 2 -- the nonempty contact mask cleared",
     "P1's CONTROL 2, BUILT",
 )
-TRIPWIRE = ("REFACTOR TRIPWIRE",
-            "the SAME six-body C execution read against exact rig truth")
-P1_TAKE = ("P1 channel preservation", "the UNMUTATED delivery through the same comparison")
-B1 = ("B1 the photographs", "B1 the MAMMA mesh oracle bit-identical")
-SAME_DENOMINATOR = ("B2 `delivered_vs_capture.py",
-                    "the delivery: BOTH landmark arrays byte-identical")
-# Deliberately OUTSIDE the merge predicate, each with its reason. Listed so that a reader can
-# see the choice was made rather than overlooked -- which is exactly the defect the merge
-# review found in the first version of this gate.
-OUTSIDE = {
-    "the delivered run-report records the mode and the guard's demoted frames":
-        "a REPORT clause; the card does not band the diagnostics block",
-    "O3 the D3 gate's own leg-root-ALIGNED gauge":
-        "explicitly REPORT in the card, on a gauge blind to a root move",
-    "P3 planted-foot travel": "explicitly REPORT in the card",
-    "S at the CARD'S OWN FIXTURE": "a RECORDED STOP, kept as it fell; not a merge conjunct",
-    "the amended card's FIXTURE CALIBRATION, under its own frozen monotonicity precondition":
-        "a RECORDED STOP, kept as it fell; not a merge conjunct",
-    "B4": "explicitly REPORT in the card", "B3": "explicitly REPORT in the card",
-    "B6": "explicitly REPORT in the card", "B5b": "explicitly REPORT in the card",
-}
-
-
-def all_of(prefixes):
-    verdicts = [verdict_of(prefix) for prefix in prefixes]
-    if any(v is None for v in verdicts):
-        return None
-    return "PASS" if all(v == "PASS" for v in verdicts) else "FAIL"
-
-
 CONJUNCTS = (
     ("hygiene", ("hygiene:",)),
-    ("the refactor tripwire (both readings)", TRIPWIRE),
+    ("the refactor tripwire (both readings)",
+     ("REFACTOR TRIPWIRE (i)", "REFACTOR TRIPWIRE (ii)")),
     ("O1", ("O1 ",)),
     ("O2", ("O2 ",)),
     ("every must-fail still fails", MUST_FAILS),
-    ("P1 on the take", P1_TAKE),
+    ("P1 on the take",
+     ("P1 channel preservation", "the UNMUTATED delivery through the same comparison")),
     ("P2 on the take", ("P2 anchor lock -- the delivery",)),
     ("P1 on every oracle body", ("P1 on EVERY ORACLE BODY",)),
     ("P2 on every oracle body", ("P2 anchor lock on EVERY ORACLE BODY",)),
     ("S (every stop of the reread, G1 and G2 included)", S_STOPS),
-    ("B1 on both performers, oracle included", B1),
-    ("the same denominator (B2 and both landmark arrays)", SAME_DENOMINATOR),
+    ("B1 on both performers, oracle included",
+     ("B1 the photographs", "B1 the MAMMA mesh oracle")),
+    ("the same denominator (B2 and both landmark arrays)",
+     ("B2 `delivered_vs_capture.py", "the delivery: BOTH landmark arrays byte-identical")),
 )
-conjuncts = {name: all_of(prefixes) for name, prefixes in CONJUNCTS}
-missing = [k for k, v in conjuncts.items() if v is None]
-report = {
-    "title": "D7c -- the pelvis on the rig's own rest. Every clause, predicted / measured / verdict.",
-    "shipping_mode": "E_rig_rest_kabsch",
-    "the_two_recorded_stops": (
-        "S at the card's own fixture (sigma 1.0) and the calibration under its own frozen "
-        "monotonicity precondition both read FAIL here and stay that way. `selector.json` and "
-        "`selector-calibrated.json` are immutable. The step resumed on two reviewer "
-        "amendments, each frozen before the reading it gates, and both are recorded as POST HOC."),
-    "oracle_seeds": seeds,
-    "clauses": clauses,
-    "S_stops_enforced": list(S_STOPS),
-    "must_fails_enforced": list(MUST_FAILS),
-    "merge_rule": {
-        "source": ("the D7c card: hygiene AND the tripwire AND O1 AND O2 AND P1 and P2 on "
-                   "the take and every seed AND S AND B1 on both performers AND B2's "
-                   "same-denominator PASS; O3, B3, B4, B5, B6 report"),
-        "conjuncts": conjuncts,
-        "not_yet_measured": missing,
-        "verdict": ("MERGE" if not missing and all(v == "PASS" for v in conjuncts.values())
-                    else "INCOMPLETE" if missing else "NO MERGE"),
-    },
+OUTSIDE = {
+    "the delivered run-report records the mode and the guard's demoted frames":
+        "a REPORT clause; the card does not band the diagnostics block. Astra's round 2 "
+        "accepted this exclusion explicitly.",
 }
-dest = ROOT / 'artifacts/compare/d7c-pelvis-rest/gate.json'
-dest.write_text(json.dumps(report, indent=1))
 
-# ------------------------------------------- the enforcement demonstration, not an assertion
-# Astra's merge review flipped G2 to FAIL in memory and this gate still returned MERGE. Run
-# the same experiment here, on every conjunct, and record it: flip ONE clause and the merge
-# rule must turn. A merge instrument that cannot be made to say NO MERGE is not one.
-injection: dict = {
-    "what": ("each clause below was flipped to FAIL in memory, one at a time, and the merge "
-             "rule re-evaluated. Every flip must turn the verdict; a conjunct that survives "
-             "a FAIL is not enforced. This is the check Astra's merge review used to find "
-             "that G2 sat outside the S conjunct."),
-    "results": {},
-}
-for probe in [c["clause"] for c in clauses if c["verdict"] == "PASS"]:
-    saved = {c["clause"]: c["verdict"] for c in clauses}
-    for c in clauses:
-        if c["clause"] == probe:
-            c["verdict"] = "FAIL"
-    probed = {name: all_of(prefixes) for name, prefixes in CONJUNCTS}
-    turned = not all(v == "PASS" for v in probed.values())
-    injection["results"][probe[:70]] = "the merge rule turns" if turned else "NOT ENFORCED"
-    for c in clauses:
-        c["verdict"] = saved[c["clause"]]
-injection["every_passing_clause_is_enforced"] = all(
-    v == "the merge rule turns" for v in injection["results"].values())
-injection["clauses_not_enforced"] = [k for k, v in injection["results"].items()
-                                     if v != "the merge rule turns"]
-injection["deliberately_outside_the_predicate"] = OUTSIDE
-injection["every_unenforced_clause_is_deliberate"] = all(
-    any(k.startswith(reason[:40]) for reason in OUTSIDE)
-    for k in injection["clauses_not_enforced"])
-report["enforcement_check"] = injection
-dest.write_text(json.dumps(report, indent=1))
 
-for c in clauses:
-    print(f"{c['verdict']:7s} {c['clause'][:74]:74s} {str(c['measured'])[:44]}")
-print()
-print("MERGE RULE:", json.dumps(report["merge_rule"]["conjuncts"], indent=1))
-print("verdict:", report["merge_rule"]["verdict"], "| missing:", missing)
-print("ENFORCEMENT: every passing clause turns the merge rule when flipped to FAIL:",
-      injection["every_passing_clause_is_enforced"])
-if injection["clauses_not_enforced"]:
-    print("  NOT ENFORCED:", json.dumps(injection["clauses_not_enforced"], indent=1))
-print("wrote", dest)
+# ------------------------------------------------------- failure AT THE INPUT LEVEL
+def _set(node, path, value):
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+
+
+def mutate_wrong_origin_residual(r):
+    for seed in r["oracle"]["oracle"]["seeds"].values():
+        seed["arms"]["wrong_origin"]["three_point_residual_m"] = {"median": 0.0, "max": 0.0}
+
+
+def mutate_ab_split(r):
+    keys = list(r["reread"]["b_vs_a"])
+    r["reread"]["b_vs_a"] = {k: ("better" if i == 0 else "worse")
+                             for i, k in enumerate(keys)}
+    r["reread"]["S_verdict"] = "SPLIT"
+
+
+INPUT_MUTATIONS = (
+    ("hygiene", "one delivered SHA in the hygiene rebuild is changed",
+     lambda r: _set(r["hygiene"]["hygiene"]["delivered_files_vs_shipped"],
+                    ("subject-00.glb", "rebuild"), "0" * 64)),
+    ("the refactor tripwire (both readings)",
+     "one delivered SHA in the mode-C tripwire rebuild is changed",
+     lambda r: _set(r["tripwire"]["hygiene"]["delivered_files_vs_shipped"],
+                    ("subject-01.glb", "rebuild"), "0" * 64)),
+    ("O1", "one seed's three-point residual is raised above 1e-6 m",
+     lambda r: _set(list(r["oracle"]["oracle"]["seeds"].values())[0]["arms"]["src_default"],
+                    ("three_point_residual_m", "max"), 1.0e-3)),
+    ("O2", "one seed's leg/foot/toe move is raised above 0.1 mm",
+     lambda r: _set(list(r["oracle"]["oracle"]["seeds"].values())[0],
+                    ("O2_vs_baseline", "leg_foot_toe_max_mm"), 1.0)),
+    ("every must-fail still fails",
+     "ASTRA'S OWN COUNTER-EXAMPLE: the wrong-origin control's residual set to zero",
+     mutate_wrong_origin_residual),
+    ("every must-fail still fails",
+     "the frozen-upright control's tilt brought inside O1's band",
+     lambda r: [seed["arms"]["frozen_upright"]["pelvis_vs_truth_deg"]["angle"].update(
+         {"median": 0.001}) for seed in r["oracle"]["oracle"]["seeds"].values()]),
+    ("P1 on the take", "one protected channel is marked as differing on the delivery",
+     lambda r: list(r["projection"]["subjects"].values())[0][
+         "P1_channel_preservation"]["failing_channels"].append("local::LeftFoot")),
+    ("P2 on the take", "one accepted run's anchor travel is raised past 1e-5 m",
+     lambda r: _set(list(r["projection"]["subjects"].values())[0],
+                    ("P2_anchor_lock", "worst_travel_m"), 1.0e-3)),
+    ("P1 on every oracle body", "one oracle body's root is marked as not bit-identical",
+     lambda r: _set(list(r["p_oracle"]["seeds"].values())[0],
+                    ("root_bit_identical",), False)),
+    ("P2 on every oracle body", "the oracle anchor lock's worst travel is raised past 1e-5 m",
+     lambda r: _set(r["projection"]["P2_on_the_oracle_bodies"],
+                    ("worst_travel_m_over_all_seeds",), 1.0e-3)),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "ASTRA'S OWN COUNTER-EXAMPLE: (b) vs (a) set to one-better/five-worse, S_verdict SPLIT",
+     mutate_ab_split),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "G2's guarded arm made worse than the unguarded on one body",
+     lambda r: _set(list(r["reread"]["G2_finite_only"]["bodies"].values())[0],
+                    ("guarded", "i_on_corrupted_frames_deg"), 999.0)),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "one body's follower ratio dropped below 2x",
+     lambda r: _set(list(r["reread"]["frozen_pitch_follower_bent_tercile"].values())[0],
+                    ("ratio",), 1.2)),
+    ("S (every stop of the reread, G1 and G2 included)",
+     "G1's arrays made to differ where the effective masks agree",
+     lambda r: list(r["reread"]["G1_missing_only"]["bodies"].values())[0].update(
+         {"effective_masks_identical": True, "interpolated_arrays_bit_identical": False})),
+    ("B1 on both performers, oracle included",
+     "one silhouette cell's CI upper bound driven below zero",
+     lambda r: _set(
+         [cell for s, row in r["silhouette"]["preregistered_clause_verdicts"].items()
+          if s.startswith("subject_") for name, cell in row.items()
+          if name.startswith("clause_")][0], ("ci95",), [-0.02, -0.01])),
+    ("the same denominator (B2 and both landmark arrays)",
+     "the delivery's smoothed landmark array marked as moved",
+     lambda r: _set(r["delivery"]["hygiene"]["smoothed_triangulation_byte_identical"],
+                    ("subject_00",), False)),
+)
+
+
+def main() -> int:
+    reports = load_all()
+    built = build(reports)
+
+    # every conjunct, broken at the INPUT and rebuilt from the mutated artifacts
+    demonstration = {
+        "what": ("for every conjunct, an INPUT ARTIFACT is mutated in memory and the whole "
+                 "gate is rebuilt from the mutated reports. Every one must read NOT MERGE. "
+                 "This is the experiment Astra's merge review ran by hand -- and it is not "
+                 "the same as flipping an already-assigned verdict, which only proves the "
+                 "conjunction's wiring."),
+        "trials": [],
+    }
+    for conjunct, description, mutation in INPUT_MUTATIONS:
+        mutated = copy.deepcopy(reports)
+        mutation(mutated)
+        result = build(mutated)
+        demonstration["trials"].append({
+            "conjunct": conjunct, "mutation": description,
+            "conjunct_after": result["conjuncts"].get(conjunct),
+            "gate_verdict_after": result["verdict"],
+            "detected": result["verdict"] != "MERGE"})
+    demonstration["every_mutation_detected"] = all(
+        t["detected"] for t in demonstration["trials"])
+    demonstration["undetected"] = [t for t in demonstration["trials"] if not t["detected"]]
+    covered = {t["conjunct"] for t in demonstration["trials"]}
+    demonstration["conjuncts_without_an_input_level_demonstration"] = [
+        name for name, _ in CONJUNCTS if name not in covered]
+
+    report = {
+        "title": ("D7c -- the pelvis on the rig's own rest. Every clause, predicted / "
+                  "measured / verdict, DERIVED from the reports."),
+        "shipping_mode": "E_rig_rest_kabsch",
+        "no_verdict_is_a_literal": (
+            "every clause's verdict is an expression over numbers loaded from an instrument's "
+            "report. Astra's round 2 found two literals -- the wrong-origin control and the "
+            "(a)/(b) split -- and both of its counter-examples are now trials below."),
+        "the_two_recorded_stops": (
+            "S at the card's own fixture (sigma 1.0) and the calibration under its own frozen "
+            "monotonicity precondition both read FAIL and stay that way. `selector.json` and "
+            "`selector-calibrated.json` are immutable; the two amendments are POST HOC."),
+        "clauses": built["clauses"],
+        "merge_rule": {
+            "source": ("the D7c card: hygiene AND the tripwire AND O1 AND O2 AND P1 and P2 on "
+                       "the take and every seed AND S AND B1 on both performers AND B2's "
+                       "same-denominator PASS; O3, B3, B4, B5, B6 report"),
+            "conjuncts": built["conjuncts"],
+            "not_yet_measured": built["not_yet_measured"],
+            "verdict": built["verdict"],
+        },
+        "deliberately_outside_the_predicate": OUTSIDE,
+        "input_level_failure_demonstration": demonstration,
+    }
+    (BASE / "gate.json").write_text(json.dumps(report, indent=1))
+
+    for clause in built["clauses"]:
+        print(f"{clause['verdict']:7s} {clause['clause'][:74]:74s} "
+              f"{str(clause['measured'])[:44]}")
+    print()
+    print("MERGE RULE:", json.dumps(built["conjuncts"], indent=1))
+    print("verdict:", built["verdict"], "| missing:", built["not_yet_measured"])
+    print()
+    print("INPUT-LEVEL FAILURE DEMONSTRATION")
+    for trial in demonstration["trials"]:
+        print(f"  {'detected' if trial['detected'] else 'NOT DETECTED':12s} "
+              f"{trial['conjunct'][:42]:42s} -> {trial['gate_verdict_after']:10s} "
+              f"{trial['mutation'][:70]}")
+    print(f"  every mutation detected: {demonstration['every_mutation_detected']}")
+    if demonstration["conjuncts_without_an_input_level_demonstration"]:
+        print("  NO DEMONSTRATION FOR:",
+              demonstration["conjuncts_without_an_input_level_demonstration"])
+    print(f"\nwrote {BASE / 'gate.json'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
