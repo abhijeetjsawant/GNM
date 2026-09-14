@@ -1,0 +1,160 @@
+# Astra GPT6 review of the D7c card — 2026-09-14, in Sol's seat (round 1)
+
+Invocation: `codex exec -m gpt-6-astra -c model_reasoning_effort="xhigh" -s read-only`, the brief
+`docs/reviews/pelvis-rest-astra-brief-2026-09-14.md` on stdin; 126,668 tokens; Astra reran both oracle arms on the
+six bodies in memory and recomputed the guard mask from the retained inputs. Verdict: **do not dispatch as written**.
+Every code claim below was verified against the source before adoption (`d7b_silhouette_partwise.py:327` the
+`ci95[1] >= 0` predicate; `commercial_multiview.py:2017` `_frame`, `:1537` the length rule's stated blindness to
+direction, `:1490` demote keeps the rays, `:2245` the spine's `np.interp`, `:2223` the mode dispatch, `:2882` the root
+line; `body.py:41/995` `CONTACT_TOLERANCE_M = 1e-5` checked on Foot and Toes; `body_projection.py:1186` the
+`candidate_local` lock; `provenance.py:338` the template registered THIRD_PARTY, MAMMA-free; `d7_pelvis_synthetic.py:260`
+every positive-depth camera; `status.py:100` `decide` only adds or removes text). Astra's own numbers reproduced where
+this session could check them: the shipped oracle carries 0.033–0.036° yaw and 0.005–0.035° roll beside its 6.865°
+pitch (`precard-oracle.json`), so cross-build leg identity (O2) is impossible under an exact hip line; the guarded
+pitch-change p95 on performer 1 is 16.5° by the angle (Astra: ~15.9° by the pitch), not the 23.1° the draft quoted
+(that was the unguarded figure); the demoted frames on performer 1 are 24–46 (38–46 nine consecutive, interpolated
+between 37 and 47, not held) and 140, 141, 144, 145, 147, 148, 149 (142, 143, 146 valid; only 147–149 a terminal hold
+from 146).
+
+## What each finding changed in the card
+
+| # | finding | change |
+|---|---|---|
+| 1 | B1's predicate (`ci95[1] >= 0`) establishes "worsening not shown", not "not worse"; no landmark instrument resolves the pelvis convention; the lying run's depth error is invisible to the silhouettes | B1 reworded to "worsening not established (CI upper bound ≥ 0)"; the convention is declared UNRESOLVED and handed to lane H; performer 1's lying end named as unresolvable by the photographs |
+| 2 | a length-honest hip line can be wrong in DIRECTION and the primary-axis construction gives that error full authority (counterexample: 10° hip rotation about the midpoint → 10° / 18 mm under (b), 3.6° / 6.5 mm under Kabsch); window frames 100–102, 104, 106 are D8c's unresolved A–C stretch | the "leg-root error below the alt's BY CONSTRUCTION" clause deleted; (a) vs (b) is a genuine selector question and S decides it; those five frames named and excluded from any directional claim |
+| 3 | the guard is a DIFFERENT mechanism from D8b/D8c's demote (discards samples and interpolates world coordinates; demote keeps rays); `_frame_alignment` normalises both axes, so lever length does not weight it; the median must be frozen from the pre-guard input; the draft's 23.1° "guarded" p95 was the unguarded figure; guarded contacts/hoist need the full path | guard described as new and scored in S against synthetic truth WITH its gaps; the lever wording corrected; the median frozen from the unchanged pre-guard input; 23.1 → ~16; guarded delivered figures marked "the agent measures, not pre-registered" |
+| 4 | SOMA truth cannot select the rig convention, rig truth cannot establish anatomy; STEP must be the full relative rotation; the missing degenerate is a hip-line follower with frozen/attenuated pitch; both estimators get the same guarded Spine1; the noise path uses all positive-depth cameras, not the A–C support | S rewritten: full-rotation increment error, root-step vector error, the frozen-pitch follower as a must-fail, frozen draws/masks/aggregation, same input to both estimators, the camera-support limitation stated |
+| 5 | cross-build planted-foot identity cannot hold; O2 already fails (leg FK 0.054–0.077 mm, hoist 0.008–0.032 mm) because the shipped pelvis carries yaw/roll; replace with a projection-preservation contract | O2 → legs/feet/toes within 0.1 mm and contacts identical per seed; new P: the final GLB preserves the single projection's root, contact mask and foot/toe channels, Foot and Toes at their run anchors within 1e-5 m, with two controls (overwrite `candidate_local`, clear contacts) that must be detected; travel on a fixed population from both builds |
+| 6 | one C execution can serve tripwire and must-fail with separate references | stated so; the take's 8-file tripwire stays a separate fixture; not counted twice |
+| 7 | report the six aligned arm values; keep the standing FAIL; update the published 2.72 decision text at close-out through `status.py decide` | added to the close-out list |
+| 8 | GLB checks the oracle cannot make: sampler times/interpolation, quaternion norms/signs/increments, rest/hierarchy/IBM vs the sized skeleton, rotational closure, delivered Head vs the retained head solve, pelvis/hip/thigh mesh deformation | B6 added (report): the delivered-bytes checks, and a first mesh-deformation reading (inverted/collapsed triangles, edge and area change on the pelvis/thigh region) — D6's "instrument first" |
+| 9 | instrument-only constants need containment proof, mode and provenance recorded in the build; move to `tools/compare/` later | a test that deletes the four constants and rebuilds the rig mode bit-identically; `pelvis_frame.mode` already in the run-report; the move handed to instrument debt |
+| 10 | B2 checks implementation, not direction ("angular/transverse residual zero"); the unguarded candidate is not a must-fail unless a conjunct fails it; the alt's residual to the observed hip line is not evidence against truth; wrong-origin needs the unnormalised metre residual; a non-discriminating control is a limitation | all five adopted verbatim |
+| 11 | the "two held runs" were wrong (see above); holding a world point is not holding pitch; do not switch runs to C | corrected; the gap pattern is injected into S on moving truth |
+| 12 | no take-speed ceiling; report vector velocity/acceleration of Root/Hips/Spine from GLB times, separating midpoint motion, rotational compensation and projection; gate root-step VECTOR error vs truth in S | adopted |
+
+---
+
+**Do not dispatch this card as written.** The rest-frame defect is real, but the card contains falsified predictions, an incorrect gap description, and acceptance clauses that do not establish the claims attached to them.
+
+I checked the source, retained inputs and reports, reran both oracle arms on all six bodies in memory, and reproduced the guarded pelvis measurements. No files were changed.
+
+1. **The remaining convention: B1 is a delivery check, not an anatomical referee.**
+
+   The historical predicate really is `ci95[1] >= 0`: it accepts a confidence interval containing substantial worsening. That means **“worsening was not established,” not “not worse.”** Retain that wording if retaining that predicate; establishing non-worsening at zero requires the lower bound to be nonnegative. This distinction is explicit in the [silhouette code](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d7b_silhouette_partwise.py:327).
+
+   There is no second absolute-pelvis-convention oracle in these landmarks. A take-fitted rigid template remains ambiguous under a constant change of frame; rigidity, cross-view agreement and held-out landmark prediction can expose inconsistent tracking without resolving that constant. The existing [rigidity instrument acknowledges its anatomical blindness](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d7_pelvis_rigidity.py:26).
+
+   Use per-camera photographs and deformation checks to judge the delivered consequences. Keep the anatomical convention unresolved. In particular, the D8c review already identifies a lying run where the available silhouettes cannot resolve the relevant depth error. Passing B1 there does not settle the convention.
+
+2. **Yes: a length-honest hip line can make the primary-axis construction worse.**
+
+   `_frame` preserves the primary direction and removes its component from the secondary. It therefore gives the hip line’s directional error full authority. The length rule explicitly cannot detect same-length rotations. See [_frame](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2017) and [the length-rule blindness](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:1537).
+
+   I tested a concrete counterexample using the card’s dimensions: exact Spine1, hips rotated together by 10° while preserving their midpoint and width. The length guard passes exactly. Hipline-primary produces **10° pelvis error and 18.13 mm per-leg-root error**; Kabsch produces **3.576° and 6.49 mm**.
+
+   On this take, name performer 1’s **source frames 160–162, 164 and 166**. They are the five under-ceiling holes in the A–C stretch run, at +9–13% width. The [D8c review](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/hip-line-2026-09-06.md:90) identifies them as unresolved stretch, not independently verified directional truth. In the 60–210 window these are indices **100–102, 104 and 106**. Do not mix those source IDs with the guard’s window indices.
+
+3. **Keep the guard in the evaluated candidate, but stop describing it as an inherited, already-proven remedy.**
+
+   D8b/D8c demotion retains rays for sequence recovery. This guard discards Spine1 samples and interpolates world coordinates. Those are different recovery mechanisms; the shared ceiling does not validate the new one. Compare [D8c’s demotion](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:1490) with [pelvis interpolation](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2245). Keep an unguarded ablation and score guarded reconstruction against synthetic truth, including its gaps.
+
+   Also correct the lever explanation: **hipline-primary normalises both source axes**, so its angular jitter is not caused by a 197 mm source weight. Its observed lever is approximately **132/125 mm**. Rest lever length affects Kabsch weighting and downstream placement; it does not weight `_frame_alignment`.
+
+   The subject median is a reasonable operational reference, not established anatomy. Freeze it from the unchanged **pre-guard input**, before interpolation, and use that same value and frame population for all comparisons. Here converter-only inputs are identical, so D8b’s moving-denominator problem is avoidable without changing the estimator. “29 rejected frames” is not independent proof that the median is uncontaminated.
+
+   Finally, **23.1° is performer 1’s unguarded pitch-change p95**. Reproducing the stated guard gives approximately **15.91°**. The guarded JSON does not establish guarded contacts, hoist or delivered-joint movements; those require the full guarded converter/export path.
+
+4. **SOMA truth should not select the rig’s convention. S still needs repair.**
+
+   Excluding SOMA-posed truth from that selection is sound. Conversely, rig-posed truth establishes correctness and noise sensitivity under the rig convention; it cannot establish that convention’s anatomical accuracy.
+
+   **“Leg-root error below the alt on every seed, by construction” is false.** It is true that the candidate follows the *observed* hip direction exactly. It is not true that this direction is closer to *truth*. Question 2 supplies a counterexample.
+
+   The missing degenerate is a **hip-line follower with frozen or strongly attenuated pitch**. Leg-root placement cannot discriminate pitch around the hip line. Aggregate orientation and step scores can also tolerate this when pitch excitation is weak relative to noise. Its failure must be demonstrated on the actual selector; I would not assert without running S that it passes this particular fixture.
+
+   Define STEP as error between full relative rotations, not the difference between scalar step magnitudes: opposite rotations can have identical magnitudes. Freeze the donor motion, masks, noise draws and aggregation before selection. Give both rig estimators the same guarded Spine1 input when comparing their geometry.
+
+   The inherited [noise path](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d7_pelvis_synthetic.py:260) uses every positive-depth camera; it does **not** reproduce the measured A–C-only support simply by using the same cameras.
+
+5. **Replace cross-build planted-foot identity with a projection-preservation contract.**
+
+   Capture the candidate immediately after its **single** projection. Require the final converter and exported GLB to preserve that projection’s root, contact mask and protected leg/foot/toe channels. Reconstruct each accepted contact run from the GLB and require both Foot and Toes to remain at their run anchors under the existing **`CONTACT_TOLERANCE_M = 1e-5`**. The [current validator already checks both points](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/body.py:995); export needs its own check.
+
+   Preserve the projection-produced mask so clearing contacts cannot make the lock check vacuous. Report travel on a fixed population derived from both builds as well, so lost contacts do not disappear from the comparison. Explicit controls should overwrite `candidate_local` and clear contact flags; both must be detected. The [projection writes those locks here](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/body_projection.py:1186).
+
+   **O2 itself already fails.** My six-body rerun found different leg locals and different leg FK positions on every seed; maximum FK differences were **0.054–0.077 mm**. Contacts matched. Recovered projection-vector differences reached **0.008–0.032 mm**, so a per-frame 0.01 mm hoist-identity clause also fails on five seeds.
+
+   This is not merely numerical noise: the shipped oracle report contains approximately **0.033° yaw and 0.005° roll** alongside its pitch. Moreover, changed pelvis orientation requires compensating upper-leg locals even if world legs remain fixed. Replace O2’s impossible cross-build identity claim; retain strict preservation **after each candidate’s own projection**.
+
+6. **One execution can legitimately serve both purposes.**
+
+   The refactored C output should equal the old C output and disagree with exact rig truth. Those are different references answering different questions.
+
+   Reuse the C oracle execution, with separate verdicts and explicit references. The take’s eight-file tripwire remains a separate fixture. Do not count the shared oracle execution as two independent demonstrations. The [mode dispatch](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2223) makes this arrangement straightforward.
+
+7. **Update the standing decision record; do not manufacture a new waiver.**
+
+   Report the six values and retain the overall standing FAIL because one seed remains above 0.5 mm. Five improved seeds do not require re-pinning or fresh permission to retain the existing band.
+
+   The published decision currently describes **2.72 mm**, so reporting only in D7c would leave it stale. At close-out, log the new measurement and update the existing decision text through the status tooling, preserving the unresolved gauge/reference debt. [`status.py decide`](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/status.py:100) adds or removes pending decision text; it does not itself approve a gate exception.
+
+8. **Add these checks from the final GLB’s own bytes.**
+
+   Measure actual animation timestamps, duration, channel coverage and interpolation; quaternion norms, adjacent signs and full rotation increments; and samples between keys around gap/contact boundaries. The existing [GLB FK reader](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d3_skeleton_gate.py:169) reads output arrays but ignores sampler input times and interpolation.
+
+   Check the GLB’s rest, hierarchy and inverse bind matrices against the intended sized skeleton, plus track-to-GLB positional **and rotational** closure. Check the delivered Head world rotation against the retained absolute head solve—the head-input gate alone cannot prove the exporter preserved it.
+
+   Measure pelvis/hip/thigh mesh deformation: inverted or collapsed triangles, edge/area changes and local surface distortion. IoU can improve while the skin balloons or tears; the [silhouette instrument explicitly admits this](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/d7b_silhouette_partwise.py:30).
+
+   Include the contact-anchor checks in question 5 and the expected Root/eye/finger-local invariants. Refusing global bit identity does not remove these narrower contracts.
+
+9. **Not automatically a §4 leak, but “instrument-only” needs containment.**
+
+   These constants are recorded as third-party geometry, explicitly MAMMA-free, in the [provenance registry](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/provenance.py:338). Their presence is not proof of a MAMMA leak.
+
+   A default selector alone is weak containment. Prove the normal delivery path cannot read them, including missing-data paths; record the selected mode and provenance in the build.
+
+   I would ultimately move the legacy estimator and constants to `tools/compare/`, preserving their arithmetic for the tripwire. Establish equivalence first. Production should not import that instrument module. Keeping them temporarily for the refactor is acceptable with demonstrated absence from the rig mode’s data flow.
+
+10. **Several clauses admit constants or directly reward the construction.**
+
+    Hip-line angular residual is zero by construction; half-span norms are rotation-invariant. B2 therefore verifies implementation and placement consistency, not directional accuracy. The card’s “per-hip residual is zero” must say **angular/transverse residual**: the full positional residual still includes width mismatch.
+
+    Lever spread and counts above 800°/s can improve by freezing or replacing observations. Their report-only status is appropriate. But calling the unguarded candidate a **must-fail** is inconsistent when those quantities are absent from the merge predicate. Identify the actual conjunct it fails.
+
+    Likewise, the alt’s greater residual to the observed hip line is expected from its objective. It is not independent evidence that it is worse against truth.
+
+    The wrong-origin control is useful only if O1 measures the **unnormalised three-point positional residual in metres**. A residual between normalised frames would lose the origin discrimination. The [pre-card computes the appropriate positional residual](/Users/abhi_macbook/Projects/apps/AutoAnim/tools/compare/precard/d7c_measure_oracle.py:127).
+
+    Finally, declare a non-discriminating constant control a limitation requiring a discriminating test—not a successful gate.
+
+11. **The “two held runs” are factually wrong.**
+
+    Recomputing the 0.15 mask from the [retained performer-1 inputs](/Users/abhi_macbook/Projects/apps/AutoAnim/artifacts/compare/d7c-pelvis-rest/precard-take-hipline/converter-inputs/call-01.npz) gives:
+
+    **38–46:** nine rejected samples, linearly interpolated between 37 and 47. The interpolated Spine1 moves **12.29 mm per frame**. It is not held.
+
+    **140–149:** rejected indices are **140, 141, 144, 145, 147, 148, 149**. Samples **142, 143 and 146 remain valid**. Only **147–149** form the terminal hold, using **146**, not 139.
+
+    There is no nine-frame smoothing cutoff in [this interpolation path](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2245). CLAUDE.md’s capture-smoother continuity horizon does not change `np.interp` semantics.
+
+    Holding a **world point** is also not holding pelvis pitch: moving hips change `held_spine − hip_mid`. Test that behavior on moving exact truth with the observed gap pattern.
+
+    Do not automatically switch those runs to C. C-on-rig-rest is not today’s short-lever, hips-dominant fit. It shares the rig convention, so this is technically an estimator switch rather than SOMA-to-thorax convention switching; nevertheless it can move the hip line and create boundary discontinuities. D7’s [continuity rationale](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2191) still applies.
+
+12. **Keep absolute take root speed reported; gate temporal reconstruction error.**
+
+    Do not invent a take-speed ceiling from D9b. Root translation includes compensation for pelvis orientation; it is not an independently observed centre-of-mass trajectory. The [root equation](/Users/abhi_macbook/Projects/apps/AutoAnim/src/autoanim_gnm/commercial_multiview.py:2882) gives, before projection,
+    \[
+    \Delta r=\Delta hipmid-(R_t-R_{t-1})\,mid.
+    \]
+    The 17 mm figure is therefore a possible rotational contribution, not automatically 17 mm of erroneous body travel.
+
+    Report vector velocity and acceleration for Root, Hips and Spine from actual GLB times, separating midpoint motion, rotational compensation and projection. Review them with the frame player.
+
+    For acceptance, extend S to compare **root-step vector error against exact truth**, alongside full pelvis-increment error, with guarded gaps and the frozen-pitch control included. Use the same truth and draws for both estimators. That tests noise amplification and interpolation damage without asserting a new physical-speed constant.
+
+    D9b-derived truth can support that conditional reconstruction test. It cannot establish how much real pelvic motion the performer had. Neither a report row nor a synthetic pass should be presented as resolving that remaining uncertainty.
+
+The required review record could not be saved under `docs/reviews/`: this session’s filesystem permissions are read-only.

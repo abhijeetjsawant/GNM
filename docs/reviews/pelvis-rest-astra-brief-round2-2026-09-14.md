@@ -1,145 +1,25 @@
-# Review brief for Astra GPT6 — D7c card, the pelvis on the rig's own rest — 2026-09-14
+# Round 2 for Astra GPT6 — D7c card after your twelve findings — 2026-09-14
 
-You are the reviewer of record for the AutoAnim body-capture lane, in the seat Sol held. Review this
-step's card BEFORE it is dispatched to an Opus agent. Answer the numbered questions at the end
-adversarially; every code claim below was read from the source at the cited lines, and you should
-challenge any that looks wrong. Do not propose adding capacity, constants or MAMMA-referenced selection.
+Your round-1 review is recorded at `docs/reviews/pelvis-rest-astra-review-2026-09-14.md` with a header saying what each
+finding changed. Every code claim was verified against the source before adoption; your six-body rerun figures
+(leg FK 0.054–0.077 mm, hoist 0.008–0.032 mm, the shipped yaw/roll) were confirmed from `precard-oracle.json`; the guard
+mask on performer 1 was recomputed (38–46 interpolated between 37 and 47; 140, 141, 144, 145, 147, 148, 149 with
+147–149 the terminal hold from 146); the guarded p95 corrected. The card was rewritten. Same rules as round 1: read-only,
+adversarial, cite the line that decides.
 
-## 1. State
-
-Lane D (delivery) has merged D1, D2, D3, D7, D7b, D8, D9, D8b, D8c, D9b on
-`battle0/clean-room-multiview-resolution-invariance` (last commit ddf8b1b). One four-camera take, two
-performers, 150 frames each (frame window 60–210). The converter `positions_to_body_track`
-(`src/autoanim_gnm/commercial_multiview.py`) turns 19 triangulated SOMA-77 landmarks (+ Spine1, toes,
-a head solve) into a rig track on a per-performer rest skeleton (D3). The rig: `Root` → `Hips` (0, 0.98, 0)
-→ `Spine` (0, 0.117, 0) → `Chest` → `UpperChest` → `Neck`; `Hips` → `LeftUpperLeg` (0.104, −0.08, 0) /
-`RightUpperLeg` (−0.104, −0.08, 0) (performer 0's sized rest; all z = 0, the rest is symmetric about +Y).
-
-Standing rules that bite this step: no gate a constant can pass; same denominator; the MAMMA arm reports
-and never selects; the D3 gate's oracle score is leg-root-ALIGNED and blind to a root move (D9b) — every
-oracle figure here is on the ABSOLUTE row; never re-run pass C or pass A's root line after the foot-contact
-projection; the delivered file is whole-take coupled, so no delivered change may be predicted local.
-
-## 2. The defect (found by the D3 gate's exact-skeleton oracle, priced by D9b as "not hoist-contaminated")
-
-`_pelvis_world_frames` (D7) gives `Hips` its own frame from the pelvis landmarks. Mode `C_kabsch_pelvis`
-fits a constant template onto the observed {Spine1, left_hip, right_hip} about the `root` landmark:
-
-```python
-# src/autoanim_gnm/commercial_multiview.py :2166-2174, :2250-2265
-SOMA77_REST_PELVIS_UP = (-0.0036018134417667037, 0.9928183854915898, 0.11957708965267391)
-SOMA77_REST_HIPMID_TO_SPINE1 = (-0.003113853958207582, 0.9922427141575809, -0.12427670785277636)
-SOMA77_REST_HIP_ACROSS = (0.9999986844845044, -0.0015715732215503752, 0.00040148084638751965)
-SOMA77_REST_PELVIS_TEMPLATE_M = (
-    (-0.00014224140613805503, 0.03922509402036667, 0.004722291603684425),   # root -> Spine1
-    (0.09644327312707901, -0.05622021108865738, 0.017420830205082893),      # root -> LeftLeg
-    (-0.0960559993982315, -0.055917683988809586, 0.017343545332551003),     # root -> RightLeg
-)
-...
-    root = points[:, JOINT_INDEX["root"]]
-    left_hip = points[:, JOINT_INDEX["left_hip"]]
-    right_hip = points[:, JOINT_INDEX["right_hip"]]
-    hip_mid = 0.5 * (left_hip + right_hip)
-    hip_across = left_hip - right_hip
-    if mode == "C_kabsch_pelvis":
-        template = np.asarray(SOMA77_REST_PELVIS_TEMPLATE_M, dtype=np.float64)
-        for frame in range(frames):
-            observed = np.stack((filled[frame] - root[frame], left_hip[frame] - root[frame], right_hip[frame] - root[frame]))
-            u, _, vt = np.linalg.svd(template.T @ observed)          # NO centring: a rotation about the origin
-            sign = float(np.sign(np.linalg.det(vt.T @ u.T)))
-            rotation = vt.T @ np.diag((1.0, 1.0, sign)) @ u.T
-```
-
-The template is SOMA-77's rest (the component-wise median of five GEM-X clips; the pelvis-frame review
-§0.3 priced `root→Spine1` at 6.87° off the rig's `Hips` +Y and `mid(hips)→Spine1` at 7.14° the other way).
-The call site passes no rest: `pelvis_world, pelvis_report = _pelvis_world_frames(points, spine)` (:2830).
-The root formula and the trunk aim then consume the pelvis frame:
-
-```python
-# :2882  root_translation[frame] = pelvis - rest["Hips"] - _leg_root_offset(hips_world, rest)
-# :2095  _leg_root_offset: R_hips . mid, mid = ½(rest["LeftUpperLeg"] + rest["RightUpperLeg"])  -- NO CONSTANT
-# :2544  D7b: torso_world aimed from _joint_origin(world, frame, root_translation, rest, "Spine") to the captured neck
-# :2077  _frame_alignment(source_primary, source_secondary, target_primary, target_secondary):
-#            _frame(p, s) makes p the EXACT first axis and orthogonalises s against it
-```
-
-On the D3 gate's oracle (`tools/compare/d3_skeleton_gate.py` :413-483) the truth is the delivered motion
-re-posed on six perturbed rests; the observed `root` landmark is the hip MIDPOINT
-(`tools/swap-harness/retarget_cost.py` :288 `out[:, root] = ½(left_hip + right_hip)`), the observed Spine1
-is the truth's own `Spine` joint (:459 `spine_truth = truth[:, skeleton.index("Spine")]`), toes are given.
-
-## 3. The measurement (pre-card, committed under `tools/compare/precard/d7c_*.py`)
-
-`artifacts/compare/d7c-pelvis-rest/precard-oracle.json`, `precard-take.json` (alt), `precard-take-hipline.json`
-(candidate), `precard-take-spine-guard.json`. Three arms through the identical converter code path by
-attribute substitution (`_pelvis_world_frames` is called by bare name for exactly this reason):
-
-## What the pre-card measured, in one table
-
-| quantity | shipped (D9b) | candidate (b) | alt (a, Kabsch on rest) |
-|---|---|---|---|
-| oracle: pelvis vs truth, every seed, every frame | 6.865° | 0.000° | 0.000° |
-| oracle: `Spine` origin miss, hoist-subtracted, median over seeds | 21.0–28.3 mm | 0.00 | 0.00 |
-| oracle: torso absolute, hoist-subtracted | 9.0–12.1 mm | 0.00 | 0.00 |
-| oracle: arms, the D3 gate's aligned gauge | 1.32–2.72 | 0.07–0.60 | 0.07–0.60 |
-| oracle: Kabsch residual of the fit | 85–107 mm | 0.000 | 0.000 |
-| take: hip residual p95 / max (perf 0 · perf 1) | 22 / 26 · 37 / 66 (about SOMA's root) | 4.2 / 7.0 · 5.9 / 9.7 | 11.9 / 16.6 · 31.9 / 58.2 |
-| take: leg joints move vs shipped, p95 / max | — | 5.1 / 6.9 · 12.0 / 26.8 | 7.1 / 12.6 · 23.1 / 45.9 |
-| take: pelvis pitch change, median | — | −8.8 / −9.3° | −8.8 / −9.3° |
-| take: root move hoist-subtracted, median (fore-aft) | — | 12.4 / 13.0 (−12.2 / −12.9) | 12.4 / 13.1 |
-| take: delivered +Y vs Spine1 − hip mid, median | 9.4 / 9.9° | 3.2 / 3.9° | 1.4 / 2.0° |
-| take: pelvis step per frame p95, frames > 800°/s | 6.4 / 9.9, 0 / 0 | 12.3 / 16.6, 0 / 2 (guarded: 12.1, 0) | — |
-| take: contacts | (38, 51) / (11, 18) | (38, 45) / (6, 18) | (36, 36) / (4, 18) |
-| take: hygiene (shipped mode rebuild vs shipped bytes) | 8 / 8 identical | — | — |
-
-Two further facts. (i) On the exact oracle a template built from `rest` about `Hips` (the wrong origin, 80 mm
-above the hip midpoint) ALSO reads 0.000° — the rig's rest is symmetric about +Y so the un-centred Kabsch
-absorbs the translation — and is exposed only by its 84 mm residual. (ii) Performer 1's captured
-|Spine1 − hip midpoint| (125 mm median) is off its own median by 16–122 % on 29 of 150 frames
-(24–46, 65–81, 140–149); performer 0's on none. The hip line (208 / 215 mm) has been guarded by D8c's
-segment-length rule (`SEGMENT_LENGTH_RULES` :1463, ceiling 0.15) since 2026-09-06; the spine lever is not
-in that rule and travels in a separate array (`spine_world_z_up_m`).
-
-## 4. The card, verbatim as drafted
+## The card as rewritten (verbatim)
 
 | **D7c the pelvis on the rig's own rest** | **The defect, measured on exact truth.** `_pelvis_world_frames` (D7, mode `C_kabsch_pelvis`) fits `SOMA77_REST_PELVIS_TEMPLATE_M` — three vectors read off SOMA-77's rest (root→Spine1 39 mm, root→LeftLeg, root→RightLeg; the component-wise median of five GEM-X clips; registered THIRD_PARTY, MAMMA-free, in `provenance.py`) — onto the observed {Spine1, left_hip, right_hip} about the `root` landmark, an un-centred rotation-only SVD. On the D3 gate's six exact-skeleton bodies the observed `root` IS the leg-root midpoint (`landmarks_from_fk`), the observed Spine1 IS the rig's `Spine` (197 mm straight up the rig's `Hips` +Y), and the template says Spine1 sits 6.87° off that axis: so the delivered pelvis reads **6.865° pitched about the hip line on every frame of every seed** (a constant, the convention's own; beside it 0.033–0.036° yaw and 0.005–0.035° roll), the `Spine` origin **21–28 mm** off truth (197 mm × sin 6.87° = 23.6), `Hips` 10 mm, the torso group **9.0–12.1 mm** on the absolute row (the 8–11 the D9b review named, hoist-subtracted here), legs 0.00; the unnormalised three-point residual of that fit is **85–107 mm** (the template's origin and lever do not exist on this rig). **The mechanism, no constant:** the pelvis's rest frame comes from the caller's own `rest` — `_pelvis_world_frames` gains a `rest` parameter (the call site at ~:2830 passes the converter's dict; `_leg_root_offset` and `_joint_origin` already read it) — and a new source `D_rig_rest_hipline`, selected by `PELVIS_FRAME_SOURCE`: `_frame_alignment(rest[LeftUpperLeg] − rest[RightUpperLeg], rest[Spine] − mid, left_hip − right_hip, Spine1 − hip_midpoint)` with `mid = ½(rest[L] + rest[R])`; `_frame_alignment` normalises both source axes, so the rest's lengths do not weight it. The **hip line is the exact primary axis** and Spine1 − hip midpoint sets only the pitch; the `root` landmark (SOMA's `Hips`, a pelvis-interior joint 74–77 mm above the hip midpoint on this take, SOMA's convention) is no longer consumed by the fit. **This reverses D7's mode selection (C over B) and says why it does not bind:** D7 selected under SOMA's template geometry (39 mm spine lever, hips dominant); the rig's geometry gives Spine1 a 197 mm lever inside the same un-centred Kabsch, and selector S is D7's selection re-run under the rig's geometry — **(a) C-on-rest and (b) hip-line-primary are a genuine choice that S decides, not a construction argument:** (b) follows the OBSERVED hip line exactly, which is not the same as following the true one — a length-honest hip line rotated 10° about its midpoint (the length rule is blind to direction by its own docstring, :1537) costs (b) 10° / 18 mm at the leg roots and (a) 3.6° / 6.5 mm (Astra's counterexample); performer 1's window frames **100–102, 104, 106** are D8c's unresolved A–C stretch and carry no directional truth. **The one convention that remains is the rig's, and it stays UNRESOLVED here:** that SOMA's Spine1 lies on the rig's `Hips`→`Spine` axis seen from the hip midpoint. On the take that axis sits **9.4 / 9.9°** (median, performer 0 / 1) off today's delivered pelvis +Y and **3.2 / 3.9°** off (b)'s; this step moves the pelvis by the ~7° the pelvis-frame review priced as "what it costs if the convention is wrong"; no landmark instrument resolves a constant change of frame (rigidity, cross-view agreement and held-out prediction expose inconsistent tracking, not the constant — `d7_pelvis_rigidity.py:26`), the exact oracle cannot see it (it feeds the rig's own `Spine`), the photographs judge delivered consequences only, and the anatomical question goes to lane H's marker session. **The pelvis lever gets a guard, and it is a NEW mechanism, not D8c's:** frames whose |Spine1 − hip midpoint| is off the subject's own median by more than `SEGMENT_LENGTH_CEILING_FRACTION` (0.15, D8b's, NOT re-selected) have their Spine1 sample discarded and world-interpolated through the spine's existing gap path (`np.interp` per component, :2245) — D8b/D8c's demote KEEPS the rays for the sequence solve; this discards a sample and interpolates a world point, and the shared ceiling validates nothing about it, so it is scored in S against synthetic truth WITH its gaps; the median is frozen from the unchanged PRE-guard input (converter-only, identical on every arm) so D8b's moving denominator does not enter; **the guard runs only under `D_rig_rest_hipline`** (modes A/B/C read the spine array untouched, so the tripwire holds). Measured before the card: performer 1's lever (125 mm) is off by 16–122 % on **29 of 150 frames** — 24–46 (38–46 nine consecutive, interpolated between 37 and 47 at 12.3 mm per frame, NOT a hold) and 140, 141, 144, 145, 147, 148, 149 (142, 143, 146 valid; 147–149 the one terminal hold, from 146) — performer 0's on none; today's hips-dominant Kabsch hid it; and holding a world point is not holding pelvis pitch (the hips keep moving under it), which S tests on moving exact truth with this gap pattern injected. With 29 of 150 demoted, performer 1's resolved fraction is 0.81 against the 0.5 whole-subject fallback (`PELVIS_MINIMUM_RESOLVED_FRACTION`, not re-selected). Unguarded, (b)'s pelvis steps over 800°/s on 2 frames and the lever's p5/p95 reads −16.5 / +30.8 %; guarded, 0 frames and −14.2 / +10.6 %, pitch-change p95 on performer 1 ~16° (unguarded 23°) — the unguarded (b) is the ABLATION arm in S, not a must-fail (nothing in the merge predicate scores those two report quantities). **Pre-registered on the take from the pre-card's rebuild of (b) UNGUARDED (converter-only, landmarks byte-identical):** pelvis pitch **−8.8 / −9.3°** median about the hip line, the root **12.4 / 13.0 mm** median hoist-subtracted, **−12.2 / −12.9 mm fore-aft** in today's pelvis frame (`_leg_root_offset` keeps the leg-root midpoint ON the captured hip midpoint to 0.0 mm), `Spine` origin 30 mm, `Neck` 12 / 10 mm (D7b's aim keeps it on its ray; the trunk-length floor 21.5 / 18.3 stands), the hoist p95 12.5 → 11.6 / 8.7 → 9.1, contacts (38, 51) → (38, 45) / (11, 18) → (6, 18) — the GUARDED delivered figures need the full converter and export path and are the agent's to measure, not pre-registered here. **The contact detector reads feet on leg roots the exact hip line moved by ≤ 7 / 27 mm, so contacts and the hoist MAY move; D9b's identical-contacts clause does not carry and is replaced by P below.** **What may move: everything below `Root` on every frame** (a pelvis frame is whole-take; `Root`'s identity, the finger rest curl and the eye locals are the only invariants) — **bit-identity is not a clause here**, stated up front. **Oracle gauge:** every oracle number is on the ABSOLUTE row of `d9b_hoist_gate.py`; the D3 gate's `retarget_cost.score` is leg-root-aligned, reads arms 2.72 since D9b, its band is a standing fail and is not moved. **D7's own instruments will read this WORSE by ~7° by construction** — their truth is SOMASKEL77 posed, whose pelvis IS the SOMA convention (`d7_pelvis_synthetic.py`, `d7_pelvis_frame_gate.py` B1/B2); pre-registered as expected and attributed, not a band; the gate's `convention_residual_with_the_SHIPPED_constants` clause goes moved-by-design and is handed to the instrument-debt re-pin with the D3 gate's frozen references. **The four `SOMA77_REST_*` constants and modes A/B/C stay in `src/` for this step as instrument-only controls, with containment PROVED, not asserted:** a test deletes the four constants and rebuilds the rig mode bit-identically (they are absent from its data flow, missing-data paths included), `pelvis_frame.mode` in the run-report records the selected mode; moving them to `tools/compare/` with the tripwire's arithmetic preserved is handed to instrument debt. **Blind spot stated:** the D3 bodies' truth MOTION is D9b's delivered pelvis motion, produced by the very fit being replaced — exactness (O1) is unaffected, but S's noisy arms inherit the shipped fit's smoothness as their truth, so S ranks estimators under the rig convention and says nothing about how much real pelvic motion a performer has. Window 0; `PELVIS_SMOOTHING_FRAMES`, `PELVIS_MINIMUM_RESOLVED_FRACTION` and the 0.15 ceiling are not re-selected. No MAMMA-referenced selection. Card reviewed by Astra GPT6 (`docs/reviews/pelvis-rest-astra-review-2026-09-14.md`, twelve findings, every one adopted after verification against the source) | 7 | **hygiene, before any src change:** today's code on the same inputs byte-identical to the shipped delivery (8 of 8; the pre-card's `--mode shipped` rebuild already reads 8 / 8) · **instrument first, `tools/compare/d7c_pelvis_rest_gate.py`, on the SHIPPED build and the six D3 bodies:** reproduce the pre-card — 6.865° on every seed with its yaw/roll, Spine 21–28 mm, torso 9.0–12.1 absolute, the unnormalised residual 85–107 mm; on the take the delivered pelvis +Y vs Spine1 − hip midpoint 9.4 / 9.9°, performer 1's 29 demoted frames with the pre-guard median frozen · **REFACTOR TRIPWIRE, a must-pass before delivery:** with `PELVIS_FRAME_SOURCE` held at `C_kabsch_pelvis` the refactored `_pelvis_world_frames(points, spine, rest=...)` reproduces D9b bit-for-bit, 8 of 8 on the take (its own fixture) and every rotation / root / contact on the six bodies; the same six-body C execution, read against exact rig truth instead of against D9b, is the "reproduces D7's constants" must-fail (6.865°) — ONE execution, two references, two verdicts, never counted as two demonstrations · **O1 (the oracle, absolute row, every seed):** pelvis vs truth **≤ 0.01° on every frame** (from 6.865); `Spine` and `Hips` origin miss hoist-subtracted **≤ 0.01 mm** (from 21–28 / 10); torso **0.00** on the unhoisted frames and hoist-sized on the hoisted ones (the plant, D9b's 13.3, not the pelvis); the UNNORMALISED three-point positional residual in metres ≤ 1e-6 (this is what discriminates the wrong-origin control, which reads 0.000° of tilt but 84 mm of residual — a residual between normalised frames would lose it; the coplanar rig template exercises the det-sign branch, assert the residual not the tilt) · **O2 (the oracle, the legs):** the exact hip line removes the shipped fit's 0.033° yaw and moves the leg roots by ~0.06 mm, so legs, feet and toes are within **0.1 mm** of D9b's FK per seed (Astra's rerun: 0.054–0.077 mm), contacts identical, the hoist within 0.05 mm (measured 0.008–0.032) — bit-identity is NOT claimed · **P (projection preservation, real take AND every oracle body, replaces D9b's B4):** the candidate's track is captured immediately after its SINGLE projection; the final converter output and the exported GLB preserve that projection's root, contact mask and foot/toe channels; every accepted contact run reconstructed from the GLB's own bytes holds Foot AND Toes at their run anchors within `CONTACT_TOLERANCE_M` (1e-5 m, the validator's, `body.py:41`); the projection-produced mask is preserved so a cleared contact cannot make the lock check vacuous; planted-foot travel reported on a FIXED population, the union of both builds' runs, so a lost contact does not vanish from the comparison; **two controls must be detected:** a build that overwrites `candidate_local` after the projection, and one that clears the contact flags · **O3 (reported, the D3 gate's own aligned gauge):** arms 1.32–2.72 → the pre-card reads **0.07–0.60**; the six values reported; the 0.5 band stays a standing FAIL on the one seed at 0.60 and is not re-pinned; at close-out the published decision text ("2.72 mm since D9b") is UPDATED through `status.py decide --remove/--add` with the six new values and the unresolved gauge/reference debt kept — no new waiver · **S (SELECTOR, synthetic truth, the new instrument, frozen before any number):** the six D3 bodies under I7/I8's heavy-tail frame-correlated pixel noise through `triangulate_point` on the fixture's cameras (`d7_pelvis_synthetic.py`'s `observe`, its truth replaced by the D3 bodies — the SOMA-posed truth cannot referee the constant it carries; its noise path uses every positive-depth camera and does NOT reproduce the take's A–C-only support on the stretch frames, stated as a limitation), donor motion, masks, noise draws and aggregation frozen before selection, every estimator fed the SAME guarded Spine1; arms on one denominator: (b) `D_rig_rest_hipline` guarded, (b) unguarded (the ablation), (a) C-on-rest guarded, C-on-SOMA (today), a world-vertical pelvis, thorax-as-pelvis, and **a hip-line follower with frozen / strongly attenuated pitch (the degenerate leg-root placement cannot discriminate)**; gap patterns injected on moving truth: performer 1's own (38–46 interior, 147–149 terminal) and the +30 % lever breaks on 20 % of frames; metrics per seed on the bent tercile and whole take: pelvis orientation error vs truth, pelvis STEP error as the full relative rotation `(R_t R_{t−1}⁻¹)_est · (R_t R_{t−1}⁻¹)_truth⁻¹` (never the difference of scalar step sizes), leg-root error, and ROOT-STEP VECTOR error vs truth before projection; **rule:** the shipped candidate is the better of (a) and (b) on pelvis orientation AND step AND root-step (a split decision STOPS the step for the coordinator), it beats today's C-on-SOMA on all three, the frozen-pitch follower fails on orientation or step on every seed (if it does not, the fixture is declared non-discriminating and the step stops — never a pass), the guarded arm beats its unguarded ablation on the gap frames, and the truth's own tilt range is reported first (if the world-vertical control lands within 2° of it, that control is a stated limitation, not a pass) · **B1 the photographs:** `d7b_silhouette_partwise` D9b vs candidate on identical draws, TORSO+LEGS and ARMS, whole take and the bent tercile, both performers, **worsening not established: the CI's upper bound ≥ 0 on the D7b/D8 predicate** (`ci95[1] >= 0`, `d7b_silhouette_partwise.py:327` — it does NOT establish non-worsening, and the card says so); performer 1's lying end (D8c's A–C stretch) is where the silhouettes are blind to the depth error and a pass there settles nothing; improvement NOT predicted; the MAMMA mesh oracle bit-identical · **B2 `delivered_vs_capture.py` D9b vs candidate, `--reference smoothed`, identical draws:** landmarks byte-identical so the same-denominator clause is an expected PASS (CHANGED means the change did more than refit the pelvis); the leg-root midpoint on the captured hip midpoint 0.0 mm; the hips' ANGULAR / transverse residual to the captured hip line zero by construction (the full positional residual keeps the width mismatch, p95 4 / 6 mm) — B2 verifies implementation and placement consistency, NOT directional accuracy; knees, ankles, neck REPORTED with their floors · **B3 the hoist and contacts, reported:** per-frame hoist, contact counts and runs, `penetration_before`, the lowest foot, every root figure read hoist-subtracted · **B4 the pelvis and the root's motion, reported never banded:** pitch change per frame; the delivered +Y vs Spine1 − hip midpoint; the frame's full-rotation step per frame and frames over 800°/s; the pelvis frame on the demoted runs separately; vector velocity and acceleration of `Root`, `Hips` and `Spine` from the GLB's own sampler times, separated into hip-midpoint motion, the rotational compensation `−(R_t − R_{t−1})·mid` and the projection (`Δroot = Δhipmid − (R_t − R_{t−1})·mid` before projection; the root is not an observed centre-of-mass trajectory and no speed ceiling is invented) — reviewed in the report page's frame player; D8c's root→hip rule is a landmark quantity this change cannot move and stands unchanged · **B5 the head gate** rerun; the delivered `Head` WORLD rotation checked against the retained absolute head solve from the GLB's own bytes (the input gate cannot prove the exporter preserved it) · **B6 the delivered bytes (report):** sampler input times, duration, channel coverage and interpolation mode; quaternion norms, adjacent signs and full rotation increments; samples between keys at gap and contact boundaries; the GLB's rest, hierarchy and inverse bind matrices against the sized skeleton; positional AND rotational track-to-GLB closure; the `Root` / eye / finger local invariants; and a first mesh-deformation reading on the pelvis / hip / thigh region — inverted or collapsed triangles, edge-length and area change against the rest — because IoU can rise while the skin tears (`d7b_silhouette_partwise.py:30`); this is D6's "instrument first" and its figures are handed to D6 · **must-fails:** the D9b build itself (6.865° on every oracle frame; fails O1); a pelvis frozen upright (D7's control, −0.218 IoU on the photographs; fails O1 on the oracle by the truth's own tilt, whose range is reported first); the SOMA template through the new path (the C execution above, 6.865°; fails O1); the frozen-pitch hip-line follower (fails S); the two projection controls (fail P); **known blindnesses stated:** the wrong-origin template reads 0.000° of tilt (the symmetric rest absorbs the 80 mm origin) and only the metre residual sees it; a same-length rotation of the hip line passes the length rule and is given full authority by (b) — S decides that trade and the take cannot · **merge rule, fixed before numbers:** hygiene AND the tripwire AND O1 AND O2 AND P on the take and every seed AND S (with its stop conditions) AND B1 on both performers AND B2's same-denominator PASS; O3, B3, B4, B5, B6 report · **handoffs:** the pelvis convention to lane H; the four constants' move to `tools/compare/`, D7's moved-by-design clauses and the D3 gate's gauge to instrument debt; the pelvis lever's 29 broken frames to the detector; the mesh-deformation figures to D6; the trunk's length residual to D5 |
 
-## 5. Questions — answer each, adversarially, with the code line that decides it where one exists
+## Questions
 
-1. **The remaining convention.** The candidate asserts SOMA's Spine1 lies on the rig's `Hips`→`Spine` axis seen
-   from the hip midpoint; the shipped code asserts SOMA's own rest pelvis. The exact oracle cannot see which is
-   right (it feeds the rig's own `Spine`). Is the photographs clause (B1, TORSO+LEGS on the bent tercile, both
-   performers, not worse) sufficient as the referee for a 9° / 13 mm whole-take move, or is there a second
-   instrument on the take's own data that discriminates the two conventions without MAMMA or SOMA truth?
-2. **Hip line as the exact primary axis.** `_frame` makes the primary exact and orthogonalises the secondary.
-   Is there a failure mode where holding the hip line exact and letting Spine1 set only the pitch is WORSE than
-   the three-point Kabsch — a frame where the hip line is honest by D8c's rule but wrong in direction (a
-   two-view depth stretch along the A–C baseline is a length error; can it also be a direction error the
-   ceiling passes)? Name the frames on this take if you can find them in the D8c review.
-3. **The guard.** Applying D8b/D8c's 0.15 ceiling to the pelvis lever with demote-to-interpolation is a second
-   mechanism in one step. Should it be split out (the unguarded candidate steps over 800°/s on 2 frames of
-   performer 1 and its lever p95 reads +30.8 %), or is a pelvis fit that reads an unguarded lever through a
-   197 mm arm unshippable without it? If kept, is "the subject's own median" the right denominator on a take
-   where 29 of 150 frames are off (D8b's `--median-from` debt)?
-4. **Selector S.** The card selects between the candidate and the alt on the D3 bodies under I7's noise, with
-   the SOMA-posed truth excluded because it carries the constant being removed. Is that exclusion sound, and
-   is "pelvis error below today's AND within 1° of the alt's AND leg-root error below the alt's on every seed"
-   a rule a degenerate can pass? Which degenerate?
-5. **Bit-identity refused, contacts may move.** The card states up front that everything below `Root` may move
-   on every frame and that contacts and the hoist may change (measured: (38,51)→(38,45), (11,18)→(6,18)).
-   D9b's B4 (planted-foot travel identical) does not carry. What clause replaces it so that a candidate that
-   silently broke the projection's foot locks would still be caught?
-6. **The tripwire and the must-fail are one run.** `PELVIS_FRAME_SOURCE = C_kabsch_pelvis` through the refactored
-   signature must reproduce D9b 8/8 (tripwire) AND reads 6.865° on the oracle (the "reproduces D7's constants"
-   must-fail). Is a single run legitimately both, or does the card need them separated?
-7. **O3.** With the trunk exact the D3 gate's aligned arm figure drops to 0.07–0.60 and its 0.5 band passes 5 of
-   6 seeds. The card reports this and does not re-pin. Is reporting enough, or does a band that was a standing
-   FAIL for 11 days and now passes on 5 seeds need a decision recorded through `status.py decide`?
-8. **What does the oracle NOT see** that this change could break on the delivery? List what you would measure
-   from the delivered GLB's own bytes that the card does not.
-9. **Instrument-only SOMA constants left in `src/`.** The card keeps modes A/B/C and the four `SOMA77_REST_*`
-   constants in the converter as controls for D7's instruments. Is that a leak path (§4 of the plan), or
-   acceptable with `PELVIS_FRAME_SOURCE` selecting the rig mode? Would you move them to `tools/compare/`?
-10. **Anything in the card that a constant can pass**, or any band the candidate optimises directly.
-11. **The two held runs.** Frames 140–149 (ten demoted frames at the take's end, a hold of frame 139's Spine1 while the hips keep moving) and 38–46 (nine consecutive, past the 9-frame smoother window). Is a hold the right behaviour for a pelvis PITCH on a lying performer, or should those runs fall back to today's hips-dominant construction (mode C on the rig rest) per run — and would a per-run definition switch be the very thing D7 refused ("no per-frame definition switching")?
-12. **The root's per-frame speed.** The candidate doubles the pelvis frame's step p95 on performer 0 (6.4 → 12.3°/frame) and an 80 mm lever turns that into ~17 mm of root per frame. The photographs cannot see it and `delivered_vs_capture` scores placement. Is the report row the card adds enough, or is this a band — and if a band, on what reference, given that the take has no truth for pelvic motion and the D3 bodies' truth motion IS D9b's own pelvis?
+1. Is this card dispatchable to an Opus agent as written? If not, list ONLY what still blocks, in order.
+2. Walk the merge rule (hygiene ∧ tripwire ∧ O1 ∧ O2 ∧ P ∧ S ∧ B1 ∧ B2-same-denominator) once more: which conjunct, if any,
+   can a constant or a degenerate still pass, and which degenerate?
+3. S's stop conditions ("a split decision between (a) and (b) STOPS the step", "a non-discriminating frozen-pitch follower
+   STOPS the step"): are they correctly placed as stops rather than passes, and is the frozen-pitch follower defined
+   precisely enough for an agent to build it without inventing a constant?
+4. P: is "Foot AND Toes at their run anchors within CONTACT_TOLERANCE_M from the GLB's own bytes, on a fixed population
+   that is the union of both builds' runs" the right contract, and do the two controls (overwrite `candidate_local`, clear
+   the contact mask) each fail it by construction?
+5. Anything in how your round-1 findings were adopted that misreads you.
