@@ -66,3 +66,63 @@ for the rest comparison; `d7c_pelvis_synthetic.py:647` compares trunk tilt, not 
    Tests reproduce **4 failed, 47 passed**. The subsequently completed broader run stopped at an unchanged compositor pin: **1 failed, 198 passed, 4 skipped**. It is not full-suite validation; the agreed coordinator repins still belong in the landing commit. [Full-run result](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/logs/23-tests-full.log:38).
 
 Read-only throughout; no files changed.
+
+---
+
+# Merge review round 2 — 2026-09-14, at ladder/D7c 0b3eba4. Verdict: NO MERGE
+
+Verified against the worktree: `d7c_gate_report.py:95` and `:158` assign literal "PASS" to the wrong-origin control and the (a)/(b) split (Astra's in-memory counter-examples still read MERGE); `:481` the flip test flips assigned verdicts, not inputs; `body_export.py:599` writes the FIRST ANIMATED POSE as the node default (so the 590 / 156 mm skin-vs-POSITION mismatch is not a reader defect); `d7c_delivered_bytes.py:286` the inverted-triangle test uses a fixed bind-space normal; `:130/:410` playback interpolates rotation but reads translation at the key; `d7c_gate_report.py:351` still prints the stale Head "IDENTICAL" claim; `b1-attribution.json:171` performer 1's root share +0.00552 has CI [−0.00194, +0.00750].
+
+| # | finding | change |
+|---|---|---|
+| 1 | two clause verdicts are literals; the flip test proves wiring, not measurement | verdicts derived from the inputs; failure demonstrated at the input level for every conjunct |
+| 2 | B6's mesh reading must be finished (the reader is sound to 0.005 mm vs Blender; node defaults are the first pose); the inverted-triangle test is wrong (a rigid 180° rotation trips it); the area / edge ratio changes (28.15 → 29.95, 0.0349 → 0.0173) need interpretation, no band | reading finished on a per-triangle frame-relative basis; the ratios interpreted |
+| 3 | the diagnostics exclusion is acceptable | kept |
+| 4 | oracle P2 reproduces (blocker resolved); playback must interpolate translation too (0.459 / 0.295 mm candidate, 0.665 / 1.311 D9b); rotational closure measurable after undoing the exporter's bind/alignment change (median 0.000003°, max 0.000013°); B1's root share for performer 1 is a point estimate with a CI through zero; the gate's stale Head claim | all adopted |
+
+---
+
+**NO MERGE at `0b3eba4`.** The gate still has unenforced conditions, and B6’s required report remains incorrectly measured. Confidence: **10/10**.
+
+1. **The gate remains a blocker.**
+
+   I changed the input reports **in memory**, independently:
+
+   - Set the wrong-origin control’s residual to zero. Verdict: **MERGE**. Its clause receives a literal `"PASS"` at [line 95](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:95).
+   - Changed `(b) vs (a)` to one better/five worse and marked `S_verdict: SPLIT`. Verdict: **MERGE**. That clause also receives a literal `"PASS"` at [line 158](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:158).
+
+   The flip experiment changes **already-assigned verdicts**, so it proves the final conjunction’s wiring, not that measurements can fail each condition. [Deciding line](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:481). Derive these verdicts from their inputs and demonstrate failure at that level.
+
+2. **B6’s handoff is not sufficient under the unchanged card—and its stated reason is wrong.**
+
+   The deciding exporter line is:
+
+   ```python
+   "rotation": animated_rotations[0, index].astype(float).tolist(),
+   ```
+
+   These node defaults contain the **first animated pose**, not the bind pose. Comparing skinning under those defaults with `POSITION` therefore does not establish a reader/exporter defect. [Exporter](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/src/autoanim_gnm/body_export.py:599).
+
+   I compared this reader’s animated vertices with the retained Blender meshes on five frames per performer/build: maximum discrepancy **0.00518 mm**. The evidence supports the skinning reader on those samples. Also, the reported default-pose mismatches are not identical: **594.005→590.159 mm** and **158.929→156.052 mm**.
+
+   Finish the reporting commitment before closure, or explicitly amend it—as round 1 required. This introduces **no deformation acceptance band**. [Round-1 disposition](/Users/abhi_macbook/Projects/apps/AutoAnim/docs/reviews/pelvis-rest-astra-merge-review-2026-09-14.md:41).
+
+   Two report defects still need repair:
+
+   - “Inverted triangles” uses the dot product against a fixed bind-space normal. A harmless rigid 180° rotation triggers it; I reproduced that false positive. [Deciding calculation](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:286).
+   - “Within 1%…D7c did not change it” is unsupported even by its own figures: performer 0’s area-ratio maximum changes **28.1542→29.9488**, and minimum edge ratio **0.03494→0.01731**. These require interpretation, not a new band. [Baseline](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/b6-delivered-bytes.json:167), [candidate](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/b6-delivered-bytes.json:535).
+
+3. **Twelve conjuncts do not yet enforce the complete rule; the diagnostics exclusion is acceptable.**
+
+   The two counterexamples above decide the enforcement question. Excluding the run-report diagnostics from the numerical predicate is consistent with its REPORT status; it hides no observed acceptance failure here. [Explicit exclusion](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:405). Reporting obligations still need completion.
+
+4. **Reproduction and round-1 adoption:**
+
+   - **Oracle P2 reproduces:** six bodies, **18/12/18/10/12/20 runs**, worst **4.855407658×10⁻⁷ m**. That blocker is resolved.
+   - **B6 playback remains wrong.** It interpolates rotations but reads translation at `frame`, freezing the root at the first key. [Translation read](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:130), [midpoint call](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:410). Interpolating translation too reproduces round 1: candidate maxima **0.459063 / 0.295016 mm**, baseline **0.664888 / 1.311246 mm**. The revised millimetre-scale medians are not viewer playback.
+   - **Rotational closure is measurable.** Undoing the exporter’s documented bind/alignment frame change gives candidate median **0.000003°**, maxima **0.000011 / 0.000013°** across all 8,250 joint/frame samples per performer. Replace the raw 32° comparison with this frame-correct closure. [Exporter’s transformation](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/src/autoanim_gnm/body_export.py:379).
+   - **B1’s ablation and all eight cells reproduce**, including intervals. However, performer 1’s root contribution **+0.00552** has CI **[−0.00194, +0.00750]**. Describe its attribution as the point-estimate decomposition; a definite positive root effect is not established. [Interval](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/b1-attribution.json:171).
+   - Head differences, normalized increments, and the **16.8228°** truth-pelvis comparator reproduce. The gate nevertheless still generates the stale Head claim **“IDENTICAL between the builds.”** [Deciding line](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:351).
+   - Focused validation: **32 passed**, including pelvis-rest and provenance tests. I did not rerun the full suite.
+
+Read-only throughout; worktree unchanged.
