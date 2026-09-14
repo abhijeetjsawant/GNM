@@ -745,7 +745,7 @@ never bands**:
   the card. It is a REPORT quantity by the card's own words — nothing in the merge predicate
   scores it — and it is stated rather than smoothed away.
 
-### 5A.7 The B1 attribution — the two performers rise for opposite reasons
+### 5A.7 The B1 attribution — and what the intervals do and do not establish
 
 A third build was rendered through the identical pixel path, masks and frozen draws: the
 candidate's LOCAL rotations and REST with **D9b's per-frame root translation**, so the
@@ -754,49 +754,99 @@ because `validate_body_track` refuses a track whose asserted contacts do not hol
 root is swapped — the same refusal that made P1's first control unbuildable. It is **not** a
 delivery.)
 
-| | both effects | = articulation | + root translation |
+| torso cell | both effects | = articulation | + root translation |
 |---|---|---|---|
-| performer 0, torso, whole take | +0.00715 | **+0.01191** | −0.00476 |
-| performer 0, torso, bent tercile | +0.00792 | **+0.00747** | +0.00045 |
-| performer 1, torso, whole take | +0.00303 | −0.00249 | **+0.00552** |
-| performer 1, torso, bent tercile | +0.00192 | −0.00205 | **+0.00397** |
-| performer 0, arms, whole take | −0.00019 | −0.00693 | +0.00674 |
-| performer 1, arms, whole take | −0.00068 | −0.00721 | +0.00654 |
+| performer 0, whole take | +0.00715 [0.00486, 0.01162] | **+0.01191 [0.00732, 0.01672]** | −0.00476 [−0.00740, 0.00030] |
+| performer 0, bent tercile | +0.00792 [0.00557, 0.01331] | **+0.00747 [0.00244, 0.01904]** | +0.00045 [−0.00673, 0.00476] |
+| performer 1, whole take | +0.00303 [0.00066, 0.00752] | −0.00249 [−0.00512, 0.00686] | +0.00552 [−0.00194, 0.00750] |
+| performer 1, bent tercile | +0.00192 [−0.00066, 0.00360] | −0.00205 [−0.00808, 0.00430] | +0.00397 [−0.00376, 0.00965] |
 
-**Performer 0's torso rise is the articulation** — the new trunk tilt genuinely fits that
-outline better. **Performer 1's is the rigid root shift, and its articulation slightly hurts**,
-so that rise is not evidence about the pelvis. And **the arm cells were hiding two effects of
-opposite sign**: ~0 in B1, in fact −0.005…−0.009 of articulation cancelling +0.006…+0.008 of
-root. DIAGNOSTIC ONLY — it cannot change B1's verdict, and an attribution is not a
-justification.
+**This is a POINT-ESTIMATE decomposition, and only one of its four cells has an interval clear
+of zero.** Astra's round 2 was right to insist on the distinction:
 
-### 5A.5 B5 and B6 — the delivered bytes
+* **Performer 0's rise IS attributable to the articulation.** Its interval is clear of zero on
+  both cuts (+0.00732 and +0.00244 at the lower bound), while the root's share straddles zero
+  on both. On this performer the pelvis's new orientation does fit the outline better.
+* **Performer 1's rise is attributed to NOTHING.** Both shares straddle zero on both cuts. The
+  point estimates put it on the root translation, but **a definite positive root effect is not
+  established** — and neither is a negative articulation effect. Performer 1's rise remains
+  unexplained, and it is not claimed as evidence about the pelvis in either direction.
+* **The arm cells were hiding two effects of opposite sign** (~0 in B1; −0.005…−0.009 of
+  articulation against +0.006…+0.008 of root), which is what an ablation is for even when the
+  individual shares are not separable.
 
-`tools/head/head_gate.py` rerun: candidate 6.38 / 15.37 / 16.08 / 4.73 **PASS**, the two
-controls FAIL as they must, the gated arms PASS with 19 of 150 frames flagged (12.7 %, under
-the 25 % ceiling). It scores the INPUT solve and **cannot prove the exporter preserved it**,
-which is why `d7c_delivered_bytes.py` reads the GLB:
+DIAGNOSTIC ONLY. It cannot change B1's verdict, and an attribution is not a justification.
 
-* **the delivered `Head` WORLD rotation is IDENTICAL between the two builds** — 105.0914° on
-  performer 0 and 83.5315° on performer 1, to four decimals. The converter places the whole
-  head-on-torso rotation on `Head` as an ABSOLUTE target, so the chain compensates for the
-  pelvis and the exporter carried it through. The input gate could not have shown this.
-* LINEAR samplers, 150 frames, 4.9667 s, one translation channel and 55 rotation channels
-  sharing one time array; quaternion norms 1 ± 4e-8; **zero negative adjacent dots** (the
-  hemisphere walk holds through the pelvis change); full rotation increments median 0.029°.
-* **track → GLB positional closure max 0.0005 mm** — the float32 floor.
-* between-key playback, two populations kept apart because they mean different things:
-  **inside** a contact run the chord is 0.0001 mm median / 0.0003 max (both keys planted, so
-  this is the sampler's own error); **at a run boundary**, where the next key is already
-  moving, 5.2 mm median / 15.5 max — playback, not a lock failure, and B6's report rather
-  than P2's clause.
-* **the three invariants hold bit-identically on both performers**: `Root`, both eyes, and
-  the finger proximals. Everything else below `Root` moved, which the card states up front.
+### 5A.5 B5 and B6 — the delivered bytes, and three measurements that were wrong
 
-**Still owed and handed to D6:** the mesh-deformation reading on the pelvis / hip / thigh
-region (inverted or collapsed triangles, edge-length and area change against the rest). IoU
-can rise while the skin tears, and §5A.2's three rising torso cells are exactly where that
-question bites.
+`tools/head/head_gate.py` rerun: candidate 6.38 / 15.37 / 16.08 / 4.73 **PASS**, both controls
+FAIL as they must, the gated arms PASS with **19 of 150 frames flagged on performer 0 and 23 of
+150 on performer 1** (12.7 % and 15.3 %, under the 25 % ceiling). It scores the INPUT solve and
+cannot prove the exporter preserved it, which is why `d7c_delivered_bytes.py` reads the GLB.
+
+**B5b — the delivered `Head` WORLD rotation, reconstructed from the GLB's own channels.**
+Between-build difference **4e-6° median, 1.3e-5° max**. It is **NOT zero**, and the earlier
+claim of identity — read out of the body-track JSON as rounded medians, which says nothing
+about the exporter — is withdrawn. What IS established: the converter places the head-on-torso
+rotation on `Head` as an ABSOLUTE target, so a ~9° pelvis change reaches the head at the 1e-5°
+level rather than at 9°, and the exporter carried that through.
+
+**The bytes.** LINEAR samplers, 150 frames, 4.9667 s, one translation and 55 rotation channels
+sharing one time array; quaternion norms 1 ± 4e-8; **zero** negative adjacent dots; the
+normalised increment median **0.0°** (the as-stored 0.024° carries the float32 norm error and
+is reported beside it); **track → GLB positional closure max 0.0005 mm**; hierarchy matching
+joint for joint and **bone-length error 0.0 mm** on all 54 bones; the `Root`, eye and finger
+invariants bit-identical on both performers — **a TRACK-ARRAY claim**, not a claim about every
+GLB channel.
+
+**Three readings in this section were wrong and are corrected, not quietly dropped.**
+
+1. **The rotational closure.** The raw comparison is ~32° and an earlier version refused to
+   call it a closure — right caution, wrong measurement. The exporter builds
+   `animated_world[j] = track_world[j] · alignment[j] · rest_world[j]`
+   (`body_export.py:379`), so the GLB's world rotation differs from the track's by a **constant
+   per-joint frame**. Undo it — estimate the constant on one frame, measure how constant it is
+   over the rest — and across all **8,250 joint-frame samples per performer** the residual is
+   **median 5e-6°, max 1.5e-5°**: the float32 floor.
+2. **Between-key playback, wrong twice.** The first version averaged already-composed world
+   positions (0.0003 mm, three orders too small); the second interpolated the rotations but
+   read the **translation at the key**, freezing the root and inflating it to millimetres. Both
+   channels are now interpolated — rotations on the shorter arc, translations linearly — and FK
+   re-run. Inside a contact run the maxima are **0.459 / 0.295 mm (candidate)** against
+   **0.665 / 1.311 mm (D9b)**. P2's clause is untouched: it reads KEYED samples only.
+3. **The bind-pose "finding" had the wrong cause.** `body_export.py:599` writes
+   `animated_rotations[0, index]` as each node's default rotation — **the first animated pose**,
+   not the bind pose — so skinning under the node defaults and comparing with `POSITION` was
+   never a test of the exporter or of the reader. It measures how far the take's first frame is
+   from the asset's bind pose, a property of the **motion**; the two builds differ there
+   (594.005 → 590.159 and 158.929 → 156.052 mm, **not identical**) because their first frames
+   differ. A viewer with the animation disabled draws the take's first pose: correct behaviour.
+   Astra settled the reader independently against the retained Blender meshes — **maximum
+   discrepancy 0.00518 mm** — so the mesh reading below is **finished**, not handed over.
+
+**The mesh-deformation reading, pelvis / hip / thigh, 2424 triangles, 15 frames per build.**
+The inverted-triangle test was repaired twice: dotting against a fixed bind-space normal is
+tripped by a harmless rigid 180° rotation (Astra reproduced the false positive), and fitting a
+rotation to a triangle's own three points is rank-deficient — three coplanar points leave the
+determinant's sign a coin toss, and it read 1242 of 2424 "inverted", which is noise. The test
+now carries each triangle's rest normal through **its own dominant-joint skinning rotation**.
+
+| | inverted / frame | area p95 | area max | edge min |
+|---|---|---|---|---|
+| D9b performer 0 | 325 | 2.453 | 28.154 | 0.0349 |
+| **D7c performer 0** | **317** | 2.453 | **29.949** | **0.0173** |
+| D9b performer 1 | 344 | 3.422 | 42.322 | 0.0821 |
+| **D7c performer 1** | **338** | 3.439 | **41.578** | **0.1054** |
+
+* **The region inverts on every build** — 13–14 % of its triangles per frame — and this is the
+  first time it has been measured. It is linear blend skinning at a deep hip crease, not D7c:
+  the candidate inverts **fewer** triangles than the shipped build on both performers.
+* **The tails move in both directions, and "within 1 %, unchanged" is withdrawn.** Performer
+  0's worst stretched triangle grows (28.15 → 29.95× its bind area) and its worst pinched edge
+  halves (0.0349 → 0.0173); performer 1 moves the other way (42.32 → 41.58, worst edge
+  relaxing 0.0821 → 0.1054). Medians are 1.0 everywhere, so this is a tail effect on a handful
+  of crease triangles in both directions, not a systematic tear.
+* **No deformation acceptance band is invented.** The figures go to D6.
 
 ### 5A.6 B3, and what the two hoist recoveries say
 
@@ -878,20 +928,23 @@ whether flipping it to FAIL turns the merge rule.
 | B1 photographs, 8 cells, `ci95[1] ≥ 0` | worsening not established | met on all 8 | **PASS** |
 | B1 the MAMMA mesh oracle | bit-identical | 0.0 | **PASS** |
 | B2 `delivered_vs_capture --reference smoothed` | same denominator | TRUE | **PASS** |
-| B1 attribution (diagnostic) | — | performer 0's rise is the ARTICULATION (+0.0119 vs −0.0048); performer 1's is the ROOT (−0.0025 vs +0.0055) | REPORT |
+| B1 attribution (diagnostic) | — | performer 0's rise IS the articulation (+0.0119, CI clear of zero); **performer 1's is attributed to nothing — both shares straddle zero** | REPORT |
 | B3 the hoist and the contacts | REPORT | hoist p95 12.54→13.12 / 8.72→8.09 mm; contacts (38,51)→(36,36) / (11,18)→(5,18) | REPORT |
 | B4 the pelvis and root motion | REPORT | pitch −8.783 / −9.219°; root 12.40 / 13.06 mm; step p95 14.08 / 13.33°; **0 / 1** frame over 800°/s | REPORT |
-| B5 the head gate rerun | REPORT | candidate PASS, both controls FAIL; flagged **19/150 performer 0, 23/150 performer 1** | REPORT |
+| B5 the head gate rerun | REPORT | candidate PASS, both controls FAIL; flagged 19/150 performer 0, 23/150 performer 1 | REPORT |
 | B5b the delivered `Head` WORLD rotation, from the GLB | REPORT | between-build difference **4e-6° median, 1.3e-5 max — NOT zero** | REPORT |
 | B6 sampler times, channels, quaternions | REPORT | LINEAR, 150 frames, 4.9667 s, 1+55 channels, norms 1±4e-8, **zero** negative adjacent dots; normalised increment median **0.0°** | REPORT |
 | B6 track→GLB **positional** closure | REPORT | max **0.0005 mm** | REPORT |
-| B6 track→GLB rotational comparison | REPORT | 32.0° median — **NOT a closure**: the GLB channel is the rig local composed with the node's rest rotation | REPORT |
+| B6 track→GLB **rotational closure**, frame-corrected | REPORT | **median 5e-6°, max 1.5e-5°** over 8,250 joint-frame samples per performer, after undoing the exporter's constant per-joint frame (`body_export.py:379`). The raw 32° is that change of frame | REPORT |
 | B6 hierarchy and bone lengths vs the sized skeleton | REPORT | hierarchy matches joint for joint; bone-length error **0.0 mm** on all 54 | REPORT |
-| B6 inverse binds / mesh deformation | REPORT | **NOT ESTABLISHED** — skin-at-node-rest misses POSITION by 590/156 mm on **both** builds; this reader or the exporter, and Blender renders the same files fine. Same size on D9b ⇒ **predates D7c** | REPORT |
-| B6 between-key playback (quaternions interpolated, then FK) | REPORT | inside a run **5.2 – 8.6 mm median**; the earlier 0.0003 mm was averaged composed positions and is withdrawn | REPORT |
+| B6 the node defaults vs the bind pose | REPORT | **EXPLAINED**: `body_export.py:599` writes the FIRST ANIMATED POSE as the node default, so the 594.005→590.159 / 158.929→156.052 mm mismatch is a property of the motion, not a defect. Reader verified against Blender at 0.00518 mm | REPORT |
+| B6 mesh deformation, pelvis/hip/thigh | REPORT | inverted/frame **325→317** and **344→338** of 2424 (skinning at a deep crease, and the candidate inverts fewer); area max 28.15→29.95 and 42.32→41.58; worst edge 0.0349→0.0173 and 0.0821→0.1054. Tails move **both ways**; no band | REPORT |
+| B6 between-key playback (BOTH channels interpolated, then FK) | REPORT | inside a run, maxima **0.459 / 0.295 mm** (candidate) against **0.665 / 1.311 mm** (D9b). Two earlier versions withdrawn: 0.0003 mm (composed positions) and the millimetre-scale medians (translation read at the key) | REPORT |
 | B6 the `Root` / eye / finger invariants | REPORT | bit-identical, both performers — a **TRACK-ARRAY** claim | REPORT |
 | the provenance audit | no unaudited constant | `RIG_REST_PELVIS_MODES` registered; `PELVIS_FRAME_SOURCE` rewritten keeping its history | **PASS** |
-| **merge rule, twelve conjuncts, each enforced** | all PASS | all PASS; every one turns the verdict when flipped | **MERGE** |
+| **merge rule, twelve conjuncts** | all PASS | all PASS | **MERGE** |
+| **every verdict DERIVED from its input report** | no literal PASS | no literal remains; both of Astra's counter-examples are now derivations | **PASS** |
+| **failure demonstrated at the INPUT level, every conjunct** | every mutation detected | **16 of 16 input mutations detected**, including both of Astra's own | **PASS** |
 
 **Tests.** `tests/test_pelvis_rest.py` 14 passed. The full suite reads **7 failed, 1216 passed,
 16 skipped**: the four superseded `test_pelvis_frame` pins (re-pinned here, §4A.5; the
@@ -931,24 +984,23 @@ not this step's**. `test_provenance_audit` now passes.
 
 ## 7. What is open
 
-1. **B1's three rising torso cells are now ATTRIBUTED, and the attribution is not one story.**
-   Performer 0's rise is the ARTICULATION (+0.0119 against the root's −0.0048); performer 1's
-   is the ROOT TRANSLATION (+0.0055 against the articulation's −0.0025), so performer 1's rise
-   is **not** evidence that the pelvis is better there and is not claimed as such. Both
-   performers' arm cells, which read ~0 in B1, are −0.005 to −0.009 of articulation cancelling
-   +0.006 to +0.008 of root. §5A.7.
+1. **Performer 1's torso rise is attributed to NOTHING, and stays open.** Performer 0's rise
+   IS the articulation — its interval is clear of zero on both cuts. Performer 1's two shares
+   BOTH straddle zero (+0.00552 [−0.00194, 0.00750] for the root, −0.00249 [−0.00512, 0.00686]
+   for the articulation), so the point estimates point at the root but **nothing is
+   established**. Not claimed as evidence about the pelvis in either direction. §5A.7.
 2. **The world-vertical control's limitation APPLIES and is stated.** Its bent-tercile error
    (17.726°) is within 2° of the truth pelvis's own median tilt from vertical (16.823°), so on
    this fixture it is doing little more than reporting how far from upright this motion's
    pelvis is. S's stops are unchanged; the winner's separation from the **frozen-pitch
    follower** — the control built for exactly this, and not upright — is what carries that
    argument.
-3. **The inverse binds and the mesh-deformation reading are NOT ESTABLISHED.** Skinning at the
-   nodes' own rest TRS misses the `POSITION` attribute by 590 / 156 mm, identically on the
-   shipped build. Either the exporter's node rest pose is not its bind pose, or this reader's
-   glTF convention is wrong — and Blender renders the same files to sensible silhouettes, so
-   the reader is the likelier suspect. The attribution is established (it predates D7c); the
-   measurement is not. Handed to D6 **with the reader**.
+3. **The pelvis / hip / thigh region inverts 13–14 % of its triangles per frame on EVERY
+   build**, and the tails move in both directions between them (performer 0's worst pinched
+   edge halves, performer 1's relaxes). Linear blend skinning at a deep hip crease, measured
+   here for the first time; no band is invented and the figures go to **D6**. The earlier
+   "not established / suspect the reader" framing was wrong: the node defaults are the first
+   animated pose (`body_export.py:599`) and the reader agrees with Blender to 0.00518 mm.
 4. **The hip residual under (a) is a REPORT and stays one** — full positional p95 12.1 / 14.9
    mm against D9b's 6.4 / 12.0. No band may be made from it.
 5. **One frame over 800°/s on performer 1**; a REPORT quantity by the card's own words.
