@@ -47,7 +47,8 @@ import autoanim_gnm  # noqa: E402
 if not str(Path(autoanim_gnm.__file__).resolve()).startswith(str(ROOT)):
     raise SystemExit(f"PYTHONPATH trap: {autoanim_gnm.__file__}")
 
-from autoanim_gnm.body import forward_kinematics_positions, skeleton_for_track_dict  # noqa: E402
+from autoanim_gnm.body import (  # noqa: E402
+    forward_kinematics_positions, skeleton_for_track_dict, _quaternion_multiply)
 import d3_skeleton_gate as d3  # noqa: E402
 
 BUILDS = (("D9b", ROOT / "artifacts/commercial-multiview-soma77"),
@@ -113,7 +114,8 @@ def glb_channels(path: Path) -> dict:
     }
 
 
-def world_from_channels(channels: dict, local_rotations: dict, frame: int | None = None):
+def world_from_channels(channels: dict, local_rotations: dict, frame: int | None = None,
+                        local_translations: dict | None = None):
     """Forward kinematics on the GLB's own hierarchy, returning world rotations AND origins.
 
     `local_rotations` maps node -> [4] (one frame) so the between-key check can hand it
@@ -125,9 +127,15 @@ def world_from_channels(channels: dict, local_rotations: dict, frame: int | None
     world_p = np.zeros((count, 3))
     for node in channels["joints"]:
         slot = order[node]
-        local_t = channels["translation"].get(node)
-        local_t = (channels["rest"][node] if local_t is None
-                   else np.asarray(local_t[frame], np.float64))
+        if local_translations is not None and node in local_translations:
+            # THE TRANSLATION IS INTERPOLATED TOO. Reading it at the key while the rotations
+            # are interpolated freezes the root at its key and turns a sub-millimetre
+            # playback error into a millimetre-scale one.
+            local_t = np.asarray(local_translations[node], np.float64)
+        else:
+            local_t = channels["translation"].get(node)
+            local_t = (channels["rest"][node] if local_t is None
+                       else np.asarray(local_t[frame], np.float64))
         # a node with no rotation CHANNEL keeps its own rest rotation, not the identity
         quaternion = np.asarray(
             local_rotations.get(node, channels["nodes"][node].get(
@@ -250,6 +258,23 @@ def skin(channels: dict, world: np.ndarray) -> np.ndarray:
     return out
 
 
+def dominant_rotation(channels: dict, frame: int, triangles: np.ndarray) -> np.ndarray:
+    """Each triangle's own rigid motion: its dominant joint's skinning rotation at `frame`.
+
+    A triangle's rest normal carried through this is where the normal SHOULD point; the
+    triangle is inverted when its posed normal opposes it. Using the joint's transform rather
+    than a fit to the triangle's own three points is what makes the test well posed -- three
+    coplanar points cannot determine an out-of-plane sign.
+    """
+    world = animated_world_matrices(channels, frame)
+    joints = channels["skin_joints"].reshape(len(channels["vertices"]), -1)
+    weights = channels["skin_weights"].reshape(len(channels["vertices"]), -1)
+    dominant = joints[np.arange(len(joints)), weights.argmax(axis=1)]
+    slot = dominant[triangles[:, 0]]
+    matrix = world[slot] @ channels["inverse_bind"][slot]
+    return matrix[:, :3, :3]
+
+
 def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...]) -> dict:
     """The first mesh-deformation reading on the pelvis / hip / thigh region.
 
@@ -275,7 +300,8 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
                           np.linalg.norm(a - c, axis=1)], axis=1)
         return area, edges, normal
 
-    rest_area, rest_edges, rest_normal = measure(channels["vertices"])
+    rest = channels["vertices"]
+    rest_area, rest_edges, rest_normal = measure(rest)
     good = rest_area > 1e-12
     area_ratio, edge_ratio, inverted = [], [], []
     for frame in frames:
@@ -283,8 +309,19 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
         area, edges, normal = measure(posed)
         area_ratio.append(area[good] / rest_area[good])
         edge_ratio.append((edges[good] / np.maximum(rest_edges[good], 1e-12)).ravel())
-        inverted.append(int((np.einsum("ij,ij->i", normal[good], rest_normal[good])
-                             < 0.0).sum()))
+        # THE INVERSION TEST IS FRAME-RELATIVE, and this is its SECOND repair. Dotting the
+        # posed normal against the triangle's BIND-SPACE normal is wrong -- a harmless RIGID
+        # 180 deg rotation trips it, and Astra reproduced that false positive. Fitting a
+        # rotation to the triangle's own three points is ALSO wrong, and quietly so: three
+        # coplanar points give a rank-2 covariance, the third singular vector is arbitrary,
+        # and the determinant's sign is then a coin toss -- it read 1242 of 2424 triangles
+        # "inverted", i.e. exactly noise. What carries a triangle's rigid motion is the
+        # SKINNING: the rest normal is rotated by the triangle's own dominant joint
+        # transform, and the triangle is inverted when its posed normal opposes THAT.
+        expected = np.einsum("tij,tj->ti", dominant_rotation(channels, frame, triangles),
+                             rest_normal)
+        inverted.append(int((np.einsum("ij,ij->i", normal[good],
+                                       expected[good]) < 0.0).sum()))
     area_ratio = np.concatenate(area_ratio)
     edge_ratio = np.concatenate(edge_ratio)
     return {
@@ -299,19 +336,19 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
                               "p5": round(float(np.percentile(edge_ratio, 5)), 5),
                               "p95": round(float(np.percentile(edge_ratio, 95)), 5),
                               "min": round(float(edge_ratio.min()), 5)},
-        "triangles_whose_normal_flipped": {"per_frame_max": int(max(inverted)),
-                                           "total": int(sum(inverted))},
+        "inverted_triangles_frame_relative": {
+            "per_frame_max": int(max(inverted)), "total": int(sum(inverted)),
+            "test": ("the rest normal carried through the triangle's own dominant-joint "
+                     "skinning rotation; inverted when the posed normal opposes THAT. A "
+                     "rigid rotation of a limb cannot trip it, and unlike a Kabsch fit on "
+                     "three coplanar points it is not rank-deficient.")},
         "collapsed_triangles_area_below_1e-4_of_bind": int((area_ratio < 1e-4).sum()),
-        "VERDICT": ("NOT ESTABLISHED. This shares the unresolved glTF-convention question "
-                    "recorded beside it: the same reader that cannot reproduce the bind pose "
-                    "produces these ratios, so the ABSOLUTE figures are not trustworthy. "
-                    "What IS usable is the COMPARISON, because both builds go through the "
-                    "identical reader: the region's area and edge distributions and its "
-                    "flipped-triangle count are within 1 % between the shipped D9b build and "
-                    "the candidate, so whatever this reader is measuring, D7c did not change "
-                    "it. Handed to D6 together with the reader."),
-        "note": ("REPORT, handed to D6. No band is invented and nothing in the merge "
-                 "predicate reads it."),
+        "reader_is_sound": (
+            "Astra's merge review compared this reader's animated vertices against the "
+            "retained BLENDER meshes on five frames per performer per build: maximum "
+            "discrepancy 0.00518 mm. These figures are the mesh's, not the reader's."),
+        "note": ("REPORT, handed to D6. NO DEFORMATION ACCEPTANCE BAND is invented and "
+                 "nothing in the merge predicate reads any of it."),
     }
 
 
@@ -392,80 +429,109 @@ def main() -> int:
             inside, boundary, gaps = [], [], []
             feet = {name: channels["names"].index(name) for name in
                     ("LeftFoot", "LeftToes", "RightFoot", "RightToes")}
+            count = len(channels["rotation"][channels["joints"][0]])
+
+            def midpoint_error(frame: int, joints: tuple[str, ...]) -> dict:
+                """WHAT A VIEWER DRAWS halfway between two keys.
+
+                BOTH channels are interpolated -- the rotations on the shorter arc and the
+                translations linearly, which is what a LINEAR sampler does -- and forward
+                kinematics is re-run. Interpolating only the rotations freezes the root at
+                its key and inflates this by an order of magnitude; Astra's round 2 caught
+                exactly that, and it is the second time this row has been wrong.
+                """
+                half_q = {node: slerp(channels["rotation"][node][frame],
+                                      channels["rotation"][node][frame + 1], 0.5)
+                          for node in channels["joints"]}
+                half_t = {node: 0.5 * (np.asarray(array[frame], np.float64)
+                                       + np.asarray(array[frame + 1], np.float64))
+                          for node, array in channels["translation"].items()}
+                _, mid_p = world_from_channels(channels, half_q, frame=frame,
+                                               local_translations=half_t)
+                _, key_a = world_from_channels(
+                    channels, {n: channels["rotation"][n][frame]
+                               for n in channels["joints"]}, frame=frame)
+                _, key_b = world_from_channels(
+                    channels, {n: channels["rotation"][n][frame + 1]
+                               for n in channels["joints"]}, frame=frame + 1)
+                return {joint: 1e3 * float(np.linalg.norm(
+                    mid_p[feet[joint]]
+                    - 0.5 * (key_a[feet[joint]] + key_b[feet[joint]])))
+                    for joint in joints}
+
             for side, (foot, toes) in enumerate((("LeftFoot", "LeftToes"),
                                                  ("RightFoot", "RightToes"))):
                 for frame in np.flatnonzero(contacts[:, side]):
-                    if frame + 1 >= local.shape[0]:
+                    if frame + 1 >= count:
                         continue
-                    # WHAT A VIEWER DOES: interpolate the LOCAL quaternions the LINEAR
-                    # sampler carries, then run forward kinematics. Averaging already
-                    # COMPOSED world positions -- the earlier version -- under-reads this by
-                    # three orders of magnitude, because the chord of a composed position is
-                    # not the position of the interpolated rotation.
-                    half = {node: slerp(channels["rotation"][node][frame],
-                                        channels["rotation"][node][frame + 1], 0.5)
-                            for node in channels["joints"]}
-                    keyed_q = {node: channels["rotation"][node][frame]
-                               for node in channels["joints"]}
-                    _, mid_p = world_from_channels(channels, half, frame=frame)
-                    _, key_p = world_from_channels(channels, keyed_q, frame=frame)
-                    for joint in (foot, toes):
-                        value = 1e3 * float(np.linalg.norm(
-                            mid_p[feet[joint]] - key_p[feet[joint]]))
-                        (inside if contacts[frame + 1, side] else boundary).append(
-                            {"joint": joint, "mm": value})
-            # a GAP boundary: the frames either side of an interpolated spine gap
+                    values = midpoint_error(int(frame), (foot, toes))
+                    target = inside if contacts[frame + 1, side] else boundary
+                    for joint, value in values.items():
+                        target.append({"joint": joint, "mm": value})
             demoted = json.loads((directory.parent / "delivery-build.json").read_text()
                                  )["diagnostics"]["pelvis_frame"][subject][
                                      "lever_guard"]["demoted_frames"] \
                 if (directory.parent / "delivery-build.json").exists() else []
             for frame in demoted:
-                if frame + 1 >= local.shape[0]:
-                    continue
-                half = {node: slerp(channels["rotation"][node][frame],
-                                    channels["rotation"][node][frame + 1], 0.5)
-                        for node in channels["joints"]}
-                keyed_q = {node: channels["rotation"][node][frame]
-                           for node in channels["joints"]}
-                _, mid_p = world_from_channels(channels, half, frame=frame)
-                _, key_p = world_from_channels(channels, keyed_q, frame=frame)
-                gaps.append(1e3 * float(np.linalg.norm(
-                    mid_p[channels["names"].index("Hips")]
-                    - key_p[channels["names"].index("Hips")])))
+                if frame + 1 < count:
+                    gaps.append(midpoint_error(int(frame), ("LeftFoot",))["LeftFoot"])
 
             def by_joint(rows):
                 return {name: summary([r["mm"] for r in rows if r["joint"] == name])
                         for name in ("LeftFoot", "LeftToes", "RightFoot", "RightToes")}
 
             row["between_key_playback_mm"] = {
-                "method": ("the LOCAL quaternions are interpolated on the shorter arc and "
-                           "forward kinematics is re-run -- what a viewer does"),
+                "method": ("BOTH channels interpolated -- rotations on the shorter arc, "
+                           "translations linearly -- forward kinematics re-run, and compared "
+                           "against the chord between the two keys' own positions"),
                 "inside_a_contact_run": by_joint(inside),
                 "at_a_run_boundary_where_the_next_frame_is_NOT_planted": by_joint(boundary),
-                "at_a_GAP_boundary_Hips_mm": summary(gaps),
+                "at_a_GAP_boundary_LeftFoot_mm": summary(gaps),
+                "maxima_mm": {name: round(max([r["mm"] for r in inside + boundary
+                                               if r["joint"] == name], default=0.0), 6)
+                              for name in ("LeftFoot", "LeftToes", "RightFoot",
+                                           "RightToes")},
             }
             row["between_key_note"] = (
-                "B6's REPORT and NOT P2's clause, which reads KEYED samples only. An earlier "
-                "version of this file averaged already-composed world positions and reported "
-                "0.0003 mm; the true midpoint anchor error inside a contact run is three "
-                "orders of magnitude larger. The gap-boundary row is the `Hips` midpoint "
-                "error on the frames the lever guard interpolated.")
+                "B6's REPORT and NOT P2's clause, which reads KEYED samples only. TWO earlier "
+                "versions of this row were wrong and both are withdrawn: the first averaged "
+                "already-composed world positions (0.0003 mm, three orders too small); the "
+                "second interpolated the rotations but read the TRANSLATION AT THE KEY, "
+                "freezing the root and inflating it to millimetres.")
             # track -> GLB closure, positional and rotational
             fk = forward_kinematics_positions(
                 np.asarray(data["track"].root_translation_m, np.float64),
                 np.asarray(data["track"].local_rotations_xyzw, np.float64),
                 skeleton=data["skeleton"]).astype(np.float64)
             order = [list(data["skeleton"].names).index(n) for n in data["names"]]
-            # ROTATIONAL closure: the GLB's own local channels against the track's.
+            # ROTATIONAL CLOSURE, FRAME-CORRECTED. The raw comparison of the GLB's channel
+            # against the track's local is ~32 deg and is NOT an error: the exporter builds
+            # `animated_world[j] = track_world[j] * alignment[j] * rest_world[j]`
+            # (`body_export.py:379`), so the GLB's world rotation differs from the track's by
+            # a CONSTANT per-joint frame. Undo that constant -- estimate it on one frame, then
+            # measure how CONSTANT it is across every other frame -- and the closure appears.
             track_local = np.asarray(data["track"].local_rotations_xyzw, np.float64)
             skel_names = list(data["skeleton"].names)
-            rotational = []
+            track_world = np.zeros_like(track_local)
+            for slot, joint in enumerate(data["skeleton"].joints):
+                track_world[:, slot] = (
+                    track_local[:, slot] if joint.parent == -1
+                    else _quaternion_multiply(track_world[:, joint.parent],
+                                              track_local[:, slot]))
+            frames_count = track_local.shape[0]
+            glb_world = np.zeros((frames_count, len(channels["joints"]), 4))
+            for frame in range(frames_count):
+                keyed = {node: channels["rotation"][node][frame]
+                         for node in channels["joints"]}
+                glb_world[frame], _ = world_from_channels(channels, keyed, frame=frame)
+            residuals = []
             for slot, name in enumerate(channels["names"]):
-                a = local[:, slot] / np.linalg.norm(local[:, slot], axis=1)[:, None]
-                b = track_local[:, skel_names.index(name)]
-                b = b / np.linalg.norm(b, axis=1)[:, None]
-                dot = np.abs(np.einsum("fk,fk->f", a, b))
-                rotational.append(np.degrees(2.0 * np.arccos(np.clip(dot, -1.0, 1.0))))
+                ours = Rotation.from_quat(track_world[:, skel_names.index(name)])
+                theirs = Rotation.from_quat(glb_world[:, slot])
+                constant = ours[0].inv() * theirs[0]
+                residuals.append(np.degrees(np.linalg.norm(
+                    ((ours * constant) * theirs.inv()).as_rotvec(), axis=1)))
+            rotational = np.concatenate(residuals)
             skel_names = list(data["skeleton"].names)
             # THE GLB'S REST, HIERARCHY AND INVERSE BIND MATRICES against the sized
             # skeleton. The COMPONENTS of a node translation cannot be compared against the
@@ -507,36 +573,33 @@ def main() -> int:
                 "skinned_at_the_node_rest_pose_vs_the_POSITION_attribute_mm": summary(
                     1e3 * np.linalg.norm(at_rest - channels["vertices"], axis=1)),
                 "VERDICT": "NOT ESTABLISHED -- and the reason is stated rather than hidden",
-                "what_was_attempted_and_what_it_shows": (
-                    "linear blend skinning at the nodes' own rest TRS should return the "
-                    "mesh's POSITION attribute if the node rest pose IS the bind pose. Here "
-                    "it misses by 590-594 mm on performer 0 and 156-159 mm on performer 1, "
-                    "and `inverseBind @ node-rest-world` is 1.52 from the identity. TWO "
-                    "EXPLANATIONS FIT AND THIS INSTRUMENT CANNOT SEPARATE THEM: either the "
-                    "exporter writes a node rest pose that is not its bind pose (in which "
-                    "case a viewer with the animation disabled draws a distorted body), or "
-                    "THIS READER's glTF skinning convention is wrong. The second is the more "
-                    "likely: B1 renders the SAME files through Blender, an entirely "
-                    "independent path, and gets sensible silhouettes against the SAM2 masks, "
-                    "which a genuinely distorted mesh could not. WHAT IS ESTABLISHED is the "
-                    "attribution: the figures are the SAME SIZE on the shipped D9b build, so "
-                    "whatever it is, it PREDATES D7c and this step did not cause it. The "
-                    "question AND this reader are handed to D6; no band is invented, no "
-                    "claim about the delivered file is made, and nothing in the merge "
-                    "predicate reads any of it."),
+                "what_it_actually_shows": (
+                    "`body_export.py:599` writes `animated_rotations[0, index]` as each "
+                    "node's default rotation -- THE FIRST ANIMATED POSE, not the bind pose. "
+                    "So skinning under the node defaults and comparing with `POSITION` was "
+                    "never a test of the exporter or of this reader: it measures how far the "
+                    "take's FIRST FRAME is from the asset's bind pose, which is a property "
+                    "of the MOTION. The two builds differ there because their first frames "
+                    "differ -- 594.005 -> 590.159 mm on performer 0 and 158.929 -> 156.052 "
+                    "mm on performer 1, NOT identical as an earlier version said. A viewer "
+                    "that disables the animation draws the take's first pose: correct "
+                    "behaviour, not a defect. An earlier version called the mesh reading NOT "
+                    "ESTABLISHED and suspected this reader; Astra's merge review settled it "
+                    "against the retained Blender meshes at 0.00518 mm, so the reader is "
+                    "sound and the reading is FINISHED rather than handed over."),
             }
             row["track_to_glb_closure"] = {
                 "positional_mm": summary(
                     1e3 * np.linalg.norm(data["positions"] - fk[:, order], axis=2)),
-                "rotational_deg_NOT_A_CLOSURE": summary(np.concatenate(rotational)),
+                "rotational_deg_frame_corrected": summary(rotational),
+                "rotational_samples": int(rotational.size),
                 "rotational_note": (
-                    "this is NOT a closure and must not be read as one. Every joint node "
-                    "carries a rest ROTATION, and the GLB's animated channel is the rig's "
-                    "local composed with that rest orientation, so the two arrays are in "
-                    "different frames by construction and their 32 deg median difference is "
-                    "that change of frame, not an export error. The POSITIONAL closure above "
-                    "is the meaningful one: forward kinematics from the GLB's own arrays "
-                    "reproduces forward kinematics from the track to 0.0005 mm."),
+                    "the exporter's documented per-joint constant frame change "
+                    "(`body_export.py:379`) is undone first; this residual is how CONSTANT it "
+                    "is over every joint-frame sample. The RAW comparison is ~32 deg and is "
+                    "that change of frame, not an export error -- an earlier version of this "
+                    "file reported the raw figure and refused to call it a closure, which was "
+                    "the right caution and the wrong measurement."),
                 "note": "the positional row is the float32 floor of the export, not a fit",
             }
             # the three invariants a pelvis frame must not touch
