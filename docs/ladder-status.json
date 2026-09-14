@@ -768,6 +768,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "The calibrated fixture (target 8.7636 mm reproduced, baseline 1.81 mm, bisection reached sigma 0.335547 -> 8.7495 in 10 evaluations, draws bit-identical) STOPPED on its own monotonicity precondition: one 0.0135 mm dip above the accepted sigma from a keep-mask change on two bodies. Sent to Astra as round 7 with a proposed wording (a dip smaller than the tolerance, and a single crossing of the target, is not a stop)."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "Astra round 7: the calibration's monotonicity precondition amended in the reviewer's wording (any-pair decrease > 0.05 mm or a second sign change stops; a diagnosed keep-mask dip within tolerance does not), recorded as post hoc; the agent's stop stays recorded; the agent resumed to reread all of S at the exact evaluated sigma 0.335546875."
     }
   ]
 }
