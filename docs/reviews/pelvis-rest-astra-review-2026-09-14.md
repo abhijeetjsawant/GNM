@@ -318,3 +318,70 @@ The amendment is the reviewer's own wording and closes the last open finding; th
 2. **The stop is correctly placed on G2.** Require improvement in **both** orientation error on corrupted frames and STEP error on transition pairs, using the stated per-body medians and median across six bodies. Failure of either stops the step; it does not authorize silently shipping the unguarded winner. G1 remains an equivalence check plus recovery-error report, with no superiority requirement.
 
 Read-only; I did not execute S.
+
+---
+
+# Round 5 — 2026-09-14, after the agent's STOP at S. Verdict: a fixture repair is permissible with a MATCHED calibration definition frozen first; not on "11.10 ⇒ σ≈0.42"
+
+Verified: `d7_pelvis_rigidity.py:134` measures raw triangulations on a common-valid mask (150 / 138 frames), `d7_pelvis_synthetic.py:285` S measures gap-filled, hip-smoothed inputs on 150; the converter-input lever sd reads 6.014 / 24.948 mm all-frame (Astra: 5.994 / 24.865, the same to the rounding of the stage) and **6.014 / 8.800 mm on the guard-kept frames** (150 / 121); `d7c_pelvis_synthetic.py:708` compares quaternions, not arrays; the σ-0.35 JSON records G1 identity on 4/6 and G2 7.527° vs 76.641°.
+
+| # | finding | change |
+|---|---|---|
+| 1 | the calibration target must be measured at S's own stage; 11.10 is not it; freeze target, rule and draws; instrument-side estimators frozen too | the card's S gains a FIXTURE CALIBRATION amendment: target = converter-input lever sd on the guard-kept frames, larger performer (8.800 mm), bisection on one σ to 0.05 mm, zero-noise baseline pass, estimators frozen at 8a82ee4 |
+| 1 | "at least as harsh as the detector" too strong (length bounds no direction) | claim dropped; the upper-bound direction of the confound kept |
+| 2 | the alternative is to retain the STOP; a calibrated failure authorises nothing further | stated in the amendment |
+| 3 | record (a) as comparative winner; reread ALL of S | both stated |
+| 4 | restate every (b)-dependent prediction from guarded (a); B2's hip residual a report, no new band | stated |
+| 5 | G1's equivalence claim overbroad; test the arrays; report the extra rejections; G2 summary corrected (7.527 vs 76.641, miss 0.10) | G1 amended, G2 corrected |
+
+---
+
+**A fixture repair is permissible, but I would not resume on the proposed “11.10 mm ⇒ σ≈0.42” justification yet.** The saved evidence exposes a mismatch in the calibration statistic and an inaccurate G1 summary.
+
+1. **Repair versus band move: the calibration’s justification decides, not its directory.**
+
+   The [lane rule](/Users/abhi_macbook/Projects/apps/AutoAnim/CLAUDE.md:252) permits this repair. It remains a repair if an independently justified measurement determines σ, the original failure stays recorded, and the unchanged clauses decide the rerun—even if they stop it again. Choosing σ to obtain 2× would be an effective relaxation despite leaving the literal band untouched. Freeze the instrument-side estimators as well as `src/`: S’s candidate implementations currently live under `tools/compare/`.
+
+   **The proposed target is not currently measured on the same basis as S.** D7’s rigidity instrument measures raw triangulations on a common-valid mask: 150 frames for performer 0, **138** for performer 1. S measures all 150 frames after gap filling and smoothing the hips while leaving Spine1 unsmoothed. See the [rigidity population](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7_pelvis_rigidity.py:134) and [synthetic preprocessing](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7_pelvis_synthetic.py:285).
+
+   Reading the retained hygiene converter inputs, I calculate all-frame lever SDs of **5.994 / 24.865 mm**, with all 150 frames finite. These reproduce the reported lever medians, confirming the inputs. Thus 11.10 mm cannot presently be called the matched converter-input target. **24.865 is not automatically the replacement target either**: it may include the gross failures the separate guard experiment addresses. Specify the processing stage, frame/support population, and treatment of gross failures before calibration.
+
+   On the confound itself, the coordinator has the direction right **under an additive, uncorrelated length-error model**: observed length variance includes true length variation, so assigning all of it to noise overstates the noise component. The report’s “matching would UNDER-noise” argument is reversed under that model.
+
+   But “therefore at least as harsh as the real detector” is too strong. Length variation does not bound directional error; a vector can rotate substantially without changing length. Detector bias, correlations and camera support also matter. Moreover, `observe` filters moving landmarks, so direct truth versus noisy output does not isolate injected noise from preprocessing effects. A zero-pixel-noise pass through the **same observation pipeline** would establish that baseline.
+
+   Taking the larger performer is conservative **for this scalar target**, subject to those assumptions. One common pixel σ is reasonable; differences across bodies can arise from geometry and random draws. Matching their median does **not** establish conservative noise on every body. Keep all six results and the every-body follower requirement; do not normalize each body to make it pass.
+
+   I would authorize a **post-hoc fixture amendment with a matched calibration definition**, not endorse σ≈0.42 now. Freeze its target, numerical selection rule and original random draws before rereading S. An open verdict alone does not validate the calibration.
+
+2. **The alternative is to retain the STOP.**
+
+   Neither proposed escape is necessary. D7c can remain undelivered while D9b remains shipped and the calibration discrepancy is resolved. If a defensible calibrated fixture still fails 2×, record that failure. It does not authorize another reduction in σ, a band change, or shipping on the remaining conjuncts.
+
+3. **Record (a) as the comparative winner; shipping selection remains conditional.**
+
+   The stable ranking is valid evidence: “(a) beat (b) under every tested fixture.” Preserve it.
+
+   Nevertheless, reread **all of S** at the calibrated σ: both populations, all three metrics and tie rules, C comparisons, every-body follower clauses, world-vertical reporting, and G1/G2. Earlier wins cannot substitute for those readings. The final shipping-mode decision remains pending until the applicable S requirements are resolved.
+
+4. **Restate every prediction that depended on (b), using guarded (a). B2’s hip residual is a report.**
+
+   Carry forward the pre-card’s (a) measurements as their actual baseline, then measure the guard’s effect before delivery. Restate hip angular/transverse/full positional residuals, leg displacement, pelvis pitch and steps, root compensation, Spine/Neck placement, hoist, contacts, and behavior on demoted runs. The pre-card already reports materially larger full hip residuals under (a): p95 **11.9 / 31.9 mm**, versus **4.2 / 5.9 mm** under (b). Those are predictions to revisit, not acceptance thresholds. [Pre-card comparison.](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/docs/reviews/pelvis-rest-card-draft-2026-09-14.md:22)
+
+   Under (a), hip-line alignment is a measured compromise. **Do not manufacture a new hip-residual band from those results.** B2’s same-denominator equality remains required. Hip-midpoint placement still follows from the root-compensation equation, before projection or after subtracting its translation; exact angular alignment to observed hips does not.
+
+   O1/O2 retain their exact-truth requirements: both estimators recover a congruent, noiseless rig triangle. The tripwire, projection contracts and remaining delivery checks still apply. O3’s standing failure remains recorded.
+
+5. **G1 primarily exposes an overbroad equivalence claim—not, by itself, a defective guard.**
+
+   “Same interpolation function” guarantees identical output only with identical interpolation inputs and valid-sample masks. An additional finite rejection changes that mask. Removing the 29 samples can also change the finite-sample median used by the guard. Inspect the offending lever, median and threshold before attributing the rejection to an implementation error. An ordinary noisy sample crossing the stated threshold is compatible with the guard working as implemented.
+
+   **The saved JSON corrects the premise:** σ=0.25 has identity on **5/6** bodies, with seed 20260904 rejecting frame 21. At σ=0.35 it is **4/6**: seed 20260903 additionally rejects frame 84; seed 20260904 rejects frames 20–22 and 103–104. [Recorded G1 results.](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/selector-sensitivity-sigma0.35.json:1330)
+
+   Amend the claim explicitly: **identical effective masks and retained samples must produce bit-identical interpolated arrays**. Test those arrays directly; the [current instrument compares quaternions](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_pelvis_synthetic.py:708). Keep the original noisy missing-only experiment and report additional rejections and recovery errors separately. Do not select seeds or σ to force unconditional identity.
+
+   The card places the superiority stop on G2; G1’s discrepancy should not become an invented superiority requirement. Equally, “no superiority claim” does not make the original equivalence assertion true. Its correction is a separate, explicit claim/instrument amendment.
+
+   G2’s summary also needs correction: at σ=0.35 the recorded median-over-six orientation errors are **7.527° versus 76.641°**, and one body’s miss rate is **0.10**. G2 still wins both metrics on every body. [Recorded G2 results.](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/artifacts/compare/d7c-pelvis-rest/selector-sensitivity-sigma0.35.json:1712)
+
+Read-only review; I inspected the saved artifacts and calculated their input statistics. I changed no files and did not rerun S.
