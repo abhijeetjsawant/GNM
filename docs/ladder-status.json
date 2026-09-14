@@ -778,6 +778,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "The agent reached MERGE on its own reading at ladder/D7c 9dda9ac (E_rig_rest_kabsch ships; hygiene, tripwire 8/8, O1 exact, O2, S reread PROCEED at the calibrated sigma, P on the take, B1 8/8 with three torso cells RISING unpredicted, B2 same denominator). Astra's merge review: NO MERGE -- oracle P2 never measured and the gate's S conjunct excludes G2 (an injected FAIL still returned MERGE); B6's mesh-deformation, rotational-closure and rest/IBM reports owed; a B1 attribution ablation (D9b's root under the candidate's locals) required; six overclaims corrected. Sent back to the agent."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "Astra merge review round 2 at 0b3eba4: NO MERGE. Oracle P2 resolved; two gate verdicts were literals (an in-memory wrong-origin residual of zero and an (a)/(b) SPLIT both still read MERGE); B6's mesh reading must be finished on a reader Astra verified to 0.005 mm against Blender (the exporter writes the first animated pose as the node default, so the 590/156 mm mismatch was not a defect); playback translation, frame-correct rotational closure, the B1 root share's CI through zero, the stale Head claim. Sent back to the agent."
     }
   ]
 }
