@@ -1043,14 +1043,38 @@ must turn the verdict to NO MERGE. The leaves that cannot be turned are listed w
 they are — read only by a REPORT clause, or read by nothing — derived from whether any clause's
 own text moved, not asserted.
 
-**Two things the fuzzer found about itself, recorded because they are the interesting part.**
-Its first run reported B1's `ci95` upper bound as an escape; that was the *mutation set's* gap,
-not the gate's — a confidence bound fails on a **negative**, and the set only tried 1e6 and 0.
-The distinction matters and is kept: a leaf escapes when the **gate** ignores it. Its second
-run died with `KeyError` because it restored a mutated list element by index and identity, and
-equal floats are interned — so a deletion was never undone and the report stayed corrupt. An
-instrument that damages its own input produces a clean-looking report of nothing. Containers
-are now restored wholesale.
+**A fourth class, which the fuzzer itself named: values the gate SHOULD read and does not.**
+Round 6 found four, each a leaf that no mutation could turn because no clause consumed it:
+the GLB's stamped `body_track_sha256` (the gate read the saved `authenticated` boolean), the
+winner's own bent-tercile error (the follower's ratio used a duplicated copy of it), S's
+per-body population sizes (a median was read without validating what it was over), and the P1
+controls' failing channels (any nonempty list passed, including `local::Head`, a channel the
+control never touches). All four are now derived. **Every other saved boolean the gate reads
+is derived or cross-checked** — `holds` against its own run maximum, `failing_channels`
+against the per-channel flags on both P1 reports, the tripwire's mode string against the
+converter's recorded modes, `winner/arm` against `winner/mode` — and the three that remain
+(two `np.array_equal` results whose arrays exist only inside another instrument's run, and the
+landmark byte-identity booleans) are listed in `gate.json` with why each is trusted and, for
+the third, that re-deriving it from the delivered `.npz` is owed as instrument debt.
+
+**Two things the fuzzer found about itself.** Its first run reported B1's `ci95` upper bound as
+an escape; that was the *mutation set's* gap, not the gate's — a confidence bound fails on a
+**negative**, and the set only tried 1e6 and 0. The distinction matters and is kept: a leaf
+escapes when the **gate** ignores it. Its second run died with a `KeyError` because it restored
+a mutated list element by index under an identity test, which is unsound in general once a
+deletion has shifted the list (Python caches small ints and both booleans, so a list of counts
+or flags can satisfy `is`). **The exact trigger was never isolated**, and an earlier note here
+blamed interned equal floats, which does not reproduce — separately decoded equal floats are
+distinct objects. Restoring the whole container removes the class without needing the
+diagnosis, and the wrong explanation is withdrawn rather than left standing.
+
+**And the fuzzer's own classifier was wrong.** It bucketed by "did any clause's text move?",
+which put 8 leaves that move *enforced* P1 control clauses into the REPORT-only pile and mixed
+the excluded diagnostics clause and the preserved σ-1 FAIL in with genuine report rows. Leaves
+are now classified by **which** clauses they move — their status and whether they sit inside a
+merge conjunct — with `moves a conjunct clause without turning the verdict` reported as a
+**GAP**, not as a pass. Enforced numeric leaves also get a **direction check**: where a clause
+has a direction, a value pushed further past its band must still fail.
 
 **What a green fuzz does NOT prove:** that the gate reads the *right* things. Only that what it
 reads, it depends on. Choosing the clauses remains the card's job, and no amount of fuzzing

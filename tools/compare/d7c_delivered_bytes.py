@@ -403,10 +403,14 @@ def mesh_deformation(channels: dict, frames: list[int], region: tuple[str, ...])
         "carried_tetrahedron_PROXY": {
             "WHAT_IT_IS_NOT": (
                 "NOT an inversion count and NOT a sound classifier. It is the signed volume "
-                "of a tetrahedron carried by the MEAN of the triangle's three vertex "
-                "skinning matrices, which under spatially VARYING weights is not the "
-                "skinning field at the centroid. NO INVERSION CLAIM IS MADE from these "
-                "numbers."),
+                "of a tetrahedron whose fourth point is carried by the MEAN of the "
+                "triangle's three vertex skinning matrices. Under barycentric weights that "
+                "mean IS the centroid's skinning matrix -- the defect is the next step: "
+                "TRANSFORMING the centroid is not the same as AVERAGING the transformed "
+                "vertices, because linear blend skinning is not affine where the weights "
+                "vary across the triangle, and the difference is the weight-gradient term of "
+                "the skinning Jacobian (Kavan, direct methods eq. 17). NO INVERSION CLAIM IS "
+                "MADE from these numbers."),
             "known_failure_modes": [
                 "it mis-classifies a PROPER RIGID MOTION under varying weights: the triangle "
                 "(0,0,0),(1,0,0),(0,1,0) with bones identity and Rx(60 deg) and weights "
