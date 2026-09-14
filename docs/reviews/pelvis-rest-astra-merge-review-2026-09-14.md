@@ -327,3 +327,49 @@ Verified: `d7c_gate_report.py:304/313` read S's stored aggregate and never deriv
    **38 tests passed** (`test_pelvis_rest.py`, `test_provenance_audit.py`). I did not rerun the two reported pre-existing failures. The “13–14% every frame” number fails even as a proxy summary: candidate performer 1 spans **1.86–14.19%**.
 
 Read-only throughout; worktree unchanged; `git diff 9dda9ac -- src/` is empty.
+
+---
+
+# Merge review round 6 — 2026-09-14, at ladder/D7c e68e06d. Verdict: NO MERGE (gate enforcement)
+
+Verified: `d7c_gate_report.py:571` consumes the saved `authenticated` boolean, not the two hashes; `:442/:452` the follower's denominator is the duplicated `winner_i_deg`, not the selected body's own measurement; `:379` the selector's medians are read without their populations; `:668` a control passes on any nonempty `failing_channels`; `d7c_gate_fuzz.py:169` classifies REPORT-only by `elif moved:` without checking clause status or conjunct membership (164 report, 40 diagnostics, 14 historical FAIL, 8 ENFORCED controls misclassified), `:158` "enforced" = at least one mutation failed; `d7c_delivered_bytes.py:407` still says the averaged matrix is not the skinning field at the centroid; 18,172 = 13,763 leaves + 4,409 containers; the float-interning explanation does not reproduce.
+
+| # | finding | change |
+|---|---|---|
+| 1 | four leaves the gate should read and does not (authentication hashes, the follower denominator, selector populations, the controls' named channels) | each derived; the fuzzer's classification made to check clause status and conjunct membership; "enforced" reported as what it is |
+| 2 | 8 enforced control leaves misclassified as REPORT-only | fixed with the classification |
+| 3 | the centroid text at :407; the leaf / container count; the interning explanation | corrected |
+
+---
+
+**NO MERGE. Gate enforcement still blocks, confidence 10/10.**
+
+The commit order is reversed in the brief: `843bce5 → db3066c → e68e06d`. The worktree is clean at `e68e06d`; the rewrite belongs to that newer commit. I tested both gates in memory. The attacks below return **MERGE on both**; deciding-line links refer to the newer rewrite.
+
+| Independent mutation | Result and deciding line |
+|---|---|
+| Set `projection/subjects/subject_00/P1_channel_preservation/authentication/glb_body_track_sha256` to 64 zeros, retaining the recomputed hash | **MERGE**, with no clause changing. This exact leaf is among the **15,700 inert entries**. The gate consumes only the saved `authenticated` boolean. Deleting either hash also passes. [Line 571](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:571). |
+| Set `reread/bodies/20260905/arms/a_kabsch_guarded/bent_tercile/i_orientation_deg` to **100°** | **MERGE**, with no clause changing. The six-body median remains unchanged, but this body’s follower ratio becomes **14.6138 / 100 = 0.146138**, violating ≥2×. The gate uses the duplicated `winner_i_deg=5.71179`; it cross-checks only the follower’s numerator against its body row. [Line 442](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:442), [line 452](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:452). |
+| Set the selected arm’s seed `20260903`, `whole_take/n_frames` to **0** | **MERGE**, unchanged. Another inert leaf: the gate reads the medians without validating their population. [Line 379](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:379). |
+| Replace performer 0’s control-1 `failing_channels` with `["local::Head"]` | **MERGE**, control still PASS. Head is outside the protected foot channels; the gate accepts any nonempty list. [Line 668](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_report.py:668). |
+
+The required fixes follow directly: derive authentication from both hashes, cross-check the follower denominator against the selected body’s measurement, validate selector populations, and require the controls’ named channel failures.
+
+**The 226 REPORT-only classification is not consistent with the card.** Its actual breakdown is:
+
+- **164** affect REPORT clauses.
+- **40** affect the explicitly excluded diagnostics clause, currently labelled PASS.
+- **14** affect the preserved historical sigma-1 FAIL.
+- **8** affect **enforced P1 controls**.
+
+The diagnostics and historical exclusions remain acceptable. The eight control entries are misclassified. The deciding code is simply `elif moved:` followed by the REPORT-only justification; it never checks clause status or conjunct membership. [Fuzzer line 169](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_fuzz.py:169). Likewise, “enforced” means **at least one mutation failed**; it does not establish consistency under other mutations, as the 100° follower example demonstrates. [Line 158](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_gate_fuzz.py:158).
+
+On round-5 adoption and reproduction:
+
+- The original round-5 attacks are caught by **e68e06d**. They still escape **db3066c**.
+- B6’s inversion conclusions and “coin toss” text are removed. **The centroid correction remains incomplete:** the generated JSON still says the averaged matrix is “not the skinning field at the centroid.” [Generator line 407](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D7c/tools/compare/d7c_delivered_bytes.py:407). Under barycentric weights it is; transforming the centroid differs from averaging transformed vertices. The Jacobian additionally requires the weight-gradient contribution in [Kavan equation 17](https://skinning.org/direct-methods.pdf).
+- I regenerated **every B6 JSON value exactly**, reproduced **38 passing tests**, and reproduced the **entire fuzz output exactly**: 18,172 / 2,246 / 226 / 15,700. Strictly, 18,172 counts **13,763 leaves plus 4,409 containers**.
+- The “equal floats are interned” explanation does not reproduce in this runtime: separately decoded equal floats are distinct; repeated small integers share identity.
+- I did **not** rerun the two pre-existing failures. Both commits’ `src/` diffs against `9dda9ac` are empty.
+
+Read-only throughout; no files changed.
