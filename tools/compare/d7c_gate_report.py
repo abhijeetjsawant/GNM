@@ -51,9 +51,24 @@ from __future__ import annotations
 import fnmatch
 import json
 from pathlib import Path
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / "artifacts/compare/d7c-pelvis-rest"
+
+if str(ROOT / "tools/compare") not in sys.path:
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+from d7c_source_fingerprint import (  # noqa: E402
+    BUILD_STAGES, RETAINED, hash_file, resolved_converter_sha)
+
+# THE CONVERTER THIS RUN RESOLVES, hashed once. Every "refactored" build report must name it;
+# the historical hygiene arm must name the retained pre-change module instead, and must NOT
+# name this one. Both are content, not location.
+try:
+    EXECUTING_CONVERTER_SHA = resolved_converter_sha()
+except FileNotFoundError:
+    EXECUTING_CONVERTER_SHA = ""
+PRE_CHANGE_CONVERTER_SHA = hash_file(RETAINED) if RETAINED.exists() else ""
 
 REPORTS = {
     "hygiene": "delivery-hygiene-build.json",
@@ -296,14 +311,41 @@ def build(reports: dict) -> dict:
 
     # ------------------------------------------------------------- hygiene and the tripwire
     def built_here(report_key):
-        """THE PYTHONPATH TRAP, checked rather than assumed. `.venv` is shared with the main
-        checkout and `autoanim_gnm` is installed editable there, so a report can be a perfect
-        measurement OF THE WRONG SOURCE TREE. Every build report records the module it
-        resolved; it must live under this worktree."""
-        module = r.text(report_key, "resolved_module")
-        if not module.startswith(str(ROOT) + "/"):
-            raise Missing(f"{report_key}/resolved_module {module!r} is outside {ROOT}")
-        return module
+        """THE PYTHONPATH TRAP, checked BY CONTENT. `.venv` is shared with the main checkout
+        and `autoanim_gnm` is installed editable there, so a report can be a perfect
+        measurement OF THE WRONG SOURCE TREE.
+
+        This used to compare `resolved_module` against this worktree's root as a string, and
+        Astra's round 8 broke it both ways: with ROOT set to the MAIN checkout the nested
+        worktree still starts with it, so the wrong tree passes; and an identical checkout
+        anywhere else would fail for its location alone. A path says where a file was; a
+        content hash says which code ran. So each build report carries the converter's
+        sha256 and the stage it belongs to, and the three stages stay apart -- the historical
+        hygiene arm ran the module BEFORE the src change, the tripwire and the candidate run
+        the refactored one.
+        """
+        stage = r.text(report_key, "source_fingerprint", "stage")
+        recorded = r.text(report_key, "source_fingerprint", "converter_sha256")
+        mode = r.text(report_key, "source_fingerprint", "pelvis_mode")
+        if stage not in ("pre_change", "refactored"):
+            raise Missing(f"{report_key} names an unknown source stage {stage!r}")
+        if stage == "refactored":
+            if recorded != EXECUTING_CONVERTER_SHA:
+                raise Missing(f"{report_key} was built from converter {recorded[:12]} and "
+                              f"this run resolves {EXECUTING_CONVERTER_SHA[:12]}")
+        else:
+            if recorded == EXECUTING_CONVERTER_SHA:
+                raise Missing(f"{report_key} claims the PRE-CHANGE converter but hashes the "
+                              "same as the one this run resolves")
+            if recorded != PRE_CHANGE_CONVERTER_SHA:
+                raise Missing(f"{report_key} names pre-change converter {recorded[:12]}, "
+                              f"which is not the retained "
+                              f"{(PRE_CHANGE_CONVERTER_SHA or 'MISSING')[:12]}")
+        expected = BUILD_STAGES.get(REPORTS[report_key])
+        if expected is not None and (stage, mode) != expected:
+            raise Missing(f"{report_key} is stage {(stage, mode)}, not the card's {expected}")
+        # the path is kept as PROVENANCE and nothing else: it names the tree, it proves none.
+        return f"{stage} {recorded[:12]} ({mode})"
 
     def eight_files(report_key, label):
         r.named(report_key, "hygiene", "delivered_files_vs_shipped", expect=DELIVERED_FILES)
@@ -332,7 +374,7 @@ def build(reports: dict) -> dict:
         r.checked(report_key, "verdict",
                   derived="PASS" if all(equal.values()) else "FAIL")
         return (f"{sum(equal.values())} of {len(DELIVERED_FILES)} named files equal {label}, "
-                f"from {built_here(report_key)[len(str(ROOT)) + 1:]}",
+                f"from converter {built_here(report_key)}",
                 all(equal.values()))
 
     @clause("hygiene: today's code rebuilds the shipped delivery byte-identically",
@@ -2003,9 +2045,18 @@ TRUSTED_READ_JUSTIFICATIONS = (
      "one of the two hashes the file-identity clause compares AGAINST EACH OTHER; neither is "
      "believed on its own."),
     ("*/hygiene/delivered_files_vs_shipped/*/shipped", "the other half of that comparison."),
-    ("*/resolved_module",
-     "the module path the instrument resolved. It is not believed: it is REQUIRED to lie "
-     "under this worktree, which is the PYTHONPATH trap made into a check."),
+    ("*/source_fingerprint/converter_sha256",
+     "the sha256 of the converter that produced this report. It is not believed: it is "
+     "COMPARED against the module this run resolves -- equal for the refactored stages, "
+     "and for the historical hygiene arm required to differ from it and to equal the "
+     "retained pre-change copy on this branch."),
+    ("*/source_fingerprint/stage",
+     "which source stage the report belongs to; compared against the card's own table of "
+     "stages, and it decides which way the hash comparison must come out."),
+    ("*/source_fingerprint/pelvis_mode",
+     "the pelvis mode that stage runs in, compared against the same table. The hygiene arm "
+     "and the tripwire both run C and are NOT the same stage: one is the module before the "
+     "src change, the other the refactored module with the mode held."),
     ("projection/subjects/<subject>/P1_channel_preservation/authentication/glb_body_track_sha256",
      "one of the two hashes the authentication clause compares against each other."),
     ("projection/subjects/<subject>/P1_channel_preservation/authentication/recomputed_sha256",

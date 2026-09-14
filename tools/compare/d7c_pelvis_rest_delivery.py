@@ -82,6 +82,10 @@ if not str(Path(autoanim_gnm.__file__).resolve()).startswith(str(ROOT)):
 
 from autoanim_gnm import commercial_multiview as cm  # noqa: E402
 
+if str(ROOT / "tools/compare") not in sys.path:                      # noqa: E402
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+from d7c_source_fingerprint import fingerprint_now as source_fingerprint  # noqa: E402
+
 DELIVERED = ROOT / "artifacts/commercial-multiview-soma77"
 VIDEOS = ROOT / ".cache/mamma/data/mamma_example/pushing_and_lifting_from_ground/videos"
 CALIBRATION = ROOT / ".cache/mamma/configs/examples/calib/iphones_outdoors.yaml"
@@ -341,6 +345,13 @@ def main() -> int:
                                               else saved_source),
         "pelvis_mode_held": args.pelvis_mode,
         "resolved_module": str(Path(cm.__file__).resolve()),
+        # THE SOURCE THAT PRODUCED THIS BUILD, by content and not by location. A path prefix
+        # accepts a nested checkout and rejects an identical one elsewhere; a hash of every
+        # loaded `autoanim_gnm` module says which code actually ran. See
+        # `tools/compare/d7c_source_fingerprint.py` for why, and for the three stages the
+        # gate must keep apart.
+        "source_fingerprint": source_fingerprint(
+            args.pelvis_mode if args.pelvis_mode is not None else saved_source),
         "src_state": args.src_state or ("UNCHANGED (hygiene arm)"
                                         if args.expect_byte_identical else "unrecorded"),
         "build_seconds": round(elapsed, 1),
