@@ -339,10 +339,11 @@ if b6:
         f"track->GLB positional closure max "
         f"{r['subject_00']['track_to_glb_closure']['positional_mm']['max']} mm; between-key "
         f"chord INSIDE a contact run max "
-        f"{r['subject_00']['between_key_playback_mm']['inside_a_contact_run']['max']} mm",
+        f"{r['subject_00']['between_key_playback_mm']['inside_a_contact_run']['LeftFoot']['median']}"
+        f" mm median (LeftFoot, inside a run; the quaternions are interpolated and FK re-run)",
         "REPORT", "handed to D6 with the mesh-deformation reading still owed")
-    add("B6 the `Root` / eye / finger local invariants vs D9b", "bit-identical",
-        str(r['subject_00']['invariants_vs_the_other_build']), "REPORT",
+    add("B6 the `Root` / eye / finger local invariants vs D9b (a TRACK-ARRAY claim)", "bit-identical",
+        str(r['subject_00']['invariants_vs_the_other_build_TRACK_ARRAYS']), "REPORT",
         "the only three things a pelvis frame must not touch; the card says everything else "
         "below `Root` may move on every frame")
     add("B5b the delivered `Head` WORLD rotation, from the GLB's own bytes", "REPORT",
