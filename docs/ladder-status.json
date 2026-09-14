@@ -758,6 +758,11 @@
       "date": "2026-09-14",
       "step": "D7c",
       "text": "D7c agent STOPPED at S before any src change (ladder/D7c d146aa3..8a82ee4): hygiene 8/8, instrument reproduces the pre-card; (a) E_rig_rest_kabsch wins all six selector cells and beats C-on-SOMA; the frozen-pitch follower clears 2 deg on every body but the >= 2x clause fails on 5 of 6 (ratios 1.45-2.74) -- attributed to the fixture's noise (lever sd 20 mm vs the take's 6.6/11.1; D7's own report recorded the same 1.7-2.9x). Fixture-repair question (calibrate sigma to the take's own lever spread, the larger performer, src untouched, band untouched) sent to Astra as round 5."
+    },
+    {
+      "date": "2026-09-14",
+      "step": "D7c",
+      "text": "Astra rounds 5-6 (fixture question): a repair is permissible under the D8b rule with a MATCHED calibration frozen first -- target = the take's spine-lever sd at S's own stage on the guard-kept frames, ddof=0, the larger performer 8.764 mm; one sigma by bisection on [0.10, 1.00], original draws preserved, unreachable/non-monotone => STOP; baseline through observe_body reported never subtracted; G1 amended to an array-level equivalence; G2 corrected. Card amended in the plan (5d48476); the agent resumed on it to reread all of S."
     }
   ]
 }
