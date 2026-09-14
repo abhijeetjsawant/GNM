@@ -19,10 +19,30 @@ So this walks EVERY LEAF of EVERY REPORT the gate reads and mutates each one in 
 and requires **NO MERGE** from every leaf any clause depends on. The mutation count reported is
 the number of leaves visited, not a table someone wrote.
 
-WHAT A PASS MEANS AND WHAT IT DOES NOT. A leaf that no mutation can turn is either read only by
-a REPORT clause or read by nothing; both are listed, with which it is, derived from whether any
-clause's own text moved. It does NOT prove the gate reads the right things -- only that what it
-reads, it depends on. Choosing the clauses is still the card's job.
+HOW A LEAF IS CLASSIFIED, and the first version of this got it wrong. "Did any clause's text
+move?" is not a classification: it put 8 leaves that move ENFORCED P1 control clauses into the
+REPORT-only bucket, and mixed the excluded diagnostics clause and the preserved sigma-1 FAIL in
+with genuine report rows. A leaf is now classified by WHICH clauses it moves -- their status
+(PASS / FAIL / REPORT) and whether they belong to a merge conjunct:
+
+  ENFORCED                 some mutation turns the gate to NO MERGE
+  moves a conjunct clause  it moves a clause inside the merge rule but no mutation turned the
+                           verdict -- this is a GAP and is reported as one, not as a pass
+  REPORT-only              every clause it moves has status REPORT
+  diagnostics              it moves only the clause deliberately excluded from the predicate
+  historical FAIL          it moves only a preserved recorded STOP, which is meant to stay FAIL
+  read by no clause        no clause's text moves at all
+
+AND FOR ENFORCED NUMERIC LEAVES, A MONOTONE CHECK -- and its first version was mis-specified,
+which is worth recording because it produced 387 "failures" that were the check's fault. It
+required BOTH +1e6 and -1e6 to fail if either did, and most bands here are ONE-SIDED: an error
+that must be small correctly PASSES when driven to -1e6, because that is the good direction.
+What monotonicity actually means is: whichever extreme fails, pushing SIX MORE ORDERS OF
+MAGNITUDE the same way must fail too. A leaf that fails at +1e6 and passes at +1e12 is not
+being banded; it is being matched.
+
+WHAT A PASS DOES NOT PROVE: that the gate reads the RIGHT things. Only that what it reads, it
+depends on. Choosing the clauses is still the card's job.
 
 IF A LEAF ESCAPES, FIX THE GATE, NOT THE FUZZER.
 
@@ -40,9 +60,11 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "tools/compare") not in sys.path:
     sys.path.insert(0, str(ROOT / "tools/compare"))
 
-from d7c_gate_report import BASE, build, load_all  # noqa: E402
+from d7c_gate_report import (  # noqa: E402
+    BASE, CONJUNCTS, OUTSIDE, build, load_all)
 
 BIG = 1.0e6
+FAR = 1.0e12
 MISMATCH = "0" * 64
 SENTINEL = object()
 
@@ -121,22 +143,35 @@ def main() -> int:
               "the fuzz would prove nothing")
     baseline = {c["clause"]: (c["verdict"], str(c["measured"])) for c in clean["clauses"]}
 
+    status_of = {c["clause"]: c["verdict"] for c in clean["clauses"]}
+    in_conjunct = set()
+    for _name, prefixes in CONJUNCTS:
+        for prefix in prefixes:
+            in_conjunct.update(c for c in status_of if c.startswith(prefix))
+    excluded = set(OUTSIDE)
+    historical = {c for c in status_of if status_of[c] == "FAIL"}
+
     targets = [(path, kind) for path, kind in walk(reports) if path]
     if args.limit:
         targets = targets[:args.limit]
-    enforced, report_only, inert = [], [], []
+    buckets = {"enforced": [], "moves_a_conjunct_clause_without_turning_the_verdict": [],
+               "report_only": [], "diagnostics_clause_only": [],
+               "historical_FAIL_clause_only": [], "read_by_no_clause": []}
+    leaves = containers = 0
     for path, kind in targets:
         parent, key = fetch(reports, path)
         original = parent[key]
-        turned, verdicts, moved = False, set(), set()
+        turned, verdicts, moved, directions = False, set(), set(), {}
         for label, replacement in mutations_for(kind, original):
-            # THE CONTAINER IS RESTORED WHOLESALE. Restoring by index and an identity check
-            # is not safe: equal floats and small ints are interned, so `parent[key] is
-            # original` can be True after a deletion has shifted the list, the element is
-            # never put back, and every later lookup into that report fails. The first run of
-            # this fuzzer died that way (`KeyError: 'left_knee'`), which is worth recording:
-            # an instrument that corrupts its own input produces a clean-looking report of
-            # nothing.
+            # THE CONTAINER IS RESTORED WHOLESALE, because restoring by index under an
+            # identity test is unsound in general: after a deletion has shifted a list,
+            # `parent[key] is original` can be true of a DIFFERENT element -- Python caches
+            # small ints and both booleans, so a list of counts or flags can satisfy it --
+            # and the restore is then skipped and the report left corrupt. An earlier version
+            # of this fuzzer did that and died with `KeyError: 'left_knee'`; THE EXACT TRIGGER
+            # WAS NOT ISOLATED, and an earlier note here blamed interned equal floats, which
+            # does not reproduce (separately decoded equal floats are distinct objects).
+            # Restoring the whole container removes the class without needing the diagnosis.
             snapshot = list(parent) if isinstance(parent, list) else dict(parent)
             try:
                 if replacement is SENTINEL:
@@ -155,45 +190,110 @@ def main() -> int:
                     parent.clear()
                     parent.update(snapshot)
             verdicts.add(result["verdict"])
-            if result["verdict"] != "MERGE":
+            failed = result["verdict"] != "MERGE"
+            if failed:
                 turned = True
+            if label in ("set to 1e6", "set to -1e6"):
+                directions[label] = failed
             for entry in result.get("clauses", []):
                 before = baseline.get(entry["clause"])
                 if before and (before[0] != entry["verdict"]
                                or before[1] != str(entry["measured"])):
                     moved.add(entry["clause"])
+        # THE MONOTONE CHECK: whichever extreme failed, six more orders the same way must
+        # fail too. Only the FAILING direction is tested -- a one-sided band is supposed to
+        # pass when pushed the good way.
+        monotone = {}
+        for label, further in (("set to 1e6", FAR), ("set to -1e6", -FAR)):
+            if not directions.get(label):
+                continue
+            snapshot = list(parent) if isinstance(parent, list) else dict(parent)
+            try:
+                parent[key] = further
+                try:
+                    beyond = build(reports)["verdict"] != "MERGE"
+                except Exception:
+                    beyond = True
+            finally:
+                if isinstance(parent, list):
+                    parent[:] = snapshot
+                else:
+                    parent.clear()
+                    parent.update(snapshot)
+            monotone[label] = beyond
         row = {"path": "/".join(map(str, path)), "kind": kind,
                "verdicts": sorted(verdicts), "clauses_moved": sorted(moved)[:4]}
+        if kind in ("list", "map"):
+            containers += 1
+        else:
+            leaves += 1
         if turned:
-            enforced.append(row)
+            if monotone and not all(monotone.values()):
+                row["monotone_check"] = monotone
+                row["note"] = ("fails at 1e6 and PASSES at 1e12 in the SAME direction -- the "
+                               "clause is matching this leaf, not banding it")
+            buckets["enforced"].append(row)
+        elif moved & in_conjunct:
+            row["justification"] = ("GAP: it moves a clause inside the merge rule and no "
+                                    "mutation turned the verdict")
+            buckets["moves_a_conjunct_clause_without_turning_the_verdict"].append(row)
+        elif moved and moved <= excluded:
+            row["justification"] = ("moves only the diagnostics clause, which the card does "
+                                    "not band and which is listed as deliberately outside "
+                                    "the predicate")
+            buckets["diagnostics_clause_only"].append(row)
+        elif moved and moved <= historical:
+            row["justification"] = ("moves only a preserved recorded STOP, which is MEANT to "
+                                    "stay FAIL and is outside the merge rule")
+            buckets["historical_FAIL_clause_only"].append(row)
+        elif moved and all(status_of.get(c) == "REPORT" for c in moved):
+            row["justification"] = "every clause it moves has status REPORT"
+            buckets["report_only"].append(row)
         elif moved:
-            row["justification"] = ("read only by clauses whose verdict is REPORT -- it "
-                                    "changes what is printed and nothing that is banded")
-            report_only.append(row)
+            row["justification"] = (f"moves {sorted(moved)[:3]}, none of them a conjunct "
+                                    "clause, a REPORT clause, the diagnostics clause or a "
+                                    "preserved STOP")
+            buckets["moves_a_conjunct_clause_without_turning_the_verdict"].append(row)
         else:
             row["justification"] = ("read by no clause: a label, a provenance string, a "
                                     "diagnostics field or a note")
-            inert.append(row)
+            buckets["read_by_no_clause"].append(row)
 
+    gaps = buckets["moves_a_conjunct_clause_without_turning_the_verdict"]
+    direction_failures = [row for row in buckets["enforced"] if "monotone_check" in row]
     out = {
         "title": "D7c: the gate proved leaf by leaf, not asserted",
         "method": (
             "every leaf of every report the gate reads is mutated in turn -- numbers to 1e6, "
-            "to 0 and deleted; strings mismatched and deleted; booleans flipped and deleted; "
-            "lists emptied, shortened and duplicated; maps emptied, shortened and duplicated "
-            "-- and the whole gate is rebuilt from the mutated reports."),
+            "to -1e6, to 0 and deleted; strings mismatched and deleted; booleans flipped and "
+            "deleted; lists and maps emptied, shortened and duplicated -- and the whole gate "
+            "is rebuilt from the mutated reports."),
+        "enforced_means": (
+            "at least one mutation of that leaf turns the gate's verdict away from MERGE"),
+        "classification": (
+            "by WHICH clauses a leaf moves -- their status and whether they belong to a merge "
+            "conjunct -- not by whether anything moved at all. An earlier version used the "
+            "latter and put 8 leaves that move ENFORCED P1 control clauses into the "
+            "REPORT-only bucket."),
         "what_a_pass_does_not_prove": (
             "that the gate reads the RIGHT things. Only that what it reads, it depends on. "
             "Choosing the clauses remains the card's job."),
-        "leaves_visited": len(targets),
-        "enforced": len(enforced),
-        "read_only_by_REPORT_clauses": len(report_only),
-        "read_by_no_clause": len(inert),
-        "summary": (f"{len(targets)} leaves visited, {len(enforced)} enforced, "
-                    f"{len(report_only)} REPORT-only, {len(inert)} inert"),
-        "enforced_leaves": enforced,
-        "report_only_leaves": report_only,
-        "inert_leaves": inert,
+        "visited": {"total": len(targets), "leaves": leaves, "containers": containers},
+        "counts": {name: len(rows) for name, rows in buckets.items()},
+        "gaps": len(gaps),
+        "monotone_check": (
+            "for every enforced numeric leaf, whichever extreme fails is pushed six more "
+            "orders of magnitude the SAME way and must fail again. Only the failing direction "
+            "is tested: a one-sided band is supposed to pass when pushed the good way."),
+        "monotone_check_failures": len(direction_failures),
+        "monotone_check_failing_leaves": direction_failures[:20],
+        "summary": (f"{len(targets)} visited ({leaves} leaves + {containers} containers): "
+                    f"{len(buckets['enforced'])} enforced, {len(gaps)} gaps, "
+                    f"{len(buckets['report_only'])} REPORT-only, "
+                    f"{len(buckets['diagnostics_clause_only'])} diagnostics, "
+                    f"{len(buckets['historical_FAIL_clause_only'])} historical-FAIL, "
+                    f"{len(buckets['read_by_no_clause'])} read by no clause"),
+        **{name: rows for name, rows in buckets.items()},
     }
     args.out.write_text(json.dumps(out, indent=1))
     print(out["summary"])
