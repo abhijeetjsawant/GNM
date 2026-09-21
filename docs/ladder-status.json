@@ -848,6 +848,11 @@
       "date": "2026-09-22",
       "step": "D4",
       "text": "D4 STOPPED at O1 (ladder/D4 5ebdc28): the exactness oracle reads 0.80-1.03 mm over six seeds against the 1 mm band (FAIL on one seed); the fixture's donor pose violated 23 of MHR's configured limits and was clamped as a fixture parameter (1.25 -> 1.03); what remains is the tracker's own floor (truth identity handed in: 0.51-0.76 mm on exact data) plus scale_spine_length shrunk 14-20 % by momentum's default soft limit and scale_foot_length unidentifiable without toe landmarks. The must-fail (mean body) rejects by 9-39x; hygiene 8/8; the pre-card reproduced to 0.0 on all 600 cells. FINDING: momentum's calibrate_markers mutates a later Character.load_fbx in the same process -- the pre-card's performer-1 figure was contaminated (0.7295 -> 0.7503 repaired). COORDINATOR DECISION: the 1 mm band was set without measuring the instrument floor (the lane's recorded pre-registration error, fourth time); the band is NOT moved, O1 is recorded as a standing FAIL attributed to floor + regulariser, and the step continues to the delivery and B1-B5 under the D3 precedent (a stated, attributed oracle fail beside the photograph band); the merge rule's O1 conjunct becomes a recorded exception, decided at the merge on B1."
+    },
+    {
+      "date": "2026-09-22",
+      "step": "D4",
+      "text": "Astra's one merge round on D4 (e209eea): NO MERGE -- the coordinator's 'O1 a recorded exception' was an override (never merge on an override), and the gate accepted a 15-frame truncation of B1 and left the frozen control, closure and mean-body must-fail unwired. DISPOSITION (2026-09-22): D4's ACCEPTANCE = FAIL on O1 (1.030 mm vs 1 mm; B1 +0.156/+0.115 PASS, B2 PASS, hygiene 8/8); the implementation merges OPT-IN (--body mhr; default rig unchanged; nothing shipped changes) after the agent's gate repair; O1 is re-registered prospectively as D4b (statistic, calibrated baseline from the measured 0.757 mm tracker floor, identifiable channels, mean-body rejection, fresh fixtures); the default flip is its own gated integration step (compositor, schema-aware checks, instrument compatibility, an end-to-end MHR rebuild). No further review rounds on D4."
     }
   ]
 }
