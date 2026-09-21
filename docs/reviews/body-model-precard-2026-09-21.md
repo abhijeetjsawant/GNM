@@ -34,7 +34,9 @@ Paired, 600 frame-camera cells per performer, median difference [95 % CI]:
   0.65 → 0.74 / 0.72; fitting the 68 scale channels adds +0.045 on performer 0 (CI clear) and +0.007 on performer 1
   (CI through zero). Consistent with FITTER_PLAN §7: pinned offsets under-fit by the convention offset they refuse to model.
 - The instrument is the committed one: the comparer's baseline reproduces the D7c close-out's `ours_delivered` medians
-  to four decimals on all 8 cells. The MAMMA-oracle bit-identity check could NOT be run (see the cache note).
+  to four decimals on all 8 cells, AND (after SMPL-X was restored from the Modal volume on 2026-09-21) the full
+  `silhouette.py` run on the fitted arm reads MAMMA's mesh BIT-IDENTICAL to its committed value on all 8 cells
+  (`artifacts/compare/d4-body/silhouette-fitted.json`) with the fitted medians matching the comparer's (0.779 / 0.743, ...).
 - Denominator caveat: the MHR arms consumed the RAW triangulated array; the D7c rig was built from the smoothed array
   with D8/D8b/D8c's repairs. Both are scored on identical masks, so the verdict stands, but "body model vs rig" is
   confounded with "raw vs repaired input". An integration step feeds the smoothed array.
@@ -45,7 +47,9 @@ Paired, 600 frame-camera cells per performer, median difference [95 % CI]:
 
 ## State of the machine
 
-`.cache/` had been wiped between 2026-09-15 and 2026-09-21: only `.cache/mhr` exists (re-downloaded today). Gone:
+`.cache/` had been wiped between 2026-09-15 and 2026-09-21 (the user cleaned it for storage). Restored the same day: `.cache/mhr`
+(re-downloaded), `SMPLX_NEUTRAL.npz` and the four fixture videos from the Modal volume `autoanim-mamma-data-v1`, the
+calibration yaml from the pinned MAMMA repo. Still gone (not needed by this lane's rebuild):
 `.cache/mamma` (the fixture videos and calibration yaml `post_merge.sh` rebuilds from; `SMPLX_NEUTRAL.npz` the MAMMA
 oracle rasterises), `.cache/autoanim_gnm` fixtures, the GEM-X outputs. No in-place rebuild and no MAMMA oracle until
 restored; both are licence-gated and were not re-downloaded.
