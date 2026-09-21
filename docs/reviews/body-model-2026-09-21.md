@@ -1,16 +1,23 @@
 # D4 — the body model in the delivery path
 
 **Date** 2026-09-21/22 · **Branch** `ladder/D4` · **Worktree** `.claude/worktrees/ladder-D4`
-**The gate reads `MERGE with O1 a recorded exception`. Nothing has merged: Astra's merge review
-is pending.** MHR — Meta's open body model (Apache), fitted by momentum (MIT) to the delivered
-take's own smoothed, repaired landmarks with locator offsets pinned — is the body this step
-delivers. The card's merge rule is
-`hygiene AND the reproduction AND O1 AND B1 on both performers AND B2`. Four of those five pass.
-**O1 FAILS at 1.030 mm against a 1 mm band and is written everywhere as a FAIL**, to be merged on
-B1 by the coordinator's decision (status log `4338ada` on main) because the band was set without
-measuring the instrument's floor — the lane's recorded pre-registration error, again. **The band
-is not moved and nothing is re-selected.** Re-pinning O1 relative to the measured floor
-(0.51–0.76 mm on this fixture) is instrument debt for the next step.
+**D4 ACCEPTANCE: FAIL.** The gate reads
+`D4 ACCEPTANCE: FAIL (O1 1.030 mm > 1 mm; hygiene, reproduction, B1, B2, B1 frozen-pose control,
+B1 MAMMA arm unchanged, O1 closure, O1 mean-body must-fail PASS)`. Astra's one merge round
+(`docs/reviews/body-model-astra-merge-review-2026-09-22.md`) returned **NO MERGE at `e209eea`**
+and was right on the rule: the earlier "O1 a recorded exception" was an override, which the lane
+forbids. **The coordinator withdrew it the same day.** What merges is a separate and separately
+derived thing — the **opt-in implementation**: `--body mhr` behind an unchanged `rig` default, so
+nothing shipped changes, with D4's acceptance still open. O1 is re-registered prospectively as
+**D4b**. MHR — Meta's open body model (Apache), fitted by momentum (MIT) to the delivered take's
+own smoothed, repaired landmarks with locator offsets pinned — is the body that path delivers.
+The card's rule is `hygiene AND the reproduction AND O1 AND B1 on both performers AND B2`, and
+the gate now enforces every clause the card requires — nine of them, including the three Astra
+showed were printed but not enforced. **Eight pass. O1 fails at 1.030 mm against a 1 mm band, so
+acceptance fails**, and the failure is written as a failure everywhere. Why the band was missed is
+attributed in §2.1 — it was set without measuring the instrument's floor, which is the lane's
+recorded pre-registration error, again — but that is an explanation, not a licence: **the band is
+not moved and nothing is re-selected.** A calibrated replacement is D4b's to register in advance.
 
 The headline: the delivered body stopped being a stock MPFB mesh stretched over a scaled rig.
 Silhouette IoU against the SAM2 masks goes **0.647 / 0.652 → 0.803 / 0.767**, paired lower CI
@@ -28,11 +35,22 @@ has not moved under the comparison.
 | 1 | hygiene — `--body rig` rebuilds the D7c delivery byte-identically | **PASS**, 8 of 8 | `6980c71` |
 | 2 | the reproduction — `--body mhr`, lod6, the RAW array, through the build script | **PASS**, exactly (0.0 on 600 cells) | `6fb4288` |
 | 3 | O1, the exactness oracle, its must-fails and its closure band | **FAIL → the step stopped** | `837fc63`, `5ebdc28` |
-| — | coordinator's decision: continue under the D3 precedent, O1 a recorded exception | — | `4338ada` (main) |
+| — | coordinator's decision: continue, O1 a recorded exception — **later withdrawn** | — | `4338ada` (main) |
 | 4 | the delivery — `--body mhr`, lod2, the smoothed repaired landmarks | built | `5865e06` |
 | 5 | the bands — B1, B2, B3, B4, B5 | **B1 PASS, B2 PASS**, B3/B4/B5 reported | `d14224a` |
 | 6 | the gate, the tests, the extractor stub, the report frames, this review | — | `fc173d4` |
-| 6b | hygiene re-run at HEAD, the gate's B2/B5 derived from checks not verdicts, the unread inputs read, this header | — | this commit |
+| 6b | hygiene re-run at HEAD, the gate's B2/B5 derived from checks not verdicts, the unread inputs read | — | `e209eea` |
+| — | **Astra's one merge round: NO MERGE at `e209eea`.** The exception is an override | — | review, 2026-09-22 |
+| 7 | the repair pass: the exception branch removed, B1's population enforced, the required subclauses wired in, this review | — | `ff6e320`, `aac92c0`, `a177878`, this commit |
+
+### The disposition, decided 2026-09-22
+
+* **D4's ACCEPTANCE is recorded as FAIL on O1** — 1.030 mm against the 1 mm band, attributed in
+  §2.1. Nothing about the band moved and nothing was re-selected.
+* **The implementation merges as OPT-IN**: `--body mhr`, the default stays `rig`, nothing shipped
+  changes. The gate derives that line from the rig rebuild's byte-identity, the `--body` default
+  read out of the build script's own source, and `mhr` being reachable only by asking for it.
+* **O1 gets a new, explicitly prospective registration as D4b.** No further review rounds on D4.
 
 ---
 
@@ -42,13 +60,13 @@ has not moved under the comparison.
 |---|---|---|---|
 | **hygiene** | `--body rig` rebuilds the D7c delivery 8 of 8 byte-identical | 8 of 8 identical, **re-run at HEAD** (`fc173d4`) after stage 2 changed the same file | **PASS** |
 | **the reproduction** | `--body mhr` lod6 RAW reproduces 0.789 / 0.730 to 0.001 | 0.7894 / 0.7295; per-cell difference **0.0** on all 600 cells. *Repaired* (one process per performer, §4): 0.7894 / **0.7503** | **PASS** |
-| **O1 exactness** | max over six seeds ≤ 1 mm | 0.853 / 0.985 / **1.030** / 0.967 / 0.799 / 0.898 mm | **FAIL** (recorded exception) |
-| O1 must-fail, the mean body | misses it on every seed, 5–60 mm | 31.8 / 32.8 / 24.7 / 9.6 / 39.8 / 32.2 mm | PASS (rejects by 9×–39×) |
-| O1 closure | the delivered GLB's FK = the track, ≤ 1e-4 m | worst 2.9e-6 m over eight files | PASS |
+| **O1 exactness** | max over six seeds ≤ 1 mm | 0.853 / 0.985 / **1.030** / 0.967 / 0.799 / 0.898 mm | **FAIL — acceptance fails with it** |
+| O1 must-fail, the mean body *(required conjunct)* | misses it on every seed, 5–60 mm | 31.8 / 32.8 / 24.7 / 9.6 / 39.8 / 32.2 mm | PASS (rejects by 9×–39×) |
+| O1 closure *(required conjunct)* | the delivered GLB's FK = the track, ≤ 1e-4 m | worst 2.9e-6 m over eight files | PASS |
 | closure input mutations | a mutated input must fail it | 0.156 / 1.92 / 0.112 m — all three reject | PASS |
-| **B1, the band** | fitted MHR − D7c, lower CI bound > 0 on **both** performers | **+0.1556 [+0.1326, +0.1626]** and **+0.1149 [+0.0842, +0.1355]**, 600 cells each | **PASS** |
-| B1 frozen-pose control below the candidate | required | 8 of 8 cells (0.318–0.403 against 0.650–0.817) | PASS |
-| B1 MAMMA arm unchanged | bit-identical to its committed value | 8 of 8 cells identical | PASS |
+| **B1, the band** | fitted MHR − D7c, lower CI bound > 0 on **both** performers, **on the named population** | **+0.1556 [+0.1326, +0.1626]** and **+0.1149 [+0.0842, +0.1355]**; 150 frames × 4 cameras consumed by every arm, 0 cells excluded, **600 of 600 scored** on each pair | **PASS** |
+| B1 frozen-pose control below the candidate *(required conjunct)* | required | 8 of 8 cells (0.318–0.403 against 0.650–0.817) | PASS |
+| B1 MAMMA arm unchanged *(required conjunct)* | bit-identical to its committed value | 8 of 8 cells identical | PASS |
 | **B2 same denominator** | the consumed array is the rig converter's input; the markers re-derive | byte-identical on both; marker delta **0.0 cm** | **PASS** |
 | delivery closure | the delivered GLB's FK = the track, ≤ 1e-4 m | 1.84e-6 / 1.96e-6 m | PASS |
 | B3 placement *(reported)* | ~20 mm segment error expected (FITTER_PLAN §7) | all-landmark median 19.9 / 18.4 mm; segment mean abs error **11.9 / 9.0 mm** | reported |
@@ -59,7 +77,16 @@ has not moved under the comparison.
 
 `artifacts/compare/d4-body/gate.json` carries every one of these with its predicted value, its
 measured value and a verdict **derived** from a number in a report — not one literal `PASS` in
-the file — plus the input-mutation table below.
+the file — plus the input-mutation table below. Its two output lines are
+
+```
+D4 ACCEPTANCE: FAIL (O1 1.030 mm > 1 mm; hygiene, reproduction, B1, B2, B1 frozen-pose control,
+                     B1 MAMMA arm unchanged, O1 closure, O1 mean-body must-fail PASS)
+OPT-IN IMPLEMENTATION: mergeable behind --body rig default (coordinator decision 2026-09-22,
+                       acceptance open)
+```
+
+and there is no branch in the file that can print MERGE while a required conjunct fails.
 
 ### The gate is proven by mutating its inputs
 
@@ -68,12 +95,22 @@ the file — plus the input-mutation table below.
 | one rebuilt file's sha256 changed | hygiene | PASS → FAIL |
 | performer 0's reproduced IoU moved by 0.01 | reproduction | PASS → FAIL |
 | O1's worst seed brought under the band | O1 | **FAIL → PASS** |
+| **the consumed take truncated to 15 frames** (Astra's attack) | B1 | PASS → FAIL |
+| one pair scored on fewer cells than the population names | B1 | PASS → FAIL |
 | performer 1's lower CI bound put below zero | B1 | PASS → FAIL |
 | performer 0's lower CI bound put **exactly at zero** | B1 | PASS → FAIL |
-| either performer's B2 verdict flipped | B2 | PASS → FAIL |
+| **the frozen-pose arm lifted to 1.0** (Astra's mutation) | B1 frozen-pose control | PASS → FAIL |
+| MAMMA's arm no longer bit-identical to its committed value | B1 MAMMA arm | PASS → FAIL |
+| **O1 closure moved to 0.01 m** (Astra's mutation) | O1 closure | PASS → FAIL |
+| **one mean-body seed brought to 0 mm** (Astra's mutation) | O1 mean-body must-fail | PASS → FAIL |
+| a re-derived marker check falsified | B2 | PASS → FAIL |
+| the consumed array no longer byte-identical to the rig converter's input | B2 | PASS → FAIL |
 
 Every conjunct turns, O1 in the opposite direction from the rest — which is the check that its
-FAIL is read from the measurement and not hardcoded.
+FAIL is read from the measurement and not hardcoded. Astra's four demonstrated holes (the
+truncated population and the three printed-but-unenforced clauses) are the four bold rows; each
+of them now turns acceptance, and the producer refuses a truncated arm outright before the gate
+ever sees it (`logs/32-b1-truncation-attack.log`).
 
 ---
 
@@ -119,17 +156,20 @@ momentum synthesises rather than reads was not checked against the donor.
 on exact, noiseless, fully visible data. The 1 mm band therefore allows the identity fit 0.24 mm
 on the worst seed, and it costs 0.21–0.35 mm. The excess is two channels:
 
-* **`scale_spine_length` is shrunk toward zero on every seed.** The sign of the error is the
-  opposite of the sign of the draw in six of six cells (+1.082 → −0.189, +1.078 → −0.209,
-  −0.955 → +0.170, −0.750 → +0.153, +0.743 → −0.151, −0.886 → +0.149): 14–20 % of the drawn value
-  pulled back to the mean, with `scale_neck_length` compensating in the trunk on the seeds where
-  the spine is stretched (+0.019…+0.033) and idle where it is shortened (±0.001). It is a
-  **regulariser**: `scale_spine_length` is the one drawn channel whose `limit` line carries no
-  trailing weight (`scale_neck_length`'s carries 0.1), so it sits on the default soft-limit
-  weight. **A quantity the solver regularises is a knob setting** (CLAUDE.md) — and the
-  coordinator's instruction is explicit that the weight is not to be touched: selecting it on the
-  exact oracle would pick zero and is a knob on the band; selecting it on the take would be the
-  take.
+* **`scale_spine_length` is MEASURED shrunk toward zero on every seed; the mechanism is not
+  established.** The sign of the error is the opposite of the sign of the draw in six of six
+  cells (+1.082 → −0.189, +1.078 → −0.209, −0.955 → +0.170, −0.750 → +0.153, +0.743 → −0.151,
+  −0.886 → +0.149): **14–20 % of the drawn value pulled back to the mean**, with
+  `scale_neck_length` compensating in the trunk on the seeds where the spine is stretched
+  (+0.019…+0.033) and idle where it is shortened (±0.001). That is the measurement and it stands.
+  An earlier draft of this review attributed it to a default-weight soft limit; **Astra refuted
+  that** (2026-09-22): `scale_spine_length` is not the only drawn channel whose `limit` line omits
+  a trailing weight — `scale_shoulder_width`, `scale_uparms` and `scale_lowarms` omit it too — and
+  the installed min/max evaluator applies **zero penalty inside** the configured interval, where
+  every draw lies. A missing weight therefore cannot be the mechanism, and no other candidate has
+  been tested. The attribution is withdrawn; the number is not. Nothing was tuned either way: the
+  solver's settings are the pre-card's, and touching them here would be selecting a constant on
+  the oracle that scores it.
 * **`scale_foot_length` is unidentifiable from this landmark set** and is recovered at ≈ 0 on
   every seed: the adapter maps no toe and `l_foot`/`r_foot` are the ankles, so nothing in the 17
   landmarks moves with foot length. `scale_hip_height` is a second dead channel for a different
@@ -239,8 +279,9 @@ one mesh, not eighteen.
   0.858 for IoU 0.743 → 0.796). **No precision veto was invented at merge time**, as the card
   fixed before the numbers.
 * **The instrument's own `control_mean_body` is SMPL-X's mean shape under MAMMA's POSE.** It says
-  nothing about the candidate, and on performer 1 it is above it in three of four cameras. It is
-  reported because the card says to report it.
+  nothing about the candidate, and on performer 1 it is above it in **all four cameras**
+  (0.8181 / 0.8055 / 0.8047 / 0.6878 against 0.7794 / 0.8052 / 0.7523 / 0.6502 — Astra's
+  correction, 2026-09-22; B001 is 0.0003 apart and it still counts). It is reported because the card says to report it.
 * **O1 is a model-consistency oracle.** It cannot validate the take's landmark-to-joint
   convention: pinned zero offsets knowingly misstate that relationship, and it is lane H's marker
   session that owns it.
@@ -262,11 +303,23 @@ one mesh, not eighteen.
 
 ## 6. What is open
 
-* **O1's band must be re-pinned against the measured floor** (0.757 mm worst seed, exact identity
-  handed in). Owed by the coordinator and Astra, not by this step. The 1.030 mm FAIL stands on
-  record until then.
-* **`scale_spine_length` is regularised toward the mean by ~15 % of the draw**, by a
-  default-weight soft limit in MHR's own model definition. Not to be touched here.
+* **D4b — O1 re-registered prospectively, before fresh fixtures are evaluated.** Freeze, in
+  writing and in advance: the statistic; a calibrated baseline taken from the measured
+  0.7568 mm exact-identity floor rather than a round number; the tolerance; the **identifiable
+  channel set** (which excludes `scale_foot_length` and `scale_hip_height` for this landmark
+  set); and the mean-body rejection. Raising a threshold around the observed 1.030 is explicitly
+  not that. The 1.030 mm FAIL stands on record until D4b reads.
+* **The default flip is its own gated integration step**, not part of this one. It has to cover
+  the compositor's consumption of the MHR body (`unified_gltf`, the N5.1 assembly),
+  schema-aware artifact checks (the close-out's eight-file list assumes `subject-XX.mapping.npz`,
+  which the MHR path does not write), instrument compatibility (`delivered_vs_capture`,
+  `d3_skeleton_gate`, `retarget_cost`, `head_gate`, `facing_location`,
+  `captured_limb_stability`, `delivered_foot` all read `BodyTrack` fields a `2.0-mhr` npz does
+  not carry), and an end-to-end rebuild of the actual delivered MHR output. **This review
+  carries no promise to flip the default at merge.**
+* **`scale_spine_length`'s 14–20 % shrink toward the mean is measured and unexplained.** The
+  soft-limit attribution was refuted (§2.1). It is the next thing to measure, and it belongs to
+  D4b's registration, not to this step.
 * **Two dead identity channels for this input**: `scale_foot_length` (no toe landmark) and
   `scale_hip_height` (configured limit is a point). Any future identity gate over MHR must state
   which of its channels the input can see. Neither is in any band.

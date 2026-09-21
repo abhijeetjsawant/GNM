@@ -28,13 +28,15 @@ THE HEADLINE. The body stopped being a stock mesh stretched over a scaled rig. S
 0.647 / 0.652 -> 0.803 / 0.767, paired lower CI bounds +0.133 and +0.084, against MAMMA's own
 mesh at 0.87 / 0.84 on the same rasteriser and the same masks.
 
-WHAT BELONGS ON THE PAGE BESIDE THE BARS, because the step does not merge without it: **O1, the
-exactness oracle, FAILED** at 1.030 mm against a 1 mm band, and it is a recorded exception, not a
-pass. The band was set without measuring the instrument's floor: with the TRUTH identity handed in
-and only the pose re-solved, the same fixture reads 0.757 mm. And **most of the gain is the BODY
-MODEL, not the fit** -- MHR's own MEAN body, driven by the same tracker, reads 0.766 / 0.771, and
-fitting the 68 scale channels adds +0.037 on performer 0 and nothing distinguishable on
-performer 1.
+WHAT BELONGS ON THE PAGE BESIDE THE BARS: **D4's ACCEPTANCE is FAIL.** O1, the exactness oracle,
+reads 1.030 mm against a 1 mm band, and that blocks acceptance -- the "recorded exception" that
+once stood here was an override and was withdrawn on 2026-09-22 (Astra's merge round, NO MERGE).
+What merged is the `--body mhr` IMPLEMENTATION, opt-in behind an unchanged `rig` default, with
+acceptance open and O1 re-registered prospectively as D4b. The band was set without measuring the
+instrument's floor: with the TRUTH identity handed in and only the pose re-solved, the same
+fixture reads 0.757 mm. And **most of the gain is the BODY MODEL, not the fit** -- MHR's own MEAN
+body, driven by the same tracker, reads 0.766 / 0.771, and fitting the 68 scale channels adds
++0.037 on performer 0 and nothing distinguishable on performer 1.
 
 Self-check:  python3 tools/compare/extractors/d4_body_model.py
 """
@@ -120,8 +122,9 @@ def x_body_model(_: dict) -> tuple[list, list]:
     figs.append(fig("D4 O1: fitted MHR against synthetic truth (worst of six seeds)",
                     o1.get("measured_max_over_seeds_mm"), "mm", REF_SYNTH, LOWER,
                     key="bodymodel_o1_ours",
-                    note="band 1 mm -- FAILED at 1.030 and merged as a RECORDED EXCEPTION. The "
-                         "band was set without measuring the instrument's floor"))
+                    note="band 1 mm -- FAILED at 1.030, and D4's ACCEPTANCE fails with it. The "
+                         "band was set without measuring the instrument's floor; O1 is "
+                         "re-registered prospectively as D4b"))
     ctrls.append(fig("D4 O1 floor: the TRUTH identity handed in, pose re-solved",
                      o1.get("exact_identity_floor_max_over_seeds_mm"), "mm", REF_SYNTH, LOWER,
                      key="bodymodel_o1_floor",
