@@ -144,8 +144,15 @@ clauses were rerun:
 | oracle, max over six seeds | **1.248 mm** | **1.030 mm** |
 | exact-identity floor, max over six seeds | 1.160 mm | 0.757 mm |
 
-**The pre-repair reading stands on record** (`artifacts/compare/d4-body/o1-prerepair.json`), and
-the repair is recorded as post hoc, per D7c's rule.
+**The pre-repair reading stands on record** (`artifacts/compare/d4-body/o1-prerepair.json`), is
+reproducible with `--no-clamp` (verified: 1.2484 mm on the worst seed), and the repair is recorded
+as post hoc, per D7c's rule.
+
+*What the repair is blind to.* `configured_limits()` parses the model file's `limit ... minmax`
+lines. Every one of the 198 `limit` lines in `compact_v6_1.model` is `minmax`, so nothing declared
+there is missed; the character reports 172 `parameter_limits` (fewer, because some named
+parameters are not in this transform), and any limit momentum synthesises rather than reads from
+the file was not checked against the donor.
 
 **What remains is the fitter's own cost, against a floor the band barely clears.** With the
 *truth* identity handed in and only the pose re-solved, the tracker still leaves **0.51–0.76 mm**
@@ -153,8 +160,17 @@ on exact, noiseless, fully visible data. So the 1 mm band allows the identity fi
 headroom on the worst seed, and the identity fit costs **0.21–0.35 mm**. The excess is
 concentrated in two channels:
 
-* `scale_spine_length` is mis-estimated by 0.149–0.209 units on every seed, in both directions —
-  ≈ 2–4 mm at `c_neck` and `root`, which are the two worst-scoring joints on five of six seeds;
+* `scale_spine_length` is **shrunk toward zero** on every seed. The sign of the error is the
+  opposite of the sign of the draw in six of six cells (draw +1.082 → −0.189, +1.078 → −0.209,
+  −0.955 → +0.170, −0.750 → +0.153, +0.743 → −0.151, −0.886 → +0.149), i.e. 14–20 % of the drawn
+  value pulled back to the mean body, with `scale_neck_length` compensating in the trunk on the
+  seeds where the spine is stretched (+0.019 to +0.033) and idle where it is shortened (±0.001).
+  That is a **regulariser**, not an unexplained bias: `scale_spine_length` is the one drawn
+  channel whose `limit` line in `compact_v6_1.model` carries no trailing weight
+  (`scale_neck_length`'s carries 0.1), so it sits on the default soft-limit weight. It costs
+  2–4 mm at `c_neck` and `root`, the two worst-scoring joints on five of six seeds. **This is the
+  lane's own rule in a new place: a quantity the solver regularises is a knob setting, and O1's
+  1 mm band does not accommodate that knob's current value.**
 * `scale_foot_length` is **unidentifiable from this landmark set** and is recovered at ≈ 0 on
   every seed. `l_foot`/`r_foot` are the ankles and the adapter maps no toe, so nothing in the 17
   landmarks moves with foot length. The card's `scale_hip_height` is a second dead channel for a
@@ -162,6 +178,12 @@ concentrated in two channels:
   configured limit" draws identically zero. Both are listed in the report rather than swapped out.
 * `scale_feet` does not exist in this release; the card's "nearest named channel" rule put
   `scale_foot_length` in its place, listed in `o1.json`.
+
+*The tail.* Even with the exact identity the worst frames read 3.4–5.2 mm (per-frame median over
+the 17 joints), and they are the **same frames on every seed** — 0, 30, 32/33, 52/53, 57/58 — so
+it is pose-dependent, not noise, and frame 0 being among them on four of six seeds is the tracker
+starting from the rest pose on a performer who is bent over the ground. Reported; it is the
+delivery's first frames too, and stage 4 should expect it.
 
 The locator offsets are not the explanation: with `limit_weight 10` they stay at 0.0000 mm median
 and 0.0009 mm max after the full two-stage fit, so the card's "the same offsets the fitter uses"
@@ -221,9 +243,13 @@ here as FAILED-as-a-prediction, with the arm's rejection intact on the other hal
   same fixture. Whether the band is re-registered against that floor, or the fitter's spine-length
   estimate is improved, or the fixture's draw range is narrowed, is **the coordinator's and
   Astra's call, not this agent's**. Nothing here may move it.
-* **`scale_spine_length`'s 0.15–0.21 unit bias** is unexplained. It is not the flexible duplicate,
-  not the locator offsets, not the iteration count (the identity estimate is unchanged from
-  max_iter 30 to 300) and not the fixture's limits. It is the next thing to measure.
+* **`scale_spine_length` is regularised toward the mean by ~15 % of the draw**, by a
+  default-weight soft limit in MHR's own model definition. It is not the flexible duplicate, not
+  the locator offsets, not the iteration count (the identity estimate is unchanged from max_iter
+  30 to 300) and not the fixture's limits. Whoever re-registers the band has to decide whether
+  that weight is part of the shipped fitter or a knob — and if it is a knob, it may not be
+  selected on a MAMMA arm, and selecting it on this fixture makes O1 a knob setting rather than
+  an oracle.
 * **B1–B5 are unrun**, the delivery is unbuilt, and the card's `gate.json`, extractor stub, report
   frames, mp4 and new tests belong to the stages that were not reached.
 * **The MHR path consumes 17 of the 19 body landmarks and none of the rig's auxiliary feeds** (the
