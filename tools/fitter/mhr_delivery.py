@@ -68,9 +68,23 @@ def to_capture_m(p_mhr_cm: np.ndarray) -> np.ndarray:
     return np.stack([p_mhr_cm[..., 0], -p_mhr_cm[..., 2], p_mhr_cm[..., 1]], axis=-1) / 100.0
 
 
-def load_character(lod: int) -> g.Character:
-    return g.Character.load_fbx(str(ASSETS / f"lod{lod}.fbx")).load_model_definition(
+def load_character(lod: int, *, drop_flexible: bool = False) -> g.Character:
+    """MHR at `lod`, from its own release.
+
+    `drop_flexible` removes the 26 `*_flexible` model parameters from the transform
+    (`simplify_parameter_transform`, verified: 204 -> 178, zero-pose skeleton state identical).
+    MHR duplicates `scale_spine_length` as `spine_length_flexible` among the POSE, so a solve
+    that leaves them free can absorb identity into the pose -- and `CalibrationConfig` has no
+    `active_params`, so masking them in `TrackingConfig` alone does not reach the calibration.
+    O1 needs them out of BOTH stages; the delivery leaves them free (the card's asymmetry).
+    """
+    character = g.Character.load_fbx(str(ASSETS / f"lod{lod}.fbx")).load_model_definition(
         str(ASSETS / "compact_v6_1.model"))
+    if drop_flexible:
+        keep = np.asarray([not name.endswith("_flexible")
+                           for name in character.parameter_transform.names])
+        character = character.simplify_parameter_transform(keep)
+    return character
 
 
 def with_pinned_locators(character: g.Character, *, free: bool) -> g.Character:
@@ -123,10 +137,11 @@ def fk_positions_cm(character: g.Character, motion: np.ndarray) -> np.ndarray:
 def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_body: bool,
             free_offsets: bool, calib_frames: int = 100, max_iter: int = 30,
             loss_alpha: float = 2.0, smoothing: float = 0.0,
-            freeze_flexible: bool = False) -> dict:
+            freeze_flexible: bool = False, fixed_identity: np.ndarray | None = None) -> dict:
     """Two-stage calibration then per-frame tracking. Returns everything the delivery needs."""
     array_cm = to_mhr_cm(np.asarray(array_zup_m, np.float64))
-    character = with_pinned_locators(load_character(lod), free=free_offsets)
+    character = with_pinned_locators(load_character(lod, drop_flexible=freeze_flexible),
+                                     free=free_offsets)
     markers = marker_data(array_cm, joint_names)
     transform = character.parameter_transform
     parameter_names = list(transform.names)
@@ -139,7 +154,12 @@ def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_b
     calibration.loss_alpha = loss_alpha
     calibration.max_iter = max_iter
 
-    if mean_body:
+    if fixed_identity is not None:
+        # O1's reported FLOOR arm: the truth identity handed in, no calibration, pose re-solved.
+        # It measures what the pose solve alone costs on exact data, which is the floor any
+        # candidate is scored against.
+        identity = np.asarray(fixed_identity, np.float32)
+    elif mean_body:
         identity = zero.copy()
     else:
         stage_a = mt.CalibrationConfig()
@@ -155,15 +175,6 @@ def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_b
     tracking.smoothing = smoothing
     tracking.max_iter = max_iter
     tracking.loss_alpha = loss_alpha
-    if freeze_flexible:
-        # O1 only: MHR duplicates `scale_spine_length` as `spine_length_flexible` among the pose,
-        # so an oracle that left the 26 `*_flexible` channels free would be exact for the wrong
-        # reason. They are frozen at zero in the truth AND excluded from the solve here.
-        active = np.asarray(transform.pose_parameters).copy()
-        flexible = np.asarray([name.endswith("_flexible") for name in parameter_names])
-        active &= ~flexible
-        tracking.active_params = active
-
     motion = np.asarray(mt.process_markers(character, identity, markers, tracking, calibration,
                                            calibrate=False), np.float32)
     positions_cm = fk_positions_cm(character, motion)
