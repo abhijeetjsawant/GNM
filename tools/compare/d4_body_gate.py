@@ -39,7 +39,10 @@ CLOSURE_BAND_M = 1e-4
 
 
 NICE = {"hygiene": "hygiene", "reproduction": "reproduction", "B1_the_band": "B1",
-        "B2_same_denominator": "B2", "O1_exactness": "O1"}
+        "B2_same_denominator": "B2", "O1_exactness": "O1",
+        "B1_frozen_pose_control_below_the_candidate": "B1 frozen-pose control",
+        "B1_mamma_bit_identical": "B1 MAMMA arm unchanged",
+        "O1_closure": "O1 closure", "O1_must_fail_mean_body": "O1 mean-body must-fail"}
 BUILD_SCRIPT = ROOT / "scripts/build_commercial_multiview_comparison.py"
 
 
@@ -260,7 +263,9 @@ def verdicts(data: dict) -> dict:
                          "committed value",
             "measured_cells_identical": sum(
                 c["identical_all_fields"] for c in data["b1_mamma"]["cells"].values()),
-            "verdict": "PASS" if data["b1_mamma"]["bit_identical_on_all_8_cells"] else "FAIL"},
+            # derived from the cells, never from the report's own summary boolean
+            "verdict": "PASS" if all(c["identical_all_fields"]
+                                     for c in data["b1_mamma"]["cells"].values()) else "FAIL"},
         "B2_same_denominator": {
             "predicted": "the consumed array is the rig converter's input, and momentum's markers "
                          "re-derive from it exactly",
@@ -346,14 +351,22 @@ def verdicts(data: dict) -> dict:
     # gate returning MERGE while a required conjunct failed. The coordinator withdrew it on
     # 2026-09-22. O1 FAILS, so D4's ACCEPTANCE is FAIL, and that is the only verdict this
     # conjunction produces.
-    conjuncts = ("hygiene", "reproduction", "O1_exactness", "B1_the_band", "B2_same_denominator")
+    # Every clause the card REQUIRES, not just the five headline names. Astra's merge round
+    # mutated the frozen-pose control to 1.0, the O1 closure to 0.01 m and one mean-body seed to
+    # 0 mm; each turned its own clause and merge was still permitted, because the conjunction did
+    # not include them. Printing a required clause's failure is not enforcing it. The MAMMA arm's
+    # bit-identity is in here for the same reason: the card states it as the condition under which
+    # B1's instrument is the committed one.
+    conjuncts = ("hygiene", "reproduction", "O1_exactness", "B1_the_band", "B2_same_denominator",
+                 "B1_frozen_pose_control_below_the_candidate", "B1_mamma_bit_identical",
+                 "O1_closure", "O1_must_fail_mean_body")
     failing = [c for c in conjuncts if out[c]["verdict"] != "PASS"]
     passing = [c for c in conjuncts if out[c]["verdict"] == "PASS"]
     detail = []
     if "O1_exactness" in failing:
         detail.append(f"O1 {out['O1_exactness']['measured_max_over_seeds_mm']:.3f} mm > "
                       f"{O1_BAND_MM:g} mm")
-    detail += [c for c in failing if c != "O1_exactness"]
+    detail += [NICE.get(c, c) for c in failing if c != "O1_exactness"]
     line = ("D4 ACCEPTANCE: PASS" if not failing else
             "D4 ACCEPTANCE: FAIL (" + "; ".join(detail)
             + (("; " + ", ".join(NICE.get(c, c) for c in passing) + " PASS") if passing else "")
@@ -414,6 +427,16 @@ MUTATION_TABLE = {
     "B1: performer 0's lower CI bound put exactly at zero":
         ("b1/paired/delivered_MHR_lod2_minus_baseline_D7c_rig_subject_00/"
          "ci95_of_the_median_difference/0=0.0", "B1_the_band"),
+    "B1 control: the frozen-pose arm lifted to 1.0 (Astra's mutation)":
+        ("b1_silhouette/arms/control_frozen_pose_tracked/A001/subject_00/iou=1.0",
+         "B1_frozen_pose_control_below_the_candidate"),
+    "B1: MAMMA's arm no longer bit-identical to its committed value":
+        ("b1_mamma/cells/A001_subject_00/identical_all_fields=false", "B1_mamma_bit_identical"),
+    "O1 closure: the worst file moved to 0.01 m (Astra's mutation)":
+        ("o1_closure/worst_max_abs_m=0.01", "O1_closure"),
+    "O1 must-fail: one mean-body seed brought to 0 mm (Astra's mutation)":
+        ("o1_readings/mean_body/20260925/median_of_per_frame_medians=0.0",
+         "O1_must_fail_mean_body"),
     "B2: performer 0's re-derived marker check turned false":
         ("b2/subjects/subject_00/"
          "4a_marker_values_match_the_declared_mapping_and_conversion=false",

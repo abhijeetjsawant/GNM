@@ -250,9 +250,11 @@ def _minimal_gate_inputs(gate):
 def test_the_gate_derives_its_verdicts_and_every_conjunct_turns(gate):
     data = _minimal_gate_inputs(gate)
     baseline = gate.verdicts(data)
-    assert baseline["D4_acceptance"]["conjuncts"] == {
-        "hygiene": "PASS", "reproduction": "PASS", "O1_exactness": "PASS",
-        "B1_the_band": "PASS", "B2_same_denominator": "PASS"}
+    assert set(baseline["D4_acceptance"]["conjuncts"].values()) == {"PASS"}
+    assert set(baseline["D4_acceptance"]["conjuncts"]) == {
+        "hygiene", "reproduction", "O1_exactness", "B1_the_band", "B2_same_denominator",
+        "B1_frozen_pose_control_below_the_candidate", "B1_mamma_bit_identical",
+        "O1_closure", "O1_must_fail_mean_body"}
 
     mutations = {
         "hygiene": ("hygiene/rebuild_sha256/" + gate.EIGHT[0], "moved"),
@@ -266,6 +268,13 @@ def test_the_gate_derives_its_verdicts_and_every_conjunct_turns(gate):
         "B2_same_denominator": ("b2/subjects/subject_00/"
                                 "4a_marker_values_match_the_declared_mapping_and_conversion",
                                 False),
+        # Astra's three: each turned its own clause and merge was still permitted, because the
+        # conjunction did not include them.
+        "B1_frozen_pose_control_below_the_candidate":
+            ("b1_silhouette/arms/control_frozen_pose_tracked/A001/subject_00/iou", 1.0),
+        "B1_mamma_bit_identical": ("b1_mamma/cells/c/identical_all_fields", False),
+        "O1_closure": ("o1_closure/worst_max_abs_m", 0.01),
+        "O1_must_fail_mean_body": ("o1_readings/mean_body/a/median_of_per_frame_medians", 0.0),
     }
     for conjunct, (path, value) in mutations.items():
         mutated = _minimal_gate_inputs(gate)
