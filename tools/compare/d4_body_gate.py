@@ -7,7 +7,7 @@ move. "A gate is proven by mutating its INPUTS, never its verdicts" (CLAUDE.md, 
 
 THE MERGE RULE, fixed before the numbers: hygiene AND the reproduction AND O1 AND B1 on both
 performers AND B2; B3, B4, B5 report. **O1 FAILS and is a RECORDED EXCEPTION** decided by the
-coordinator at the merge on B1 (status log 4338ada on main): the 1 mm band was set without
+coordinator, to be merged on B1 (status log 4338ada on main; Astra's merge review is pending): the 1 mm band was set without
 measuring the instrument's floor, the floor is 0.51-0.76 mm on this fixture, and the band is NOT
 moved and nothing is re-selected. It is written here as a FAIL with an exception beside it, never
 as a pass. Re-pinning O1 relative to the measured floor is instrument debt for the next step.
@@ -120,7 +120,19 @@ def verdicts(data: dict) -> dict:
             "predicted": f"--body mhr lod6 RAW reproduces {PRECARD} to {REPRODUCTION_TOLERANCE}",
             "measured": {s: repro[s]["pooled_median_iou"] for s in PRECARD},
             "max_abs_difference": round(max(repro_delta.values()), 6),
-            "verdict": "PASS" if max(repro_delta.values()) <= REPRODUCTION_TOLERANCE else "FAIL"},
+            "verdict": "PASS" if max(repro_delta.values()) <= REPRODUCTION_TOLERANCE else "FAIL",
+            # The path reproduced EXACTLY, and it carries a defect: the pre-card fitted both
+            # performers in one process, and a momentum calibration mutates whatever a later
+            # Character.load_fbx returns. Repaired (one process per performer), at the pre-card's
+            # own lod6 and raw array:
+            "repaired_one_process_per_performer": {
+                s: data["reproduction_repaired"]["arms"]
+                ["buildscript_MHR_lod6_raw_oneprocess"][s]["pooled_median_iou"]
+                for s in PRECARD},
+            "repaired_minus_precard": {
+                s: round(data["reproduction_repaired"]["paired"][
+                    f"buildscript_MHR_lod6_raw_oneprocess_minus_precard_fitted_MHR_"
+                    f"subject_{s[-2:]}"]["median_difference"], 6) for s in PRECARD}},
         "O1_exactness": {
             "predicted": f"the max over six seeds <= {O1_BAND_MM} mm",
             "measured_max_over_seeds_mm": round(o1_max, 4),
@@ -128,14 +140,28 @@ def verdicts(data: dict) -> dict:
                                      for k, v in o1_oracle.items()},
             "verdict": "PASS" if o1_max <= O1_BAND_MM else "FAIL",
             "recorded_exception": (
-                "FAIL, and merged on B1 as a RECORDED EXCEPTION by the coordinator (status log "
-                "4338ada on main). The band was set without measuring the instrument's floor; "
+                "FAIL, and TO BE MERGED on B1 as a RECORDED EXCEPTION by the coordinator's "
+                "decision (status log 4338ada on main; Astra's merge review is pending). The "
+                "band was set without measuring the instrument's floor; "
                 "with the TRUTH identity handed in and only the pose re-solved the same fixture "
                 f"reads {round(o1_floor_max, 4)} mm, so the band allows the identity fit "
                 f"{round(O1_BAND_MM - o1_floor_max, 4)} mm and it costs more. The band is NOT "
                 "moved and nothing is re-selected; re-pinning O1 against the measured floor is "
                 "instrument debt for the next step."),
-            "exact_identity_floor_max_over_seeds_mm": round(o1_floor_max, 4)},
+            "exact_identity_floor_max_over_seeds_mm": round(o1_floor_max, 4),
+            # The pre-repair STOP stays on record (CLAUDE.md, D7c): the fixture's own defect was
+            # measured and repaired as a FIXTURE PARAMETER with the fitter byte-identical, and
+            # the original reading is reproducible with --no-clamp.
+            "pre_repair_max_over_seeds_mm": data["o1_prerepair"]["oracle_max_over_seeds_mm"],
+            "pre_repair_exact_identity_floor_mm":
+                data["o1_prerepair"]["exact_identity_max_over_seeds_mm"],
+            "fixture_repair": {
+                "clamped_parameter_frames":
+                    data["o1"]["fixture_repair"]["clamped_parameter_frames"],
+                "violating_pose_parameters":
+                    len(data["o1"]["fixture_repair"]["violating_parameters"]),
+                "fitter_source_sha256_across_the_repair": data["o1"]["fitter_source_sha256"],
+                "recorded_as": "post hoc; reproduce the pre-repair reading with --no-clamp"}},
         "O1_must_fail_mean_body": {
             "predicted": "misses the same predicate on every seed, by the injected scale, 5-60 mm",
             "measured_min_over_seeds_mm": round(o1_mean_min, 4),
@@ -185,10 +211,32 @@ def verdicts(data: dict) -> dict:
         "B2_same_denominator": {
             "predicted": "the consumed array is the rig converter's input, and momentum's markers "
                          "re-derive from it exactly",
-            "measured": {s: {k: v for k, v in row.items() if k[0].isdigit()}
+            # Derived from B2's own numbered CHECKS, never from its verdict leaf: a gate that
+            # reads another instrument's verdict can be turned by mutating a verdict, which is
+            # exactly what D7c's rule forbids.
+            "measured": {s: {k: v for k, v in row.items()
+                             if k[0].isdigit() or k == "marker_names_are_the_declared_map"}
                          for s, row in data["b2"]["subjects"].items()},
-            "verdict": "PASS" if all(row["verdict"] == "PASS"
-                                     for row in data["b2"]["subjects"].values()) else "FAIL"},
+            "verdict": "PASS" if all(
+                bool(v) for row in data["b2"]["subjects"].values()
+                for k, v in row.items()
+                if k[0].isdigit() or k == "marker_names_are_the_declared_map") else "FAIL"},
+        "B1_parts_and_terciles_REPORTED": {
+            "partition": data["b1_parts"]["partition"],
+            "tercile_edges_trunk_lean_deg": data["b1_parts"]["tercile_edges_trunk_lean_deg"],
+            "parts": data["b1_parts"]["parts"],
+            "bent_terciles": data["b1_parts"]["bent_terciles"],
+            "note": "precision and recall are the inflation diagnostic beside IoU. No precision "
+                    "veto exists in this card and none was invented at merge time."},
+        "delivery_fit_REPORTED": {
+            "one_process_per_performer": data["fit_report"]["one_process_per_performer"],
+            **{s: {"mesh_vertices": row["subjects"][s]["mesh_vertices"],
+                   "nonzero_identity_channels": row["subjects"][s]["nonzero_identity_channels"],
+                   "joint_to_landmark_residual_mm_median":
+                       row["subjects"][s]["joint_to_landmark_residual_mm_median_over_frames"],
+                   "locator_offset_mm_median": row["subjects"][s]["locator_offset_mm_median"],
+                   "lod": row["lod"], "landmarks": row["landmarks"]}
+               for s, row in data["fit_report"]["subjects"].items()}},
         "B3_placement_REPORTED": {
             "all_landmark_median_mm": {s: row["all_landmarks_median_mm"]
                                        for s, row in data["b3"]["subjects"].items()},
@@ -203,7 +251,21 @@ def verdicts(data: dict) -> dict:
                           for s, row in data["b4"]["subjects"].items()},
             "subject_to_mamma_body_id": data["b4"]["subject_to_mamma_body_id"]},
         "B5_delivered_bytes_REPORTED": {
-            "bytes_verdict": data["b5"]["verdict_bytes"],
+            # derived from the checks, not from B5's own verdict leaf
+            "bytes_verdict": "PASS" if all(
+                row["sampler_times_are_k_over_30_s"]
+                and row["sampler_times_strictly_increasing"]
+                and row["joint_names_match_MHR"] and row["hierarchy_matches_MHR"]
+                and row["rest_translation_max_abs_diff_cm"] < 1e-4
+                and row["mesh_vertices_match_MHR"] and row["mesh_all_finite"]
+                and row["mesh_frames"] == 150 and row["skin_weight_max_abs_diff"] < 1e-4
+                for row in data["b5"]["subjects"].values()) else "FAIL",
+            "byte_checks": {s: {k: row[k] for k in (
+                "sampler_times_are_k_over_30_s", "sampler_times_strictly_increasing",
+                "joint_names_match_MHR", "hierarchy_matches_MHR",
+                "rest_translation_max_abs_diff_cm", "mesh_vertices_match_MHR",
+                "mesh_all_finite", "mesh_frames", "skin_weight_max_abs_diff")}
+                for s, row in data["b5"]["subjects"].items()},
             "facing_positive_on_every_frame": data["b5"][
                 "facing_positive_on_every_frame_both_performers"],
             "facing_frames": {s: [row["facing_dot_positive_frames"], row["facing_dot_frames_scored"]]
@@ -255,10 +317,14 @@ MUTATION_TABLE = {
     "B1: performer 0's lower CI bound put exactly at zero":
         ("b1/paired/delivered_MHR_lod2_minus_baseline_D7c_rig_subject_00/"
          "ci95_of_the_median_difference/0=0.0", "B1_the_band"),
-    "B2: performer 0's consumed-input verdict flipped":
-        ('b2/subjects/subject_00/verdict="FAIL"', "B2_same_denominator"),
-    "B2: performer 1's consumed-input verdict flipped":
-        ('b2/subjects/subject_01/verdict="FAIL"', "B2_same_denominator"),
+    "B2: performer 0's re-derived marker check turned false":
+        ("b2/subjects/subject_00/"
+         "4a_marker_values_match_the_declared_mapping_and_conversion=false",
+         "B2_same_denominator"),
+    "B2: performer 1's consumed array no longer byte-identical to the rig converter's input":
+        ("b2/subjects/subject_01/"
+         "1a_handed_array_is_byte_identical_to_the_rig_converter_input_on_this_build=false",
+         "B2_same_denominator"),
 }
 
 

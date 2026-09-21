@@ -1,12 +1,13 @@
 # D4 — the body model in the delivery path
 
 **Date** 2026-09-21/22 · **Branch** `ladder/D4` · **Worktree** `.claude/worktrees/ladder-D4`
-**MERGE, with O1 a RECORDED EXCEPTION.** MHR — Meta's open body model (Apache), fitted by
-momentum (MIT) to the delivered take's own smoothed, repaired landmarks with locator offsets
-pinned — ships as the delivered body. The card's merge rule is
+**The gate reads `MERGE with O1 a recorded exception`. Nothing has merged: Astra's merge review
+is pending.** MHR — Meta's open body model (Apache), fitted by momentum (MIT) to the delivered
+take's own smoothed, repaired landmarks with locator offsets pinned — is the body this step
+delivers. The card's merge rule is
 `hygiene AND the reproduction AND O1 AND B1 on both performers AND B2`. Four of those five pass.
-**O1 FAILS at 1.030 mm against a 1 mm band and is written everywhere as a FAIL**, merged on B1 by
-the coordinator's decision (status log `4338ada` on main) because the band was set without
+**O1 FAILS at 1.030 mm against a 1 mm band and is written everywhere as a FAIL**, to be merged on
+B1 by the coordinator's decision (status log `4338ada` on main) because the band was set without
 measuring the instrument's floor — the lane's recorded pre-registration error, again. **The band
 is not moved and nothing is re-selected.** Re-pinning O1 relative to the measured floor
 (0.51–0.76 mm on this fixture) is instrument debt for the next step.
@@ -14,7 +15,8 @@ is not moved and nothing is re-selected.** Re-pinning O1 relative to the measure
 The headline: the delivered body stopped being a stock MPFB mesh stretched over a scaled rig.
 Silhouette IoU against the SAM2 masks goes **0.647 / 0.652 → 0.803 / 0.767**, paired lower CI
 bounds **+0.133** and **+0.084**, with MAMMA's own mesh at 0.873 / 0.845 on the identical
-rasteriser and masks — bit-identical to its committed value on all eight cells, so the instrument
+rasteriser and masks (that pair is the median of its four camera medians — the committed report
+carries no pooled figure — beside our pooled 0.803 / 0.767, which is stated wherever it appears) — bit-identical to its committed value on all eight cells, so the instrument
 has not moved under the comparison.
 
 ---
@@ -29,7 +31,8 @@ has not moved under the comparison.
 | — | coordinator's decision: continue under the D3 precedent, O1 a recorded exception | — | `4338ada` (main) |
 | 4 | the delivery — `--body mhr`, lod2, the smoothed repaired landmarks | built | `5865e06` |
 | 5 | the bands — B1, B2, B3, B4, B5 | **B1 PASS, B2 PASS**, B3/B4/B5 reported | `d14224a` |
-| 6 | the gate, the tests, the extractor stub, the report frames, this review | — | this commit |
+| 6 | the gate, the tests, the extractor stub, the report frames, this review | — | `fc173d4` |
+| 6b | hygiene re-run at HEAD, the gate's B2/B5 derived from checks not verdicts, the unread inputs read, this header | — | this commit |
 
 ---
 
@@ -37,7 +40,7 @@ has not moved under the comparison.
 
 | clause | predicted | measured | verdict |
 |---|---|---|---|
-| **hygiene** | `--body rig` rebuilds the D7c delivery 8 of 8 byte-identical | 8 of 8 identical | **PASS** |
+| **hygiene** | `--body rig` rebuilds the D7c delivery 8 of 8 byte-identical | 8 of 8 identical, **re-run at HEAD** (`fc173d4`) after stage 2 changed the same file | **PASS** |
 | **the reproduction** | `--body mhr` lod6 RAW reproduces 0.789 / 0.730 to 0.001 | 0.7894 / 0.7295; per-cell difference **0.0** on all 600 cells. *Repaired* (one process per performer, §4): 0.7894 / **0.7503** | **PASS** |
 | **O1 exactness** | max over six seeds ≤ 1 mm | 0.853 / 0.985 / **1.030** / 0.967 / 0.799 / 0.898 mm | **FAIL** (recorded exception) |
 | O1 must-fail, the mean body | misses it on every seed, 5–60 mm | 31.8 / 32.8 / 24.7 / 9.6 / 39.8 / 32.2 mm | PASS (rejects by 9×–39×) |
@@ -284,6 +287,16 @@ one mesh, not eighteen.
 * **The ladder registration is a stub.** `tools/compare/extractors/d4_body_model.py` supplies the
   `x_body_model` function and its `VISUALS`; `ladder.py` owns `RUNGS` and this step does not edit
   it.
+* **THE CLOSE-OUT PROTOCOL CANNOT RUN ON THIS DELIVERY, and whoever merges needs to know before
+  the `--body` default flips.** The card flips the default to `mhr` at merge. `post_merge.sh`
+  then rebuilds `artifacts/commercial-multiview-soma77` as an MHR delivery, and (a) its
+  eight-file byte-check names `subject-XX.mapping.npz`, which the MHR path does not write, and
+  (b) every rig-schema instrument it reruns reads `BodyTrack` fields an `autoanim.body-track/
+  2.0-mhr` npz does not carry — `delivered_vs_capture` (measured: `KeyError`, log 22),
+  `d3_skeleton_gate`, `retarget_cost`, `head_gate`, `facing_location`,
+  `captured_limb_stability`, `delivered_foot`. This belongs to the integration step alongside
+  `unified_gltf` and the N5.1 assembly, but it is a merge-time hazard, not a later one: the flip
+  and the close-out cannot both happen until that step has run.
 
 ---
 

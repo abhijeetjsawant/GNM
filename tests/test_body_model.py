@@ -187,8 +187,13 @@ def _minimal_gate_inputs(gate):
         "b1_silhouette": {"arms": silhouette},
         "b1_mamma": {"cells": {"c": {"identical_all_fields": True}},
                      "bit_identical_on_all_8_cells": True},
-        "b2": {"subjects": {f"subject_{s}": {"verdict": "PASS", "1a_x": True}
-                            for s in ("00", "01")}},
+        # B2's NUMBERED checks, which is what the gate derives from -- never its verdict leaf
+        "b2": {"subjects": {f"subject_{s}": {
+            "1a_handed_array_is_byte_identical_to_the_rig_converter_input_on_this_build": True,
+            "1c_the_array_is_the_SMOOTHED_repaired_one": True,
+            "4a_marker_values_match_the_declared_mapping_and_conversion": True,
+            "marker_names_are_the_declared_map": True,
+            "verdict": "PASS"} for s in ("00", "01")}},
         "b3": {"subjects": {f"subject_{s}": {"all_landmarks_median_mm": 19.0,
                                              "segment_mean_abs_error_mm": 10.0}
                             for s in ("00", "01")}},
@@ -198,15 +203,37 @@ def _minimal_gate_inputs(gate):
                             for s in ("00", "01")},
                "subject_to_mamma_body_id": {"0": 1, "1": 0}},
         "b5": {"verdict_bytes": "PASS", "facing_positive_on_every_frame_both_performers": False,
-               "subjects": {f"subject_{s}": {"facing_dot_positive_frames": 150,
-                                             "facing_dot_frames_scored": 150}
-                            for s in ("00", "01")}},
+               "subjects": {f"subject_{s}": {
+                   "facing_dot_positive_frames": 150, "facing_dot_frames_scored": 150,
+                   "sampler_times_are_k_over_30_s": True,
+                   "sampler_times_strictly_increasing": True,
+                   "joint_names_match_MHR": True, "hierarchy_matches_MHR": True,
+                   "rest_translation_max_abs_diff_cm": 2e-6, "mesh_vertices_match_MHR": True,
+                   "mesh_all_finite": True, "mesh_frames": 150,
+                   "skin_weight_max_abs_diff": 0.0} for s in ("00", "01")}},
         "delivery_closure": {"worst_max_abs_m": 2e-6},
         "free_offsets": {f"subject_{s}": {"locator_offset_mm_median": 120.0,
                                           "nonzero_identity_channels": 13,
                                           "joint_to_landmark_residual_mm_median_over_frames": 140.0}
                          for s in ("00", "01")},
-        "fit_report": {},
+        "b1_parts": {"partition": "every foreground pixel to its nearest segment",
+                     "tercile_edges_trunk_lean_deg": {}, "parts": {}, "bent_terciles": {}},
+        "o1_prerepair": {"oracle_max_over_seeds_mm": 1.2484,
+                         "exact_identity_max_over_seeds_mm": 1.1604},
+        "o1": {"fixture_repair": {"clamped_parameter_frames": 1025, "violating_parameters": {}},
+               "fitter_source_sha256": "abc"},
+        "reproduction_repaired": {
+            "arms": {"buildscript_MHR_lod6_raw_oneprocess": {
+                "subject_00": {"pooled_median_iou": 0.7894},
+                "subject_01": {"pooled_median_iou": 0.7503}}},
+            "paired": {f"buildscript_MHR_lod6_raw_oneprocess_minus_precard_fitted_MHR_"
+                       f"subject_{s}": {"median_difference": 0.0} for s in ("00", "01")}},
+        "fit_report": {"one_process_per_performer": True,
+                       "subjects": {f"subject_{s}": {"subjects": {f"subject_{s}": {
+                           "mesh_vertices": 10661, "nonzero_identity_channels": 13,
+                           "joint_to_landmark_residual_mm_median_over_frames": 16.7,
+                           "locator_offset_mm_median": 0.0}}, "lod": 2, "landmarks": "smoothed"}
+                           for s in ("00", "01")}},
     }
 
 
@@ -224,7 +251,11 @@ def test_the_gate_derives_its_verdicts_and_every_conjunct_turns(gate):
         "O1_exactness": ("o1_readings/oracle/a/median_of_per_frame_medians", 2.0),
         "B1_the_band": ("b1/paired/delivered_MHR_lod2_minus_baseline_D7c_rig_subject_01/"
                         "ci95_of_the_median_difference/0", -0.01),
-        "B2_same_denominator": ("b2/subjects/subject_00/verdict", "FAIL"),
+        # an INPUT leaf, never a verdict leaf (D7c's rule, and the gate now derives B2 from
+        # its numbered checks)
+        "B2_same_denominator": ("b2/subjects/subject_00/"
+                                "4a_marker_values_match_the_declared_mapping_and_conversion",
+                                False),
     }
     for conjunct, (path, value) in mutations.items():
         mutated = _minimal_gate_inputs(gate)
@@ -249,3 +280,13 @@ def test_b1_lower_bound_exactly_zero_is_not_a_pass(gate):
     gate.put(data, "b1/paired/delivered_MHR_lod2_minus_baseline_D7c_rig_subject_00/"
                    "ci95_of_the_median_difference/0", 0.0)
     assert gate.verdicts(data)["B1_the_band"]["verdict"] == "FAIL"
+
+
+def test_the_gate_ignores_another_instruments_verdict_leaf(gate):
+    """A gate that reads a verdict can be turned by mutating a verdict. B2's and B5's are inert."""
+    data = _minimal_gate_inputs(gate)
+    gate.put(data, "b2/subjects/subject_00/verdict", "FAIL")
+    gate.put(data, "b5/verdict_bytes", "FAIL")
+    report = gate.verdicts(data)
+    assert report["B2_same_denominator"]["verdict"] == "PASS"
+    assert report["B5_delivered_bytes_REPORTED"]["bytes_verdict"] == "PASS"
