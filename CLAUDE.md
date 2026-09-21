@@ -324,6 +324,24 @@
   positive-determinant deformation read as inverted). D6 owns the sound measurement.
 - **The close-out's `post_merge.sh` must pass `--src-stage refactored` to the D7c producers**; the hygiene arm (`pre_change`)
   cannot run on the main checkout's converter — it runs against the retained pre-change copy or is skipped and said so.
+- **The body model is in the delivery path, opt-in (D4, 2026-09-22).** `scripts/build_commercial_multiview_comparison.py --body mhr`
+  fits MHR (momentum, `/tmp/momenv`; assets `.cache/mhr/assets`, own release, 68 raw scale channels, never the SAM PCA) to the
+  same smoothed repaired landmarks the rig consumes and delivers MHR's own mesh (`tools/fitter/mhr_delivery.py`); silhouette
+  0.647 / 0.652 → 0.803 / 0.767 against the D7c rig. The default is `rig` and the compositor and every rig-schema instrument
+  still read the rig track: the flip is its own gated integration step. D4's ACCEPTANCE is FAIL and open (O1 1.030 vs 1 mm).
+- **Write no oracle band before measuring the instrument's floor** (D4): the 1 mm exactness band was a guess; the tracker's
+  own floor with the true body handed in is 0.51–0.76 mm on exact data. A band that ignores the floor fails on the floor.
+  And a failed conjunct is never "a recorded exception" — that is the override the lane forbids; the smallest legitimate path
+  is acceptance FAIL, an opt-in merge if nothing shipped changes, and a NEW prospective registration.
+- **momentum's `calibrate_markers` corrupts a later `Character.load_fbx` in the same process** (skeleton state, mesh up to
+  0.76 m, animation channel count — and the file still imports cleanly). One process per performer; a skeleton-state guard
+  before any GLB is written. `Character.with_locators([])` does not clear locators. `GltfBuilder()` inherits the FBX's 120
+  fps unless built `GltfBuilder(fps=30.0)`. Capture Z-up m → MHR Y-up cm is `(x, z, −y) × 100`.
+- **A gate must refuse a short population** (D4): a producer that stops at the available frames and drops nonfinite pairs let a
+  15-frame truncation read PASS. Name the population (frames × cameras × performers), count it, and require it.
+- **The cache can be restored from Modal**: `modal volume get autoanim-mamma-data-v1 <path> <dest>` holds SMPL-X under
+  `body_models/` and the four fixture mp4s under `inputs/videos/`; the calibration yaml is in the pinned MAMMA repo
+  (commit 588492f, `configs/examples/calib/iphones_outdoors.yaml`).
 - **D8c's head-gate log predates D8c's own in-place rebuild** (written 19:46, the rebuild 20:42); D9b's close-out head gate is
   line-identical to D8c's close-out log, and the drift the D9b agent measured against the earlier log is D8c's, not D9b's.
 
