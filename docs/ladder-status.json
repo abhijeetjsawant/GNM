@@ -170,8 +170,8 @@
           "title": "A real pose solver (momentum on the MHR body)",
           "plain": "Replace the hand-written conversion with a proper solver, body size held fixed, so the solver is judged alone.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-21",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -833,6 +833,11 @@
       "date": "2026-09-21",
       "step": "D4",
       "text": "Body-model pre-card (2026-09-21, coordinator, no agent, no card): MHR fitted by momentum to the delivered raw landmarks and scored on the committed silhouette instrument beside the D7c rig -- pooled IoU 0.647/0.652 -> 0.789/0.730, paired CI clear of zero on both performers (PASS under the pre-registered rule; the route is not wrong). Most of the gain is the body MODEL (MHR's mean body posed by our tracker already reads 0.744/0.722); the fit adds +0.045 on performer 0, +0.007 (CI through zero) on performer 1. Caveats: raw vs repaired input denominator, lod6 mesh, MAMMA oracle not rerun. .cache/ was found WIPED (mamma fixture, SMPL-X, fixtures gone): no rebuild and no MAMMA oracle until restored. docs/reviews/body-model-precard-2026-09-21.md."
+    },
+    {
+      "date": "2026-09-21",
+      "step": "D4",
+      "text": "card written 2026-09-21 after the pre-card measurement (MHR fitted 0.789/0.730 vs the rig 0.647/0.652, CI clear both performers); the user chose shape (a): MHR's own mesh is the delivered body; one Astra card review by the 2026-09-15 rule; .cache restored from the Modal volume (SMPL-X, the four fixture videos) and the pinned MAMMA repo (the calibration yaml)"
     }
   ]
 }
