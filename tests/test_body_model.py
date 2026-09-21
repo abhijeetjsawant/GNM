@@ -170,7 +170,8 @@ def _minimal_gate_inputs(gate):
                   for name, value in (("ours_delivered", 0.80), ("control_frozen_pose_tracked", 0.30),
                                       ("ORACLE_mamma_mesh", 0.87))}
     paired = {f"delivered_MHR_lod2_minus_baseline_D7c_rig_subject_{s}":
-              {"median_difference": 0.1, "ci95_of_the_median_difference": [0.05, 0.15], "n": 600}
+              {"median_difference": 0.1, "ci95_of_the_median_difference": [0.05, 0.15], "n": 600,
+               "cells_required": 600, "population_as_named": True}
               for s in ("00", "01")}
     arms = {name: {f"subject_{s}": {"pooled_median_iou": 0.8} for s in ("00", "01")}
             for name in ("baseline_D7c_rig", "delivered_MHR_lod2", "control_MHR_mean_body_lod2")}
@@ -184,7 +185,14 @@ def _minimal_gate_inputs(gate):
                         "exact_identity": {"a": {"median_of_per_frame_medians": 0.4}}},
         "o1_closure": {"worst_max_abs_m": 1e-6},
         "o1_closure_mutations": {"pairs": {"m": {"max_abs_m": 0.1, "within_band": False}}},
-        "b1": {"paired": paired, "arms": arms},
+        "b1": {"paired": paired, "arms": arms,
+               "population": {
+                   "frames_consumed_per_arm": {name: {f"subject_{s}": 150 for s in ("00", "01")}
+                                               for name in arms},
+                   "frames_required": 150,
+                   "cells_required": {f"subject_{s}": 600 for s in ("00", "01")},
+                   "cells_excluded_by_the_mask_cache": {f"subject_{s}": [] for s in ("00", "01")},
+                   "every_arm_consumed_the_full_take": True}},
         "b1_silhouette": {"arms": silhouette},
         "b1_mamma": {"cells": {"c": {"identical_all_fields": True}},
                      "bit_identical_on_all_8_cells": True},
@@ -300,6 +308,31 @@ def test_the_real_build_script_still_defaults_to_rig(gate):
     parsed = gate.build_script_body_argument()
     assert parsed["default_body"] == "rig"
     assert "mhr" in parsed["body_choices"]
+
+
+def test_b1_fails_on_a_truncated_population_even_with_the_ci_clear(gate):
+    """Astra's merge attack: 15 frames instead of 150, CI bounds still positive."""
+    data = _minimal_gate_inputs(gate)
+    gate.put(data, "b1/population/frames_consumed_per_arm/delivered_MHR_lod2/subject_00", 15)
+    assert gate.verdicts(data)["B1_the_band"]["verdict"] == "FAIL"
+    data = _minimal_gate_inputs(gate)
+    gate.put(data, "b1/paired/delivered_MHR_lod2_minus_baseline_D7c_rig_subject_01/"
+                   "population_as_named", False)
+    assert gate.verdicts(data)["B1_the_band"]["verdict"] == "FAIL"
+    data = _minimal_gate_inputs(gate)
+    gate.put(data, "b1/population/every_arm_consumed_the_full_take", False)
+    assert gate.verdicts(data)["B1_the_band"]["verdict"] == "FAIL"
+
+
+def test_b1_cells_required_must_account_for_every_excluded_cell(gate):
+    """600 minus the cells the mask cache marks below MIN_MASK_PX, and nothing else."""
+    data = _minimal_gate_inputs(gate)
+    gate.put(data, "b1/population/cells_required/subject_00", 540)
+    assert gate.verdicts(data)["B1_the_band"]["verdict"] == "FAIL"
+    data = _minimal_gate_inputs(gate)
+    gate.put(data, "b1/population/cells_excluded_by_the_mask_cache/subject_00",
+             [["A001", 7], ["A001", 8]])
+    assert gate.verdicts(data)["B1_the_band"]["verdict"] == "FAIL"
 
 
 def test_b1_lower_bound_exactly_zero_is_not_a_pass(gate):

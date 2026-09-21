@@ -32,19 +32,49 @@ DEFAULT_PAIRS = (("fitted_MHR", "baseline_D7c_rig"),
 TRACKLET = json.load(open(ROOT / "artifacts/compare/i6/silhouette-1920x1080-A001.json"))["identity"]["our_subject_to_mask_tracklet"]
 
 
-def per_frame_iou(mesh, masks, scaled, shape):
+def excluded_cells(masks) -> dict:
+    """The (camera, frame) cells the MASK CACHE puts below `MIN_MASK_PX`, per performer.
+
+    A property of the masks alone, so it is identical for every arm and is the ONLY legitimate
+    reason a cell can be missing from B1's population.
+    """
     out = {}
     for s in (0, 1):
+        rows = []
+        for cam in si.CAMERAS:
+            m = masks.get(cam, int(TRACKLET[cam][f"subject_{s:02d}"]))
+            rows += [[cam, int(f)] for f in range(si.FRAMES)
+                     if np.count_nonzero(m[f]) < si.MIN_MASK_PX]
+        out[s] = rows
+    return out
+
+
+def per_frame_iou(mesh, masks, scaled, shape):
+    """Every cell of the NAMED population, or the arm is refused.
+
+    The card names the population: the whole take, the four cameras pooled, per performer --
+    150 frames x 4 cameras = 600 cells. This used to run `min(si.FRAMES, verts.shape[0])` and
+    quietly score whatever was there; Astra's merge round truncated the consumed arrays to 15
+    frames in memory and the gate still read B1 PASS. A short arm is now a hard refusal, not a
+    smaller population.
+    """
+    out, consumed = {}, {}
+    for s in (0, 1):
         verts, faces = mesh[f"verts_{s:02d}"], mesh[f"faces_{s:02d}"]
+        consumed[s] = int(verts.shape[0])
+        if verts.shape[0] != si.FRAMES:
+            raise SystemExit(
+                f"B1's population is 150 frames x 4 cameras per performer; this arm carries "
+                f"{verts.shape[0]} frames for subject {s:02d}. Refusing to score a truncated take.")
         for cam in si.CAMERAS:
             m = masks.get(cam, int(TRACKLET[cam][f"subject_{s:02d}"]))
             ious = np.full(si.FRAMES, np.nan)
-            for f in range(min(si.FRAMES, verts.shape[0])):
+            for f in range(si.FRAMES):
                 if np.count_nonzero(m[f]) < si.MIN_MASK_PX:
                     continue
                 ious[f] = si.score(si.rasterise(verts[f], faces, scaled[cam], shape), m[f])[2]
             out[(s, cam)] = ious
-    return out
+    return out, consumed
 
 
 def paired(a, b, rng):
@@ -83,11 +113,28 @@ def main():
     scaled = {n: c.scaled(*shape) for n, c in rig.items()}
     si.WORK = ROOT / "artifacts/compare/i6"
     masks = si.MaskStore(4, si.CAMERAS)
-    per = {name: per_frame_iou(dict(np.load(p)), masks, scaled, shape) for name, p in arms_in.items()}
+    scored = {name: per_frame_iou(dict(np.load(p)), masks, scaled, shape)
+              for name, p in arms_in.items()}
+    per = {name: rows for name, (rows, _) in scored.items()}
+    consumed = {name: counts for name, (_, counts) in scored.items()}
+    excluded = excluded_cells(masks)
+    required = {s: len(si.CAMERAS) * si.FRAMES - len(excluded[s]) for s in (0, 1)}
     report = {"pre_registration": "artifacts/compare/d4-body/PREREGISTRATION.md",
               "arm_files": {n: str(p) for n, p in arms_in.items()},
               "arm_file_sha256": {n: si.sha256(Path(p)) for n, p in arms_in.items()},
-              "seed": args.seed, "arms": {}, "paired": {}}
+              "seed": args.seed,
+              "population": {
+                  "named": "the whole take, the four cameras pooled, per performer: "
+                           f"{si.FRAMES} frames x {len(si.CAMERAS)} cameras = "
+                           f"{si.FRAMES * len(si.CAMERAS)} cells",
+                  "frames_consumed_per_arm": {n: {f"subject_{s:02d}": counts[s] for s in (0, 1)}
+                                              for n, counts in consumed.items()},
+                  "frames_required": si.FRAMES,
+                  "cells_excluded_by_the_mask_cache": {
+                      f"subject_{s:02d}": excluded[s] for s in (0, 1)},
+                  "cells_required": {f"subject_{s:02d}": required[s] for s in (0, 1)},
+                  "min_mask_px": int(si.MIN_MASK_PX)},
+              "arms": {}, "paired": {}}
     for name, d in per.items():
         report["arms"][name] = {f"subject_{s:02d}": {
             "pooled_median_iou": round(float(np.nanmedian(np.concatenate([d[(s, c)] for c in si.CAMERAS]))), 4),
@@ -98,9 +145,15 @@ def main():
             a = np.concatenate([per[cand][(s, c)] for c in si.CAMERAS])
             b = np.concatenate([per[ref][(s, c)] for c in si.CAMERAS])
             boot, n = paired(a, b, rng)
-            report["paired"][f"{cand}_minus_{ref}_subject_{s:02d}"] = {**boot, "n": n}
+            report["paired"][f"{cand}_minus_{ref}_subject_{s:02d}"] = {
+                **boot, "n": n, "cells_required": required[s],
+                "population_as_named": bool(n == required[s])}
     # Derived, never a literal: each pair's lower CI bound read against zero. The BAND lives in
     # the gate (tools/compare/d4_body_gate.py); this is the same fact the pre-card printed.
+    report["population"]["every_arm_consumed_the_full_take"] = bool(
+        all(count == si.FRAMES for counts in consumed.values() for count in counts.values()))
+    report["population"]["every_pair_scored_the_required_cells"] = bool(
+        all(row["population_as_named"] for row in report["paired"].values()))
     report["lower_ci_above_zero"] = {
         key: bool(value["ci95_of_the_median_difference"][0] > 0)
         for key, value in report["paired"].items()}

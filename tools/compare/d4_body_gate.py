@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 D4 = ROOT / "artifacts/compare/d4-body"
 SHIPPED = ROOT / "artifacts/commercial-multiview-soma77"
+si_cameras = ("A001", "B001", "C001", "D001")
 EIGHT = ("subject-00.glb", "subject-01.glb", "subject-00.body-track.npz",
          "subject-01.body-track.npz", "subject-00.body-track.json", "subject-01.body-track.json",
          "subject-00.mapping.npz", "subject-01.mapping.npz")
@@ -131,6 +132,16 @@ def verdicts(data: dict) -> dict:
     b1 = {s: data["b1"]["paired"][f"delivered_MHR_lod2_minus_baseline_D7c_rig_subject_{s}"]
           for s in ("00", "01")}
     b1_lower = {s: b1[s]["ci95_of_the_median_difference"][0] for s in b1}
+    population = data["b1"]["population"]
+    population_ok = bool(
+        population["every_arm_consumed_the_full_take"]
+        and all(count == population["frames_required"]
+                for counts in population["frames_consumed_per_arm"].values()
+                for count in counts.values())
+        and all(population["cells_required"][f"subject_{s}"]
+                == len(si_cameras) * population["frames_required"]
+                - len(population["cells_excluded_by_the_mask_cache"][f"subject_{s}"])
+                for s in ("00", "01")))
     frozen = data["b1_silhouette"]["arms"]["control_frozen_pose_tracked"]
     ours = data["b1_silhouette"]["arms"]["ours_delivered"]
     frozen_below = all(frozen[cam][s]["iou"] < ours[cam][s]["iou"]
@@ -202,11 +213,27 @@ def verdicts(data: dict) -> dict:
                                           in data["o1_closure_mutations"]["pairs"].values())},
         "B1_the_band": {
             "predicted": "fitted MHR minus the D7c delivery, the LOWER CI bound above zero on "
-                         "BOTH performers (two cells)",
+                         "BOTH performers (two cells), on the NAMED population: the whole take, "
+                         "the four cameras pooled, per performer",
             "measured": {f"subject_{s}": {"median_difference": b1[s]["median_difference"],
                                           "ci95": b1[s]["ci95_of_the_median_difference"],
-                                          "n": b1[s]["n"]} for s in b1},
-            "verdict": "PASS" if all(v > 0 for v in b1_lower.values()) else "FAIL"},
+                                          "n": b1[s]["n"],
+                                          "cells_required": b1[s]["cells_required"],
+                                          "population_as_named": b1[s]["population_as_named"]}
+                         for s in b1},
+            # The population is part of the clause, not a note beside it: Astra's merge round
+            # truncated the consumed arrays to 15 frames and the CI bounds alone still read PASS.
+            "population": {
+                "frames_consumed_per_arm": population["frames_consumed_per_arm"],
+                "frames_required": population["frames_required"],
+                "cells_required": population["cells_required"],
+                "cells_excluded_by_the_mask_cache": population[
+                    "cells_excluded_by_the_mask_cache"],
+                "every_arm_consumed_the_full_take": population[
+                    "every_arm_consumed_the_full_take"]},
+            "verdict": "PASS" if (all(v > 0 for v in b1_lower.values())
+                                  and population_ok
+                                  and all(b1[s]["population_as_named"] for s in b1)) else "FAIL"},
         "B1_silhouette_frozen_pooled": {
             f"{cam}_{s}": frozen[cam][s]["iou"] for cam in frozen for s in frozen[cam]},
         "B1_pooled_medians_REPORTED": {
@@ -375,6 +402,12 @@ MUTATION_TABLE = {
          "reproduction"),
     "O1: the worst seed brought under the band":
         ("o1_readings/oracle/20260924/median_of_per_frame_medians=0.9", "O1_exactness"),
+    "B1: the consumed take truncated to 15 frames (Astra's attack, at the gate)":
+        ("b1/population/frames_consumed_per_arm/delivered_MHR_lod2/subject_00=15",
+         "B1_the_band"),
+    "B1: one pair scored on fewer cells than the population names":
+        ("b1/paired/delivered_MHR_lod2_minus_baseline_D7c_rig_subject_01/"
+         "population_as_named=false", "B1_the_band"),
     "B1: performer 1's lower CI bound put below zero":
         ("b1/paired/delivered_MHR_lod2_minus_baseline_D7c_rig_subject_01/"
          "ci95_of_the_median_difference/0=-0.01", "B1_the_band"),
