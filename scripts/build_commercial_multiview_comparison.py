@@ -466,15 +466,24 @@ def main() -> int:
             **{f"subject_{subject:02d}_triangulated_world_positions_z_up_m": world_positions[subject]
                for subject in range(len(tracks))},
         )
-        _run([
-            str(arguments.mhr_python),
-            str(ROOT / "tools" / "fitter" / "mhr_delivery.py"),
-            "--inputs", str(consumed_dir),
-            "--out", str(output),
-            "--lod", str(arguments.mhr_lod),
-            "--landmarks", arguments.mhr_landmarks,
-            "--subjects", str(len(tracks)),
-        ])
+        # ONE PROCESS PER PERFORMER. A momentum calibration mutates whatever a later
+        # `Character.load_fbx` returns in the same process, so two performers fitted in one
+        # process are not fitted on the same model (measured 2026-09-22; mhr_delivery.py).
+        for subject in range(len(tracks)):
+            _run([
+                str(arguments.mhr_python),
+                str(ROOT / "tools" / "fitter" / "mhr_delivery.py"),
+                "--inputs", str(consumed_dir),
+                "--out", str(output),
+                "--lod", str(arguments.mhr_lod),
+                "--landmarks", arguments.mhr_landmarks,
+                "--subject", str(subject),
+            ])
+        write_json(output / "fit-report.json", {
+            "one_process_per_performer": True,
+            "subjects": {f"subject_{subject:02d}": json.loads(
+                (output / f"fit-report-subject-{subject:02d}.json").read_text(encoding="utf-8"))
+                for subject in range(len(tracks))}})
     body_manifest = (arguments.body_run / "neutral-body.json").resolve(strict=True) \
         if arguments.body == "rig" else None
     body_asset = (arguments.body_run / "neutral-body.npz").resolve(strict=True) \

@@ -22,8 +22,14 @@ Locator offsets are PINNED (limit_weight 10), FITTER_PLAN section 7's honest set
 let the locators absorb the performer and leave the skeleton at the mean. `--free-offsets` is the
 must-fail arm and exists only to be scored.
 
+ONE SUBJECT PER PROCESS. A `calibrate_markers` call mutates whatever a LATER
+`Character.load_fbx(...).load_model_definition(...)` returns in the same process -- the same 204
+model parameters then put the skeleton somewhere else (measured 2026-09-22; `export_glb`'s
+docstring carries the numbers). The pre-card fitted both performers in one process, so its
+performer 1 was fitted on a model performer 0's calibration had moved.
+
 Usage:
-  /tmp/momenv/bin/python tools/fitter/mhr_delivery.py --inputs DIR --out DIR \
+  /tmp/momenv/bin/python tools/fitter/mhr_delivery.py --inputs DIR --out DIR --subject N \
       [--lod 2] [--landmarks smoothed|raw] [--mean-body] [--free-offsets]
 """
 
@@ -161,7 +167,7 @@ def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_b
     motion = np.asarray(mt.process_markers(character, identity, markers, tracking, calibration,
                                            calibrate=False), np.float32)
     positions_cm = fk_positions_cm(character, motion)
-    return {"character": character, "identity": identity, "motion": motion,
+    return {"character": character, "identity": identity, "motion": motion, "lod": lod,
             "parameter_names": parameter_names, "markers": markers,
             "array_cm": array_cm, "positions_cm": positions_cm}
 
@@ -182,16 +188,39 @@ def locator_residual_mm(fit: dict, joint_names: list[str]) -> np.ndarray:
     return out
 
 
-def export_glb(fit: dict, path: Path, fps: float = 30.0) -> None:
+def export_glb(fit: dict, export_character: g.Character, path: Path, fps: float = 30.0) -> None:
     """The skinned GLB. The marker spheres are stripped by exporting a LOCATOR-FREE character.
+
+    Two traps, both measured here (2026-09-22), both of which ship a wrong file silently:
+
+    * `Character.with_locators([])` does NOT clear locators (17 in, 17 out), so the export
+      character cannot be derived from the fitted one. It is loaded separately.
+    * **a character loaded AFTER any `calibrate_markers` call is a DIFFERENT model.** The same
+      204 model parameters put its skeleton somewhere else (skeleton-state sum -53291.87 against
+      -57778.49; the exported mesh moved up to 0.76 m and the glTF animation dropped from 98
+      channels to 79 while still importing cleanly at the right frame range). A character loaded
+      BEFORE the first calibration is unaffected by it -- its export is byte-identical before and
+      after -- so `export_character` is loaded once at the top of the run, and the guard below
+      compares its skeleton state against the FITTED character's on every frame.
 
     `GltfBuilder(fps=...)` is not optional: without it the builder inherits the FBX's 120 fps and
     the take runs 4x fast (Blender then reads an action range of 0..37 instead of 0..149).
     """
-    export_character = fit["character"].with_locators([])
+    if list(export_character.parameter_transform.names) != fit["parameter_names"]:
+        raise SystemExit("the export character's parameters differ from the fitted character's")
+    motion = fit["motion"]
+    worst = 0.0
+    for frame in range(motion.shape[0]):
+        a = np.asarray(g.model_parameters_to_skeleton_state(export_character, motion[frame]))
+        b = np.asarray(g.model_parameters_to_skeleton_state(fit["character"], motion[frame]))
+        worst = max(worst, float(np.abs(a - b).max()))
+    if worst > 1e-4:
+        raise SystemExit(f"the export character is not the fitted character's model: skeleton "
+                         f"states differ by {worst} (see the docstring: load it before calibrating)")
     builder = g.GltfBuilder(fps=fps)
-    builder.add_motion(export_character, fps=fps, motion=(fit["parameter_names"], fit["motion"]))
+    builder.add_motion(export_character, fps=fps, motion=(fit["parameter_names"], motion))
     builder.save(str(path))
+    print(f"    export guard: skeleton states agree to {worst:.3e}", flush=True)
 
 
 def write_track(fit: dict, prefix: Path, *, subject: int, consumed: dict, lod: int,
@@ -261,13 +290,16 @@ def main() -> int:
     parser.add_argument("--landmarks", choices=("smoothed", "raw"), default="smoothed")
     parser.add_argument("--mean-body", action="store_true")
     parser.add_argument("--free-offsets", action="store_true")
-    parser.add_argument("--subjects", type=int, default=2)
+    parser.add_argument("--subject", type=int, required=True,
+                        help="ONE subject per process. A calibration mutates whatever a LATER "
+                             "Character.load_fbx returns in the same process (see export_glb), so "
+                             "two subjects fitted in one process are not fitted on the same model.")
     arguments = parser.parse_args()
     out = arguments.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     key = ("triangulated_world_positions_z_up_m" if arguments.landmarks == "smoothed"
            else "raw_triangulated_world_positions_z_up_m")
-    report = {"arm": ("mean_body" if arguments.mean_body else
+    report = {"subject": arguments.subject, "arm": ("mean_body" if arguments.mean_body else
                       "free_offsets" if arguments.free_offsets else "fitted_pinned_offsets"),
               "lod": arguments.lod, "landmarks": arguments.landmarks,
               "consumed_array_key": key,
@@ -275,7 +307,9 @@ def main() -> int:
               "settings": {"calib_frames": 100, "loss_alpha": 2.0, "max_iter": 30,
                            "smoothing": 0.0, "locator_limit_weight": 0.0 if arguments.free_offsets else 10.0},
               "subjects": {}}
-    for subject in range(arguments.subjects):
+    # Loaded BEFORE any calibration: see `export_glb`'s docstring.
+    export_character = load_character(arguments.lod)
+    for subject in (arguments.subject,):
         # allow_pickle: the file is the build's own converter-input dump from this same run
         # (object arrays; CLAUDE.md), never an outside artifact.
         source = np.load(arguments.inputs / f"subject-{subject:02d}-consumed.npz", allow_pickle=True)
@@ -285,7 +319,7 @@ def main() -> int:
         fit = fit_one(array, joint_names, lod=arguments.lod, mean_body=arguments.mean_body,
                       free_offsets=arguments.free_offsets)
         prefix = out / f"subject-{subject:02d}"
-        export_glb(fit, prefix.with_suffix(".glb"))
+        export_glb(fit, export_character, prefix.with_suffix(".glb"))
         written = write_track(fit, prefix, subject=subject, consumed=consumed, lod=arguments.lod,
                               landmarks=arguments.landmarks, settings=report["settings"],
                               joint_names=joint_names)
@@ -318,8 +352,9 @@ def main() -> int:
               f"{report['subjects'][f'subject_{subject:02d}']['joint_to_landmark_residual_mm_median_over_frames']}"
               f" mm median residual; {len(nonzero)} identity channels; "
               f"{written['joint_positions_z_up_m'].shape[0]} frames", flush=True)
-    (out / "fit-report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
-    print("WROTE", out / "fit-report.json")
+    path = out / f"fit-report-subject-{arguments.subject:02d}.json"
+    path.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    print("WROTE", path)
     return 0
 
 
