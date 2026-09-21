@@ -858,6 +858,11 @@
       "date": "2026-09-22",
       "step": "D4",
       "text": "D4 MERGED OPT-IN 2026-09-22 (285643c, --no-ff): --body mhr available, default rig unchanged, the rig path rebuilds the D7c delivery 8/8; D4 acceptance stays FAIL on O1 and OPEN (status stays in_progress until D4b re-registers O1 prospectively). Extractor wired into the ladder (rungs 1 and 7); close-out running on the rig default."
+    },
+    {
+      "date": "2026-09-22",
+      "step": "D4",
+      "text": "D4 close-out (post_merge.sh D4 on the rig default): the delivery rebuilt in place 8/8 byte-identical to D7c's; every instrument logged under artifacts/compare/post-merge-D4; the D3 gate line-identical to D7c's close-out (exact-skeleton oracle PASS 0.35 mm; the frozen D2c/D3 reference clauses still moved-by-design); head gate line-identical; three instruments first failed on cache paths and pass after restoring the body-provider run from artifacts/compare/d1-fix/body-run-regenerated and downsampled_verts from the Modal volume; the D4 gate rerun reads acceptance FAIL (O1) with every other conjunct PASS. Nothing shipped changed."
     }
   ]
 }
