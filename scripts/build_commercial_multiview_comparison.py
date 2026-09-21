@@ -342,11 +342,34 @@ def main() -> int:
         help="D3: the rest skeleton the tracks are built on. 'canonical' is an instrument "
              "arm (the gate's bit-identity check), never the delivery.",
     )
+    parser.add_argument(
+        "--body",
+        choices=("rig", "mhr"),
+        default="rig",
+        help="D4: the body the delivery carries. 'rig' is the AutoAnim-55 rig driving the MPFB "
+             "asset (the path every step up to D7c shipped). 'mhr' fits MHR (Meta's open body "
+             "model, Apache; momentum, MIT) to the SAME converter output and delivers MHR's own "
+             "mesh and skeleton under schema autoanim.body-track/2.0-mhr. The rig path is "
+             "untouched by the choice and stays selectable.",
+    )
+    parser.add_argument("--mhr-lod", type=int, default=2,
+                        help="D4: MHR mesh LOD for the delivered body (2 = 10,661 vertices).")
+    parser.add_argument("--mhr-landmarks", choices=("smoothed", "raw"), default="smoothed",
+                        help="D4: which converter array the MHR fit consumes. 'smoothed' is the "
+                             "delivery (the SAME denominator as the rig, with D8/D8b/D8c's "
+                             "repairs); 'raw' reproduces the pre-card.")
+    parser.add_argument("--mhr-python", type=Path, default=Path("/tmp/momenv/bin/python"),
+                        help="D4: the interpreter carrying pymomentum. The build runs on .venv, "
+                             "which has no pymomentum, so the fit is a subprocess.")
     arguments = parser.parse_args()
     if arguments.end_frame - arguments.start_frame < 2:
         raise ValueError("Comparison requires at least two frames")
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    # Which `autoanim_gnm` is this? A worktree run without PYTHONPATH=$PWD/src silently
+    # measures the main checkout's source through .venv's editable install (D7c's rule).
+    import autoanim_gnm as _package
+    print(f"autoanim_gnm resolved to {Path(_package.__file__).resolve().parent}", flush=True)
     _compile_worker()
     camera_names = ("A001", "B001", "C001", "D001")
     observations: list[list[dict[str, Any]]] = []
@@ -420,9 +443,43 @@ def main() -> int:
         sample_rate_hz=30,
         rest_skeleton=arguments.rest_skeleton,
     )
-    body_manifest = (arguments.body_run / "neutral-body.json").resolve(strict=True)
-    body_asset = (arguments.body_run / "neutral-body.npz").resolve(strict=True)
-    for subject, track in enumerate(tracks):
+    if arguments.body == "mhr":
+        # D4. The MHR fit runs under a different interpreter, so the array it consumes crosses a
+        # process boundary and is WRITTEN HERE, from the same `world_positions` the rig converter
+        # was handed on this build. That file is B2's artefact: it is the array actually handed to
+        # the adapter, not a re-derivation of it.
+        consumed_dir = output / "converter-inputs"
+        consumed_dir.mkdir(parents=True, exist_ok=True)
+        for subject, track in enumerate(tracks):
+            write_npz(
+                consumed_dir / f"subject-{subject:02d}-consumed.npz",
+                joint_names=np.asarray(list(JOINT_NAMES)),
+                ticks=track.ticks,
+                triangulated_world_positions_z_up_m=world_positions[subject],
+                raw_triangulated_world_positions_z_up_m=raw_world_positions[subject],
+            )
+        # The rig converter's own input on this same build, dumped separately so B2 compares two
+        # files rather than one file against itself.
+        write_npz(
+            consumed_dir / "rig-converter-input.npz",
+            joint_names=np.asarray(list(JOINT_NAMES)),
+            **{f"subject_{subject:02d}_triangulated_world_positions_z_up_m": world_positions[subject]
+               for subject in range(len(tracks))},
+        )
+        _run([
+            str(arguments.mhr_python),
+            str(ROOT / "tools" / "fitter" / "mhr_delivery.py"),
+            "--inputs", str(consumed_dir),
+            "--out", str(output),
+            "--lod", str(arguments.mhr_lod),
+            "--landmarks", arguments.mhr_landmarks,
+            "--subjects", str(len(tracks)),
+        ])
+    body_manifest = (arguments.body_run / "neutral-body.json").resolve(strict=True) \
+        if arguments.body == "rig" else None
+    body_asset = (arguments.body_run / "neutral-body.npz").resolve(strict=True) \
+        if arguments.body == "rig" else None
+    for subject, track in (enumerate(tracks) if arguments.body == "rig" else ()):
         prefix = output / f"subject-{subject:02d}"
         write_json(prefix.with_suffix(".body-track.json"), track.as_dict())
         write_npz(
@@ -496,7 +553,11 @@ def main() -> int:
                     if arguments.detector == "soma77"
                     else "Apple Vision VNDetectHumanBodyPoseRequest"
                 ),
-                "body_asset": "existing AutoAnim detailed-hands asset",
+                "body_asset": ("existing AutoAnim detailed-hands asset"
+                               if arguments.body == "rig"
+                               else "MHR (Meta open release, Apache) via momentum (MIT)"),
+                # D4: which body the delivery carries. The rig path is unchanged by the choice.
+                "body": arguments.body,
             },
             "frame_window": [arguments.start_frame, arguments.end_frame],
             # taken from the observations rather than the CLI argument, so the
