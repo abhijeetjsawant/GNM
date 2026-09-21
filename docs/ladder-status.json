@@ -853,6 +853,11 @@
       "date": "2026-09-22",
       "step": "D4",
       "text": "Astra's one merge round on D4 (e209eea): NO MERGE -- the coordinator's 'O1 a recorded exception' was an override (never merge on an override), and the gate accepted a 15-frame truncation of B1 and left the frozen control, closure and mean-body must-fail unwired. DISPOSITION (2026-09-22): D4's ACCEPTANCE = FAIL on O1 (1.030 mm vs 1 mm; B1 +0.156/+0.115 PASS, B2 PASS, hygiene 8/8); the implementation merges OPT-IN (--body mhr; default rig unchanged; nothing shipped changes) after the agent's gate repair; O1 is re-registered prospectively as D4b (statistic, calibrated baseline from the measured 0.757 mm tracker floor, identifiable channels, mean-body rejection, fresh fixtures); the default flip is its own gated integration step (compositor, schema-aware checks, instrument compatibility, an end-to-end MHR rebuild). No further review rounds on D4."
+    },
+    {
+      "date": "2026-09-22",
+      "step": "D4",
+      "text": "D4 MERGED OPT-IN 2026-09-22 (285643c, --no-ff): --body mhr available, default rig unchanged, the rig path rebuilds the D7c delivery 8/8; D4 acceptance stays FAIL on O1 and OPEN (status stays in_progress until D4b re-registers O1 prospectively). Extractor wired into the ladder (rungs 1 and 7); close-out running on the rig default."
     }
   ]
 }

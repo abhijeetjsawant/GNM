@@ -239,8 +239,9 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f10, c10 = _d8c_figures("masks")
     f11, c11 = _d9b_figures("masks")
     f12, c12 = _d7c_figures("masks")
-    return (figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12,
-            ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12)
+    f13, c13 = _d4_figures("masks")
+    return (figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13,
+            ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13)
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -314,8 +315,9 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f10, c10 = _d8c_figures("converter")
     f11, c11 = _d9b_figures("converter")
     f12, c12 = _d7c_figures("converter")
-    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12,
-            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12)
+    f13, c13 = _d4_figures("converter")
+    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13,
+            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13)
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -482,6 +484,27 @@ def _d7c_figures(where: str) -> tuple[list, list]:
         if key.startswith("silhouette_"):
             return "masks"
         return "converter"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d4_figures(where: str) -> tuple[list, list]:
+    """D4 figures from `tools/compare/extractors/d4_body_model.py` (the agent's stub, wired here by the registry
+    owner): `silhouette_` to rung 1, the rest to rung 7. D4 merged 2026-09-22 as an OPT-IN implementation
+    (`--body mhr`, the default `rig` unchanged): MHR fitted by momentum to the same repaired landmarks the rig
+    consumes and delivered as its own mesh reads 0.803 / 0.767 silhouette IoU against the rig's 0.647 / 0.652
+    (+0.156 / +0.115, CIs clear). Stated: D4's ACCEPTANCE is FAIL and open -- the synthetic exactness oracle read
+    1.030 mm against a 1 mm band written without the tracker's own floor (0.757 mm measured); O1 is re-registered
+    prospectively as D4b and the default flip is its own gated integration step."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d4_body_model  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d4_body_model.x_body_model({})
+
+    def dest(key: str) -> str:
+        return "masks" if key.startswith("silhouette_") else "converter"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
 
@@ -1611,6 +1634,12 @@ def _splice_d7_visuals() -> None:
         return
     VISUALS["pose"][0:0] = d7c_pelvis_rest.VISUALS.get("converter", [])
     VISUALS["masks"][0:0] = d7c_pelvis_rest.VISUALS.get("masks", [])
+    try:
+        from extractors import d4_body_model  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["pose"][0:0] = d4_body_model.VISUALS.get("converter", [])
+    VISUALS["masks"][0:0] = d4_body_model.VISUALS.get("masks", [])
 
 
 

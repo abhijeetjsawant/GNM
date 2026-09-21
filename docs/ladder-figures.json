@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-15T02:54:15",
+ "rendered": "2026-09-22T02:12:11",
  "git": {
-  "sha": "2429506",
+  "sha": "285643c",
   "dirty": true
  },
  "rungs": [
@@ -930,6 +930,47 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D4: on a body we built on purpose, how close does the fit get?",
+     "plain": "Six synthetic bodies with a known answer; lower is better. The blue bar is our fit. The aqua bar beside it is the best this solver can do when it is HANDED the right body and only has to find the pose -- that is the floor, and our bar is close to it. The hatched bar is what happens if you skip fitting the body at all: it is ten to forty times worse, which is the whole point of the check.",
+     "better": "lower",
+     "unit": "mm",
+     "bars": [
+      {
+       "label": "Our fit (worst of six)",
+       "role": "ours",
+       "value": 1.03
+      },
+      {
+       "label": "The floor: the right body handed in",
+       "role": "alt",
+       "value": 0.7568
+      },
+      {
+       "label": "No body fit at all (deliberately wrong)",
+       "role": "control",
+       "value": 9.5662
+      }
+     ]
+    },
+    {
+     "title": "D4: how close does the delivered skeleton sit to the points we tracked?",
+     "plain": "Our own tracked landmarks are the reference; lower is better. This is reported, not a pass mark: the fit is deliberately not allowed to slide its markers, so wherever the body model's idea of a joint differs from the tracker's, that difference shows up here as error.",
+     "better": "lower",
+     "unit": "mm",
+     "bars": [
+      {
+       "label": "Performer 0",
+       "role": "ours",
+       "value": 19.853
+      },
+      {
+       "label": "Performer 1",
+       "role": "ours",
+       "value": 18.443
+      }
+     ]
+    },
     {
      "title": "D9b: does each bone point where it was told to point?",
      "plain": "After every bone had been aimed, the automatic floor-contact step slid the whole character sideways to plant a foot -- and the bones kept pointing along the lines they were aimed along from where they used to be. This chart measures, on the frames that slide happens, how far each bone's target sits off the line the bone actually points along. Lower is better and zero is achievable exactly. The hatched bars are the build before this step.",
