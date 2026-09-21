@@ -301,13 +301,35 @@ def main() -> int:
     parser.add_argument("--landmarks", choices=("smoothed", "raw"), default="smoothed")
     parser.add_argument("--mean-body", action="store_true")
     parser.add_argument("--free-offsets", action="store_true")
-    parser.add_argument("--subject", type=int, required=True,
+    parser.add_argument("--dump-reference", type=Path,
+                        help="B5: write MHR's OWN rest, hierarchy and skin weights at this lod to "
+                             "an npz and exit, so a .venv instrument can compare the delivered "
+                             "GLB's bytes against the model they must have come from.")
+    parser.add_argument("--subject", type=int, required=False,
                         help="ONE subject per process. A calibration mutates whatever a LATER "
                              "Character.load_fbx returns in the same process (see export_glb), so "
                              "two subjects fitted in one process are not fitted on the same model.")
     arguments = parser.parse_args()
     out = arguments.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
+    if arguments.dump_reference is not None:
+        character = load_character(arguments.lod)
+        skeleton = character.skeleton
+        rest = np.asarray(g.model_parameters_to_skeleton_state(
+            character, np.zeros(len(character.parameter_transform.names), np.float32)))
+        weights = character.skin_weights
+        np.savez(arguments.dump_reference,
+                 joint_names=np.array(list(skeleton.joint_names)),
+                 joint_parents=np.asarray(skeleton.joint_parents),
+                 joint_offsets=np.asarray(skeleton.offsets),
+                 rest_world_cm=rest[..., :3],
+                 mesh_vertex_count=np.asarray(character.mesh.vertices.shape[0]),
+                 skin_index=np.asarray(weights.index), skin_weight=np.asarray(weights.weight),
+                 lod=np.asarray(arguments.lod))
+        print("WROTE", arguments.dump_reference)
+        return 0
+    if arguments.subject is None:
+        raise SystemExit("--subject is required")
     key = ("triangulated_world_positions_z_up_m" if arguments.landmarks == "smoothed"
            else "raw_triangulated_world_positions_z_up_m")
     report = {"subject": arguments.subject, "arm": ("mean_body" if arguments.mean_body else
