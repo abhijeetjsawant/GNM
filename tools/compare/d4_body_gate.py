@@ -20,6 +20,7 @@ as a pass. Re-pinning O1 relative to the measured floor is instrument debt for t
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -34,6 +35,30 @@ PRECARD = {"subject_00": 0.789, "subject_01": 0.730}
 REPRODUCTION_TOLERANCE = 0.001
 O1_BAND_MM = 1.0
 CLOSURE_BAND_M = 1e-4
+
+
+NICE = {"hygiene": "hygiene", "reproduction": "reproduction", "B1_the_band": "B1",
+        "B2_same_denominator": "B2", "O1_exactness": "O1"}
+BUILD_SCRIPT = ROOT / "scripts/build_commercial_multiview_comparison.py"
+
+
+def build_script_body_argument() -> dict:
+    """The `--body` default and choices read out of the BUILD SCRIPT'S SOURCE.
+
+    The opt-in line may not rest on a promise in a document: it rests on what the script does.
+    """
+    tree = ast.parse(BUILD_SCRIPT.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "add_argument" and node.args
+                and isinstance(node.args[0], ast.Constant) and node.args[0].value == "--body"):
+            keywords = {k.arg: k.value for k in node.keywords}
+            default = keywords.get("default")
+            choices = keywords.get("choices")
+            return {"default_body": default.value if isinstance(default, ast.Constant) else None,
+                    "body_choices": [c.value for c in choices.elts]
+                                    if isinstance(choices, (ast.Tuple, ast.List)) else []}
+    return {"default_body": None, "body_choices": []}
 
 
 def sha256(path: Path) -> str:
@@ -69,6 +94,7 @@ def load_inputs() -> dict:
             f"free-offsets-lod2/fit-report-subject-{s:02d}.json")["subjects"][f"subject_{s:02d}"]
             for s in (0, 1)},
         "fit_report": read("delivery/fit-report.json"),
+        "source": build_script_body_argument(),
     }
 
 
@@ -288,16 +314,54 @@ def verdicts(data: dict) -> dict:
             "verdict": "the arm FAILS as a must-fail must (half A holds); the PREDICTION's half B "
                        "is FALSE and is recorded as a failed prediction"},
     }
+    # THE CARD'S CONJUNCTION, and nothing else. There is no exception branch: an exception is an
+    # override, the lane forbids merging on one (CLAUDE.md), and Astra's merge round found this
+    # gate returning MERGE while a required conjunct failed. The coordinator withdrew it on
+    # 2026-09-22. O1 FAILS, so D4's ACCEPTANCE is FAIL, and that is the only verdict this
+    # conjunction produces.
     conjuncts = ("hygiene", "reproduction", "O1_exactness", "B1_the_band", "B2_same_denominator")
     failing = [c for c in conjuncts if out[c]["verdict"] != "PASS"]
-    out["merge_rule"] = {
+    passing = [c for c in conjuncts if out[c]["verdict"] == "PASS"]
+    detail = []
+    if "O1_exactness" in failing:
+        detail.append(f"O1 {out['O1_exactness']['measured_max_over_seeds_mm']:.3f} mm > "
+                      f"{O1_BAND_MM:g} mm")
+    detail += [c for c in failing if c != "O1_exactness"]
+    line = ("D4 ACCEPTANCE: PASS" if not failing else
+            "D4 ACCEPTANCE: FAIL (" + "; ".join(detail)
+            + (("; " + ", ".join(NICE.get(c, c) for c in passing) + " PASS") if passing else "")
+            + ")")
+    out["D4_acceptance"] = {
         "rule": "hygiene AND the reproduction AND O1 AND B1 on both performers AND B2",
         "conjuncts": {c: out[c]["verdict"] for c in conjuncts},
         "failing_conjuncts": failing,
-        "recorded_exceptions": ["O1_exactness"],
-        "merge": ("MERGE with O1 a recorded exception"
-                  if failing == ["O1_exactness"] else
-                  "MERGE" if not failing else f"NO MERGE: {failing}")}
+        "verdict": "PASS" if not failing else "FAIL",
+        "line": line}
+
+    # A SEPARATE THING, and the only thing that merges. Derived from three facts, each of them a
+    # leaf a mutation can reach: the rig rebuild is byte-identical, the build script's `--body`
+    # default is still `rig` in the SOURCE, and `mhr` is reachable only by asking for it. It
+    # carries no acceptance claim: D4's acceptance is open and O1's failure stands.
+    default_body = data["source"]["default_body"]
+    optin = {
+        "hygiene_byte_identical": out["hygiene"]["verdict"] == "PASS",
+        "source_default_body": default_body,
+        "default_is_rig": default_body == "rig",
+        "mhr_is_opt_in": "mhr" in data["source"]["body_choices"],
+        "what_merges": "the --body mhr implementation and its instruments; nothing shipped "
+                       "changes, because the default stays rig",
+        "acceptance": out["D4_acceptance"]["verdict"],
+    }
+    optin["mergeable"] = bool(optin["hygiene_byte_identical"] and optin["default_is_rig"]
+                              and optin["mhr_is_opt_in"])
+    optin["line"] = (
+        "OPT-IN IMPLEMENTATION: mergeable behind --body rig default (coordinator decision "
+        "2026-09-22, acceptance open)" if optin["mergeable"] else
+        "OPT-IN IMPLEMENTATION: NOT mergeable (" + ", ".join(
+            name for name, ok in (("hygiene", optin["hygiene_byte_identical"]),
+                                  ("default is rig", optin["default_is_rig"]),
+                                  ("mhr is opt-in", optin["mhr_is_opt_in"])) if not ok) + ")")
+    out["opt_in_implementation"] = optin
     return out
 
 
@@ -340,7 +404,8 @@ def mutation_table(baseline: dict) -> dict:
                        "mutated_verdict": moved[conjunct]["verdict"],
                        "the_conjunct_turned":
                            moved[conjunct]["verdict"] != baseline[conjunct]["verdict"],
-                       "merge_line": moved["merge_rule"]["merge"]}
+                       "acceptance_line": moved["D4_acceptance"]["line"],
+                       "opt_in_line": moved["opt_in_implementation"]["line"]}
     rows["every_conjunct_turns"] = all(r["the_conjunct_turned"] for r in rows.values()
                                        if isinstance(r, dict))
     return rows
@@ -365,7 +430,9 @@ def main() -> int:
     if not applied:
         report["input_mutation_table"] = mutation_table(report)
     Path(arguments.out).write_text(json.dumps(report, indent=1), encoding="utf-8")
-    print(json.dumps(report["merge_rule"], indent=1))
+    print(report["D4_acceptance"]["line"])
+    print(report["opt_in_implementation"]["line"])
+    print(json.dumps(report["D4_acceptance"]["conjuncts"], indent=1))
     return 0
 
 

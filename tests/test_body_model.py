@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -228,6 +229,7 @@ def _minimal_gate_inputs(gate):
                 "subject_01": {"pooled_median_iou": 0.7503}}},
             "paired": {f"buildscript_MHR_lod6_raw_oneprocess_minus_precard_fitted_MHR_"
                        f"subject_{s}": {"median_difference": 0.0} for s in ("00", "01")}},
+        "source": {"default_body": "rig", "body_choices": ["rig", "mhr"]},
         "fit_report": {"one_process_per_performer": True,
                        "subjects": {f"subject_{s}": {"subjects": {f"subject_{s}": {
                            "mesh_vertices": 10661, "nonzero_identity_channels": 13,
@@ -240,7 +242,7 @@ def _minimal_gate_inputs(gate):
 def test_the_gate_derives_its_verdicts_and_every_conjunct_turns(gate):
     data = _minimal_gate_inputs(gate)
     baseline = gate.verdicts(data)
-    assert baseline["merge_rule"]["conjuncts"] == {
+    assert baseline["D4_acceptance"]["conjuncts"] == {
         "hygiene": "PASS", "reproduction": "PASS", "O1_exactness": "PASS",
         "B1_the_band": "PASS", "B2_same_denominator": "PASS"}
 
@@ -262,17 +264,42 @@ def test_the_gate_derives_its_verdicts_and_every_conjunct_turns(gate):
         gate.put(mutated, path, value)
         moved = gate.verdicts(mutated)
         assert moved[conjunct]["verdict"] == "FAIL", conjunct
-        assert conjunct in moved["merge_rule"]["failing_conjuncts"]
+        assert conjunct in moved["D4_acceptance"]["failing_conjuncts"]
 
 
-def test_the_o1_exception_is_recorded_as_a_fail_never_as_a_pass(gate):
+def test_a_failing_o1_makes_acceptance_fail_and_there_is_no_exception_branch(gate):
+    """An exception is an override, and the lane forbids merging on one (Astra, 2026-09-22)."""
     data = _minimal_gate_inputs(gate)
     data["o1_readings"]["oracle"]["a"]["median_of_per_frame_medians"] = 1.03
     report = gate.verdicts(data)
     assert report["O1_exactness"]["verdict"] == "FAIL"
-    assert "recorded_exception" in report["O1_exactness"]
-    assert report["merge_rule"]["merge"] == "MERGE with O1 a recorded exception"
-    assert report["merge_rule"]["failing_conjuncts"] == ["O1_exactness"]
+    assert report["D4_acceptance"]["verdict"] == "FAIL"
+    assert report["D4_acceptance"]["failing_conjuncts"] == ["O1_exactness"]
+    assert report["D4_acceptance"]["line"].startswith("D4 ACCEPTANCE: FAIL")
+    assert "1.030 mm > 1 mm" in report["D4_acceptance"]["line"]
+    assert "MERGE" not in report["D4_acceptance"]["line"]
+    # the whole gate, serialised, must not offer a merge on a failing conjunct anywhere
+    assert "MERGE with O1" not in json.dumps(report)
+
+
+def test_the_opt_in_line_needs_hygiene_and_a_rig_default_in_the_source(gate):
+    data = _minimal_gate_inputs(gate)
+    data["o1_readings"]["oracle"]["a"]["median_of_per_frame_medians"] = 1.03
+    report = gate.verdicts(data)
+    optin = report["opt_in_implementation"]
+    assert optin["mergeable"] is True
+    assert optin["line"].startswith("OPT-IN IMPLEMENTATION: mergeable behind --body rig default")
+    assert optin["acceptance"] == "FAIL"          # it carries no acceptance claim
+    for path in ("source/default_body", "hygiene/rebuild_sha256/" + gate.EIGHT[0]):
+        mutated = _minimal_gate_inputs(gate)
+        gate.put(mutated, path, "mhr" if path.endswith("default_body") else "moved")
+        assert gate.verdicts(mutated)["opt_in_implementation"]["mergeable"] is False
+
+
+def test_the_real_build_script_still_defaults_to_rig(gate):
+    parsed = gate.build_script_body_argument()
+    assert parsed["default_body"] == "rig"
+    assert "mhr" in parsed["body_choices"]
 
 
 def test_b1_lower_bound_exactly_zero_is_not_a_pass(gate):
