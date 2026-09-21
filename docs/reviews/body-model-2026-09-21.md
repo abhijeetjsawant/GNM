@@ -332,8 +332,17 @@ one mesh, not eighteen.
 * **B5's facing clause and B3's neck/root/head groups** (56.6/72.4, 40.5/44.0, 39.8/38.8 mm) are
   convention gaps between MHR's joints and SOMA-77's landmarks, not fit error, and pinned offsets
   refuse to model them by design.
-* **Pre-existing, not D4's**: four tests fail on this checkout and fail identically at the base
-  commit `803f111` — `test_body_compositor`, `test_body_export`, and two in `test_phase4_app`.
+* **Pre-existing, not D4's — confirmed by name at the base commit.** Four tests fail on this
+  checkout and fail identically in a throwaway worktree at `803f111` (the commit D4 branched
+  from), with `src/` untouched by this step:
+  * `tests/test_body_compositor.py::test_unified_preview_is_explicitly_diagnostic_and_uses_one_video_clock`
+  * `tests/test_body_export.py::test_export_animated_body_glb_is_one_skin_one_timeline_and_hash_bound`
+  * `tests/test_phase4_app.py::test_home_and_health`
+  * `tests/test_phase4_app.py::test_api_blank_image_returns_typed_error`
+
+  Full suite at HEAD: **1209 passed, 4 failed, 48 skipped**; the same four, and D4's own
+  `tests/test_body_model.py` is **15 passed**
+  (`artifacts/compare/d4-body/logs/33-full-suite-at-HEAD.log`).
   `.cache/autoanim_gnm` was wiped between 2026-09-15 and 2026-09-21, so `DEFAULT_BODY_RUN` no
   longer resolves and the rig rebuild needs
   `--body-run artifacts/compare/d1-fix/body-run-regenerated`.
