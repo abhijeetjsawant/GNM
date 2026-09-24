@@ -1,0 +1,50 @@
+{
+ "step": "D4b",
+ "stage": 1,
+ "date": "2026-09-24",
+ "sha256": {
+  "fitter tools/fitter/mhr_delivery.py": "3136befb6cd0415fe746a208f73e15be0f1c8af1ad3594cad277c7f9e5b13535",
+  "D4 fixture tools/fitter/d4_o1_exactness.py (imported, never edited)": "24c92d4c876ccaec87cfb09ead3b4462ed410b411351323ef5f05a2777d97ab0",
+  "donor 0 artifacts/compare/d4-body/fitted/motion_0.npz": "a485d0567920fb9bd37f26747dd8f67a8140ad95583467b9f184e7462e6b3cdc",
+  "donor 1 artifacts/compare/d4-body/fitted/motion_1.npz": "c4901716e459a3b51532b37d1537ba9442bf563e7981903b9a99162f2748b159",
+  "model .cache/mhr/assets/compact_v6_1.model": "9b4e48e6216296c0a8a47e8e1d210b42ca8b194b9f61409adc5d7a3873dcf08e",
+  "fbx .cache/mhr/assets/lod2.fbx": "2d49872b57f07181302e268124f6528a64de319a048b375d3cb5af5e8bcf94da",
+  "joint layout artifacts/compare/d4-body/repro-v2/converter-inputs/subject-00-consumed.npz": "003efbde37684e0aa57b34430e82078e5d039bf480b08a3c149aaf95e6718095"
+ },
+ "fitter_sha256_expected_by_the_card": "3136befb6cd0415fe746a208f73e15be0f1c8af1ad3594cad277c7f9e5b13535",
+ "fitter_sha256_recorded_in_D4_o1_cells": "8ff8d973 (the O1-stage source before the reference-dump CLI; fit_one unchanged)",
+ "environment": {
+  "momenv": "/tmp/momenv, rebuilt 2026-09-24: uv venv /tmp/momenv --python 3.12; uv pip install --python /tmp/momenv/bin/python pymomentum-cpu",
+  "pymomentum-cpu": "0.1.114.post0",
+  "numpy": "2.5.3",
+  "torch": "2.8.0",
+  "python": "3.12.13",
+  "platform": "macOS-26.2-arm64-arm-64bit"
+ },
+ "environment_reproduces_D4": {
+  "seed 20260922 exact_identity": {
+   "retained_truth_npz_sha256": "a203bca02c0809cc94b9efa86bf115a644173f147367c2675dcdec182d2917bf",
+   "rerun_truth_npz_sha256": "a203bca02c0809cc94b9efa86bf115a644173f147367c2675dcdec182d2917bf",
+   "truth_motion_identical": true,
+   "fitted_positions_identical": true,
+   "pooled_statistic_mm_retained": 0.5059,
+   "pooled_statistic_mm_rerun": 0.5059,
+   "max_abs_per_joint_median_difference_mm": 0.0,
+   "recovered_scale_spine_length_retained": 1.082006573677063,
+   "recovered_scale_spine_length_rerun": 1.082006573677063
+  },
+  "seed 20260922 oracle": {
+   "retained_truth_npz_sha256": "0a55886e6c06e4ddb64a6566a33a831df88895f27c4c28cb0ede104789f1ffeb",
+   "rerun_truth_npz_sha256": "0a55886e6c06e4ddb64a6566a33a831df88895f27c4c28cb0ede104789f1ffeb",
+   "truth_motion_identical": true,
+   "fitted_positions_identical": true,
+   "pooled_statistic_mm_retained": 0.8533,
+   "pooled_statistic_mm_rerun": 0.8533,
+   "max_abs_per_joint_median_difference_mm": 0.0,
+   "recovered_scale_spine_length_retained": 0.8930655121803284,
+   "recovered_scale_spine_length_rerun": 0.8930655121803284
+  }
+ },
+ "base_commit": "f91444b3d871a8d7b04ef5510a45d97744e9c607",
+ "environment_reproduces_D4_note": "tools/fitter/d4_o1_exactness.py --seed 20260922 --arm {exact_identity,oracle} rerun under the rebuilt momenv and the current fitter (3136befb) into artifacts/compare/d4b-o1/env-repro: the truth.npz files are byte-identical to D4's retained cells, so the 8ff8d973 -> 3136befb hash change is inert on fit_one and this environment is D4's. This is a reproduction of a retained cell, not a fixture of D4b."
+}
