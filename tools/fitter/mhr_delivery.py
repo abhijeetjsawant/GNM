@@ -160,7 +160,7 @@ START_CHANNEL_SEGMENTS = {
 # The NON-RIGID trunk (flexion shortens the root->c_neck chord): the per-frame statistic, the card's ONE
 # development choice from {median, p90, p95}, frozen at stage 3 in docs/reviews/body-model-start-records/
 # development.json. Every other segment reads the median.
-TRUNK_STATISTIC: str | None = None
+TRUNK_STATISTIC: str | None = "p90"
 STATISTIC_PERCENTILE = {"median": 50.0, "p90": 90.0, "p95": 95.0}
 
 
