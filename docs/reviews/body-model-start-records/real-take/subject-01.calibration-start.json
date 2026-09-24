@@ -1,0 +1,214 @@
+{
+ "trunk_statistic": "p90",
+ "calibration_frames": 150,
+ "channels": {
+  "scale_spine_length": {
+   "segments": [
+    [
+     "root",
+     "c_neck"
+    ]
+   ],
+   "percentile": 90.0,
+   "landmark_length_mm": 533.6814853820006,
+   "per_side_mm": [
+    533.6814853820006
+   ],
+   "rest_length_zero_identity_mm": 517.96875,
+   "k_mm_per_unit": 99.884033203125,
+   "limit": [
+    -1.1,
+    1.1
+   ],
+   "unclipped": 0.1573097809341257,
+   "start": 0.15730978548526764,
+   "nonfinite_frame_lengths": 0
+  },
+  "scale_neck_length": {
+   "segments": [
+    [
+     "c_neck",
+     "c_head"
+    ]
+   ],
+   "percentile": 50.0,
+   "landmark_length_mm": 56.553142336589644,
+   "per_side_mm": [
+    56.553142336589644
+   ],
+   "rest_length_zero_identity_mm": 99.29255485534668,
+   "k_mm_per_unit": 100.00007152557373,
+   "limit": [
+    -0.4,
+    0.4
+   ],
+   "unclipped": -0.42739381949168886,
+   "start": -0.4000000059604645,
+   "nonfinite_frame_lengths": 0
+  },
+  "scale_shoulder_width": {
+   "segments": [
+    [
+     "l_uparm",
+     "r_uparm"
+    ]
+   ],
+   "percentile": 50.0,
+   "landmark_length_mm": 363.86699372136144,
+   "per_side_mm": [
+    363.86699372136144
+   ],
+   "rest_length_zero_identity_mm": 351.72203063964844,
+   "k_mm_per_unit": 199.88021850585938,
+   "limit": [
+    -0.2,
+    0.2
+   ],
+   "unclipped": 0.06076120574861671,
+   "start": 0.06076120585203171,
+   "nonfinite_frame_lengths": 0
+  },
+  "scale_uparms": {
+   "segments": [
+    [
+     "l_uparm",
+     "l_lowarm"
+    ],
+    [
+     "r_uparm",
+     "r_lowarm"
+    ]
+   ],
+   "percentile": 50.0,
+   "landmark_length_mm": 275.4883156893653,
+   "per_side_mm": [
+    276.98871277563575,
+    273.98791860309484
+   ],
+   "rest_length_zero_identity_mm": 256.80134773254395,
+   "k_mm_per_unit": 99.99987602233887,
+   "limit": [
+    -1.0,
+    1.0
+   ],
+   "unclipped": 0.18686991124515903,
+   "start": 0.18686990439891815,
+   "nonfinite_frame_lengths": 0
+  },
+  "scale_lowarms": {
+   "segments": [
+    [
+     "l_lowarm",
+     "l_wrist"
+    ],
+    [
+     "r_lowarm",
+     "r_wrist"
+    ]
+   ],
+   "percentile": 50.0,
+   "landmark_length_mm": 253.7994593122179,
+   "per_side_mm": [
+    253.09653538071984,
+    254.502383243716
+   ],
+   "rest_length_zero_identity_mm": 270.0000190734863,
+   "k_mm_per_unit": 99.99998092651367,
+   "limit": [
+    -1.0,
+    1.0
+   ],
+   "unclipped": -0.16200562851280564,
+   "start": -0.16200563311576843,
+   "nonfinite_frame_lengths": 0
+  },
+  "scale_hip_width": {
+   "segments": [
+    [
+     "l_upleg",
+     "r_upleg"
+    ]
+   ],
+   "percentile": 50.0,
+   "landmark_length_mm": 214.71766767847845,
+   "per_side_mm": [
+    214.71766767847845
+   ],
+   "rest_length_zero_identity_mm": 164.09299850463867,
+   "k_mm_per_unit": 200.0,
+   "limit": [
+    -0.5,
+    0.5
+   ],
+   "unclipped": 0.25312334586919893,
+   "start": 0.25312334299087524,
+   "nonfinite_frame_lengths": 0
+  },
+  "scale_uplegs": {
+   "segments": [
+    [
+     "l_upleg",
+     "l_lowleg"
+    ],
+    [
+     "r_upleg",
+     "r_lowleg"
+    ]
+   ],
+   "percentile": 50.0,
+   "landmark_length_mm": 404.02211397055476,
+   "per_side_mm": [
+    400.60853287797926,
+    407.4356950631302
+   ],
+   "rest_length_zero_identity_mm": 419.76497650146484,
+   "k_mm_per_unit": 99.98481750488281,
+   "limit": [
+    -0.5,
+    0.5
+   ],
+   "unclipped": -0.15745253053186092,
+   "start": -0.1574525237083435,
+   "nonfinite_frame_lengths": 0
+  },
+  "scale_lowlegs": {
+   "segments": [
+    [
+     "l_lowleg",
+     "l_foot"
+    ],
+    [
+     "r_lowleg",
+     "r_foot"
+    ]
+   ],
+   "percentile": 50.0,
+   "landmark_length_mm": 404.7474989365512,
+   "per_side_mm": [
+    405.3583934246261,
+    404.13660444847636
+   ],
+   "rest_length_zero_identity_mm": 420.58300018310547,
+   "k_mm_per_unit": 100.00001907348633,
+   "limit": [
+    -1.0,
+    1.0
+   ],
+   "unclipped": -0.15835498226172656,
+   "start": -0.1583549827337265,
+   "nonfinite_frame_lengths": 0
+  }
+ },
+ "mode": "landmark",
+ "consumed_array_key": "triangulated_world_positions_z_up_m",
+ "identity": {
+  "scale_spine_length": 0.15730978548526764,
+  "scale_neck_length": -0.4000000059604645,
+  "scale_shoulder_width": 0.06076120585203171,
+  "scale_uparms": 0.18686990439891815,
+  "scale_lowarms": -0.16200563311576843,
+  "scale_hip_width": 0.25312334299087524,
+  "scale_uplegs": -0.1574525237083435,
+  "scale_lowlegs": -0.1583549827337265
+ }
+}

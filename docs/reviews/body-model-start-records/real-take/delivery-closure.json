@@ -1,0 +1,35 @@
+{
+ "band_m": 0.0001,
+ "pairs": {
+  "subject_00": {
+   "glb": "artifacts/compare/d4c-start/delivery/subject-00.glb",
+   "track": "artifacts/compare/d4c-start/delivery/subject-00.body-track.npz",
+   "glb_sha256": "35207cf5cfffe693c1ec89e398e5b72cb6688a036c6af854e582eb4a6e7e70fa",
+   "track_sha256": "454a0624613cfdb61ddb7f05283fd69f4b2e18cb81df738e1adb1327141a6457",
+   "frames_in_glb": 150,
+   "frames_in_track": 150,
+   "joints_compared": 127,
+   "joints_missing_from_the_glb": [],
+   "max_abs_m": 2.5192181194455543e-06,
+   "p95_abs_m": 5.126956109879892e-07,
+   "band_m": 0.0001,
+   "within_band": true
+  },
+  "subject_01": {
+   "glb": "artifacts/compare/d4c-start/delivery/subject-01.glb",
+   "track": "artifacts/compare/d4c-start/delivery/subject-01.body-track.npz",
+   "glb_sha256": "7dd62025f2bf9110a0b95fc8ad3fe6e42a66e7765de225580f4208a8cd2a3607",
+   "track_sha256": "d0f61df1ccf885b1c1fe7a5a70b6eac43ff6a27bac2b3d5bdf84f396c83090f2",
+   "frames_in_glb": 150,
+   "frames_in_track": 150,
+   "joints_compared": 127,
+   "joints_missing_from_the_glb": [],
+   "max_abs_m": 1.9697488777836725e-06,
+   "p95_abs_m": 5.257214400256059e-07,
+   "band_m": 0.0001,
+   "within_band": true
+  }
+ },
+ "all_within_band": true,
+ "worst_max_abs_m": 2.5192181194455543e-06
+}

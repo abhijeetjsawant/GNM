@@ -1,0 +1,89 @@
+{
+  "one_process_per_performer": true,
+  "subjects": {
+    "subject_00": {
+      "arm": "fitted_pinned_offsets",
+      "consumed_array_key": "triangulated_world_positions_z_up_m",
+      "landmarks": "smoothed",
+      "lod": 2,
+      "module": "/private/tmp/momenv/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so",
+      "settings": {
+        "calib_frames": 100,
+        "locator_limit_weight": 10.0,
+        "loss_alpha": 2.0,
+        "max_iter": 30,
+        "smoothing": 0.0
+      },
+      "subject": 0,
+      "subjects": {
+        "subject_00": {
+          "frames": 150,
+          "identity_channels": {
+            "scale_hip_depth": 0.007645436562597752,
+            "scale_hip_height": -0.02917393669486046,
+            "scale_hip_width": 0.20473022758960724,
+            "scale_knee_knock": 1.7424514226149768e-05,
+            "scale_l_hands": 0.0010341265005990863,
+            "scale_lowarms": -0.03097400814294815,
+            "scale_lowlegs": -0.25404930114746094,
+            "scale_neck_length": 0.4460228681564331,
+            "scale_r_hands": 0.0005607845378108323,
+            "scale_shoulder_width": -0.10911580175161362,
+            "scale_spine_length": 0.9594981670379639,
+            "scale_uparms": 0.5795544981956482,
+            "scale_uplegs": -0.03267187625169754
+          },
+          "joint_to_landmark_residual_mm_median_over_frames": 16.708,
+          "joint_to_landmark_residual_mm_p95": 66.363,
+          "locator_offset_mm_max": 0.0,
+          "locator_offset_mm_median": 0.0,
+          "mesh_vertices": 10661,
+          "nonzero_identity_channels": 13,
+          "occluded_marker_fraction": 0.0
+        }
+      }
+    },
+    "subject_01": {
+      "arm": "fitted_pinned_offsets",
+      "consumed_array_key": "triangulated_world_positions_z_up_m",
+      "landmarks": "smoothed",
+      "lod": 2,
+      "module": "/private/tmp/momenv/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so",
+      "settings": {
+        "calib_frames": 100,
+        "locator_limit_weight": 10.0,
+        "loss_alpha": 2.0,
+        "max_iter": 30,
+        "smoothing": 0.0
+      },
+      "subject": 1,
+      "subjects": {
+        "subject_01": {
+          "frames": 150,
+          "identity_channels": {
+            "scale_hip_depth": -0.006870642304420471,
+            "scale_hip_height": -0.025388730689883232,
+            "scale_hip_width": 0.25053682923316956,
+            "scale_knee_knock": -0.00038854271406307817,
+            "scale_l_hands": 0.002859371481463313,
+            "scale_lowarms": -0.1369401514530182,
+            "scale_lowlegs": -0.14347174763679504,
+            "scale_neck_length": 0.5308243632316589,
+            "scale_r_hands": -0.0007620704127475619,
+            "scale_shoulder_width": 0.00438716821372509,
+            "scale_spine_length": 0.42021018266677856,
+            "scale_uparms": 0.36357685923576355,
+            "scale_uplegs": -0.04754898324608803
+          },
+          "joint_to_landmark_residual_mm_median_over_frames": 16.689,
+          "joint_to_landmark_residual_mm_p95": 68.569,
+          "locator_offset_mm_max": 0.001,
+          "locator_offset_mm_median": 0.0,
+          "mesh_vertices": 10661,
+          "nonzero_identity_channels": 13,
+          "occluded_marker_fraction": 0.0
+        }
+      }
+    }
+  }
+}
