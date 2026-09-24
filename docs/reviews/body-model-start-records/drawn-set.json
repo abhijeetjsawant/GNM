@@ -1,0 +1,809 @@
+{
+ "step": "D4c",
+ "stage": 1,
+ "frozen_before_any_fit": true,
+ "rule": "a channel is DRAWN iff the median over frames of the max-over-17-joints residual of the least-squares pose correction WITHIN THE CONFIGURED LIMITS (the channel at either end of its configured limit on the zero identity, the clamped donor pose, flexible channels excluded) exceeds 2 mm on BOTH donors",
+ "frozen": {
+  "evaluation_identity": "zero (every scale_* channel 0) on the clamped donor pose, flexible channels 0",
+  "displacement": "d_c = FK(p, channel at the limit end) - FK(p): the 17 mapped joints, cm, float64",
+  "jacobian": "central finite differences, step 0.001 in each parameter's own units, float64, the 17 mapped joints against every non-flexible pose parameter of the 178-parameter character",
+  "sign_convention": "delta reproduces d_c (J delta ~ d_c); bounds [lo - p, hi - p] keep p + delta within the configured limits",
+  "pose_column_membership": "the 110 non-flexible pose parameters (pose_parameters of the simplified character); every scale_* and every *_flexible parameter excluded",
+  "unconfigured_bounds": "unbounded (-inf, inf): root_tx/ty/tz/rx/ry/rz carry no configured limit",
+  "fixed_parameters": "a configured limit that is a point (lo == hi) has zero width; lsq_linear refuses lb == ub, so the column is REMOVED and its delta is 0 by construction",
+  "solver": "scipy.optimize.lsq_linear(method='bvls', tol=1e-10, max_iter=10000)",
+  "solver_failure": "any (frame, channel, end) whose solve reports status <= 0 STOPS the step; never dropped",
+  "endpoint_aggregation": "max over the 17 mapped joints of the per-joint residual norm; then the max over the two ends of the configured limit; then the median over frames",
+  "rounding": "none before comparison",
+  "threshold_mm": 2.0,
+  "segment_move_mm": 0.1
+ },
+ "channels_considered": [
+  "scale_spine_length",
+  "scale_neck_length",
+  "scale_shoulder_width",
+  "scale_uparms",
+  "scale_lowarms",
+  "scale_hip_width",
+  "scale_hip_height",
+  "scale_uplegs",
+  "scale_lowlegs",
+  "scale_foot_length"
+ ],
+ "configured_limits": {
+  "scale_spine_length": [
+   -1.1,
+   1.1
+  ],
+  "scale_neck_length": [
+   -0.4,
+   0.4
+  ],
+  "scale_shoulder_width": [
+   -0.2,
+   0.2
+  ],
+  "scale_uparms": [
+   -1.0,
+   1.0
+  ],
+  "scale_lowarms": [
+   -1.0,
+   1.0
+  ],
+  "scale_hip_width": [
+   -0.5,
+   0.5
+  ],
+  "scale_hip_height": [
+   0.0,
+   0.0
+  ],
+  "scale_uplegs": [
+   -0.5,
+   0.5
+  ],
+  "scale_lowlegs": [
+   -1.0,
+   1.0
+  ],
+  "scale_foot_length": [
+   -0.1,
+   0.1
+  ]
+ },
+ "drawn_set": [
+  "scale_spine_length",
+  "scale_neck_length",
+  "scale_shoulder_width",
+  "scale_uparms",
+  "scale_lowarms",
+  "scale_hip_width",
+  "scale_uplegs",
+  "scale_lowlegs"
+ ],
+ "excluded": {
+  "scale_hip_height": "UNDRAWABLE: the configured limit is the point [0, 0]",
+  "scale_foot_length": "UNSEEN: the raw displacement of every mapped joint is at or below the threshold (nothing the 17 landmarks see moves with it)"
+ },
+ "prediction_from_the_card": "eight drawn, including scale_spine_length and scale_shoulder_width",
+ "precondition_0": {
+  "scale_spine_length_drawn": true,
+  "solver_failures": [],
+  "STOP": false,
+  "card": "If scale_spine_length is not drawn, the step STOPS here: no fit runs and no acceptance fixture is generated. A STOP says the trunk failed THIS screening rule, not that it is unidentifiable."
+ },
+ "per_donor": {
+  "0": {
+   "donor_file_sha256": "a485d0567920fb9bd37f26747dd8f67a8140ad95583467b9f184e7462e6b3cdc",
+   "fixture_repair_clamped_parameter_frames": 1025,
+   "frames": 150,
+   "pose_columns": 110,
+   "pose_columns_kept_after_removing_fixed": 106,
+   "bounded_residual_median_mm": {
+    "scale_spine_length": 52.531232125995544,
+    "scale_neck_length": 29.100707405916708,
+    "scale_shoulder_width": 17.55561337645517,
+    "scale_uparms": 65.72490633504411,
+    "scale_lowarms": 67.42942835551172,
+    "scale_hip_width": 50.37740175442889,
+    "scale_hip_height": 3.6322691167013226e-07,
+    "scale_uplegs": 29.664068120324778,
+    "scale_lowlegs": 67.41853448139824,
+    "scale_foot_length": 3.6322691167013226e-07
+   },
+   "bounded_residual_median_mm_by_end": {
+    "scale_spine_length": {
+     "low": 34.75452229214571,
+     "high": 39.685895841085724
+    },
+    "scale_neck_length": {
+     "low": 25.059078780869957,
+     "high": 29.100707405916708
+    },
+    "scale_shoulder_width": {
+     "low": 14.499287720603325,
+     "high": 16.963114807518934
+    },
+    "scale_uparms": {
+     "low": 62.55087744774167,
+     "high": 65.2293348927714
+    },
+    "scale_lowarms": {
+     "low": 63.49321374268361,
+     "high": 67.42942835551172
+    },
+    "scale_hip_width": {
+     "low": 50.36256555905696,
+     "high": 50.36215741989214
+    },
+    "scale_hip_height": {
+     "low": 3.6322691167013226e-07,
+     "high": 3.6322691167013226e-07
+    },
+    "scale_uplegs": {
+     "low": 29.641992601585883,
+     "high": 29.148114121643108
+    },
+    "scale_lowlegs": {
+     "low": 67.33342893098802,
+     "high": 67.41853448139824
+    },
+    "scale_foot_length": {
+     "low": 3.6322691167013226e-07,
+     "high": 3.6322691167013226e-07
+    }
+   },
+   "bounded_residual_p05_p95_mm": {
+    "scale_spine_length": [
+     27.226863406599104,
+     72.20510395253397
+    ],
+    "scale_neck_length": [
+     24.050885972171375,
+     33.7853533013528
+    ],
+    "scale_shoulder_width": [
+     13.634097036781649,
+     22.755289262545894
+    ],
+    "scale_uparms": [
+     60.1751123427888,
+     73.98770888974971
+    ],
+    "scale_lowarms": [
+     56.003932360562125,
+     77.44415156811658
+    ],
+    "scale_hip_width": [
+     50.10681297712056,
+     51.07658524524171
+    ],
+    "scale_hip_height": [
+     0.0,
+     1.4982407739811563e-06
+    ],
+    "scale_uplegs": [
+     27.272884198390877,
+     32.6817812439498
+    ],
+    "scale_lowlegs": [
+     60.12720805879011,
+     79.06299927853958
+    ],
+    "scale_foot_length": [
+     0.0,
+     1.4982407739811563e-06
+    ]
+   },
+   "raw_median_mm": {
+    "scale_spine_length": 108.17069394781856,
+    "scale_neck_length": 39.999999889552875,
+    "scale_shoulder_width": 19.98800428440971,
+    "scale_uparms": 99.99999112987402,
+    "scale_lowarms": 99.99999509003601,
+    "scale_hip_width": 50.00000000000024,
+    "scale_hip_height": 0.0,
+    "scale_uplegs": 50.00000334612751,
+    "scale_lowlegs": 100.00000437877976,
+    "scale_foot_length": 0.0
+   },
+   "REPORTED_unbounded_projection_median_mm_D4b_rank_convention": {
+    "scale_spine_length": 2.581460838025107e-06,
+    "scale_neck_length": 24.584802147280975,
+    "scale_shoulder_width": 8.145956998024813e-06,
+    "scale_uparms": 63.22581942733855,
+    "scale_lowarms": 63.22592504053682,
+    "scale_hip_width": 50.32967720126503,
+    "scale_hip_height": 0.0,
+    "scale_uplegs": 29.07401406210183,
+    "scale_lowlegs": 66.84575324960578,
+    "scale_foot_length": 0.0
+   },
+   "REPORTED_bounded_step_norm_median_over_frames": {
+    "scale_spine_length": 2.8541554613201603,
+    "scale_neck_length": 4.967745229008438,
+    "scale_shoulder_width": 2.263661732780278,
+    "scale_uparms": 5.008114925939412,
+    "scale_lowarms": 4.935738303930062,
+    "scale_hip_width": 4.732648540607459,
+    "scale_hip_height": 1.38510174032361e-06,
+    "scale_uplegs": 4.83358787433498,
+    "scale_lowlegs": 4.867455090742705,
+    "scale_foot_length": 1.38510174032361e-06
+   },
+   "REPORTED_columns_on_a_bound_median_over_frames": {
+    "scale_spine_length": 10.0,
+    "scale_neck_length": 16.0,
+    "scale_shoulder_width": 8.0,
+    "scale_uparms": 17.0,
+    "scale_lowarms": 16.0,
+    "scale_hip_width": 13.0,
+    "scale_hip_height": 4.0,
+    "scale_uplegs": 14.0,
+    "scale_lowlegs": 14.0,
+    "scale_foot_length": 4.0
+   }
+  },
+  "1": {
+   "donor_file_sha256": "c4901716e459a3b51532b37d1537ba9442bf563e7981903b9a99162f2748b159",
+   "fixture_repair_clamped_parameter_frames": 734,
+   "frames": 150,
+   "pose_columns": 110,
+   "pose_columns_kept_after_removing_fixed": 106,
+   "bounded_residual_median_mm": {
+    "scale_spine_length": 55.315317280286806,
+    "scale_neck_length": 27.028440002708386,
+    "scale_shoulder_width": 12.867071734927622,
+    "scale_uparms": 60.519879982291705,
+    "scale_lowarms": 61.72994107620032,
+    "scale_hip_width": 50.19932116375557,
+    "scale_hip_height": 5.152955507108346e-07,
+    "scale_uplegs": 30.102289603516446,
+    "scale_lowlegs": 55.35675690328324,
+    "scale_foot_length": 5.152955507108346e-07
+   },
+   "bounded_residual_median_mm_by_end": {
+    "scale_spine_length": {
+     "low": 38.13194552932927,
+     "high": 55.315317280286806
+    },
+    "scale_neck_length": {
+     "low": 27.00677679186531,
+     "high": 24.71322394836707
+    },
+    "scale_shoulder_width": {
+     "low": 12.685334772457281,
+     "high": 12.098359159812635
+    },
+    "scale_uparms": {
+     "low": 59.716457489443954,
+     "high": 59.00412772136914
+    },
+    "scale_lowarms": {
+     "low": 61.06314504660841,
+     "high": 60.79151883708165
+    },
+    "scale_hip_width": {
+     "low": 50.19924801516219,
+     "high": 50.19922870370149
+    },
+    "scale_hip_height": {
+     "low": 5.152955507108346e-07,
+     "high": 5.152955507108346e-07
+    },
+    "scale_uplegs": {
+     "low": 29.61861315205153,
+     "high": 29.828466850789788
+    },
+    "scale_lowlegs": {
+     "low": 55.31308974268537,
+     "high": 55.35675690328324
+    },
+    "scale_foot_length": {
+     "low": 5.152955507108346e-07,
+     "high": 5.152955507108346e-07
+    }
+   },
+   "bounded_residual_p05_p95_mm": {
+    "scale_spine_length": [
+     48.87120340069718,
+     67.84752938809153
+    ],
+    "scale_neck_length": [
+     25.089211743403236,
+     29.894189148217116
+    ],
+    "scale_shoulder_width": [
+     11.822066429575347,
+     23.00236136631095
+    ],
+    "scale_uparms": [
+     55.97206800990438,
+     73.46715771345536
+    ],
+    "scale_lowarms": [
+     60.15915677747251,
+     66.8629952050561
+    ],
+    "scale_hip_width": [
+     50.05816943906247,
+     52.73544336811288
+    ],
+    "scale_hip_height": [
+     6.860846551948304e-08,
+     1.205631971998242e-06
+    ],
+    "scale_uplegs": [
+     27.908327705029386,
+     31.979781750322342
+    ],
+    "scale_lowlegs": [
+     50.2516577832792,
+     70.91078600616359
+    ],
+    "scale_foot_length": [
+     6.860846551948304e-08,
+     1.205631971998242e-06
+    ]
+   },
+   "raw_median_mm": {
+    "scale_spine_length": 109.99999964161564,
+    "scale_neck_length": 39.99999959841452,
+    "scale_shoulder_width": 19.988005338192846,
+    "scale_uparms": 99.99999560396611,
+    "scale_lowarms": 99.9999949930419,
+    "scale_hip_width": 50.00000000000027,
+    "scale_hip_height": 0.0,
+    "scale_uplegs": 50.000005997457144,
+    "scale_lowlegs": 100.00000380813255,
+    "scale_foot_length": 0.0
+   },
+   "REPORTED_unbounded_projection_median_mm_D4b_rank_convention": {
+    "scale_spine_length": 6.448715283286664e-09,
+    "scale_neck_length": 28.009440545619427,
+    "scale_shoulder_width": 4.8912102637880625e-09,
+    "scale_uparms": 60.27090242276246,
+    "scale_lowarms": 60.27133974201983,
+    "scale_hip_width": 50.19093038570755,
+    "scale_hip_height": 0.0,
+    "scale_uplegs": 27.90022039452789,
+    "scale_lowlegs": 55.02267161379622,
+    "scale_foot_length": 0.0
+   },
+   "REPORTED_bounded_step_norm_median_over_frames": {
+    "scale_spine_length": 3.3348399059738147,
+    "scale_neck_length": 5.169523077969094,
+    "scale_shoulder_width": 1.856834636711692,
+    "scale_uparms": 5.12715342309971,
+    "scale_lowarms": 5.047692001595744,
+    "scale_hip_width": 4.853292615332823,
+    "scale_hip_height": 1.5246269569663722,
+    "scale_uplegs": 4.989581472949631,
+    "scale_lowlegs": 4.966300508335589,
+    "scale_foot_length": 1.5246269569663722
+   },
+   "REPORTED_columns_on_a_bound_median_over_frames": {
+    "scale_spine_length": 7.0,
+    "scale_neck_length": 15.0,
+    "scale_shoulder_width": 6.0,
+    "scale_uparms": 16.0,
+    "scale_lowarms": 14.0,
+    "scale_hip_width": 13.0,
+    "scale_hip_height": 5.0,
+    "scale_uplegs": 13.0,
+    "scale_lowlegs": 13.0,
+    "scale_foot_length": 5.0
+   }
+  }
+ },
+ "REPORTED_drawn_set_under_the_unbounded_projection_never_selecting": [
+  "scale_neck_length",
+  "scale_uparms",
+  "scale_lowarms",
+  "scale_hip_width",
+  "scale_uplegs",
+  "scale_lowlegs"
+ ],
+ "segments": {
+  "trunk": [
+   "root",
+   "c_neck"
+  ],
+  "neck_head": [
+   "c_neck",
+   "c_head"
+  ],
+  "shoulder_width": [
+   "l_uparm",
+   "r_uparm"
+  ],
+  "l_upper_arm": [
+   "l_uparm",
+   "l_lowarm"
+  ],
+  "r_upper_arm": [
+   "r_uparm",
+   "r_lowarm"
+  ],
+  "l_forearm": [
+   "l_lowarm",
+   "l_wrist"
+  ],
+  "r_forearm": [
+   "r_lowarm",
+   "r_wrist"
+  ],
+  "hip_width": [
+   "l_upleg",
+   "r_upleg"
+  ],
+  "l_thigh": [
+   "l_upleg",
+   "l_lowleg"
+  ],
+  "r_thigh": [
+   "r_upleg",
+   "r_lowleg"
+  ],
+  "l_shin": [
+   "l_lowleg",
+   "l_foot"
+  ],
+  "r_shin": [
+   "r_lowleg",
+   "r_foot"
+  ]
+ },
+ "segment_rest_length_change_mm_by_channel_max_abs": {
+  "scale_spine_length": {
+   "trunk": 109.87228021571627,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 5.684341886080802e-14,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_neck_length": {
+   "trunk": 0.0,
+   "neck_head": 39.99999964003635,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 0.0,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_shoulder_width": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 39.975997585541904,
+   "l_upper_arm": 5.684341886080802e-14,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_uparms": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 99.999878674169,
+   "r_upper_arm": 99.99987867418878,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_lowarms": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 0.0,
+   "r_upper_arm": 0.0,
+   "l_forearm": 99.99999673385554,
+   "r_forearm": 99.99999673420507,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_hip_width": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 0.0,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 100.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_hip_height": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 0.0,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_uplegs": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 0.0,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 49.99242440219365,
+   "r_thigh": 49.992421687263686,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  },
+  "scale_lowlegs": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 0.0,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 100.00000300104244,
+   "r_shin": 99.99999751941095
+  },
+  "scale_foot_length": {
+   "trunk": 0.0,
+   "neck_head": 0.0,
+   "shoulder_width": 0.0,
+   "l_upper_arm": 0.0,
+   "r_upper_arm": 0.0,
+   "l_forearm": 0.0,
+   "r_forearm": 0.0,
+   "hip_width": 0.0,
+   "l_thigh": 0.0,
+   "r_thigh": 0.0,
+   "l_shin": 0.0,
+   "r_shin": 0.0
+  }
+ },
+ "segment_moved_by": {
+  "trunk": [
+   "scale_spine_length"
+  ],
+  "neck_head": [
+   "scale_neck_length"
+  ],
+  "shoulder_width": [
+   "scale_shoulder_width"
+  ],
+  "l_upper_arm": [
+   "scale_uparms"
+  ],
+  "r_upper_arm": [
+   "scale_uparms"
+  ],
+  "l_forearm": [
+   "scale_lowarms"
+  ],
+  "r_forearm": [
+   "scale_lowarms"
+  ],
+  "hip_width": [
+   "scale_hip_width"
+  ],
+  "l_thigh": [
+   "scale_uplegs"
+  ],
+  "r_thigh": [
+   "scale_uplegs"
+  ],
+  "l_shin": [
+   "scale_lowlegs"
+  ],
+  "r_shin": [
+   "scale_lowlegs"
+  ]
+ },
+ "start_segments_by_drawn_channel": {
+  "scale_spine_length": [
+   "trunk"
+  ],
+  "scale_neck_length": [
+   "neck_head"
+  ],
+  "scale_shoulder_width": [
+   "shoulder_width"
+  ],
+  "scale_uparms": [
+   "l_upper_arm",
+   "r_upper_arm"
+  ],
+  "scale_lowarms": [
+   "l_forearm",
+   "r_forearm"
+  ],
+  "scale_hip_width": [
+   "hip_width"
+  ],
+  "scale_uplegs": [
+   "l_thigh",
+   "r_thigh"
+  ],
+  "scale_lowlegs": [
+   "l_shin",
+   "r_shin"
+  ]
+ },
+ "start_segments_one_kind_per_channel": {
+  "scale_spine_length": true,
+  "scale_neck_length": true,
+  "scale_shoulder_width": true,
+  "scale_uparms": true,
+  "scale_lowarms": true,
+  "scale_hip_width": true,
+  "scale_uplegs": true,
+  "scale_lowlegs": true
+ },
+ "signed_rest_length_change_mm_per_unit_at_the_upper_limit": {
+  "scale_spine_length": {
+   "trunk": 99.88389110519661
+  },
+  "scale_neck_length": {
+   "neck_head": 99.99999910009088
+  },
+  "scale_shoulder_width": {
+   "shoulder_width": 199.87998792770924
+  },
+  "scale_uparms": {
+   "l_upper_arm": 99.999878674169,
+   "r_upper_arm": 99.99987867418878
+  },
+  "scale_lowarms": {
+   "l_forearm": 99.99999673385554,
+   "r_forearm": 99.99999673420507
+  },
+  "scale_hip_width": {
+   "hip_width": 200.0
+  },
+  "scale_uplegs": {
+   "l_thigh": 99.9848488043873,
+   "r_thigh": 99.98484337452737
+  },
+  "scale_lowlegs": {
+   "l_shin": 100.00000300104244,
+   "r_shin": 99.99999751941095
+  }
+ },
+ "REPORTED_linearity_slope_at_the_lower_limit_mm_per_unit": {
+  "scale_spine_length": {
+   "trunk": 99.82134011281991
+  },
+  "scale_neck_length": {
+   "neck_head": 99.99999910009085
+  },
+  "scale_shoulder_width": {
+   "shoulder_width": 199.87998792770952
+  },
+  "scale_uparms": {
+   "l_upper_arm": 99.99972922820095,
+   "r_upper_arm": 99.99972922824577
+  },
+  "scale_lowarms": {
+   "l_forearm": 99.99999673385543,
+   "r_forearm": 99.99999673420493
+  },
+  "scale_hip_width": {
+   "hip_width": 200.0
+  },
+  "scale_uplegs": {
+   "l_thigh": 99.98075000840856,
+   "r_thigh": 99.98074457880182
+  },
+  "scale_lowlegs": {
+   "l_shin": 100.00000300104244,
+   "r_shin": 99.99999751941095
+  }
+ },
+ "REPORTED_linearity_lower_over_upper": {
+  "scale_spine_length": {
+   "trunk": 0.9993737629593262
+  },
+  "scale_neck_length": {
+   "neck_head": 0.9999999999999997
+  },
+  "scale_shoulder_width": {
+   "shoulder_width": 1.0000000000000013
+  },
+  "scale_uparms": {
+   "l_upper_arm": 0.9999985055385063,
+   "r_upper_arm": 0.9999985055387567
+  },
+  "scale_lowarms": {
+   "l_forearm": 0.9999999999999989,
+   "r_forearm": 0.9999999999999986
+  },
+  "scale_hip_width": {
+   "hip_width": 1.0
+  },
+  "scale_uplegs": {
+   "l_thigh": 0.9999590058291057,
+   "r_thigh": 0.9999590058294116
+  },
+  "scale_lowlegs": {
+   "l_shin": 1.0,
+   "r_shin": 1.0
+  }
+ },
+ "segments_scored": [
+  "trunk",
+  "neck_head",
+  "shoulder_width",
+  "l_upper_arm",
+  "r_upper_arm",
+  "l_forearm",
+  "r_forearm",
+  "hip_width",
+  "l_thigh",
+  "r_thigh",
+  "l_shin",
+  "r_shin"
+ ],
+ "segments_reported_not_scored": [],
+ "zero_identity_rest_lengths_mm": {
+  "trunk": 517.9688142133693,
+  "neck_head": 99.29257303529033,
+  "shoulder_width": 351.7220474690847,
+  "l_upper_arm": 256.80134505074824,
+  "r_upper_arm": 256.8013449640917,
+  "l_forearm": 270.0000102548984,
+  "r_forearm": 270.00001025583947,
+  "hip_width": 164.09299850463867,
+  "l_thigh": 419.764985279812,
+  "r_thigh": 419.76496310459163,
+  "l_shin": 420.5830128049798,
+  "r_shin": 420.58298975016976
+ },
+ "provenance": {
+  "pymomentum": "0.1.114.post0",
+  "scipy": "1.18.1",
+  "numpy": "2.5.3",
+  "model_sha256": "9b4e48e6216296c0a8a47e8e1d210b42ca8b194b9f61409adc5d7a3873dcf08e",
+  "fbx_sha256": "2d49872b57f07181302e268124f6528a64de319a048b375d3cb5af5e8bcf94da",
+  "fitter_sha256": "3136befb6cd0415fe746a208f73e15be0f1c8af1ad3594cad277c7f9e5b13535",
+  "d4_fixture_sha256": "24c92d4c876ccaec87cfb09ead3b4462ed410b411351323ef5f05a2777d97ab0",
+  "d4b_identifiability_sha256": "6cdff94f5ea82c463176a8a481b366dd27d4c2a65cbd55f6fea4a8a6ad3a3398",
+  "this_file_sha256": "5702a702337892641af7f54909b28e431063c77e8a1b6972866e47f23d321947"
+ },
+ "lod": 2
+}
