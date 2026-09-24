@@ -1,0 +1,458 @@
+{
+ "baseline": [
+  "PASS",
+  false
+ ],
+ "targeted": [
+  {
+   "mutation": "exact_identity distance x2 on one fixture",
+   "conjunct": "validity",
+   "expected": [
+    "INVALID",
+    false
+   ],
+   "got": [
+    "INVALID",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "oracle l_wrist rest moved 5 mm on one fixture",
+   "conjunct": "L",
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "closure max_abs_m 2e-4 on one oracle cell",
+   "conjunct": "closure",
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "mean_body rest set to the truth rest on one fixture",
+   "conjunct": "must_fail_i_mean_body_misses_L",
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "spine_displaced rest set to the truth rest on one fixture",
+   "conjunct": "must_fail_ii_spine_displaced_fails_at_the_trunk",
+   "expected": [
+    "FAIL",
+    true
+   ],
+   "got": [
+    "FAIL",
+    true
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "exact_identity rest moved 1e-6 cm on one fixture",
+   "conjunct": "must_fail_iii_exact_identity_reads_zero_and_passes",
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "population: one cell missing",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "population: one cell 149 frames",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "population: one non-finite frame",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "population: a stray cell outside the named set",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "provenance: a fitter sha256 that is not 3136befb",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "fixtures: two fixtures sharing one draw",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "drawn set: one channel removed from the frozen file",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "settings: max_iter 300 in a banded arm",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "closure report missing",
+   "conjunct": "closure",
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "closure: a joint missing from one GLB",
+   "conjunct": "closure",
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  },
+  {
+   "mutation": "arm_note on the oracle",
+   "conjunct": null,
+   "expected": [
+    "FAIL",
+    false
+   ],
+   "got": [
+    "FAIL",
+    false
+   ],
+   "turned": true
+  }
+ ],
+ "all_targeted_turned": true,
+ "leaves_visited": 6297,
+ "leaf_classes": 2935,
+ "enforced": 2716,
+ "reported": {},
+ "unread": {
+  "cell(20261001-d0-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d0-converged).calibration_iterations.note": "REPORTED: the CONVERGED probe's iteration record (card: reported)",
+  "cell(20261001-d0-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d0-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d0-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d0-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d0-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d0-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d0-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d0-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d0-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d0-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d1-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d1-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d1-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d1-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d1-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d1-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d1-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d1-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d1-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261001-d1-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261001-d1-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d0-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d0-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d0-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d0-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d0-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d0-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d0-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d0-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d0-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d0-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d0-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d1-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d1-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d1-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d1-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d1-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d1-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d1-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d1-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d1-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261002-d1-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261002-d1-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d0-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d0-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d0-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d0-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d0-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d0-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d0-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d0-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d0-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d0-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d0-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d1-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d1-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d1-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d1-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d1-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d1-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d1-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d1-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d1-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261003-d1-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261003-d1-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d0-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d0-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d0-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d0-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d0-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d0-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d0-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d0-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d0-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d0-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d0-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d1-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d1-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d1-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d1-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d1-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d1-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d1-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d1-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d1-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261004-d1-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261004-d1-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d0-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d0-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d0-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d0-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d0-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d0-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d0-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d0-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d0-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d0-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d0-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d1-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d1-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d1-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d1-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d1-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d1-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d1-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d1-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d1-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261005-d1-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261005-d1-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d0-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d0-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d0-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d0-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d0-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d0-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d0-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d0-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d0-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d0-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d0-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d1-converged).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d1-converged).calibration_iterations.note": "REPORTED: the CONVERGED probe's iteration record (card: reported)",
+  "cell(20261006-d1-converged).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d1-exact_identity).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d1-exact_identity).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d1-mean_body).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d1-mean_body).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d1-oracle).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d1-oracle).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d1-spine_displaced).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "cell(20261006-d1-warm).arm_note": "READ (must be {} on every arm but spine_displaced); an empty map admits no walk mutation but emptying -- the targeted case 'arm_note on the oracle' turns it",
+  "cell(20261006-d1-warm).locator_offset_mm_max": "DIAGNOSTIC: the soft pin's reach (D4 measured 0.0009 mm); not a card clause",
+  "closure.all_within_band": "DERIVED verdict; re-derived",
+  "closure.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261001_d0.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261001_d0.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261001_d0.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261001_d0.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261001_d1.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261001_d1.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261001_d1.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261001_d1.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261002_d0.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261002_d0.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261002_d0.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261002_d0.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261002_d1.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261002_d1.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261002_d1.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261002_d1.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261003_d0.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261003_d0.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261003_d0.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261003_d0.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261003_d1.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261003_d1.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261003_d1.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261003_d1.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261004_d0.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261004_d0.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261004_d0.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261004_d0.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261004_d1.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261004_d1.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261004_d1.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261004_d1.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261005_d0.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261005_d0.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261005_d0.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261005_d0.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261005_d1.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261005_d1.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261005_d1.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261005_d1.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261006_d0.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261006_d0.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261006_d0.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261006_d0.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.pairs.20261006_d1.band_m": "DERIVED: the gate carries D3's band itself",
+  "closure.pairs.20261006_d1.joints_missing_from_the_glb": "READ (must be []); an empty list admits no walk mutation but emptying -- the targeted case 'closure: a joint missing' turns it",
+  "closure.pairs.20261006_d1.p95_abs_m": "DERIVED by d4_glb_closure; the gate re-derives the band from max_abs_m",
+  "closure.pairs.20261006_d1.within_band": "DERIVED verdict; the gate re-derives it from max_abs_m (never a literal)",
+  "closure.worst_max_abs_m": "DERIVED aggregate; re-derived per pair",
+  "provenance.base_commit": "LABEL",
+  "provenance.date": "LABEL",
+  "provenance.environment.momenv": "LABEL: the environment record; the pymomentum version is read by name",
+  "provenance.environment.numpy": "LABEL: the environment record; the pymomentum version is read by name",
+  "provenance.environment.platform": "LABEL: the environment record; the pymomentum version is read by name",
+  "provenance.environment.python": "LABEL: the environment record; the pymomentum version is read by name",
+  "provenance.environment.torch": "LABEL: the environment record; the pymomentum version is read by name",
+  "provenance.environment_reproduces_D4": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.fitted_positions_identical": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.max_abs_per_joint_median_difference_mm": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.pooled_statistic_mm_rerun": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.pooled_statistic_mm_retained": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.recovered_scale_spine_length_rerun": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.recovered_scale_spine_length_retained": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.rerun_truth_npz_sha256": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.retained_truth_npz_sha256": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 exact_identity.truth_motion_identical": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.fitted_positions_identical": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.max_abs_per_joint_median_difference_mm": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.pooled_statistic_mm_rerun": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.pooled_statistic_mm_retained": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.recovered_scale_spine_length_rerun": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.recovered_scale_spine_length_retained": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.rerun_truth_npz_sha256": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.retained_truth_npz_sha256": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4.seed 20260922 oracle.truth_motion_identical": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.environment_reproduces_D4_note": "PROVENANCE NOTE: the stage-1 reproduction, not a gate input",
+  "provenance.fitter_sha256_expected_by_the_card": "LABEL: the card's own sha is a gate constant",
+  "provenance.fitter_sha256_recorded_in_D4_o1_cells": "LABEL: the card's own sha is a gate constant",
+  "provenance.sha256.joint layout artifacts/compare/d4-body/repro-v2/converter-inputs/subject-00-consumed.npz": "PROVENANCE: the joint layout file is hashed at stage 1; the fixture reads its names only and the mapped joints are checked by identity",
+  "provenance.stage": "LABEL",
+  "provenance.step": "LABEL"
+ },
+ "gaps": [],
+ "monotone_failures": {},
+ "clean": true
+}

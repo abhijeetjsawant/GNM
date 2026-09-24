@@ -51,6 +51,7 @@ from d4b_identifiability import (ARMS, CHANNELS, DONOR_INDICES, FRAMES, MAPPED_J
                                  SEEDS, SEGMENTS, SPINE_DISPLACEMENT, displaced_spine)
 
 DRAWN_SET = ROOT / "docs/reviews/body-model-o1-records/drawn-set.json"
+FIXTURE_SOURCE = ROOT / "tools/fitter/d4b_o1_fixture.py"
 PROVENANCE = ROOT / "docs/reviews/body-model-o1-records/provenance.json"
 SCHEMA = "d4b-o1-cell/1"
 CARD_FITTER_SHA256 = "3136befb6cd0415fe746a208f73e15be0f1c8af1ad3594cad277c7f9e5b13535"
@@ -58,6 +59,7 @@ D4_SEEDS = (20260922, 20260923, 20260924, 20260925, 20260926, 20260927)
 VALIDITY_CEILING_MM = 1.0
 CLOSURE_BAND_M = 1e-4
 EXACT_ZERO_MM = 1e-9
+LAYOUT_AGREEMENT_CM = 1e-6    # the truth rest on the 204- and the 178-parameter characters must agree
 IDENTITY_CHANNELS = 68
 BANDED_ARMS = ("oracle", "exact_identity", "mean_body", "spine_displaced")
 SETTINGS = {"calib_frames": 100, "loss_alpha": 2.0, "smoothing": 0.0, "locator_limit_weight": 10.0,
@@ -129,11 +131,11 @@ def load_inputs(cells: Path, closure: Path | None, drawn_set: Path = DRAWN_SET,
     inputs = {"cells": {}, "cell_dir": str(cells), "closure": None, "files": {}}
     for path in sorted(Path(cells).glob("cell-*.json")):
         inputs["cells"][path.name] = json.loads(path.read_text(encoding="utf-8"))
-    for path in sorted(Path(cells).glob("fixture-*.glb")):
+    for path in sorted(list(Path(cells).glob("fixture-*.glb")) + list(Path(cells).glob("fixture-*.body-track.npz"))):
         inputs["files"][path.name] = sha256_bytes(path.read_bytes())
-    drawn_bytes = Path(drawn_set).read_bytes()
-    inputs["drawn_set"] = json.loads(drawn_bytes)
-    inputs["drawn_set_sha256"] = sha256_bytes(drawn_bytes)
+    # the drawn set is carried as BYTES and parsed inside `build`, so its sha256 is always of what is read
+    inputs["drawn_set_bytes"] = Path(drawn_set).read_bytes()
+    inputs["fixture_source_sha256"] = sha256_bytes(FIXTURE_SOURCE.read_bytes())
     inputs["provenance"] = json.loads(Path(provenance).read_text(encoding="utf-8"))
     if closure is not None and Path(closure).exists():
         inputs["closure"] = json.loads(Path(closure).read_text(encoding="utf-8"))
@@ -149,9 +151,11 @@ def expected_provenance(inputs: dict) -> dict:
 
     return {"fitter_sha256": CARD_FITTER_SHA256,
             "fitter_sha256_stage1": pick("fitter "),
+            "d4_fixture_sha256": pick("D4 fixture "),
+            "this_file_sha256": inputs.get("fixture_source_sha256"),
             "donor_sha256": {"0": pick("donor 0 "), "1": pick("donor 1 ")},
             "model_sha256": pick("model "), "fbx_sha256": pick("fbx "),
-            "drawn_set_sha256": inputs["drawn_set_sha256"],
+            "drawn_set_sha256": sha256_bytes(inputs["drawn_set_bytes"]),
             "pymomentum": inputs["provenance"].get("environment", {}).get("pymomentum-cpu")}
 
 
@@ -184,6 +188,11 @@ def scored_segments(drawn: dict) -> tuple[list[str], list[str], list[str]]:
 
 def build(inputs: dict, *, burned: bool = False) -> dict:
     problems: list[str] = []
+    try:
+        inputs = dict(inputs, drawn_set=json.loads(inputs["drawn_set_bytes"]))
+    except (ValueError, TypeError):
+        inputs = dict(inputs, drawn_set={})
+        problems.append("drawn set: unreadable")
     drawn_set, scored, drawn_problems = scored_segments(inputs["drawn_set"])
     problems += drawn_problems
     expected = expected_provenance(inputs)
@@ -218,6 +227,8 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
                 bad.append("seed/donor/arm do not match the file")
             if bool(record.get("burned")) != burned:
                 bad.append("burned flag")
+            if record.get("lod") != 2:
+                bad.append("lod")
             if record.get("frames") != FRAMES:
                 bad.append(f"frames {record.get('frames')} != {FRAMES}")
             if list(record.get("mapped_joints") or []) != list(MAPPED_JOINTS):
@@ -241,11 +252,15 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
             elif names != canonical_names:
                 bad.append("identity channel names differ between cells")
             prov = record.get("provenance") or {}
-            for key in ("fitter_sha256", "model_sha256", "fbx_sha256", "drawn_set_sha256", "pymomentum"):
+            for key in ("fitter_sha256", "d4_fixture_sha256", "model_sha256", "fbx_sha256", "drawn_set_sha256",
+                        "pymomentum") + (() if burned else ("this_file_sha256",)):
                 if prov.get(key) != expected[key] or expected[key] is None:
                     bad.append(f"provenance {key}")
-            if (prov.get("donor_sha256") or {}).get(str(d)) != expected["donor_sha256"][str(d)] \
-                    or expected["donor_sha256"][str(d)] is None:
+            if "retained_from" not in record:
+                layout = record.get("truth_rest_full_vs_simplified_character_max_abs_cm")
+                if not isinstance(layout, (int, float)) or not math.isfinite(layout) or layout > LAYOUT_AGREEMENT_CM:
+                    bad.append("the truth rest differs between the 204- and 178-parameter characters")
+            if prov.get("donor_sha256") != expected["donor_sha256"] or None in expected["donor_sha256"].values():
                 bad.append("provenance donor_sha256")
             settings = record.get("settings") or {}
             for key, value in SETTINGS.items():
@@ -262,8 +277,18 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
                 bad.append("calibrate_markers calls")
             if "retained_from" in record and not burned:
                 bad.append("a retained D4 cell in the fresh population")
-            if a == "converged" and not (record.get("calibration_iterations") or {}).get("max_iteration_index_reached"):
-                bad.append("converged: no iteration record")
+            if a == "converged":
+                iterations = record.get("calibration_iterations") or {}
+                lists = [iterations.get(k) for k in ("solves_per_call", "max_iteration_index_reached",
+                                                     "solves_stopped_at_the_cap")]
+                if (iterations.get("calls") != 2 or iterations.get("max_iter") != settings.get("max_iter")
+                        or not all(isinstance(x, list) and len(x) == 2 for x in lists)
+                        or not all(isinstance(v, int) and 0 <= v for x in lists if isinstance(x, list) for v in x)
+                        or any(m > iterations.get("max_iter", 0) - 1 for m in lists[1] or [])
+                        or any(c > n for c, n in zip(lists[2] or [], lists[0] or []))):
+                    bad.append("converged: the iteration record is not two calibrate_markers calls at max_iter")
+            if a != "spine_displaced" and record.get("arm_note") not in ({}, None if "retained_from" in record else {}):
+                bad.append("arm_note on an arm that carries none")
             if bad:
                 problems.append(f"cell {tag}: " + "; ".join(bad))
                 continue
@@ -272,13 +297,19 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
                                 "names": names}
 
     # fixture identity: one truth per fixture, drawn as declared, twelve distinct draws
-    truths = {}
+    truths, clamps = {}, {}
     for s, d in fixtures:
         group = [cells.get((s, d, a)) for a in arms]
         if any(c is None for c in group):
             continue
         first = group[0]
         fixture = first["record"].get("fixture") or {}
+        def same_fixture(record: dict) -> dict:
+            # a burned fit also records the retained truth file it matched; D4's retained cells do not
+            return {k: v for k, v in (record.get("fixture") or {}).items() if k != "retained_truth_npz_sha256"}
+
+        if any(same_fixture(c["record"]) != same_fixture(first["record"]) for c in group[1:]):
+            problems.append(f"fixture {s}/d{d}: the arms do not carry one fixture record")
         for c in group[1:]:
             if (c["record"].get("fixture") or {}).get("truth_motion_sha256") != fixture.get("truth_motion_sha256") \
                     or not np.array_equal(c["truth_id"], first["truth_id"]) \
@@ -301,6 +332,15 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
                     problems.append(f"fixture {s}/d{d}: {n} = {value} not a draw within [{low}, {high}]")
             elif value != 0.0:
                 problems.append(f"fixture {s}/d{d}: undrawn {n} = {value} is not zero")
+        drawn_identity = fixture.get("drawn_identity") or {}
+        # D4's truth_motion records all ten named channels; the undrawn ones were drawn from the point [0, 0]
+        if set(drawn_identity) != set(CHANNELS) or any(
+                not isinstance(drawn_identity.get(n), (int, float))
+                or np.float32(drawn_identity[n]) != np.float32(first["truth_id"][names.index(n)])
+                or (n not in want_channels and drawn_identity[n] != 0.0)
+                for n in CHANNELS):
+            problems.append(f"fixture {s}/d{d}: the recorded draw is not the truth identity")
+        clamps.setdefault(d, set()).add(fixture.get("clamped_parameter_frames"))
         truths[(s, d)] = first["truth_id"]
         # arm construction, read from the arms' own identities
         spine = names.index("scale_spine_length")
@@ -315,6 +355,14 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
                 or abs(displaced["fitted_id"][spine] - displaced_spine(float(displaced["truth_id"][spine]))) > 1e-6):
             problems.append(f"fixture {s}/d{d}: spine_displaced is not the truth with the spine moved "
                             f"{SPINE_DISPLACEMENT} toward zero")
+        note = displaced["record"].get("arm_note") or {}
+        if "retained_from" not in displaced["record"] and (
+                note.get("spine_truth") != float(displaced["truth_id"][spine])
+                or note.get("spine_displaced_to") != float(displaced["fitted_id"][spine])):
+            problems.append(f"fixture {s}/d{d}: spine_displaced's note disagrees with its identities")
+    for d, counts in clamps.items():
+        if len(counts) != 1 or not all(isinstance(c, int) and c > 0 for c in counts):
+            problems.append(f"donor {d}: the fixture clamp is not one donor-determined count ({sorted(map(str, counts))})")
     keys = list(truths)
     for i in range(len(keys)):
         for j in range(i + 1, len(keys)):
@@ -358,10 +406,13 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
             if oracle is None or pair is None:
                 closure_problems.append(f"closure {tag}: missing")
                 continue
-            glb = oracle["record"].get("glb")
+            glb, track = oracle["record"].get("glb"), oracle["record"].get("track")
             ok = (Path(str(pair.get("glb", ""))).name == glb
                   and inputs["files"].get(glb) == oracle["record"].get("glb_sha256")
                   and inputs["files"].get(glb) is not None
+                  and Path(str(pair.get("track", ""))).name == track
+                  and inputs["files"].get(track) == oracle["record"].get("track_sha256")
+                  and inputs["files"].get(track) is not None
                   and pair.get("frames_in_glb") == FRAMES and pair.get("frames_in_track") == FRAMES
                   and pair.get("joints_missing_from_the_glb") == [] and (pair.get("joints_compared") or 0) >= 127)
             value = pair.get("max_abs_m")
