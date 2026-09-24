@@ -1,0 +1,190 @@
+{
+ "delivery": {
+  "subject-00.glb": {
+   "d4": "79ce7d6b56551a9e7358a1e29de38d8c031c8d7995ff73c4770a8552670a084a",
+   "d4c_zero_start": "79ce7d6b56551a9e7358a1e29de38d8c031c8d7995ff73c4770a8552670a084a",
+   "byte_identical": true
+  },
+  "subject-00.body-track.npz": {
+   "d4": "20a97520d66b9bc3a6af62f96b0870409448a669e21e29a1a20ea0b6a5889317",
+   "d4c_zero_start": "20a97520d66b9bc3a6af62f96b0870409448a669e21e29a1a20ea0b6a5889317",
+   "byte_identical": true
+  },
+  "subject-00.markers.npz": {
+   "d4": "14a46c30f0764e9c252130cc088f009e9ddb727f86b3f486263a15ebbecf8d8d",
+   "d4c_zero_start": "14a46c30f0764e9c252130cc088f009e9ddb727f86b3f486263a15ebbecf8d8d",
+   "byte_identical": true
+  },
+  "fit-report-subject-00.json": {
+   "d4": "2ea69fdde84f05e1f13f6559756ade58fb7526534ec00ebd1e2a30994470e715",
+   "d4c_zero_start": "2ea69fdde84f05e1f13f6559756ade58fb7526534ec00ebd1e2a30994470e715",
+   "byte_identical": true
+  },
+  "subject-00.body-track.json": {
+   "identical_after_normalising": true
+  },
+  "subject-01.glb": {
+   "d4": "f1d20deb2fe1da5f3b925b24eeb8f8f78f7d107b289037deacd077986e6bd1ee",
+   "d4c_zero_start": "f1d20deb2fe1da5f3b925b24eeb8f8f78f7d107b289037deacd077986e6bd1ee",
+   "byte_identical": true
+  },
+  "subject-01.body-track.npz": {
+   "d4": "9417aaebce6cfffd9ef70e728414fed1c38e688fea4cec9a5acb1c74cff8d4e6",
+   "d4c_zero_start": "9417aaebce6cfffd9ef70e728414fed1c38e688fea4cec9a5acb1c74cff8d4e6",
+   "byte_identical": true
+  },
+  "subject-01.markers.npz": {
+   "d4": "92de364df37801842fbc110366230f3fc48126dcabd55102f528479c72263d81",
+   "d4c_zero_start": "92de364df37801842fbc110366230f3fc48126dcabd55102f528479c72263d81",
+   "byte_identical": true
+  },
+  "fit-report-subject-01.json": {
+   "d4": "d7842c0269358ad60e41ccb76a4d53d451aa21d1172dc5d24fffa05bfdf75393",
+   "d4c_zero_start": "d7842c0269358ad60e41ccb76a4d53d451aa21d1172dc5d24fffa05bfdf75393",
+   "byte_identical": true
+  },
+  "subject-01.body-track.json": {
+   "identical_after_normalising": true
+  }
+ },
+ "o1": {
+  "20260922_oracle": {
+   "seed-20260922-oracle.glb": true,
+   "seed-20260922-oracle.body-track.npz": true,
+   "seed-20260922-oracle.truth.npz": true,
+   "seed-20260922-oracle.body-track.json (normalised)": true,
+   "cell-20260922-oracle.json (normalised)": true
+  },
+  "20260922_exact_identity": {
+   "seed-20260922-exact_identity.glb": true,
+   "seed-20260922-exact_identity.body-track.npz": true,
+   "seed-20260922-exact_identity.truth.npz": true,
+   "seed-20260922-exact_identity.body-track.json (normalised)": true,
+   "cell-20260922-exact_identity.json (normalised)": true
+  },
+  "20260922_mean_body": {
+   "seed-20260922-mean_body.glb": true,
+   "seed-20260922-mean_body.body-track.npz": true,
+   "seed-20260922-mean_body.truth.npz": true,
+   "seed-20260922-mean_body.body-track.json (normalised)": true,
+   "cell-20260922-mean_body.json (normalised)": true
+  },
+  "20260923_oracle": {
+   "seed-20260923-oracle.glb": true,
+   "seed-20260923-oracle.body-track.npz": true,
+   "seed-20260923-oracle.truth.npz": true,
+   "seed-20260923-oracle.body-track.json (normalised)": true,
+   "cell-20260923-oracle.json (normalised)": true
+  },
+  "20260923_exact_identity": {
+   "seed-20260923-exact_identity.glb": true,
+   "seed-20260923-exact_identity.body-track.npz": true,
+   "seed-20260923-exact_identity.truth.npz": true,
+   "seed-20260923-exact_identity.body-track.json (normalised)": true,
+   "cell-20260923-exact_identity.json (normalised)": true
+  },
+  "20260923_mean_body": {
+   "seed-20260923-mean_body.glb": true,
+   "seed-20260923-mean_body.body-track.npz": true,
+   "seed-20260923-mean_body.truth.npz": true,
+   "seed-20260923-mean_body.body-track.json (normalised)": true,
+   "cell-20260923-mean_body.json (normalised)": true
+  },
+  "20260924_oracle": {
+   "seed-20260924-oracle.glb": true,
+   "seed-20260924-oracle.body-track.npz": true,
+   "seed-20260924-oracle.truth.npz": true,
+   "seed-20260924-oracle.body-track.json (normalised)": true,
+   "cell-20260924-oracle.json (normalised)": true
+  },
+  "20260924_exact_identity": {
+   "seed-20260924-exact_identity.glb": true,
+   "seed-20260924-exact_identity.body-track.npz": true,
+   "seed-20260924-exact_identity.truth.npz": true,
+   "seed-20260924-exact_identity.body-track.json (normalised)": true,
+   "cell-20260924-exact_identity.json (normalised)": true
+  },
+  "20260924_mean_body": {
+   "seed-20260924-mean_body.glb": true,
+   "seed-20260924-mean_body.body-track.npz": true,
+   "seed-20260924-mean_body.truth.npz": true,
+   "seed-20260924-mean_body.body-track.json (normalised)": true,
+   "cell-20260924-mean_body.json (normalised)": true
+  },
+  "20260925_oracle": {
+   "seed-20260925-oracle.glb": true,
+   "seed-20260925-oracle.body-track.npz": true,
+   "seed-20260925-oracle.truth.npz": true,
+   "seed-20260925-oracle.body-track.json (normalised)": true,
+   "cell-20260925-oracle.json (normalised)": true
+  },
+  "20260925_exact_identity": {
+   "seed-20260925-exact_identity.glb": true,
+   "seed-20260925-exact_identity.body-track.npz": true,
+   "seed-20260925-exact_identity.truth.npz": true,
+   "seed-20260925-exact_identity.body-track.json (normalised)": true,
+   "cell-20260925-exact_identity.json (normalised)": true
+  },
+  "20260925_mean_body": {
+   "seed-20260925-mean_body.glb": true,
+   "seed-20260925-mean_body.body-track.npz": true,
+   "seed-20260925-mean_body.truth.npz": true,
+   "seed-20260925-mean_body.body-track.json (normalised)": true,
+   "cell-20260925-mean_body.json (normalised)": true
+  },
+  "20260926_oracle": {
+   "seed-20260926-oracle.glb": true,
+   "seed-20260926-oracle.body-track.npz": true,
+   "seed-20260926-oracle.truth.npz": true,
+   "seed-20260926-oracle.body-track.json (normalised)": true,
+   "cell-20260926-oracle.json (normalised)": true
+  },
+  "20260926_exact_identity": {
+   "seed-20260926-exact_identity.glb": true,
+   "seed-20260926-exact_identity.body-track.npz": true,
+   "seed-20260926-exact_identity.truth.npz": true,
+   "seed-20260926-exact_identity.body-track.json (normalised)": true,
+   "cell-20260926-exact_identity.json (normalised)": true
+  },
+  "20260926_mean_body": {
+   "seed-20260926-mean_body.glb": true,
+   "seed-20260926-mean_body.body-track.npz": true,
+   "seed-20260926-mean_body.truth.npz": true,
+   "seed-20260926-mean_body.body-track.json (normalised)": true,
+   "cell-20260926-mean_body.json (normalised)": true
+  },
+  "20260927_oracle": {
+   "seed-20260927-oracle.glb": true,
+   "seed-20260927-oracle.body-track.npz": true,
+   "seed-20260927-oracle.truth.npz": true,
+   "seed-20260927-oracle.body-track.json (normalised)": true,
+   "cell-20260927-oracle.json (normalised)": true
+  },
+  "20260927_exact_identity": {
+   "seed-20260927-exact_identity.glb": true,
+   "seed-20260927-exact_identity.body-track.npz": true,
+   "seed-20260927-exact_identity.truth.npz": true,
+   "seed-20260927-exact_identity.body-track.json (normalised)": true,
+   "cell-20260927-exact_identity.json (normalised)": true
+  },
+  "20260927_mean_body": {
+   "seed-20260927-mean_body.glb": true,
+   "seed-20260927-mean_body.body-track.npz": true,
+   "seed-20260927-mean_body.truth.npz": true,
+   "seed-20260927-mean_body.body-track.json (normalised)": true,
+   "cell-20260927-mean_body.json (normalised)": true
+  }
+ },
+ "normalised_fields": {
+  "*.body-track.json": [
+   "body_model.assets"
+  ],
+  "o1 cell-*.json": [
+   "glb",
+   "track",
+   "fitter_source_sha256"
+  ]
+ },
+ "all_byte_identical_or_equal_after_normalising": true,
+ "fitter_sha256_now": "61cb4ed2d5fe5fd049e34b84c981d895709971fa2b473634ed5414ac3ba9b96a"
+}

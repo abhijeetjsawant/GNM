@@ -28,15 +28,24 @@ model parameters then put the skeleton somewhere else (measured 2026-09-22; `exp
 docstring carries the numbers). The pre-card fitted both performers in one process, so its
 performer 1 was fitted on a model performer 0's calibration had moved.
 
+D4c, THE CALIBRATION'S START. Both `calibrate_markers` calls (stage A, locators only; stage B, identity)
+start from a LANDMARK-DERIVED identity (`landmark_start`) instead of zero, each receiving its own copy.
+Nothing else in the fit changes (`max_iter` 30, `calib_frames` 100, `loss_alpha` 2.0, pinned offsets,
+tracking). `--zero-start` forces the zero start, byte for byte the D4 fitter's (the tripwire and the
+legacy arm). The start actually used is written beside the delivery as
+`subject-XX.calibration-start.json`, never into the fit report or the track (so the zero start leaves
+both byte-identical).
+
 Usage:
   /tmp/momenv/bin/python tools/fitter/mhr_delivery.py --inputs DIR --out DIR --subject N \
-      [--lod 2] [--landmarks smoothed|raw] [--mean-body] [--free-offsets]
+      [--lod 2] [--landmarks smoothed|raw] [--mean-body] [--free-offsets] [--zero-start]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -134,11 +143,111 @@ def fk_positions_cm(character: g.Character, motion: np.ndarray) -> np.ndarray:
     return out
 
 
+# ------------------------------------------------------------------ D4c: the calibration's start
+# The drawn set of D4c's limit-aware rule (docs/reviews/body-model-start-records/drawn-set.json, frozen at stage 1)
+# and the one segment kind each drawn channel moves (a bilateral channel moves both sides). Every other channel
+# starts at zero.
+START_CHANNEL_SEGMENTS = {
+    "scale_spine_length": (("root", "c_neck"),),
+    "scale_neck_length": (("c_neck", "c_head"),),
+    "scale_shoulder_width": (("l_uparm", "r_uparm"),),
+    "scale_uparms": (("l_uparm", "l_lowarm"), ("r_uparm", "r_lowarm")),
+    "scale_lowarms": (("l_lowarm", "l_wrist"), ("r_lowarm", "r_wrist")),
+    "scale_hip_width": (("l_upleg", "r_upleg"),),
+    "scale_uplegs": (("l_upleg", "l_lowleg"), ("r_upleg", "r_lowleg")),
+    "scale_lowlegs": (("l_lowleg", "l_foot"), ("r_lowleg", "r_foot")),
+}
+# The NON-RIGID trunk (flexion shortens the root->c_neck chord): the per-frame statistic, the card's ONE
+# development choice from {median, p90, p95}, frozen at stage 3 in docs/reviews/body-model-start-records/
+# development.json. Every other segment reads the median.
+TRUNK_STATISTIC: str | None = None
+STATISTIC_PERCENTILE = {"median": 50.0, "p90": 90.0, "p95": 95.0}
+
+
+def configured_limits() -> dict[str, tuple[float, float]]:
+    """`limit <name> minmax [lo, hi]` out of the model definition the character is loaded with."""
+    out = {}
+    for line in (ASSETS / "compact_v6_1.model").read_text(encoding="utf-8").splitlines():
+        match = re.match(r"\s*limit\s+(\S+)\s+minmax\s+\[\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*\]", line)
+        if match:
+            out[match.group(1)] = (float(match.group(2)), float(match.group(3)))
+    return out
+
+
+def calibration_frame_indices(frames: int, calib_frames: int) -> list[int]:
+    """momentum's own uniform selection (`computeSampleStride`, greedy_sampling 0): stride
+    max(1, (n - 1) // calib_frames), frames 0, stride, 2 stride, ... (150 frames at 100: every frame)."""
+    stride = max(1, (frames - 1) // calib_frames) if calib_frames > 0 and frames > 0 else 1
+    return list(range(0, frames, stride))
+
+
+def landmark_start(array_zup_m: np.ndarray, joint_names: list[str], character: g.Character, *,
+                   calib_frames: int = 100, trunk_statistic: str | None = None) -> tuple[np.ndarray, dict]:
+    """D4c: the calibration's starting identity from the CONSUMED landmarks only, frozen.
+
+    For each drawn channel c and its segment s: start_c = (l_s - l0_s) / k_c, clipped to c's configured limit.
+    l_s is the statistic over the calibration frames of the segment's length in the consumed array (bilateral:
+    the mean of the two sides' statistics; the median everywhere but the trunk). l0_s is the rest length at the
+    zero identity (MHR's zero pose) and k_c the SIGNED change per unit at the upper limit, both by forward
+    kinematics on `character`. Landmarks are read as joints (the pinned-zero-offset convention). Returns the
+    full model-parameter vector in `character`'s own layout (by NAME) and a record of every number used.
+    """
+    statistic = trunk_statistic if trunk_statistic is not None else TRUNK_STATISTIC
+    if statistic not in STATISTIC_PERCENTILE:
+        raise ValueError(f"the trunk statistic is not frozen (got {statistic!r})")
+    array_cm = to_mhr_cm(np.asarray(array_zup_m, np.float64))
+    landmark_of = {joint: landmark for landmark, joint in MAP.items()}
+    frames = calibration_frame_indices(array_cm.shape[0], calib_frames)
+    names = list(character.parameter_transform.names)
+    skeleton = list(character.skeleton.joint_names)
+    limits = configured_limits()
+
+    def rest_lengths_cm(vector: np.ndarray) -> dict[tuple[str, str], float]:
+        state = np.asarray(g.model_parameters_to_skeleton_state(character, vector.astype(np.float32)))[..., :3]
+        return {pair: float(np.linalg.norm(state[skeleton.index(pair[0])] - state[skeleton.index(pair[1])]))
+                for segments in START_CHANNEL_SEGMENTS.values() for pair in segments}
+
+    zero = np.zeros(len(names), np.float32)
+    rest0 = rest_lengths_cm(zero)
+    start = np.zeros(len(names), np.float32)
+    record = {"trunk_statistic": statistic, "calibration_frames": len(frames), "channels": {}}
+    for channel, segments in START_CHANNEL_SEGMENTS.items():
+        low, high = limits[channel]
+        upper = zero.copy()
+        upper[names.index(channel)] = np.float32(high)
+        rest_up = rest_lengths_cm(upper)
+        is_trunk = segments == (("root", "c_neck"),)
+        q = STATISTIC_PERCENTILE[statistic] if is_trunk else 50.0
+        observed, missing = [], 0
+        for a, b in segments:
+            ia, ib = joint_names.index(landmark_of[a]), joint_names.index(landmark_of[b])
+            lengths = np.linalg.norm(array_cm[frames, ia] - array_cm[frames, ib], axis=1)
+            missing += int(np.sum(~np.isfinite(lengths)))
+            observed.append(float(np.nanpercentile(lengths, q, method="linear")))
+        length = float(np.mean(observed))
+        length0 = float(np.mean([rest0[pair] for pair in segments]))
+        slope = float(np.mean([rest_up[pair] for pair in segments]) - length0) / high
+        value = float(np.clip((length - length0) / slope, low, high))
+        start[names.index(channel)] = np.float32(value)
+        record["channels"][channel] = {
+            "segments": [list(pair) for pair in segments], "percentile": q,
+            "landmark_length_mm": length * 10.0, "per_side_mm": [v * 10.0 for v in observed],
+            "rest_length_zero_identity_mm": length0 * 10.0, "k_mm_per_unit": slope * 10.0,
+            "limit": [low, high], "unclipped": (length - length0) / slope, "start": float(np.float32(value)),
+            "nonfinite_frame_lengths": missing}
+    return start, record
+
+
 def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_body: bool,
             free_offsets: bool, calib_frames: int = 100, max_iter: int = 30,
             loss_alpha: float = 2.0, smoothing: float = 0.0,
-            freeze_flexible: bool = False, fixed_identity: np.ndarray | None = None) -> dict:
-    """Two-stage calibration then per-frame tracking. Returns everything the delivery needs."""
+            freeze_flexible: bool = False, fixed_identity: np.ndarray | None = None,
+            start_identity: np.ndarray | None = None) -> dict:
+    """Two-stage calibration then per-frame tracking. Returns everything the delivery needs.
+
+    `start_identity` (D4c) is where BOTH calibration stages start, each from its own copy; None is the zero
+    start, exactly the D4 fitter's.
+    """
     array_cm = to_mhr_cm(np.asarray(array_zup_m, np.float64))
     character = with_pinned_locators(load_character(lod, drop_flexible=freeze_flexible),
                                      free=free_offsets)
@@ -167,8 +276,9 @@ def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_b
         stage_a.locators_only = True
         stage_a.loss_alpha = loss_alpha
         stage_a.max_iter = max_iter
-        mt.calibrate_markers(character, zero.copy(), markers, stage_a)
-        identity, _, _ = mt.calibrate_markers(character, zero.copy(), markers, calibration)
+        start = zero if start_identity is None else np.asarray(start_identity, np.float32)
+        mt.calibrate_markers(character, start.copy(), markers, stage_a)
+        identity, _, _ = mt.calibrate_markers(character, start.copy(), markers, calibration)
         identity = np.asarray(identity, np.float32)
 
     tracking = mt.TrackingConfig()
@@ -301,6 +411,9 @@ def main() -> int:
     parser.add_argument("--landmarks", choices=("smoothed", "raw"), default="smoothed")
     parser.add_argument("--mean-body", action="store_true")
     parser.add_argument("--free-offsets", action="store_true")
+    parser.add_argument("--zero-start", action="store_true",
+                        help="D4c: force the ZERO calibration start (the D4 fitter, byte for byte): the "
+                             "tripwire and the legacy arm. The delivery default is the landmark start.")
     parser.add_argument("--dump-reference", type=Path,
                         help="B5: write MHR's OWN rest, hierarchy and skin weights at this lod to "
                              "an npz and exit, so a .venv instrument can compare the delivered "
@@ -349,8 +462,20 @@ def main() -> int:
         consumed = {k: source[k] for k in source.files}
         joint_names = [str(n) for n in consumed["joint_names"]]
         array = np.asarray(consumed[key], np.float64)
+        start, start_record = None, {"mode": "zero"}
+        if not (arguments.zero_start or arguments.mean_body):
+            # computed on the export character, loaded before any calibration, same parameter layout
+            start, start_record = landmark_start(array, joint_names, export_character)
+            start_record["mode"] = "landmark"
         fit = fit_one(array, joint_names, lod=arguments.lod, mean_body=arguments.mean_body,
-                      free_offsets=arguments.free_offsets)
+                      free_offsets=arguments.free_offsets, start_identity=start)
+        if list(export_character.parameter_transform.names) != fit["parameter_names"]:
+            raise SystemExit("the start was built on a different parameter layout from the fitted character's")
+        (out / f"subject-{subject:02d}.calibration-start.json").write_text(
+            json.dumps(dict(start_record, consumed_array_key=key,
+                            identity=None if start is None else
+                            {n: float(v) for n, v in zip(fit["parameter_names"], start) if v != 0.0}),
+                       indent=1), encoding="utf-8")
         prefix = out / f"subject-{subject:02d}"
         export_glb(fit, export_character, prefix.with_suffix(".glb"))
         written = write_track(fit, prefix, subject=subject, consumed=consumed, lod=arguments.lod,

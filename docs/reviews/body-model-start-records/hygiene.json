@@ -1,0 +1,49 @@
+{
+ "what": "--body rig rebuilds the shipped D7c delivery (artifacts/commercial-multiview-soma77) 8 of 8 byte-identical, at the stage-2 source (mhr_delivery.py changed; src/ and the build script unchanged)",
+ "rebuild": "artifacts/compare/d4c-start/hygiene",
+ "detection_cache": "artifacts/commercial-multiview-soma77/work copied in (jsonl identical to D4's hygiene and delivery work); the SOMA-77 model is absent from .cache/autoanim_gnm/gem-x on 2026-09-25, so a fresh detection could not run (log 05a)",
+ "files": {
+  "subject-00.glb": {
+   "shipped": "1bca2b500aa1fb6983e8d053e740e99515d0fe54ea96eb569bbf1abc7465c9d7",
+   "rebuild": "1bca2b500aa1fb6983e8d053e740e99515d0fe54ea96eb569bbf1abc7465c9d7",
+   "identical": true
+  },
+  "subject-01.glb": {
+   "shipped": "3765d7455afbf6224260eb68eba58f65de8a2bb7dc777c98925b04ab4d276a2d",
+   "rebuild": "3765d7455afbf6224260eb68eba58f65de8a2bb7dc777c98925b04ab4d276a2d",
+   "identical": true
+  },
+  "subject-00.body-track.npz": {
+   "shipped": "affce2418bbc3acbd391290d28a69552674310272a0a8a05ca1786aea9c0eccb",
+   "rebuild": "affce2418bbc3acbd391290d28a69552674310272a0a8a05ca1786aea9c0eccb",
+   "identical": true
+  },
+  "subject-01.body-track.npz": {
+   "shipped": "637df508e3672f7c0e60499ceb3be89c4fed5ebc7408a65e91f75aecfd0d9e53",
+   "rebuild": "637df508e3672f7c0e60499ceb3be89c4fed5ebc7408a65e91f75aecfd0d9e53",
+   "identical": true
+  },
+  "subject-00.body-track.json": {
+   "shipped": "e37ff748a977e227b46d611e86c363df844ff7b3dd8894cf101aec11a87823a1",
+   "rebuild": "e37ff748a977e227b46d611e86c363df844ff7b3dd8894cf101aec11a87823a1",
+   "identical": true
+  },
+  "subject-01.body-track.json": {
+   "shipped": "93a287307042e39c66910fba9ed9532f50e66af35512ab6ff84f632deb3f075e",
+   "rebuild": "93a287307042e39c66910fba9ed9532f50e66af35512ab6ff84f632deb3f075e",
+   "identical": true
+  },
+  "subject-00.mapping.npz": {
+   "shipped": "4c9a9ec15f0e48a185d1ff3df72d7ea95c54a36c3b0de9124a4c01b03ba4d684",
+   "rebuild": "4c9a9ec15f0e48a185d1ff3df72d7ea95c54a36c3b0de9124a4c01b03ba4d684",
+   "identical": true
+  },
+  "subject-01.mapping.npz": {
+   "shipped": "fe11b0c66cbdcc356727e5eda967b2a4d4804f677e29ee91b349ea73ddfafe1e",
+   "rebuild": "fe11b0c66cbdcc356727e5eda967b2a4d4804f677e29ee91b349ea73ddfafe1e",
+   "identical": true
+  }
+ },
+ "identical": 8,
+ "of": 8
+}
