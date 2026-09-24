@@ -1,6 +1,6 @@
 {
   "_about": "Source of truth for where the body lane stands. Edit ONLY through tools/compare/status.py (set / log / render). render writes docs/LADDER_STATUS.md and docs/progress.html from this file. Plan of record: docs/LADDER_EXECUTION_PLAN.md; what is measured and how: docs/SUBSTITUTION_LADDER.md.",
-  "updated": "2026-09-24",
+  "updated": "2026-09-25",
   "goal": "An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.",
   "lanes": [
     {
@@ -192,8 +192,8 @@
           "title": "The body-model fit's start and stop, re-registered with the trunk as a prerequisite",
           "plain": "D4b found that when the body fit starts from the true body it keeps it, and that almost every calibration solve stops at its iteration limit -- so the shortened spine looks like a fit that starts in the wrong place and stops too early. This step fixes one start-and-stop rule in advance, chosen without looking at the test, makes sure the test can actually score the trunk before anything runs, and then checks it on fresh synthetic bodies.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-25",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -895,6 +895,11 @@
       "date": "2026-09-24",
       "step": "D4b",
       "text": "D4b MERGED 2026-09-24 (d08929b) as a measurement, src byte-identical: STOPPED at stage 3 under the registered must-fail (ii) (reading B, Astra's merge round). The frozen drawn-set rule (a first-order pose-Jacobian column-space test, blind to the configured limits) drew 6 channels, not 8: scale_spine_length and scale_shoulder_width sit in the pose span only through pose steps of 17-65 units against limits <= 1.5, so the trunk was not scored and the band as scored accepted the displaced spine 6/6 on D4's burned cells. Post-stop exploratory (not evidence; fixtures 20261001-06 x donors 0/1 now burned): scored bones within 0.55x tolerance 12/12, the trunk beyond tolerance 9/12; WARM (calibration from the truth) holds the spine within 0.005; 973 of 1056 calibration solves stopped at max_iter 30. D4 STAYS OPEN, O1 not superseded. The card contradicted itself (PASS closes D4 vs an unscored trunk cannot) -- the lane's fifth pre-registration error, the coordinator's."
+    },
+    {
+      "date": "2026-09-25",
+      "step": "D4c",
+      "text": "D4c dispatched 2026-09-25: ONE change, the calibration's landmark-derived starting identity (max_iter 30 kept); limit-aware drawn-set rule with the trunk a PRECONDITION (STOP); development on the 18 burned fixtures chooses only the trunk statistic from {median, p90, p95}, frozen before 12 untouched acceptance fixtures; init-only must-fail; B1 re-run on the D4c fitter; one verdict; fit_one merges only on PASS. Astra's one card round at medium: dispatchable, findings adopted. Worktree .claude/worktrees/ladder-D4c on ladder/D4c"
     }
   ]
 }
