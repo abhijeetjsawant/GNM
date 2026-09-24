@@ -280,12 +280,14 @@
   cursor-grok-4.6-medium "$(cat brief.md)" > review.md`, ~5 min; without `--trust` it exits 1). Same brief shape either way:
   state, code excerpts, the measurement, the card verbatim, numbered adversarial questions. Records so far under
   `docs/reviews/*-grok-*.md` (D8c, D9b).
-- **"The Solve So Far" is at the page cap** (9.27 of ~9.5 MB after v8, 2026-09-07): a v9 player needs an older tab's frames
-  shrunk or dropped first. v2's JPEGs are at q60; the v4, v5 and v6 players were shrunk to 640 px q42 to pay for v8.
+- **"The Solve So Far" is at the page cap** (~9.2 of ~9.5 MB after v12, 2026-09-22): a new player needs an older tab's
+  frames shrunk first. v2 is at q60; v4–v7 at 640 px q42; the D8, D9 and D9b players at 480 px q40. The working copy of the
+  page is `docs/solve-so-far/solve-so-far.html` (gitignored); when it is missing, rebuild it from the live artifact.
+  **Standing instruction (2026-09-21): every measured result, merge or stop gets a new version tab in the same pass.**
 - **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
   script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
   and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
-  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v8).
+  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v12).
 - **zsh does not word-split an unquoted `$VAR`**: pass file lists as `${=VAR}` / an array, or use a glob.
 - **The D3 gate's oracle score is translation-aligned (D9b, 2026-09-07).** `retarget_cost.score` subtracts the leg-root midpoint
   per frame, so the exact-skeleton oracle cannot see a root move: it read identical before and after the foot-contact projection

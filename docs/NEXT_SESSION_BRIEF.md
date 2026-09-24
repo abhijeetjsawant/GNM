@@ -1,4 +1,4 @@
-# Resume brief — body-capture lane, written 2026-09-15 after the D7c close-out (paste this into a fresh session)
+# Resume brief — body-capture lane, written 2026-09-22 after the D4 opt-in merge (paste this into a fresh session)
 
 Resume the AutoAnim body-capture lane. Read, in this order: `docs/LADDER_STATUS.md` (the SessionStart hook prints it),
 `docs/LADDER_EXECUTION_PLAN.md` §2 (the D7c row is the newest card; the D7 → D9b rows are the shape of a step) and §6, the
@@ -7,19 +7,30 @@ CLAUDE.md body-lane section (every standing rule, including the six added after 
 `docs/reviews/pelvis-rest-astra-review-2026-09-14.md` (the card, seven rounds) and
 `docs/reviews/pelvis-rest-astra-merge-review-2026-09-14.md` (the merge, nine rounds).
 
-**STATE.** D7, D7b, D8, D9, D8b, D8c, D9b and D7c are merged, rebuilt in place, byte-checked, instrumented and pushed on
-`battle0/clean-room-multiview-resolution-invariance` (last commit ec34733). D7c (2026-09-15): the pelvis is fitted to the
-rig's own rest offsets about the captured hip midpoint (`E_rig_rest_kabsch`), no constant; on the D3 gate's six exact bodies
-the pelvis reads 0.0001° (was a constant 6.865° of SOMA's convention), the Spine origin 0.0001 mm, the torso 0.00, and the
-D3 gate's exact-skeleton oracle passes its 0.5 mm arm band on every seed for the first time (0.35 worst). On the take the
-pelvis pitched ~9° and the root moved ~13 mm on every frame; the photographs not worse on 8 of 8 cells. Two selector stops
-are recorded as they fell and both amendments are post hoc. "The Solve So Far" carries v2–v9 at 9.34 of ~9.5 MB.
+**STATE.** D7c merged 2026-09-15. **D4 (the body model in the delivery path) is MERGED OPT-IN on 2026-09-22 (285643c) with its
+ACCEPTANCE FAIL and open:** `scripts/build_commercial_multiview_comparison.py --body mhr` fits MHR by momentum to the same
+smoothed repaired landmarks the rig consumes and delivers MHR's own mesh; silhouette 0.647 / 0.652 → 0.803 / 0.767 against
+the D7c rig, CIs clear on both performers (B1, the band, PASS; B2 PASS; hygiene 8/8). The synthetic exactness oracle O1 read
+1.030 mm against a 1 mm band written without the tracker's floor (0.51–0.76 mm measured) — FAIL, not moved, not excepted
+(the coordinator's first "recorded exception" was an override and was withdrawn on Astra's merge round). The default stays
+`rig`; nothing shipped changed; the close-out on the rig default is 8/8 byte-identical with every instrument line-identical
+to D7c's. Records: `docs/reviews/body-model-precard-2026-09-21.md`, `body-model-2026-09-21.md` (on the merge),
+`body-model-astra-review-2026-09-21.md`, `body-model-astra-merge-review-2026-09-22.md`. Findings: momentum's
+`calibrate_markers` corrupts a later `Character.load_fbx` in the same process (one process per performer now); the cache was
+wiped for storage and restored from the Modal volume (recipe in CLAUDE.md). "The Solve So Far" carries v2–v12.
+
+**NEXT, in order:** **D4b** — O1 re-registered PROSPECTIVELY: the statistic, a calibrated baseline from the measured 0.757 mm
+floor, the tolerance, the identifiable channel set (excluding `scale_foot_length` and `scale_hip_height`), the mean-body
+rejection, fresh held-out fixtures — frozen before any number; raising the threshold around 1.030 is explicitly not that.
+Then the **integration step that flips the default to `mhr`**: the compositor (`unified_gltf`, the N5.1 assembly) consuming
+the MHR track schema, schema-aware artifact checks, every rig-schema instrument made compatible or scoped, `post_merge.sh`
+reading the MHR output, an end-to-end rebuild. Usage is the constraint: one Astra card round, one merge round, per step.
 
 **PROCESS, CHANGED ON 2026-09-15 BY THE USER'S STEER.** One Astra card review and one Astra merge review per step; findings
 about a gate instrument that do not reach a card-banded verdict are instrument debt, never a merge blocker; when the
 candidate stops changing between rounds, the review is bounded. Usage is the constraint now.
 
-**NEXT STEP, BY THE USER'S STEER: the body model in the delivery path.** Delivered joints sit ~47 mm from MAMMA's (a
+**(superseded by D4 above) The body model step as it was planned:** Delivered joints sit ~47 mm from MAMMA's (a
 convention-laden reference) but the photographs read ours at 0.62–0.69 IoU against MAMMA's mesh at 0.84–0.89, and that gap
 is the MESH: a stock asset stretched over a scaled rig with its old weights, no body model at all. So D9-legs and the
 instrument-debt step are SKIPPED for now and the next step is D4 on the MHR body with D5's scaling folded in: momentum IK on
