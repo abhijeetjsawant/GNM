@@ -1,31 +1,43 @@
 # D4b: O1 re-registered prospectively. The measurement (2026-09-24)
 
-**What the gate says:** the card's conjunction reads **PASS**, but on a scored set that leaves out the trunk.
-**D4 STAYS OPEN.** The drawn-set rule was frozen before any fit, and it left `scale_spine_length` (and
-`scale_shoulder_width`) out. So the trunk is **reported, not scored**. The card anticipated exactly this branch:
-*"a trunk that cannot be scored and rejected is not a demonstrated trunk failure, and such a run cannot close
-D4."* Reported, the fitted trunk is beyond its paired tolerance on **9 of 12** fresh fixtures (1.15–14.94 mm
-against 1.84–2.38 mm). That is the defect D4 found, and it is still there. D4's 1.030 mm FAIL stays on record.
+**STOPPED at stage 3 under the registered (ii). D4 stays open. O1 is not superseded.**
 
-**Read first, for the merge review. The contradiction below is the card's; the decisions are the executor's.**
+The first merge round (Astra GPT6) ruled, and the coordinator adopted after checking the source, that must-fail
+(ii) is **reading B**. The card requires the displaced spine to *"FAIL L at the trunk"*. L is defined over
+SCORED segments, and *"a trunk that cannot be scored and rejected is not a demonstrated trunk failure."*
 
-* **The card says two things that cannot both hold on this run.** Its outcome clause: *"PASS → D4's acceptance
-  closes as 'O1 superseded by D4b: PASS'"*, together with the merge rule *"its verdict is D4's O1 verdict"*. Its
-  drawn-set clause: *"a trunk that cannot be scored and rejected is not a demonstrated trunk failure, and such a
-  run cannot close D4."* The conjunction reads PASS, and the trunk is not scored. The gate prints both lines,
-  `verdict` (the conjunction) and `d4_disposition` (STAYS OPEN), and does not fold one into the other. The
-  specific clause governs: **D4 does not close.**
-* **What caused this is the drawn-set rule itself** (§4a). The card's first-order column-space test, implemented
+The drawn-set rule was frozen before any fit. It left `scale_spine_length` (and `scale_shoulder_width`) out, so
+the trunk is not scored. The band as scored therefore **accepts** the displaced spine on **6 of 6** of D4's
+burned fixtures. That is the registered STOP: *"If (ii) passes there, STOP before fresh fixtures."*
+
+The gate now reads:
+
+    BURNED VERDICT: FAIL   STOP: True    (the registered (ii) fails on D4's own cells)
+    VERDICT: FAIL   STOP: True   D4: STAYS OPEN, O1 NOT SUPERSEDED  (fresh, POST-STOP EXPLORATORY)
+
+D4's 1.030 mm FAIL stays on record.
+
+**What happened after the STOP.** The executor implemented (ii) as reading A instead: the trunk's error against
+its tolerance, whether or not the trunk is scored. Under that reading (ii) passed on D4's cells, so stages 4–6
+ran. **Those fresh measurements are POST-STOP EXPLORATORY.** They are not registered acceptance evidence, and
+fixtures 20261001–20261006 × donors 0/1 are now burned. They stay on disk and in this review, labelled as such.
+
+The executor's reading-A computation read the conjunction as PASS with D4 STAYS OPEN. It is kept below (§2,
+the second table) as a superseded computation, never a verdict.
+
+**Read first, for the merge review.**
+
+* **The registered (ii) (reading B)** is now what the gate implements. (ii) holds on a fixture only if the trunk
+  is scored AND its error exceeds its tolerance there. An unscored trunk fails (ii) and raises STOP, on
+  `--burned` as on the fresh population. The reading-A count is kept as a REPORTED quantity
+  (`SUPERSEDED_reading_A_…`).
+* **The cause is the drawn-set rule itself** (§4a). The card's first-order column-space test, implemented
   literally at the card's own 1e-6 rank convention, finds the along-spine displacement inside the pose Jacobian's
   span. It gets there through absorbing poses of 17–65 parameter units (±12 000 under plain `lstsq`) against
-  limits of at most 1.5. A least-squares fit bounded by the configured limits was considered and rejected, because
-  it would change a frozen rule after seeing its reading. Both readings are on record.
-* **(ii) was implemented as reading (A):** the trunk's error against the trunk's tolerance, whether or not the
-  trunk is scored. Two clauses presuppose that the run completes: *"exclusion never skips must-fail (ii)"* and
-  *"such a run cannot close D4"*. A reviewer who reads (ii) as (B), *the band as scored must reject the displaced
-  spine*, would put a STOP at stage 3, and stages 4–6 would then be an overrun. The (B) quantity is in
-  `gate.json` and `burned.json`: the band as scored passes the displaced spine on 12/12 fresh and 6/6 burned
-  (§7, item 2).
+  limits of at most 1.5. A least-squares fit bounded by the configured limits was considered and rejected,
+  because it would have changed a frozen rule after seeing its reading. Both readings are on record.
+* **The executor's two superseded choices:** reading A for (ii), and printing the conjunction's PASS beside a
+  STAYS OPEN disposition. §7 keeps both as they were decided, marked superseded.
 
 Nothing under `src/` changed. `tools/fitter/mhr_delivery.py` is byte-identical at `3136befb…` at every commit.
 The momentum settings in every banded arm are the pre-card's.
@@ -34,10 +46,11 @@ The momentum settings in every banded arm are the pre-card's.
 |---|---|---|
 | 1 | `d6eb9b9` | `/tmp/momenv` rebuilt (pymomentum-cpu 0.1.114.post0). Provenance recorded. The environment reproduces D4's retained seed-20260922 cells byte for byte |
 | 2 | `3ae1956` | the drawn set, frozen before any fit: **six**, not eight |
-| 3 | `344bdc3` | BURNED: L and (ii) on D4's six retained cells; (ii) fails at the trunk 6/6; no STOP |
-| 4 | `1d9fe69` | the fresh population: 12 fixtures × 6 arms, with closure on every oracle cell |
-| 5 | `173d901` | the gate and its fuzz |
-| 6 | this commit | the tests, this review and the extractor stub |
+| 3 | `344bdc3` | BURNED: L and (ii) on D4's six retained cells. **Under the registered reading B, (ii) FAILS 6/6: STOP here.** The executor read it as A (no STOP) and went on |
+| 4 | `1d9fe69` | POST-STOP EXPLORATORY: the fresh population, 12 fixtures × 6 arms, with closure on every oracle cell |
+| 5 | `173d901` | the gate and its fuzz (reading A at that commit) |
+| 6 | `3ad35d8`, `a39d64b` | the tests, this review and the extractor stub (reading A at those commits) |
+| merge round | the reading-B commit | (ii) re-implemented as reading B, STOP raised on burned; fresh relabelled POST-STOP EXPLORATORY; test and fuzz updated; no new fits |
 
 The committed records are in `docs/reviews/body-model-o1-records/`: `provenance.json`, `drawn-set.json`, `tripwire.json`,
 `burned.json`, `fresh-manifest.json`, `gate.json` and `fuzz.json`. The logs are in `artifacts/compare/d4b-o1/logs/`.
@@ -53,10 +66,28 @@ unchanged below; the file `docs/reviews/body-model-o1-card-2026-09-24.md` is ide
 
 ---
 
-## 2. The clause table
+## 2. The clause tables
 
-The fresh population is 12 fixtures (seeds 20261001–20261006 × donors 0, 1) × 6 arms × 150 frames × 17 joints.
-Every cell is present, finite and bound by identity (`gate.json`, `fresh-manifest.json`).
+**The registered reading, where the step STOPS.** These are D4's six burned cells (`burned.json`), which prove
+the instrument and are never evidence:
+
+| clause | predicted (the card) | measured | verdict |
+|---|---|---|---|
+| (ii) the displaced spine fails L at the trunk (reading B: the trunk scored and beyond tolerance) | fails on every fixture; STOP if it passes | the trunk is **not scored** (drawn-set rule), so the band as scored accepts the displaced spine on **6/6**. The trunk's own error, 14.87–14.89 mm against 1.64–2.11 mm, cannot fail an unscored L | **FAIL, STOP** |
+| validity / (i) / (iii) | as the card states | validity 0.506–0.757 mm; (i) misses 6/6; (iii) reads 0 mm, 6/6 | PASS |
+| L | FAIL | 3/6 pass on the scored set | FAIL |
+| overall | FAIL | FAIL, STOP | FAIL |
+
+**POST-STOP EXPLORATORY: the fresh population.** It ran only because of the executor's superseded reading A. It
+is not registered acceptance evidence, and these fixtures are now burned. There are 12 fixtures (seeds
+20261001–20261006 × donors 0, 1) × 6 arms × 150 frames × 17 joints. Every cell is present, finite and bound by
+identity (`gate.json`, `fresh-manifest.json`).
+
+Under reading B the fresh gate reads **VERDICT: FAIL, STOP: True**: (ii) fails on 12/12 because the trunk is not
+scored. Every other conjunct reads as in the table below.
+
+The table below is the **executor's superseded reading-A computation**, kept as it was computed. Its (ii) and
+overall rows are **not** the registered verdict:
 
 | clause | predicted (the card) | measured | verdict | prediction |
 |---|---|---|---|---|
@@ -67,9 +98,9 @@ Every cell is present, finite and bound by identity (`gate.json`, `fresh-manifes
 | L, the limbs | PASS | PASS 12/12 | PASS | held |
 | closure (the GLB's FK equals the track, ≤ 1e-4 m) | within band on every oracle cell | 1.87e-06 to 3.01e-06 m; 150 frames and 127 joints on each of 12 | PASS | held |
 | (i) the mean body misses L | misses on every fixture | misses on 12/12; its closest fixture is 42× tolerance | PASS | held |
-| (ii) the spine displaced 0.149 fails L at the trunk | fails on every fixture; STOP if it passes | 14.88 mm against 1.84–2.38 mm, fails on 12/12, **no STOP**. The band *as scored* passes it on 12/12 | PASS | held |
+| (ii) (SUPERSEDED reading A: the trunk read whether or not it is scored) | fails on every fixture; STOP if it passes | 14.88 mm against 1.84–2.38 mm, beyond on 12/12. The band *as scored* passes it on 12/12, **so under the registered reading B: FAIL, STOP** | (reading A: PASS) **registered: FAIL** | FAILED |
 | (iii) exact_identity reads L = 0 and PASSES | L = 0 and PASS | 0.000000 mm on every segment, PASS 12/12 | PASS | held |
-| **overall** | **FAIL** | the conjunction reads **PASS**; `d4_disposition` reads **STAYS OPEN** | PASS (conjunction) | **FAILED** |
+| **overall** | **FAIL** | reading A: the conjunction read PASS, `d4_disposition` STAYS OPEN. **Registered (reading B): FAIL, STOP** | **FAIL** | held |
 
 ## 3. The burned reading (D4's six retained cells: not evidence)
 
@@ -81,8 +112,9 @@ oracle equals the retained cell to 0.0.
 * **L** on D4's oracle, over the frozen scored set: **3 of 6 pass**. The scored misses are neck_head (2.67 and
   3.31 mm against 2.28 and 2.49) and the upper arms, on the seeds where the spine is stretched. This is the
   neck and arm compensation D4 recorded. The **trunk**, reported: **14.8–20.9 mm against 1.64–2.11 mm, beyond on 6 of 6.**
-* **(ii)**: 14.87–14.89 mm against 1.64–2.11 mm. It **fails at the trunk 6/6 as required, so there is no STOP.**
-  The band as scored passes the displaced spine on 6/6.
+* **(ii), registered (reading B): FAILS. STOP.** The trunk is not in the scored set, and the band as scored passes
+  the displaced spine on 6/6. The trunk's own error is 14.87–14.89 mm against 1.64–2.11 mm. The executor's
+  superseded reading A counted that error as a failure at the trunk, read no STOP, and went on to stages 4–6.
 * (i) misses 6/6. (iii) reads 0.000000 mm and passes 6/6. Validity reads 0.506–0.757 mm.
 
 ## 4. The FAILED predictions, attributed
@@ -119,12 +151,14 @@ the left singular vectors above the card's rank convention. A first run used `nu
 That call cuts at machine epsilon, so it also projects onto the truncation directions (the absorbing coefficients
 reached ±12 000). It read the same six and is kept as `REPORTED_…_ARTEFACT`.
 
-**(b) "L: FAIL" and "overall: FAIL": the conjunction reads PASS.** The attribution is (a). The prediction's own
-reason, *"the trunk segment fails on most fixtures"*, **held**: 9 of 12. But the trunk left the scored set when
-the spine fell below the frozen rule. The limbs passed as predicted. The band as scored therefore passes, and
-the card's drawn-set clause keeps D4 open.
+**(b) "Every must-fail behaves as stated": (ii) does not**, under the registered reading B, on the burned cells
+and on the post-stop fresh cells alike. The attribution is (a): the trunk left the scored set.
 
-## 5. The fresh reading, beyond the table
+*(Superseded, post-stop exploratory.)* Under reading A the fresh "L: FAIL" and "overall: FAIL" predictions also
+failed, because the conjunction read PASS on a scored set without the trunk. The prediction's own reason, *"the
+trunk segment fails on most fixtures"*, held as a reported reading: 9 of 12.
+
+## 5. The fresh reading, beyond the table (POST-STOP EXPLORATORY: not registered evidence)
 
 * **Pooled statistic** (D4's, for continuity): oracle 0.589–0.920; exact_identity 0.545–0.813; mean_body
   11.4–37.8; spine_displaced 0.88–2.34; WARM 0.54–0.78; CONVERGED 0.019–0.105 mm.
@@ -141,7 +175,7 @@ the card's drawn-set clause keeps D4 open.
   `root` −0.02…+2.48 mm and `c_neck` −0.08…+0.87 mm. These are the trunk again. Every other joint is within
   −0.36…+0.47 mm.
 
-## 6. The mechanism probes (D4c's evidence; reported, never selecting)
+## 6. The mechanism probes (D4c's evidence; reported, never selecting; the fresh column is POST-STOP EXPLORATORY)
 
 | probe | fresh (12; spine truth 0) | burned (D4's six; spine drawn ±0.74–1.08) |
 |---|---|---|
@@ -151,9 +185,10 @@ the card's drawn-set clause keeps D4 open.
 | calibration solves stopped at the cap | at 300: 424–469 of 1056 | at 30 (tripwire, 20260922): **973 of 1056**; at 300: 77–472 |
 
 **The reading, not a causal verdict.** Started at the truth, the calibration **holds** it, to 0.001–0.005 units
-on every fixture of both populations. The objective does not pull away from the truth, at least not within 30
-iterations of it. So the shrink and the wander live in **where the solve starts and where it stops**, not in a
-prior that pulls toward the mean. At the pre-card's max_iter 30, 92 % of calibration solves stop at the cap on the one fixture where it was logged (the tripwire, burned 20260922).
+on every fixture of both populations. Within 30 iterations of the truth, the objective does not visibly pull away
+from it. That, together with the cap exhaustion below, justifies **investigating where the solve starts and where
+it stops**. It does not exclude effects of the objective itself: a prior, pose absorbing length, or the limits
+could still act on a longer or differently started solve. At the pre-card's max_iter 30, 92 % of calibration solves stop at the cap on the one fixture where it was logged (the tripwire, burned 20260922).
 Ten times the iterations recovers most of the spine, but not monotonically: one burned seed walks further away.
 And at 300, 40–44 % of solves still stop at the cap. 300 iterations do not prove convergence. The iteration count
 reached is in `gate.json` (`CONVERGED_iterations`). Reading this is allowed. Adopting max_iter 300 here would
@@ -167,17 +202,14 @@ select a constant on the oracle that scores it, and it is not adopted.
    with, for example, a least-squares fit bounded by the configured limits would have changed a frozen rule after
    seeing its reading, and that was not done. Both the reading and its mechanism are on record. Any different
    rule is a new registration.
-2. **(ii) with the trunk unscored.** Two readings were possible. (A) The trunk's error is read against the trunk's
-   tolerance whether or not the trunk is scored: *"exclusion never skips (ii)"*. (B) (ii) passes because the band
-   as scored cannot see the trunk, which is a STOP. The gate implements (A): exclusion runs the control rather
-   than skipping it, and the card's separate clause *"such a run cannot close D4"* only makes sense if the run
-   completes. The gate also reports the (B) quantity: the band as scored passes the displaced spine on 12/12 (and
-   6/6 burned). A reviewer who reads the card as (B) would record a STOP at stage 3 instead. Under either reading,
-   D4 does not close.
-3. **Verdict against disposition.** The card defines the verdict as the conjunction and says PASS closes D4. It
-   also says a run with an unscored trunk cannot close D4. The gate prints both: `verdict` (the conjunction, PASS)
-   and `d4_disposition` (STAYS OPEN, and why). The disposition is not folded into the verdict, because that would
-   add a conjunct the card did not list.
+2. **(ii) with the trunk unscored. SUPERSEDED: the merge round ruled reading B.** The executor chose (A), the
+   trunk's error read against its tolerance whether or not the trunk is scored, arguing from *"exclusion never
+   skips (ii)"* and *"such a run cannot close D4"*. The ruling is that L is defined over scored segments, so an
+   unscored trunk cannot fail L. (ii) therefore fails, and the step STOPPED at stage 3. The gate now implements B;
+   the reading-A count is reported only.
+3. **Verdict against disposition. SUPERSEDED.** Under reading A the conjunction read PASS beside a STAYS OPEN
+   disposition. Under reading B the conjunction itself reads FAIL with STOP, so that contradiction no longer
+   arises on this run.
 4. **Beyond the card's letter, BURNED and REPORTED.** WARM and CONVERGED were also run on D4's six truths. The
    spine is drawn only there, so only there can the probes see the shrink. On the fresh fixtures (spine truth 0)
    they can only see the wander.
@@ -205,11 +237,16 @@ select a constant on the oracle that scores it, and it is not adopted.
 
 ## 9. What is open
 
-* **D4 stays open.** O1 is not superseded: D4b's run cannot close D4 by its own card, and D4's 1.030 mm FAIL stands.
-  The default flip is not dispatched while D4's acceptance is open.
+* **D4 stays open; O1 is not superseded.** D4b STOPPED at stage 3 under the registered (ii), and D4's 1.030 mm FAIL
+  stands. The default flip is not dispatched while D4's acceptance is open. Fixtures 20261001–20261006 × donors
+  0/1 are burned by the post-stop exploratory run, so a future registration needs new seeds.
+* **Instrument debt: the closure binding by basename and hash.** The gate binds each closure pair to its cell by
+  the GLB and track *basenames* and their sha256 over the files in the cell directory. It does not recompute the
+  closure itself. Astra independently recomputed all 12 closures. The binding is recorded debt, not a gap in
+  this step's reading.
 * **D4c, carded separately, from these probes.** WARM holds the truth, the 30-iteration calibration stops at the
-  cap on 92 % of solves (the one fixture logged), and 300 iterations mostly recovers the spine but not monotonically. That points at the
-  solve's start and stop rather than its objective. A fitter change is D4c's to card and gate. It is not measured
+  cap on 92 % of solves (the one fixture logged), and 300 iterations mostly recovers the spine but not monotonically. That justifies
+  investigating the solve's start and stop first; it does not exclude effects of the objective. A fitter change is D4c's to card and gate. It is not measured
   on this oracle and adopted here.
 * **A new registration of the drawn set, or a trunk the fitter can score.** Either the rule's quantity changes
   prospectively (reachability within the configured limits, which at first order the column-space test cannot
@@ -241,7 +278,7 @@ PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4b_o1_gate_fuzz.py --out art
 PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/test_d4b_o1.py
 ```
 
-`tests/test_d4b_o1.py` is 17 passed. Its subjects are the projection and the rank convention on synthetic
+`tests/test_d4b_o1.py` is 18 passed, including an unscored trunk that must read (ii) FAIL and STOP. Its subjects are the projection and the rank convention on synthetic
 matrices, the rule, the spine displacement, the tolerance arithmetic, and the gate on a synthetic 72-cell
 population. On that population it covers PASS, INVALID, FAIL on a missing, short, non-finite or stray cell, STOP,
 (iii), provenance and a shared draw, plus the fuzz's targeted cases. The extractor stub is

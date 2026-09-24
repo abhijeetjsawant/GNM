@@ -201,7 +201,11 @@ def mutated_inputs(inputs: dict, target: str, path: tuple, value, delete: bool) 
 
 
 def signature(report: dict) -> tuple:
-    return (report["verdict"], report["STOP"])
+    """Everything a mutation may move that the card bands: the verdict, STOP, the population and validity
+    preconditions, and each conjunct. Under the registered reading B the real baseline is FAIL with STOP, so the
+    verdict alone could not show a conjunct turning; each conjunct is compared on its own."""
+    return (report["verdict"], report["STOP"], report["population_ok"], report["validity"],
+            tuple(sorted(report["conjuncts"].items())))
 
 
 def generic(target: str, path: tuple) -> str:
@@ -291,16 +295,34 @@ def targeted(inputs: dict, burned: bool) -> list[dict]:
     joints = list(gate.MAPPED_JOINTS)
     cases = []
 
+    base = gate.build(inputs, burned=burned)
+
+    def state(report, conjunct):
+        if conjunct is None:
+            return report["population_ok"]
+        if conjunct == "validity":
+            return report["validity"]
+        return report["conjuncts"][conjunct]
+
     def case(name, conjunct, want, mutate):
+        """`turned` iff the named conjunct (None: the population precondition) goes from True at the baseline
+        to False, the verdict is the one the card gives, and -- for (ii) -- STOP is raised."""
         new = copy.deepcopy({k: v for k, v in inputs.items() if k != "cells"})
         new["cells"] = {k: copy.deepcopy(v) for k, v in inputs["cells"].items()}
         mutate(new)
         report = gate.build(new, burned=burned)
-        ok = report["verdict"] == want[0] and (want[1] is None or report["STOP"] == want[1])
-        if conjunct is not None and conjunct in report["conjuncts"] and want[0] == "FAIL":
-            ok = ok and report["conjuncts"][conjunct] is False
-        cases.append({"mutation": name, "conjunct": conjunct, "expected": list(want),
-                      "got": [report["verdict"], report["STOP"]], "turned": bool(ok)})
+        before, after = state(base, conjunct), state(report, conjunct)
+        ok = (before is True and after is False and report["verdict"] == want[0]
+              and (want[1] is None or report["STOP"] == want[1]))
+        row = {"mutation": name, "conjunct": conjunct, "expected": list(want),
+               "got": [report["verdict"], report["STOP"]], "baseline_state": before, "turned": bool(ok)}
+        if before is False:
+            # Nothing to turn: the conjunct is already FALSE on this population (on the real fresh cells, (ii)
+            # under reading B with the trunk unscored). It is turned on the synthetic scored-trunk population
+            # in tests/test_d4b_o1.py; here the fuzz records it and requires only that it stays FALSE.
+            row["already_false_at_baseline"] = True
+            row["turned"] = after is False and report["verdict"] == "FAIL"
+        cases.append(row)
 
     def scale_exact(new):
         cell = new["cells"][first.format("exact_identity")]
@@ -371,26 +393,26 @@ def targeted(inputs: dict, burned: bool) -> list[dict]:
 
     if burned:
         return cases
-    case("exact_identity distance x2 on one fixture", "validity", ("INVALID", False), scale_exact)
-    case("oracle l_wrist rest moved 5 mm on one fixture", "L", ("FAIL", False), move_wrist)
-    case("closure max_abs_m 2e-4 on one oracle cell", "closure", ("FAIL", False), closure_out)
+    case("exact_identity distance x2 on one fixture", "validity", ("INVALID", None), scale_exact)
+    case("oracle l_wrist rest moved 5 mm on one fixture", "L", ("FAIL", None), move_wrist)
+    case("closure max_abs_m 2e-4 on one oracle cell", "closure", ("FAIL", None), closure_out)
     case("mean_body rest set to the truth rest on one fixture", "must_fail_i_mean_body_misses_L",
-         ("FAIL", False), mean_is_truth)
+         ("FAIL", None), mean_is_truth)
     case("spine_displaced rest set to the truth rest on one fixture",
          "must_fail_ii_spine_displaced_fails_at_the_trunk", ("FAIL", True), spine_is_truth)
     case("exact_identity rest moved 1e-6 cm on one fixture", "must_fail_iii_exact_identity_reads_zero_and_passes",
-         ("FAIL", False), exact_nonzero)
-    case("population: one cell missing", None, ("FAIL", False), drop_cell)
-    case("population: one cell 149 frames", None, ("FAIL", False), short_frames)
-    case("population: one non-finite frame", None, ("FAIL", False), nan_frame)
-    case("population: a stray cell outside the named set", None, ("FAIL", False), stray_cell)
-    case("provenance: a fitter sha256 that is not 3136befb", None, ("FAIL", False), fitter_sha)
-    case("fixtures: two fixtures sharing one draw", None, ("FAIL", False), shared_draw)
-    case("drawn set: one channel removed from the frozen file", None, ("FAIL", False), drawn_file)
-    case("settings: max_iter 300 in a banded arm", None, ("FAIL", False), max_iter_banded)
-    case("closure report missing", "closure", ("FAIL", False), drop_closure)
-    case("closure: a joint missing from one GLB", "closure", ("FAIL", False), joint_missing)
-    case("arm_note on the oracle", None, ("FAIL", False), stray_note)
+         ("FAIL", None), exact_nonzero)
+    case("population: one cell missing", None, ("FAIL", None), drop_cell)
+    case("population: one cell 149 frames", None, ("FAIL", None), short_frames)
+    case("population: one non-finite frame", None, ("FAIL", None), nan_frame)
+    case("population: a stray cell outside the named set", None, ("FAIL", None), stray_cell)
+    case("provenance: a fitter sha256 that is not 3136befb", None, ("FAIL", None), fitter_sha)
+    case("fixtures: two fixtures sharing one draw", None, ("FAIL", None), shared_draw)
+    case("drawn set: one channel removed from the frozen file", None, ("FAIL", None), drawn_file)
+    case("settings: max_iter 300 in a banded arm", None, ("FAIL", None), max_iter_banded)
+    case("closure report missing", "closure", ("FAIL", None), drop_closure)
+    case("closure: a joint missing from one GLB", "closure", ("FAIL", None), joint_missing)
+    case("arm_note on the oracle", None, ("FAIL", None), stray_note)
     return cases
 
 
@@ -408,7 +430,8 @@ def main() -> int:
     print("baseline:", baseline, flush=True)
     cases = targeted(inputs, burned=False)
     for c in cases:
-        print(f"  {'TURNED ' if c['turned'] else 'ESCAPED'}  {c['mutation']:60s} -> {c['got']}", flush=True)
+        mark = " (already FALSE at the baseline: reading B, the trunk unscored)" if c.get("already_false_at_baseline") else ""
+        print(f"  {'TURNED ' if c['turned'] else 'ESCAPED'}  {c['mutation']:60s} -> {c['got']}{mark}", flush=True)
     result = {"baseline": list(baseline), "targeted": cases,
               "all_targeted_turned": all(c["turned"] for c in cases)}
     if not arguments.targeted_only:

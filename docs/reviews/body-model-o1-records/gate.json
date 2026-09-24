@@ -1,14 +1,14 @@
 {
  "step": "D4b",
  "burned": false,
- "verdict": "PASS",
- "d4_disposition": "STAYS OPEN: the trunk is not scored (the drawn-set rule); the card: such a run cannot close D4",
- "STOP": false,
+ "verdict": "FAIL",
+ "d4_disposition": "STAYS OPEN, O1 NOT SUPERSEDED: must-fail (ii) fails under the registered reading B (the trunk is not scored: the drawn-set rule) -- the step STOPS",
+ "STOP": true,
  "conjuncts": {
   "L": true,
   "closure": true,
   "must_fail_i_mean_body_misses_L": true,
-  "must_fail_ii_spine_displaced_fails_at_the_trunk": true,
+  "must_fail_ii_spine_displaced_fails_at_the_trunk": false,
   "must_fail_iii_exact_identity_reads_zero_and_passes": true
  },
  "validity": true,
@@ -240,7 +240,7 @@
    "prediction": "HELD"
   },
   "must_fail_ii_spine_displaced_at_the_trunk": {
-   "predicted": "fails L at the trunk on every fixture (unconditional, read whether or not the trunk is scored)",
+   "predicted": "fails L at the trunk on every fixture (reading B: the trunk scored and beyond tolerance)",
    "measured": {
     "trunk_error_mm": {
      "20261001_d0": 14.878407615496428,
@@ -270,13 +270,14 @@
      "20261005_d1": 2.265867,
      "20261006_d1": 2.382169
     },
-    "fixtures_failing_at_the_trunk": 12,
+    "fixtures_failing_L_at_the_trunk_reading_B": 0,
     "trunk_scored_in_L": false,
+    "SUPERSEDED_reading_A_trunk_beyond_tolerance_unscored_or_not": 12,
     "the_band_as_scored_passes_the_displaced_spine_on": 12
    },
-   "verdict": "PASS",
-   "prediction": "HELD",
-   "STOP": false
+   "verdict": "FAIL",
+   "prediction": "FAILED",
+   "STOP": true
   },
   "must_fail_iii_exact_identity": {
    "predicted": "L = 0 on every segment and the gate PASSES it, on every fixture",
@@ -289,9 +290,9 @@
   },
   "overall": {
    "predicted": "FAIL",
-   "measured": "PASS",
-   "verdict": "PASS",
-   "prediction": "FAILED"
+   "measured": "FAIL",
+   "verdict": "FAIL",
+   "prediction": "HELD"
   }
  },
  "reported": {

@@ -1,7 +1,31 @@
 {
  "baseline": [
-  "PASS",
-  false
+  "FAIL",
+  true,
+  true,
+  true,
+  [
+   [
+    "L",
+    true
+   ],
+   [
+    "closure",
+    true
+   ],
+   [
+    "must_fail_i_mean_body_misses_L",
+    true
+   ],
+   [
+    "must_fail_ii_spine_displaced_fails_at_the_trunk",
+    false
+   ],
+   [
+    "must_fail_iii_exact_identity_reads_zero_and_passes",
+    true
+   ]
+  ]
  ],
  "targeted": [
   {
@@ -9,12 +33,13 @@
    "conjunct": "validity",
    "expected": [
     "INVALID",
-    false
+    null
    ],
    "got": [
     "INVALID",
-    false
+    true
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -22,12 +47,13 @@
    "conjunct": "L",
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
-    false
+    true
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -35,12 +61,13 @@
    "conjunct": "closure",
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
-    false
+    true
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -48,12 +75,13 @@
    "conjunct": "must_fail_i_mean_body_misses_L",
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
-    false
+    true
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -67,19 +95,22 @@
     "FAIL",
     true
    ],
-   "turned": true
+   "baseline_state": false,
+   "turned": true,
+   "already_false_at_baseline": true
   },
   {
    "mutation": "exact_identity rest moved 1e-6 cm on one fixture",
    "conjunct": "must_fail_iii_exact_identity_reads_zero_and_passes",
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
-    false
+    true
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -87,12 +118,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -100,12 +132,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -113,12 +146,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -126,12 +160,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -139,12 +174,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -152,12 +188,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -165,12 +202,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -178,12 +216,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -191,12 +230,13 @@
    "conjunct": "closure",
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -204,12 +244,13 @@
    "conjunct": "closure",
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   },
   {
@@ -217,12 +258,13 @@
    "conjunct": null,
    "expected": [
     "FAIL",
-    false
+    null
    ],
    "got": [
     "FAIL",
     false
    ],
+   "baseline_state": true,
    "turned": true
   }
  ],

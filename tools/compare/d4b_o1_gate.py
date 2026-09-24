@@ -18,9 +18,13 @@ iff a channel of the frozen drawn set moves it (the drawn-set record's `segment_
 the rest are reported, not scored. L PASSES iff every scored segment on every fixture is within tolerance.
 
   (i)   the mean body MISSES L on every fixture: some scored segment beyond its tolerance.
-  (ii)  the displaced spine FAILS L AT THE TRUNK on every fixture: the trunk's |error| beyond the trunk's
-        tolerance, read WHETHER OR NOT the trunk is scored (the card: exclusion never skips (ii)). If it
-        passes on any fixture the band is blind to the defect it exists to see and the step STOPS.
+  (ii)  the displaced spine FAILS L AT THE TRUNK on every fixture -- READING B, the registered one (Astra's
+        merge round, adopted by the coordinator 2026-09-24): L is defined over SCORED segments, so (ii) holds
+        on a fixture only if the trunk IS SCORED and its |error| exceeds its tolerance there. An unscored
+        trunk FAILS (ii): "a trunk that cannot be scored and rejected is not a demonstrated trunk failure".
+        If (ii) fails on any fixture -- burned or fresh -- the band is blind to the defect it exists to see
+        and the step STOPS. The executor's superseded reading A (the trunk's error read against its
+        tolerance whether or not it is scored) is kept as a REPORTED quantity, never a conjunct.
   (iii) the exact_identity arm reads L = 0 on every segment and the gate PASSES it.
 
 `d4_disposition` is the card's own consequence, printed beside the verdict and never folded into it: D4
@@ -431,7 +435,12 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
     l_by_fixture = {k: l_passes(v["segments"]["oracle"]) for k, v in per_fixture.items()}
     mean_misses = {k: misses_l(v["segments"]["mean_body"]) for k, v in per_fixture.items()}
     trunk = {k: v["segments"]["spine_displaced"]["trunk"] for k, v in per_fixture.items()}
-    spine_fails_trunk = {k: bool(r["error_mm"] > r["tolerance_mm"]) for k, r in trunk.items()}
+    trunk_scored = "trunk" in scored
+    # reading B (registered): the trunk must be SCORED and beyond its tolerance
+    spine_fails_trunk = {k: bool(trunk_scored and r["scored"] and r["error_mm"] > r["tolerance_mm"])
+                         for k, r in trunk.items()}
+    # reading A (the executor's, superseded): REPORTED only
+    reading_a = {k: bool(r["error_mm"] > r["tolerance_mm"]) for k, r in trunk.items()}
     exact_zero = {k: max(r["error_mm"] for r in v["segments"]["exact_identity"].values()) <= EXACT_ZERO_MM
                   and l_passes(v["segments"]["exact_identity"]) for k, v in per_fixture.items()}
     closure_ok = burned or (bool(closure_rows) and all(r["within"] for r in closure_rows.values())
@@ -450,12 +459,18 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
     else:
         verdict = "PASS" if all(conjuncts.values()) else "FAIL"
     stop = population_ok and not all(spine_fails_trunk.values())
-    trunk_scored = "trunk" in scored
-    disposition = ("CLOSES: O1 superseded by D4b PASS" if verdict == "PASS" and trunk_scored else
-                   "STAYS OPEN: " + ("the trunk is not scored (the drawn-set rule); the card: such a run cannot "
-                                     "close D4" if not trunk_scored else f"verdict {verdict}"))
+    if verdict == "PASS" and trunk_scored and not stop:
+        disposition = "CLOSES: O1 superseded by D4b PASS"
+    elif stop:
+        disposition = ("STAYS OPEN, O1 NOT SUPERSEDED: must-fail (ii) fails under the registered reading B"
+                       + (" (the trunk is not scored: the drawn-set rule)" if not trunk_scored else "")
+                       + " -- the step STOPS")
+    else:
+        disposition = f"STAYS OPEN, O1 NOT SUPERSEDED: verdict {verdict}"
     if burned:
-        disposition = "BURNED: proves the instrument on known data; never evidence, never a disposition"
+        disposition = ("BURNED (never evidence): " + ("STOP -- the registered (ii) fails on D4's own cells; "
+                                                      "the step stops here, before fresh fixtures" if stop
+                                                      else "no STOP"))
 
     def fixture_values(key_fn):
         return {k: key_fn(v) for k, v in per_fixture.items()}
@@ -520,11 +535,12 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
             "verdict": "PASS" if conjuncts["must_fail_i_mean_body_misses_L"] else "FAIL",
             "prediction": "HELD" if conjuncts["must_fail_i_mean_body_misses_L"] else "FAILED"},
         "must_fail_ii_spine_displaced_at_the_trunk": {
-            "predicted": "fails L at the trunk on every fixture (unconditional, read whether or not the trunk is scored)",
+            "predicted": "fails L at the trunk on every fixture (reading B: the trunk scored and beyond tolerance)",
             "measured": {"trunk_error_mm": {k: r["error_mm"] for k, r in trunk.items()},
                          "trunk_tolerance_mm": {k: r["tolerance_mm"] for k, r in trunk.items()},
-                         "fixtures_failing_at_the_trunk": sum(spine_fails_trunk.values()),
+                         "fixtures_failing_L_at_the_trunk_reading_B": sum(spine_fails_trunk.values()),
                          "trunk_scored_in_L": trunk_scored,
+                         "SUPERSEDED_reading_A_trunk_beyond_tolerance_unscored_or_not": sum(reading_a.values()),
                          "the_band_as_scored_passes_the_displaced_spine_on": sum(
                              l_passes(v["segments"]["spine_displaced"]) for v in per_fixture.values())},
             "verdict": "PASS" if conjuncts["must_fail_ii_spine_displaced_fails_at_the_trunk"] else "FAIL",

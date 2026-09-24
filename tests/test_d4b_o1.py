@@ -120,8 +120,20 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _population() -> dict:
-    drawn_bytes = gate.DRAWN_SET.read_bytes()
+def _scored_trunk_drawn_set() -> bytes:
+    """The frozen record with scale_spine_length drawn -- a HYPOTHETICAL rule outcome under which the trunk is
+    scored, so the gate's PASS direction and (ii)'s turning can be exercised. Never a registered record."""
+    record = json.loads(gate.DRAWN_SET.read_bytes())
+    for donor in record["per_donor"].values():
+        donor["pose_orthogonal_median_mm"]["scale_spine_length"] = 10.0
+    record["drawn_set"] = [c for c in di.CHANNELS if c in record["drawn_set"] or c == "scale_spine_length"]
+    record["segments_scored"] = [s for s in di.SEGMENTS
+                                 if any(c in record["drawn_set"] for c in record["segment_moved_by"][s])]
+    return json.dumps(record, indent=1).encode()
+
+
+def _population(scored_trunk: bool = True) -> dict:
+    drawn_bytes = _scored_trunk_drawn_set() if scored_trunk else gate.DRAWN_SET.read_bytes()
     drawn = json.loads(drawn_bytes)
     provenance = json.loads(gate.PROVENANCE.read_text(encoding="utf-8"))
     stage1 = provenance["sha256"]
@@ -197,16 +209,37 @@ def _population() -> dict:
 
 @pytest.fixture(scope="module")
 def population() -> dict:
-    return _population()
+    """A valid population under a HYPOTHETICAL drawn set that scores the trunk: the baseline reads PASS."""
+    return _population(scored_trunk=True)
 
 
-def test_a_valid_population_passes_and_the_unscored_trunk_keeps_d4_open(population):
+@pytest.fixture(scope="module")
+def population_unscored() -> dict:
+    """The same population under the FROZEN drawn set, which leaves the trunk unscored."""
+    return _population(scored_trunk=False)
+
+
+def test_a_valid_population_with_a_scored_trunk_passes_and_closes(population):
     report = gate.build(population)
     assert report["problems"] == []
+    assert "trunk" in report["segments_scored"]
     assert report["verdict"] == "PASS" and report["STOP"] is False
-    assert report["d4_disposition"].startswith("STAYS OPEN")
-    assert report["clauses"]["must_fail_ii_spine_displaced_at_the_trunk"]["measured"][
-        "the_band_as_scored_passes_the_displaced_spine_on"] == 12
+    assert report["d4_disposition"].startswith("CLOSES")
+
+
+def test_an_unscored_trunk_fails_must_fail_ii_and_stops(population_unscored):
+    """Reading B, registered: L is over SCORED segments, so an unscored trunk cannot fail L at the trunk --
+    (ii) FAILS and the step STOPS, even though the trunk's own error is far beyond its tolerance."""
+    report = gate.build(population_unscored)
+    assert report["problems"] == [] and report["population_ok"] and report["validity"]
+    assert "trunk" not in report["segments_scored"]
+    assert report["conjuncts"]["must_fail_ii_spine_displaced_fails_at_the_trunk"] is False
+    assert report["STOP"] is True and report["verdict"] == "FAIL"
+    assert report["d4_disposition"].startswith("STAYS OPEN, O1 NOT SUPERSEDED")
+    measured = report["clauses"]["must_fail_ii_spine_displaced_at_the_trunk"]["measured"]
+    assert measured["fixtures_failing_L_at_the_trunk_reading_B"] == 0
+    assert measured["SUPERSEDED_reading_A_trunk_beyond_tolerance_unscored_or_not"] == 12   # reported only
+    assert measured["the_band_as_scored_passes_the_displaced_spine_on"] == 12
 
 
 def _mutated(population, mutate):

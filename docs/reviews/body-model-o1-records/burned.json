@@ -2,13 +2,13 @@
  "step": "D4b",
  "burned": true,
  "verdict": "FAIL",
- "d4_disposition": "BURNED: proves the instrument on known data; never evidence, never a disposition",
- "STOP": false,
+ "d4_disposition": "BURNED (never evidence): STOP -- the registered (ii) fails on D4's own cells; the step stops here, before fresh fixtures",
+ "STOP": true,
  "conjuncts": {
   "L": false,
   "closure": true,
   "must_fail_i_mean_body_misses_L": true,
-  "must_fail_ii_spine_displaced_fails_at_the_trunk": true,
+  "must_fail_ii_spine_displaced_fails_at_the_trunk": false,
   "must_fail_iii_exact_identity_reads_zero_and_passes": true
  },
  "validity": true,
@@ -202,7 +202,7 @@
    "prediction": "HELD"
   },
   "must_fail_ii_spine_displaced_at_the_trunk": {
-   "predicted": "fails L at the trunk on every fixture (unconditional, read whether or not the trunk is scored)",
+   "predicted": "fails L at the trunk on every fixture (reading B: the trunk scored and beyond tolerance)",
    "measured": {
     "trunk_error_mm": {
      "20260922_d0": 14.885296097447622,
@@ -220,13 +220,14 @@
      "20260926_d0": 1.8698260000000002,
      "20260927_d0": 1.9148224999999999
     },
-    "fixtures_failing_at_the_trunk": 6,
+    "fixtures_failing_L_at_the_trunk_reading_B": 0,
     "trunk_scored_in_L": false,
+    "SUPERSEDED_reading_A_trunk_beyond_tolerance_unscored_or_not": 6,
     "the_band_as_scored_passes_the_displaced_spine_on": 6
    },
-   "verdict": "PASS",
-   "prediction": "HELD",
-   "STOP": false
+   "verdict": "FAIL",
+   "prediction": "FAILED",
+   "STOP": true
   },
   "must_fail_iii_exact_identity": {
    "predicted": "L = 0 on every segment and the gate PASSES it, on every fixture",

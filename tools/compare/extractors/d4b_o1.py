@@ -15,11 +15,12 @@ ONE REFERENCE: SYNTHETIC MHR TRUTH -- twelve bodies (six seeds x two donors) who
 frozen drawn set, MAMMA-FREE. Every figure is a RATIO to its own paired tolerance (the sum of the segment's two
 endpoint floors on the same fixture), so bars from different segments share one unit: 1.0 is the band edge.
 
-WHAT BELONGS ON THE PAGE BESIDE THE BARS: the card's conjunction reads PASS on the scored segments, and **D4
-stays open**. The drawn-set rule, frozen before any fit, left `scale_spine_length` and `scale_shoulder_width`
-out (their displacement lies in the pose Jacobian's column space at first order), so the trunk is REPORTED,
-not scored -- and the card says a trunk that cannot be scored is not a demonstrated trunk failure and such a
-run cannot close D4. Reported, the trunk is beyond its tolerance on 9 of 12 fixtures.
+WHAT BELONGS ON THE PAGE BESIDE THE BARS, FIRST: **STOPPED at stage 3 under the registered (ii); D4 stays open;
+O1 not superseded.** The drawn-set rule, frozen before any fit, left `scale_spine_length` (and
+`scale_shoulder_width`) out, so the trunk is not scored. The band as scored then accepts the spine displaced
+0.149 units on 6 of 6 of D4's burned cells, which is the registered STOP (reading B, Astra's merge round). The
+fresh figures below come from a POST-STOP EXPLORATORY run: they are not registered acceptance evidence, and
+those fixtures are burned. Reported, the fresh trunk is beyond its tolerance on 9 of 12.
 
 Self-check:  python3 tools/compare/extractors/d4b_o1.py
 """
@@ -73,7 +74,8 @@ def x_body_model_o1(_: dict) -> tuple[list, list]:
         fig("D4b L: the fitted rest lengths, worst scored segment over twelve fixtures",
             _worst_ratio(segments, "oracle", scored), "x tolerance", REF_SYNTH, LOWER,
             key="bodymodel_o1b_ours",
-            note=f"verdict {report.get('verdict')} on the scored set; D4: {report.get('d4_disposition')}"),
+            note=f"POST-STOP EXPLORATORY (not registered evidence). Gate: {report.get('verdict')}, STOP "
+                 f"{report.get('STOP')}; D4: {report.get('d4_disposition')}"),
         fig("D4b trunk (REPORTED, not scored): the fitted trunk, worst of twelve",
             _worst_ratio(segments, "oracle", ["trunk"]), "x tolerance", REF_SYNTH, LOWER,
             key="bodymodel_o1b_trunk",
@@ -91,7 +93,8 @@ def x_body_model_o1(_: dict) -> tuple[list, list]:
         fig("D4b must-fail (ii): the spine displaced 0.149 units, trunk, closest of twelve",
             _best_ratio_of_worst(segments, "spine_displaced", ["trunk"]), "x tolerance", REF_SYNTH, LOWER,
             key="bodymodel_o1b_ctrl_spine",
-            note="must exceed 1.0 on every fixture, read whether or not the trunk is scored"),
+            note="the trunk is NOT scored, so under the registered reading B this control FAILS (the band as scored "
+                 "accepts it) and the step STOPPED at stage 3; the bar shows the trunk's own unscored ratio"),
     ]
     return figs, ctrls
 
@@ -99,12 +102,11 @@ def x_body_model_o1(_: dict) -> tuple[list, list]:
 VISUALS = {
     "converter": [
         dict(title="D4b: does the fitted body have the right proportions?",
-             plain="Twelve synthetic bodies with a known answer; each bar is the fitted bone length's error "
-                   "divided by what the pose solve alone already costs -- below 1.0 passes, lower is better. "
-                   "The blue bar is our fit on the bones the check can score: it passes. The second blue bar "
-                   "is the trunk, which the check could not score (the pose can mimic a longer spine), and it "
-                   "is well past 1.0 -- so this run cannot close D4. The hatched bars are deliberately wrong "
-                   "bodies and must sit above 1.0.",
+             plain="STOPPED: the check could not score the trunk, so it could not reject a deliberately "
+                   "shortened spine, and the step stopped before its real test. These bars come from an "
+                   "exploratory run after the stop and are not a pass mark. Each bar is the fitted bone length's "
+                   "error divided by what the pose solve alone already costs -- lower is better, 1.0 is the edge. "
+                   "The scored bones sit below 1.0; the unscored trunk is well past it.",
              better="lower",
              bars=[dict(label="Our fit, scored bones (worst)", role="ours", key="bodymodel_o1b_ours"),
                    dict(label="Our fit, the trunk (not scored)", role="ours", key="bodymodel_o1b_trunk"),
