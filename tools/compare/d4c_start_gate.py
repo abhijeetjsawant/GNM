@@ -506,14 +506,16 @@ def source_diff(inputs: dict) -> dict:
     starts, calls = 0, 0
     for node in ast.walk(new):
         if isinstance(node, ast.If):
-            kept = []
-            for statement in node.body:
-                if (isinstance(statement, ast.Assign) and len(statement.targets) == 1
-                        and isinstance(statement.targets[0], ast.Name) and statement.targets[0].id == "start"):
-                    starts += 1
-                    continue
-                kept.append(statement)
-            node.body = kept
+            for field in ("body", "orelse"):
+                kept = []
+                for statement in getattr(node, field):
+                    if (isinstance(statement, ast.Assign) and len(statement.targets) == 1
+                            and isinstance(statement.targets[0], ast.Name) and statement.targets[0].id == "start"
+                            and ast.unparse(statement.value) == EXPECTED_START):
+                        starts += 1
+                        continue
+                    kept.append(statement)
+                setattr(node, field, kept)
     for node in ast.walk(new):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "copy"
                 and isinstance(node.func.value, ast.Name) and node.func.value.id == "start"):
@@ -526,6 +528,9 @@ def source_diff(inputs: dict) -> dict:
             "ast_equal_after_undoing_them": same,
             "base": f"{BASE_COMMIT}:tools/fitter/mhr_delivery.py",
             "base_sha256": sha256_bytes(inputs["fitter_base_source"].encode()) if inputs["fitter_base_source"] else None}
+
+
+EXPECTED_START = "zero if start_identity is None else np.asarray(start_identity, np.float32)"
 
 
 def trunk_statistic_in_source(source: str) -> str | None:
