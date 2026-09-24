@@ -1,4 +1,4 @@
-# Resume brief — body-capture lane, written 2026-09-22 after the D4 opt-in merge (paste this into a fresh session)
+# Resume brief — body-capture lane, written 2026-09-24 after D4b (paste this into a fresh session)
 
 Resume the AutoAnim body-capture lane. Read, in this order: `docs/LADDER_STATUS.md` (the SessionStart hook prints it),
 `docs/LADDER_EXECUTION_PLAN.md` §2 (the D7c row is the newest card; the D7 → D9b rows are the shape of a step) and §6, the
@@ -19,12 +19,31 @@ to D7c's. Records: `docs/reviews/body-model-precard-2026-09-21.md`, `body-model-
 `calibrate_markers` corrupts a later `Character.load_fbx` in the same process (one process per performer now); the cache was
 wiped for storage and restored from the Modal volume (recipe in CLAUDE.md). "The Solve So Far" carries v2–v12.
 
-**NEXT, in order:** **D4b** — O1 re-registered PROSPECTIVELY: the statistic, a calibrated baseline from the measured 0.757 mm
-floor, the tolerance, the identifiable channel set (excluding `scale_foot_length` and `scale_hip_height`), the mean-body
-rejection, fresh held-out fixtures — frozen before any number; raising the threshold around 1.030 is explicitly not that.
-Then the **integration step that flips the default to `mhr`**: the compositor (`unified_gltf`, the N5.1 assembly) consuming
-the MHR track schema, schema-aware artifact checks, every rig-schema instrument made compatible or scoped, `post_merge.sh`
-reading the MHR output, an end-to-end rebuild. Usage is the constraint: one Astra card round, one merge round, per step.
+**D4b (2026-09-24, merged d08929b as a measurement, src byte-identical): STOPPED at stage 3; D4 stays open, O1 not
+superseded.** The card moved O1's band to rest-segment identity with paired per-fixture floors on twelve fresh bodies (two
+donors). Its frozen drawn-set rule (first-order, limit-blind) dropped `scale_spine_length` and `scale_shoulder_width`, so the
+trunk went unscored and the band as scored could not reject the displaced-spine control: STOP under the registered must-fail
+(ii) (reading B, Astra's merge round, one round at medium). Post-stop exploratory: scored bones <= 0.55x tolerance 12/12, the
+trunk beyond tolerance 9/12, WARM holds the spine within 0.005, and 973 of 1056 calibration solves stop at `max_iter` 30.
+Records: `docs/reviews/body-model-o1-{card,astra-review,2026,astra-merge-review}-2026-09-24.md` (and the records folder).
+Fixtures 20261001–06 × donors 0/1 are burned.
+
+**NEXT, in order:** **D4c**, carded prospectively with the list in Astra's D4b merge review item 5:
+- every D4/D4b fixture declared burned, and a new untouched population;
+- one frozen candidate: initialisation from the landmarks only, with the stopping criteria, iteration budget and
+  cap-exhaustion behaviour chosen from compute or declared development evidence, never from the oracle;
+- a LIMIT-AWARE identifiability rule with trunk eligibility a PRECONDITION (STOP if absent);
+- one conjunction, unconditional trunk rejection through the actual scorer, a burned-first STOP, and closure reports bound to
+  content hashes.
+
+Then the **integration step that flips the default to `mhr`**:
+- the compositor (`unified_gltf`, the N5.1 assembly) consuming the MHR track schema;
+- schema-aware artifact checks;
+- every rig-schema instrument made compatible or scoped;
+- `post_merge.sh` reading the MHR output;
+- an end-to-end rebuild.
+
+Usage is the constraint: one Astra card round and one merge round per step (the user asked for MEDIUM effort on D4b).
 
 **PROCESS, CHANGED ON 2026-09-15 BY THE USER'S STEER.** One Astra card review and one Astra merge review per step; findings
 about a gate instrument that do not reach a card-banded verdict are instrument debt, never a merge blocker; when the

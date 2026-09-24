@@ -287,7 +287,7 @@
 - **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
   script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
   and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
-  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v12).
+  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v13).
 - **zsh does not word-split an unquoted `$VAR`**: pass file lists as `${=VAR}` / an array, or use a glob.
 - **The D3 gate's oracle score is translation-aligned (D9b, 2026-09-07).** `retarget_cost.score` subtracts the leg-root midpoint
   per frame, so the exact-skeleton oracle cannot see a root move: it read identical before and after the foot-contact projection
@@ -350,3 +350,16 @@
 ## Verification
 - Each exporter writes a JSON report beside its output with input SHAs and gate results. Check the SHA chain rather than assuming a build used current inputs.
 - Confirm a suspected defect with a second, independent measurement before acting. Several "defects" this session were artefacts of the metric, not the rig.
+- **An identifiability rule must respect the limits (D4b, 2026-09-24).** A first-order test ("is this channel's landmark
+  displacement inside the pose Jacobian's span?") dropped `scale_spine_length` and `scale_shoulder_width` because weak
+  neck/head-twist directions reproduce them only with pose steps of 17–65 against configured limits of at most 1.5. Test
+  reachability within the configured limits, and freeze the numerical conventions with it.
+- **A must-fail whose target a selection rule can remove is a PRECONDITION, not a clause (D4b).** The card let a drawn-set
+  rule drop the trunk and also required the band to reject a shortened trunk; it said both "PASS closes D4" and "an unscored
+  trunk cannot close D4". Astra ruled the registered reading: the band AS SCORED must reject the control, so an unscored
+  target is a STOP (it fired on the burned cells). Write "the target is scored" as a precondition with its own STOP, and
+  never pair a general consequence with a specific prohibition.
+- **D4's O1 is still open after D4b (STOPPED at stage 3; fixtures 20261001–06 × donors 0/1 burned).** Post-stop exploratory:
+  WARM (calibration from the truth identity) holds the spine within 0.005, and 973 of 1056 calibration solves stop at
+  `max_iter` 30. D4c registers one start-and-stop rule chosen from compute or declared development evidence, never from the
+  oracle. `/tmp/momenv` was rebuilt with pymomentum-cpu 0.1.114.post0 and reproduces D4's retained cells byte for byte.
