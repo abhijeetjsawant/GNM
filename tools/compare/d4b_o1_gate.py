@@ -108,8 +108,9 @@ def segment_rows(truth_rest: np.ndarray, fitted_rest: np.ndarray, floor: np.ndar
     for segment, (a, b) in SEGMENTS.items():
         error = abs(fitted[segment] - truth[segment])
         tolerance = float(floor[index[a]] + floor[index[b]])
-        rows[segment] = {"truth_mm": round(truth[segment], 4), "fitted_mm": round(fitted[segment], 4),
-                         "error_mm": round(error, 6), "tolerance_mm": round(tolerance, 6),
+        # never rounded: (iii)'s exact-zero test reads 1e-9 mm, below any display precision
+        rows[segment] = {"truth_mm": truth[segment], "fitted_mm": fitted[segment],
+                         "error_mm": error, "tolerance_mm": tolerance,
                          "within": bool(error <= tolerance), "scored": segment in scored}
     return rows
 
