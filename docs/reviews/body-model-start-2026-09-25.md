@@ -33,7 +33,7 @@ The falsifier's case does not arise on the failing fixture (§5): the start was 
 | 7 | this commit | These tests, this review, the extractor stub and the report frames |
 
 The records are in `docs/reviews/body-model-start-records/`. The logs are in `artifacts/compare/d4c-start/logs/`
-(01–23). Nothing under `src/` changed, and neither did the build script.
+(01–26). Nothing under `src/` changed, and neither did the build script.
 
 ---
 
@@ -188,9 +188,23 @@ reads +0.003. The take has no truth.
 * **The detection cache.** The SOMA-77 model is absent from `.cache/autoanim_gnm/gem-x` on 2026-09-25. Both builds
   reused the shipped delivery's cached detections, byte-identical to D4's (log 05a, 05b). A fresh detection is not
   reproducible on this machine until the model is restored.
-* **Merge rule.** Under FAIL the tooling and records merge and the `fit_one` change does not. The coordinator
-  decides whether the branch's `mhr_delivery.py` is reverted to `3136befb` before the merge. The tripwire shows its
-  zero-start path is byte-identical, but the default in `main()` is the landmark start.
+* **Merge hazard.** Under FAIL the card says tooling and records merge and the `fit_one` change does not. On this
+  branch the two cannot be cleanly separated.
+  * `d4c_fixture.py` calls `mhr_delivery.landmark_start` and reads `TRUNK_STATISTIC`, and it passes
+    `start_identity=` to `fit_one`.
+  * The gate's hygiene conjunct and `trunk_statistic_in_source` read the fitter's source.
+  * `test_the_source_diff_accepts_only_the_two_starts` asserts that the current fitter differs from `3136befb` in
+    exactly the two starts.
+
+  Reverting `mhr_delivery.py` to `3136befb` and merging the rest therefore breaks the tooling and that test. Two
+  clean options, for the coordinator to decide (not decided here):
+  * (a) merge `mhr_delivery.py` with `main()`'s default switched back to the zero start. The `fit_one` keyword stays,
+    and it is inert when None: the tripwire proves that path byte-identical. Record it as the coordinator's decision.
+  * (b) keep the whole branch unmerged.
+* **Instrument debt.** The gate's hygiene conjunct re-derives the 62 tripwire file hashes from bytes. The two
+  normalised-JSON comparisons it reads only as the boolean `all_byte_identical_or_equal_after_normalising` that the
+  fixture wrote. The fuzz turns that boolean, so it is enforced, but it is a label, not a re-derivation (Astra's
+  finding-6 class).
 
 ## 9. Decisions an executor made
 
@@ -209,6 +223,10 @@ reads +0.003. The take has no truth.
 6. **The tests were committed at stage 4, with the gate's source-diff repair.** The source diff first missed the
    `start` line inside an `else` branch. It was repaired before any gate verdict was read, and now also requires the
    start expression's exact text.
+
+7. **A second tripwire reading, on the fixture path.** The development `legacy` arm ran on the stage-2 fitter over
+   D4's six seeds. Its pooled statistics equal D4's retained oracle cells to four decimals: 0.8533, 0.9851,
+   1.0300, 0.9669, 0.7986 and 0.8977 (log 09).
 
 ## 10. Reproduce
 
@@ -252,6 +270,6 @@ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/test_d4c_start.py
 untouched.
 
 The report frames are in `artifacts/compare/d4c-start/report/`: 25 JPEGs, 480 px wide, q40, every 6th frame, camera
-A001. The D4 fit (aqua) sits above the D4c fit (blue) over the SAM2 mask outline, and the full-rate
+A001. The two panels are STACKED, not side by side: the D4 fit (aqua) sits above the D4c fit (blue) over the SAM2 mask outline, and the full-rate
 `d4c-start-A001.mp4` is beside them. They are rendered by D4's own `d4_report_frames.py`, imported and re-pointed
 (log 23). The extractor stub is `tools/compare/extractors/d4c_start.py`, and the registry is not edited.
