@@ -1,4 +1,4 @@
-# Resume brief — body-capture lane, written 2026-09-24 after D4b (paste this into a fresh session)
+# Resume brief — body-capture lane, written 2026-09-25 after D4c (paste this into a fresh session)
 
 Resume the AutoAnim body-capture lane. Read, in this order: `docs/LADDER_STATUS.md` (the SessionStart hook prints it),
 `docs/LADDER_EXECUTION_PLAN.md` §2 (the D7c row is the newest card; the D7 → D9b rows are the shape of a step) and §6, the
@@ -28,13 +28,19 @@ trunk beyond tolerance 9/12, WARM holds the spine within 0.005, and 973 of 1056 
 Records: `docs/reviews/body-model-o1-{card,astra-review,2026,astra-merge-review}-2026-09-24.md` (and the records folder).
 Fixtures 20261001–06 × donors 0/1 are burned.
 
-**NEXT, in order:** **D4c**, carded prospectively with the list in Astra's D4b merge review item 5:
-- every D4/D4b fixture declared burned, and a new untouched population;
-- one frozen candidate: initialisation from the landmarks only, with the stopping criteria, iteration budget and
-  cap-exhaustion behaviour chosen from compute or declared development evidence, never from the oracle;
-- a LIMIT-AWARE identifiability rule with trunk eligibility a PRECONDITION (STOP if absent);
-- one conjunction, unconditional trunk rejection through the actual scorer, a burned-first STOP, and closure reports bound to
-  content hashes.
+**D4c (2026-09-25): FAIL on L, records only on main (5d27b4f); the tooling and the landmark-start fitter change are
+pinned at tag `ladder/D4c-fail-1a89cc7` and NOT merged; D4 stays open.** The trunk was scored this time (the limit-aware rule
+drew 8). Development picked p90. L passed on 11 of 12 fresh bodies; the trunk read 1.10× on one body with a strongly
+shortened spine. The photographs held (+0.156 / +0.118 over the rig). Records: `docs/reviews/body-model-start-*-2026-09-25.md`.
+
+**NEXT, in order:** **D4d**, carded prospectively (Astra's D4c merge review, the D4d item):
+- first, on BURNED fixtures only, separate wrong-start recovery from drift off a correct start: e.g. set only the
+  shoulder-width start to the truth, with stages A and B read separately;
+- then freeze ONE intervention before new acceptance identities;
+- never raise the shared `max_iter` (it also changes tracking);
+- keep the scored trunk, the paired floors, the controls, the hash-bound closure and the rebuilt-delivery B1/B2;
+- register the non-PASS merge as records-only, or write tooling that stands without the candidate;
+- a `Spine1` feed changes the input and needs explicit scope.
 
 Then the **integration step that flips the default to `mhr`**:
 - the compositor (`unified_gltf`, the N5.1 assembly) consuming the MHR track schema;

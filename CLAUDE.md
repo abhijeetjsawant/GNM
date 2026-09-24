@@ -287,7 +287,7 @@
 - **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
   script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
   and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
-  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v13).
+  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v14).
 - **zsh does not word-split an unquoted `$VAR`**: pass file lists as `${=VAR}` / an array, or use a glob.
 - **The D3 gate's oracle score is translation-aligned (D9b, 2026-09-07).** `retarget_cost.score` subtracts the leg-root midpoint
   per frame, so the exact-skeleton oracle cannot see a root move: it read identical before and after the foot-contact projection
@@ -363,3 +363,12 @@
   WARM (calibration from the truth identity) holds the spine within 0.005, and 973 of 1056 calibration solves stop at
   `max_iter` 30. D4c registers one start-and-stop rule chosen from compute or declared development evidence, never from the
   oracle. `/tmp/momenv` was rebuilt with pymomentum-cpu 0.1.114.post0 and reproduces D4's retained cells byte for byte.
+- **A non-PASS merge rule must account for tooling that imports the candidate (D4c, 2026-09-25).** The card said "tooling and
+  records merge and `fit_one` does not", but the tooling imported the new `fit_one`, so no option executed it literally.
+  Astra ruled a dormant keyword is still a change (an override). The disposition was RECORDS ONLY on main, with the branch
+  pinned by tag (`ladder/D4c-fail-1a89cc7`) and the tooling merge recorded as deferred debt. Write the tooling so it stands
+  without the candidate, or register the non-PASS merge as records-only up front.
+- **D4c: a landmark-derived calibration start gets 11 of 12 bodies and FAILS L** (the trunk 1.10× on a strongly
+  shortened spine, which the p90 chord read LONG and 30 iterations recovered a third of). D4 stays open. Burned: 20261001–06
+  and 20261101–06 × donors 0/1. The SOMA-77 detection model is missing from `.cache/autoanim_gnm/gem-x`; builds reuse cached
+  detections until it is restored.
