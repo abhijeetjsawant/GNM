@@ -1,0 +1,4418 @@
+{
+ "step": "D4b",
+ "burned": true,
+ "verdict": "FAIL",
+ "d4_disposition": "BURNED (never evidence): STOP -- the registered (ii) fails on D4's own cells; the step stops here, before fresh fixtures",
+ "STOP": true,
+ "conjuncts": {
+  "L": false,
+  "closure": true,
+  "must_fail_i_mean_body_misses_L": true,
+  "must_fail_ii_spine_displaced_fails_at_the_trunk": false,
+  "must_fail_iii_exact_identity_reads_zero_and_passes": true
+ },
+ "validity": true,
+ "population_ok": true,
+ "problems": [],
+ "population": {
+  "fixtures": [
+   "20260922_d0",
+   "20260923_d0",
+   "20260924_d0",
+   "20260925_d0",
+   "20260926_d0",
+   "20260927_d0"
+  ],
+  "arms": [
+   "oracle",
+   "exact_identity",
+   "mean_body",
+   "spine_displaced",
+   "warm",
+   "converged"
+  ],
+  "frames": 150,
+  "joints": 17,
+  "cells_expected": 36,
+  "cells_valid": 36
+ },
+ "drawn_set": [
+  "scale_neck_length",
+  "scale_uparms",
+  "scale_lowarms",
+  "scale_hip_width",
+  "scale_uplegs",
+  "scale_lowlegs"
+ ],
+ "segments_scored": [
+  "neck_head",
+  "l_upper_arm",
+  "r_upper_arm",
+  "l_forearm",
+  "r_forearm",
+  "hip_width",
+  "l_thigh",
+  "r_thigh",
+  "l_shin",
+  "r_shin"
+ ],
+ "segments_reported_not_scored": [
+  "trunk",
+  "shoulder_width"
+ ],
+ "clauses": {
+  "drawn_set": {
+   "predicted": "eight drawn; scale_foot_length UNSEEN, scale_hip_height UNDRAWABLE",
+   "measured": {
+    "drawn": [
+     "scale_neck_length",
+     "scale_uparms",
+     "scale_lowarms",
+     "scale_hip_width",
+     "scale_uplegs",
+     "scale_lowlegs"
+    ],
+    "count": 6,
+    "scored_segments": [
+     "neck_head",
+     "l_upper_arm",
+     "r_upper_arm",
+     "l_forearm",
+     "r_forearm",
+     "hip_width",
+     "l_thigh",
+     "r_thigh",
+     "l_shin",
+     "r_shin"
+    ]
+   },
+   "verdict": "REPORTED (the rule, frozen before any fit)",
+   "prediction": "FAILED"
+  },
+  "validity_exact_identity_pooled_le_1mm": {
+   "predicted": "<= 1.0 mm on every fixture (D4 read 0.51-0.76)",
+   "measured": {
+    "per_fixture_mm": {
+     "20260922_d0": 0.505862,
+     "20260923_d0": 0.560516,
+     "20260924_d0": 0.749035,
+     "20260925_d0": 0.756827,
+     "20260926_d0": 0.592548,
+     "20260927_d0": 0.63466
+    },
+    "max_mm": 0.756827
+   },
+   "verdict": "PASS",
+   "prediction": "HELD"
+  },
+  "L_oracle_rest_segments": {
+   "predicted": "FAIL: the trunk fails on most fixtures; limb segments PASS",
+   "measured": {
+    "fixtures_passing": 3,
+    "fixtures": 6,
+    "scored_segments_within_per_segment": {
+     "neck_head": 4,
+     "l_upper_arm": 4,
+     "r_upper_arm": 3,
+     "l_forearm": 6,
+     "r_forearm": 6,
+     "hip_width": 6,
+     "l_thigh": 6,
+     "r_thigh": 6,
+     "l_shin": 6,
+     "r_shin": 6
+    },
+    "max_error_mm_per_segment": {
+     "trunk": 20.8696677858087,
+     "neck_head": 3.3114864192923648,
+     "shoulder_width": 3.2556685442337425,
+     "l_upper_arm": 1.9391961204998438,
+     "r_upper_arm": 1.9391961205007249,
+     "l_forearm": 0.04495978208561269,
+     "r_forearm": 0.04495978208578322,
+     "hip_width": 0.38452744483947754,
+     "l_thigh": 0.823632449976003,
+     "r_thigh": 0.8236324052469399,
+     "l_shin": 0.21325647056147545,
+     "r_shin": 0.21325648471395198
+    }
+   },
+   "verdict": "FAIL",
+   "prediction": "HELD"
+  },
+  "L_trunk": {
+   "predicted": "the trunk segment FAILS on most fixtures",
+   "measured": {
+    "scored": false,
+    "oracle_trunk_error_mm": {
+     "20260922_d0": 18.875339512252708,
+     "20260923_d0": 20.8696677858087,
+     "20260924_d0": 16.91680072323379,
+     "20260925_d0": 15.269609907056577,
+     "20260926_d0": 15.05356082216997,
+     "20260927_d0": 14.848240232043736
+    },
+    "oracle_trunk_tolerance_mm": {
+     "20260922_d0": 1.6406705,
+     "20260923_d0": 1.749619,
+     "20260924_d0": 2.0302325,
+     "20260925_d0": 2.1105295,
+     "20260926_d0": 1.8698260000000002,
+     "20260927_d0": 1.9148224999999999
+    },
+    "fixtures_beyond_tolerance": 6
+   },
+   "verdict": "REPORTED, NOT SCORED (spine below the drawn-set rule)",
+   "prediction": "HELD"
+  },
+  "L_limbs": {
+   "predicted": "limb segments PASS",
+   "measured": {
+    "segments": [
+     "l_upper_arm",
+     "r_upper_arm",
+     "l_forearm",
+     "r_forearm",
+     "hip_width",
+     "l_thigh",
+     "r_thigh",
+     "l_shin",
+     "r_shin"
+    ],
+    "all_within_on_all_fixtures": false
+   },
+   "verdict": "FAIL",
+   "prediction": "FAILED"
+  },
+  "closure_glb_fk_equals_track": {
+   "predicted": "<= 1e-4 m on every oracle cell (D3's band)",
+   "measured": {
+    "not read": "burned cells are D4's; D4's own closure is on record"
+   },
+   "verdict": "PASS",
+   "prediction": "HELD"
+  },
+  "must_fail_i_mean_body": {
+   "predicted": "misses L on every fixture",
+   "measured": {
+    "fixtures_missing_L": 6,
+    "fixtures": 6
+   },
+   "verdict": "PASS",
+   "prediction": "HELD"
+  },
+  "must_fail_ii_spine_displaced_at_the_trunk": {
+   "predicted": "fails L at the trunk on every fixture (reading B: the trunk scored and beyond tolerance)",
+   "measured": {
+    "trunk_error_mm": {
+     "20260922_d0": 14.885296097447622,
+     "20260923_d0": 14.88527483128314,
+     "20260924_d0": 14.869559799906426,
+     "20260925_d0": 14.872268337068135,
+     "20260926_d0": 14.88354075788277,
+     "20260927_d0": 14.870519484874876
+    },
+    "trunk_tolerance_mm": {
+     "20260922_d0": 1.6406705,
+     "20260923_d0": 1.749619,
+     "20260924_d0": 2.0302325,
+     "20260925_d0": 2.1105295,
+     "20260926_d0": 1.8698260000000002,
+     "20260927_d0": 1.9148224999999999
+    },
+    "fixtures_failing_L_at_the_trunk_reading_B": 0,
+    "trunk_scored_in_L": false,
+    "SUPERSEDED_reading_A_trunk_beyond_tolerance_unscored_or_not": 6,
+    "the_band_as_scored_passes_the_displaced_spine_on": 6
+   },
+   "verdict": "FAIL",
+   "prediction": "FAILED",
+   "STOP": true
+  },
+  "must_fail_iii_exact_identity": {
+   "predicted": "L = 0 on every segment and the gate PASSES it, on every fixture",
+   "measured": {
+    "max_error_mm": 0.0,
+    "fixtures_reading_zero_and_passing": 6
+   },
+   "verdict": "PASS",
+   "prediction": "HELD"
+  },
+  "overall": {
+   "predicted": "FAIL",
+   "measured": "FAIL",
+   "verdict": "FAIL",
+   "prediction": "HELD"
+  }
+ },
+ "reported": {
+  "J_oracle_minus_paired_floor_mm": {
+   "20260922_d0": {
+    "root": 2.349883,
+    "c_neck": 2.08004,
+    "c_head": 0.176866,
+    "l_uparm": 0.879518,
+    "r_uparm": 1.170973,
+    "l_lowarm": 0.248128,
+    "r_lowarm": 0.262395,
+    "l_wrist": 0.21224,
+    "r_wrist": 0.094199,
+    "l_upleg": 0.781219,
+    "r_upleg": 0.755272,
+    "l_lowleg": 0.23739,
+    "r_lowleg": 0.289076,
+    "l_foot": 0.134179,
+    "r_foot": 0.167612,
+    "l_eye": 0.313132,
+    "r_eye": 0.263651
+   },
+   "20260923_d0": {
+    "root": 2.658095,
+    "c_neck": 2.565287,
+    "c_head": 0.305228,
+    "l_uparm": 0.929438,
+    "r_uparm": 1.454783,
+    "l_lowarm": 0.184192,
+    "r_lowarm": 0.264356,
+    "l_wrist": 0.220965,
+    "r_wrist": 0.125397,
+    "l_upleg": 0.913123,
+    "r_upleg": 0.885288,
+    "l_lowleg": 0.277334,
+    "r_lowleg": 0.423439,
+    "l_foot": 0.168508,
+    "r_foot": 0.21349,
+    "l_eye": 0.318655,
+    "r_eye": 0.297871
+   },
+   "20260924_d0": {
+    "root": 2.036625,
+    "c_neck": 0.516387,
+    "c_head": 0.243185,
+    "l_uparm": 0.515447,
+    "r_uparm": 0.417583,
+    "l_lowarm": -0.010383,
+    "r_lowarm": 0.154958,
+    "l_wrist": -0.005748,
+    "r_wrist": -0.002856,
+    "l_upleg": 0.770507,
+    "r_upleg": 0.567903,
+    "l_lowleg": 0.180035,
+    "r_lowleg": 0.148426,
+    "l_foot": 0.143892,
+    "r_foot": 0.074011,
+    "l_eye": 0.198627,
+    "r_eye": 0.263117
+   },
+   "20260925_d0": {
+    "root": 1.828521,
+    "c_neck": 0.262055,
+    "c_head": 0.224254,
+    "l_uparm": 0.503117,
+    "r_uparm": 0.396335,
+    "l_lowarm": -0.123983,
+    "r_lowarm": 0.084457,
+    "l_wrist": -0.002003,
+    "r_wrist": -0.021627,
+    "l_upleg": 0.465054,
+    "r_upleg": 0.377255,
+    "l_lowleg": 0.02437,
+    "r_lowleg": 0.078677,
+    "l_foot": -0.02031,
+    "r_foot": 0.031516,
+    "l_eye": 0.198252,
+    "r_eye": 0.245213
+   },
+   "20260926_d0": {
+    "root": 1.628666,
+    "c_neck": 1.291204,
+    "c_head": 0.046393,
+    "l_uparm": 0.549395,
+    "r_uparm": 0.736431,
+    "l_lowarm": 0.076192,
+    "r_lowarm": 0.08277,
+    "l_wrist": 0.087876,
+    "r_wrist": 0.023642,
+    "l_upleg": 0.506822,
+    "r_upleg": 0.26779,
+    "l_lowleg": 0.161637,
+    "r_lowleg": 0.155026,
+    "l_foot": 0.060851,
+    "r_foot": 0.116097,
+    "l_eye": 0.145091,
+    "r_eye": 0.093201
+   },
+   "20260927_d0": {
+    "root": 1.75245,
+    "c_neck": 0.424289,
+    "c_head": 0.194267,
+    "l_uparm": 0.453597,
+    "r_uparm": 0.41936,
+    "l_lowarm": -0.036984,
+    "r_lowarm": 0.08343,
+    "l_wrist": -0.041103,
+    "r_wrist": -0.03895,
+    "l_upleg": 0.709909,
+    "r_upleg": 0.43259,
+    "l_lowleg": 0.144739,
+    "r_lowleg": 0.135197,
+    "l_foot": 0.084097,
+    "r_foot": 0.049239,
+    "l_eye": 0.26743,
+    "r_eye": 0.271638
+   }
+  },
+  "pooled_statistic_mm_per_arm": {
+   "20260922_d0": {
+    "oracle": 0.853313,
+    "exact_identity": 0.505862,
+    "mean_body": 31.762763,
+    "spine_displaced": 0.87628,
+    "warm": 0.483067,
+    "converged": 0.021146
+   },
+   "20260923_d0": {
+    "oracle": 0.985141,
+    "exact_identity": 0.560516,
+    "mean_body": 32.767931,
+    "spine_displaced": 0.929826,
+    "warm": 0.515022,
+    "converged": 2.192401
+   },
+   "20260924_d0": {
+    "oracle": 1.029986,
+    "exact_identity": 0.749035,
+    "mean_body": 24.675125,
+    "spine_displaced": 0.991835,
+    "warm": 0.72484,
+    "converged": 0.040326
+   },
+   "20260925_d0": {
+    "oracle": 0.96687,
+    "exact_identity": 0.756827,
+    "mean_body": 9.566211,
+    "spine_displaced": 0.984708,
+    "warm": 0.719277,
+    "converged": 0.05257
+   },
+   "20260926_d0": {
+    "oracle": 0.798636,
+    "exact_identity": 0.592548,
+    "mean_body": 39.829367,
+    "spine_displaced": 0.955241,
+    "warm": 0.582562,
+    "converged": 0.125007
+   },
+   "20260927_d0": {
+    "oracle": 0.897717,
+    "exact_identity": 0.63466,
+    "mean_body": 32.247271,
+    "spine_displaced": 0.872443,
+    "warm": 0.579875,
+    "converged": 0.046496
+   }
+  },
+  "oracle_identity_error_on_the_drawn_set": {
+   "20260922_d0": {
+    "scale_neck_length": 0.026739,
+    "scale_uparms": 0.017005,
+    "scale_lowarms": 0.00021,
+    "scale_hip_width": -0.001203,
+    "scale_uplegs": 4.8e-05,
+    "scale_lowlegs": 0.001679
+   },
+   "20260923_d0": {
+    "scale_neck_length": 0.033115,
+    "scale_uparms": 0.019392,
+    "scale_lowarms": 7.9e-05,
+    "scale_hip_width": -0.001923,
+    "scale_uplegs": 0.001058,
+    "scale_lowlegs": 0.002133
+   },
+   "20260924_d0": {
+    "scale_neck_length": 0.000141,
+    "scale_uparms": 0.008128,
+    "scale_lowarms": -0.00045,
+    "scale_hip_width": -0.000299,
+    "scale_uplegs": 0.008238,
+    "scale_lowlegs": 8e-06
+   },
+   "20260925_d0": {
+    "scale_neck_length": 0.000393,
+    "scale_uparms": 0.007688,
+    "scale_lowarms": -0.000381,
+    "scale_hip_width": 0.000235,
+    "scale_uplegs": 0.005229,
+    "scale_lowlegs": 1.3e-05
+   },
+   "20260926_d0": {
+    "scale_neck_length": 0.018789,
+    "scale_uparms": 0.011331,
+    "scale_lowarms": 0.000403,
+    "scale_hip_width": -0.000228,
+    "scale_uplegs": -0.000107,
+    "scale_lowlegs": 0.0006
+   },
+   "20260927_d0": {
+    "scale_neck_length": -0.001152,
+    "scale_uparms": 0.007232,
+    "scale_lowarms": -0.000374,
+    "scale_hip_width": -0.000699,
+    "scale_uplegs": 0.006289,
+    "scale_lowlegs": -0.000214
+   }
+  },
+  "undrawn_identity_channels": [
+   "scale_eye_width",
+   "scale_eye_height",
+   "scale_eye_depth",
+   "scale_spine_length",
+   "scale_shoulder_width",
+   "scale_r_hands",
+   "scale_l_hands",
+   "scale_hip_height",
+   "scale_hip_depth",
+   "scale_knee_knock",
+   "scale_ankle_height",
+   "scale_foot_length",
+   "scale_r_index1_length",
+   "scale_r_middle1_length",
+   "scale_r_ring1_length",
+   "scale_r_pinky1_length",
+   "scale_r_thumb1_length",
+   "scale_r_index1_offset",
+   "scale_r_middle1_offset",
+   "scale_r_ring1_offset",
+   "scale_r_pinky1_offset",
+   "scale_r_thumb1_offset",
+   "scale_r_index2_length",
+   "scale_r_middle2_length",
+   "scale_r_ring2_length",
+   "scale_r_pinky2_length",
+   "scale_r_thumb2_length",
+   "scale_r_index3_length",
+   "scale_r_middle3_length",
+   "scale_r_ring3_length",
+   "scale_r_pinky3_length",
+   "scale_r_thumb3_length",
+   "scale_r_index_null_tx",
+   "scale_r_middle_null_tx",
+   "scale_r_ring_null_tx",
+   "scale_r_pinky_null_tx",
+   "scale_r_thumb_null_tx",
+   "scale_l_index1_length",
+   "scale_l_middle1_length",
+   "scale_l_ring1_length",
+   "scale_l_pinky1_length",
+   "scale_l_thumb1_length",
+   "scale_l_index1_offset",
+   "scale_l_middle1_offset",
+   "scale_l_ring1_offset",
+   "scale_l_pinky1_offset",
+   "scale_l_thumb1_offset",
+   "scale_l_index2_length",
+   "scale_l_middle2_length",
+   "scale_l_ring2_length",
+   "scale_l_pinky2_length",
+   "scale_l_thumb2_length",
+   "scale_l_index3_length",
+   "scale_l_middle3_length",
+   "scale_l_ring3_length",
+   "scale_l_pinky3_length",
+   "scale_l_thumb3_length",
+   "scale_l_index_null_tx",
+   "scale_l_middle_null_tx",
+   "scale_l_ring_null_tx",
+   "scale_l_pinky_null_tx",
+   "scale_l_thumb_null_tx"
+  ],
+  "undrawn_drift_oracle_nonzero_by_name": {
+   "20260922_d0": {
+    "scale_spine_length": 0.893066,
+    "scale_shoulder_width": -0.046983,
+    "scale_r_hands": 0.000328,
+    "scale_l_hands": 8.3e-05,
+    "scale_hip_height": 0.001676,
+    "scale_hip_depth": 0.00316,
+    "scale_knee_knock": -0.000726
+   },
+   "20260923_d0": {
+    "scale_spine_length": 0.868631,
+    "scale_shoulder_width": 0.157279,
+    "scale_r_hands": 0.000288,
+    "scale_l_hands": 0.000388,
+    "scale_hip_height": 0.001986,
+    "scale_hip_depth": 0.003129,
+    "scale_knee_knock": -0.001124
+   },
+   "20260924_d0": {
+    "scale_spine_length": -0.785438,
+    "scale_shoulder_width": 0.066812,
+    "scale_r_hands": 3.8e-05,
+    "scale_l_hands": 4.6e-05,
+    "scale_hip_height": -0.001073,
+    "scale_hip_depth": -0.001522,
+    "scale_knee_knock": 8.8e-05
+   },
+   "20260925_d0": {
+    "scale_spine_length": -0.596694,
+    "scale_shoulder_width": -0.005735,
+    "scale_r_hands": 1.3e-05,
+    "scale_l_hands": 3.1e-05,
+    "scale_hip_height": -0.000951,
+    "scale_hip_depth": -0.001295,
+    "scale_knee_knock": 0.000705
+   },
+   "20260926_d0": {
+    "scale_spine_length": 0.591989,
+    "scale_shoulder_width": 0.053713,
+    "scale_r_hands": 6.7e-05,
+    "scale_l_hands": 3.3e-05,
+    "scale_hip_height": 0.00129,
+    "scale_hip_depth": 0.002541,
+    "scale_knee_knock": 0.000129
+   },
+   "20260927_d0": {
+    "scale_spine_length": -0.736682,
+    "scale_shoulder_width": -0.175818,
+    "scale_r_hands": 6e-06,
+    "scale_l_hands": -1.9e-05,
+    "scale_hip_height": -0.001016,
+    "scale_hip_depth": -0.001279,
+    "scale_knee_knock": -0.000375
+   }
+  },
+  "WARM_calibration_started_at_the_truth": {
+   "20260922_d0": {
+    "spine_error": -0.002504,
+    "drawn_channel_max_abs_error": 0.001662,
+    "L_passes": true,
+    "trunk_error_mm": 0.25015780876788085,
+    "pooled_mm": 0.483067
+   },
+   "20260923_d0": {
+    "spine_error": -0.003115,
+    "drawn_channel_max_abs_error": 0.001705,
+    "L_passes": true,
+    "trunk_error_mm": 0.31122896388467325,
+    "pooled_mm": 0.515022
+   },
+   "20260924_d0": {
+    "spine_error": 0.004463,
+    "drawn_channel_max_abs_error": 0.001968,
+    "L_passes": true,
+    "trunk_error_mm": 0.44535288834350695,
+    "pooled_mm": 0.72484
+   },
+   "20260925_d0": {
+    "spine_error": 0.003118,
+    "drawn_channel_max_abs_error": 0.0021,
+    "L_passes": true,
+    "trunk_error_mm": 0.3112401370304383,
+    "pooled_mm": 0.719277
+   },
+   "20260926_d0": {
+    "spine_error": -0.000948,
+    "drawn_channel_max_abs_error": 0.001795,
+    "L_passes": true,
+    "trunk_error_mm": 0.09473481399413686,
+    "pooled_mm": 0.582562
+   },
+   "20260927_d0": {
+    "spine_error": 0.004155,
+    "drawn_channel_max_abs_error": 0.001834,
+    "L_passes": true,
+    "trunk_error_mm": 0.4146720908012185,
+    "pooled_mm": 0.579875
+   }
+  },
+  "CONVERGED_max_iter_300": {
+   "20260922_d0": {
+    "spine_error": -0.008661,
+    "drawn_channel_max_abs_error": 0.000574,
+    "L_passes": true,
+    "trunk_error_mm": 0.8652796161810556,
+    "pooled_mm": 0.021146
+   },
+   "20260923_d0": {
+    "spine_error": -0.444691,
+    "drawn_channel_max_abs_error": 0.070389,
+    "L_passes": false,
+    "trunk_error_mm": 44.42287387950273,
+    "pooled_mm": 2.192401
+   },
+   "20260924_d0": {
+    "spine_error": 0.005579,
+    "drawn_channel_max_abs_error": 0.000567,
+    "L_passes": true,
+    "trunk_error_mm": 0.5567152123929304,
+    "pooled_mm": 0.040326
+   },
+   "20260925_d0": {
+    "spine_error": 0.011509,
+    "drawn_channel_max_abs_error": 0.000572,
+    "L_passes": true,
+    "trunk_error_mm": 1.148691945554674,
+    "pooled_mm": 0.05257
+   },
+   "20260926_d0": {
+    "spine_error": -0.047005,
+    "drawn_channel_max_abs_error": 0.005656,
+    "L_passes": true,
+    "trunk_error_mm": 4.695362097009706,
+    "pooled_mm": 0.125007
+   },
+   "20260927_d0": {
+    "spine_error": 0.011149,
+    "drawn_channel_max_abs_error": 0.000706,
+    "L_passes": true,
+    "trunk_error_mm": 1.112598784392219,
+    "pooled_mm": 0.046496
+   }
+  },
+  "CONVERGED_iterations": {
+   "20260922_d0": {
+    "solves_per_call": [
+     1054,
+     1056
+    ],
+    "max_iteration_index_reached": [
+     299,
+     299
+    ],
+    "solves_stopped_at_the_cap": [
+     4,
+     440
+    ]
+   },
+   "20260923_d0": {
+    "solves_per_call": [
+     1054,
+     1056
+    ],
+    "max_iteration_index_reached": [
+     299,
+     299
+    ],
+    "solves_stopped_at_the_cap": [
+     4,
+     77
+    ]
+   },
+   "20260924_d0": {
+    "solves_per_call": [
+     1054,
+     1056
+    ],
+    "max_iteration_index_reached": [
+     299,
+     299
+    ],
+    "solves_stopped_at_the_cap": [
+     35,
+     460
+    ]
+   },
+   "20260925_d0": {
+    "solves_per_call": [
+     1054,
+     1056
+    ],
+    "max_iteration_index_reached": [
+     299,
+     299
+    ],
+    "solves_stopped_at_the_cap": [
+     81,
+     472
+    ]
+   },
+   "20260926_d0": {
+    "solves_per_call": [
+     1054,
+     1056
+    ],
+    "max_iteration_index_reached": [
+     299,
+     299
+    ],
+    "solves_stopped_at_the_cap": [
+     2,
+     389
+    ]
+   },
+   "20260927_d0": {
+    "solves_per_call": [
+     1054,
+     1056
+    ],
+    "max_iteration_index_reached": [
+     299,
+     299
+    ],
+    "solves_stopped_at_the_cap": [
+     42,
+     461
+    ]
+   }
+  },
+  "segments_all_arms": {
+   "20260922_d0": {
+    "oracle": {
+     "trunk": {
+      "truth_mm": 626.0434801241287,
+      "fitted_mm": 607.168140611876,
+      "error_mm": 18.875339512252708,
+      "tolerance_mm": 1.6406705,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 128.83002105649047,
+      "fitted_mm": 131.50393308076755,
+      "error_mm": 2.6739120242770866,
+      "tolerance_mm": 2.2845415,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 339.19526484486704,
+      "fitted_mm": 342.33102123690014,
+      "error_mm": 3.1357563920331017,
+      "tolerance_mm": 1.560368,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 287.9130515691294,
+      "fitted_mm": 289.6135549232809,
+      "error_mm": 1.7005033541515218,
+      "tolerance_mm": 1.4029775,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 287.9130514824806,
+      "fitted_mm": 289.6135548366323,
+      "error_mm": 1.7005033541516923,
+      "tolerance_mm": 1.188342,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 295.13968695836684,
+      "fitted_mm": 295.1607095158925,
+      "error_mm": 0.021022557525668617,
+      "tolerance_mm": 0.8947645000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 295.13968695939576,
+      "fitted_mm": 295.16070951692154,
+      "error_mm": 0.021022557525782304,
+      "tolerance_mm": 0.6754859999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 237.34235048294067,
+      "fitted_mm": 237.10173845291138,
+      "error_mm": 0.24061203002929688,
+      "tolerance_mm": 1.6907874999999999,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 416.86174041716123,
+      "fitted_mm": 416.8665655147353,
+      "error_mm": 0.004825097574098436,
+      "tolerance_mm": 1.5254094999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 416.8617183996065,
+      "fitted_mm": 416.86654349691855,
+      "error_mm": 0.004825097312050275,
+      "tolerance_mm": 1.260846,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 436.6944155020633,
+      "fitted_mm": 436.86226664646506,
+      "error_mm": 0.16785114440176585,
+      "tolerance_mm": 0.849506,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 436.6943915640855,
+      "fitted_mm": 436.8622427187784,
+      "error_mm": 0.16785115469292577,
+      "tolerance_mm": 0.807018,
+      "within": true,
+      "scored": true
+     }
+    },
+    "exact_identity": {
+     "trunk": {
+      "truth_mm": 626.0434801241287,
+      "fitted_mm": 626.0434801241287,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6406705,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 128.83002105649047,
+      "fitted_mm": 128.83002105649047,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.2845415,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 339.19526484486704,
+      "fitted_mm": 339.19526484486704,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.560368,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 287.9130515691294,
+      "fitted_mm": 287.9130515691294,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.4029775,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 287.9130514824806,
+      "fitted_mm": 287.9130514824806,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.188342,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 295.13968695836684,
+      "fitted_mm": 295.13968695836684,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.8947645000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 295.13968695939576,
+      "fitted_mm": 295.13968695939576,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.6754859999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 237.34235048294067,
+      "fitted_mm": 237.34235048294067,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6907874999999999,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 416.86174041716123,
+      "fitted_mm": 416.86174041716123,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.5254094999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 416.8617183996065,
+      "fitted_mm": 416.8617183996065,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.260846,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 436.6944155020633,
+      "fitted_mm": 436.6944155020633,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.849506,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 436.6943915640855,
+      "fitted_mm": 436.6943915640855,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.807018,
+      "within": true,
+      "scored": true
+     }
+    },
+    "mean_body": {
+     "trunk": {
+      "truth_mm": 626.0434801241287,
+      "fitted_mm": 517.9688142133693,
+      "error_mm": 108.07466591075934,
+      "tolerance_mm": 1.6406705,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 128.83002105649047,
+      "fitted_mm": 99.29257303529033,
+      "error_mm": 29.537448021200134,
+      "tolerance_mm": 2.2845415,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 339.19526484486704,
+      "fitted_mm": 351.7220474690847,
+      "error_mm": 12.526782624217674,
+      "tolerance_mm": 1.560368,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 287.9130515691294,
+      "fitted_mm": 256.80134505074824,
+      "error_mm": 31.11170651838114,
+      "tolerance_mm": 1.4029775,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 287.9130514824806,
+      "fitted_mm": 256.8013449640917,
+      "error_mm": 31.111706518388928,
+      "tolerance_mm": 1.188342,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 295.13968695836684,
+      "fitted_mm": 270.0000102548984,
+      "error_mm": 25.13967670346841,
+      "tolerance_mm": 0.8947645000000001,
+      "within": false,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 295.13968695939576,
+      "fitted_mm": 270.00001025583947,
+      "error_mm": 25.13967670355629,
+      "tolerance_mm": 0.6754859999999999,
+      "within": false,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 237.34235048294067,
+      "fitted_mm": 164.09299850463867,
+      "error_mm": 73.249351978302,
+      "tolerance_mm": 1.6907874999999999,
+      "within": false,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 416.86174041716123,
+      "fitted_mm": 419.764985279812,
+      "error_mm": 2.9032448626507517,
+      "tolerance_mm": 1.5254094999999999,
+      "within": false,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 416.8617183996065,
+      "fitted_mm": 419.76496310459163,
+      "error_mm": 2.903244704985127,
+      "tolerance_mm": 1.260846,
+      "within": false,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 436.6944155020633,
+      "fitted_mm": 420.5830128049798,
+      "error_mm": 16.11140269708352,
+      "tolerance_mm": 0.849506,
+      "within": false,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 436.6943915640855,
+      "fitted_mm": 420.58298975016976,
+      "error_mm": 16.111401813915734,
+      "tolerance_mm": 0.807018,
+      "within": false,
+      "scored": true
+     }
+    },
+    "spine_displaced": {
+     "trunk": {
+      "truth_mm": 626.0434801241287,
+      "fitted_mm": 611.158184026681,
+      "error_mm": 14.885296097447622,
+      "tolerance_mm": 1.6406705,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 128.83002105649047,
+      "fitted_mm": 128.83002105649047,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.2845415,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 339.19526484486704,
+      "fitted_mm": 339.19526484486704,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.560368,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 287.9130515691294,
+      "fitted_mm": 287.9130515691293,
+      "error_mm": 5.684341886080802e-14,
+      "tolerance_mm": 1.4029775,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 287.9130514824806,
+      "fitted_mm": 287.91305148248057,
+      "error_mm": 5.684341886080802e-14,
+      "tolerance_mm": 1.188342,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 295.13968695836684,
+      "fitted_mm": 295.13968695836684,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.8947645000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 295.13968695939576,
+      "fitted_mm": 295.13968695939576,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.6754859999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 237.34235048294067,
+      "fitted_mm": 237.34235048294067,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6907874999999999,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 416.86174041716123,
+      "fitted_mm": 416.86174041716123,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.5254094999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 416.8617183996065,
+      "fitted_mm": 416.8617183996065,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.260846,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 436.6944155020633,
+      "fitted_mm": 436.6944155020633,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.849506,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 436.6943915640855,
+      "fitted_mm": 436.6943915640855,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.807018,
+      "within": true,
+      "scored": true
+     }
+    },
+    "warm": {
+     "trunk": {
+      "truth_mm": 626.0434801241287,
+      "fitted_mm": 625.7933223153608,
+      "error_mm": 0.25015780876788085,
+      "tolerance_mm": 1.6406705,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 128.83002105649047,
+      "fitted_mm": 128.7396574355917,
+      "error_mm": 0.09036362089875638,
+      "tolerance_mm": 2.2845415,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 339.19526484486704,
+      "fitted_mm": 339.0747689176583,
+      "error_mm": 0.1204959272087649,
+      "tolerance_mm": 1.560368,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 287.9130515691294,
+      "fitted_mm": 288.0792082351603,
+      "error_mm": 0.16615666603092905,
+      "tolerance_mm": 1.4029775,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 287.9130514824806,
+      "fitted_mm": 288.0792081485114,
+      "error_mm": 0.16615666603075852,
+      "tolerance_mm": 1.188342,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 295.13968695836684,
+      "fitted_mm": 295.1421575708121,
+      "error_mm": 0.00247061244527913,
+      "tolerance_mm": 0.8947645000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 295.13968695939576,
+      "fitted_mm": 295.1421575718411,
+      "error_mm": 0.0024706124453359735,
+      "tolerance_mm": 0.6754859999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 237.34235048294067,
+      "fitted_mm": 237.3348045349121,
+      "error_mm": 0.007545948028564453,
+      "tolerance_mm": 1.6907874999999999,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 416.86174041716123,
+      "fitted_mm": 416.83537082812984,
+      "error_mm": 0.02636958903138975,
+      "tolerance_mm": 1.5254094999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 416.8617183996065,
+      "fitted_mm": 416.83534881200717,
+      "error_mm": 0.0263695875993335,
+      "tolerance_mm": 1.260846,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 436.6944155020633,
+      "fitted_mm": 436.690319172098,
+      "error_mm": 0.004096329965307177,
+      "tolerance_mm": 0.849506,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 436.6943915640855,
+      "fitted_mm": 436.6902952354958,
+      "error_mm": 0.004096328589696441,
+      "tolerance_mm": 0.807018,
+      "within": true,
+      "scored": true
+     }
+    },
+    "converged": {
+     "trunk": {
+      "truth_mm": 626.0434801241287,
+      "fitted_mm": 625.1782005079476,
+      "error_mm": 0.8652796161810556,
+      "tolerance_mm": 1.6406705,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 128.83002105649047,
+      "fitted_mm": 128.88008299718663,
+      "error_mm": 0.05006194069616754,
+      "tolerance_mm": 2.2845415,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 339.19526484486704,
+      "fitted_mm": 339.28837546945766,
+      "error_mm": 0.09311062459062214,
+      "tolerance_mm": 1.560368,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 287.9130515691294,
+      "fitted_mm": 287.97048652807666,
+      "error_mm": 0.05743495894728312,
+      "tolerance_mm": 1.4029775,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 287.9130514824806,
+      "fitted_mm": 287.97048644142774,
+      "error_mm": 0.05743495894711259,
+      "tolerance_mm": 1.188342,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 295.13968695836684,
+      "fitted_mm": 295.13813425742126,
+      "error_mm": 0.0015527009455809093,
+      "tolerance_mm": 0.8947645000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 295.13968695939576,
+      "fitted_mm": 295.1381342584501,
+      "error_mm": 0.0015527009456377527,
+      "tolerance_mm": 0.6754859999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 237.34235048294067,
+      "fitted_mm": 237.33893513679504,
+      "error_mm": 0.003415346145629883,
+      "tolerance_mm": 1.6907874999999999,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 416.86174041716123,
+      "fitted_mm": 416.86321221252484,
+      "error_mm": 0.0014717953636136372,
+      "tolerance_mm": 1.5254094999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 416.8617183996065,
+      "fitted_mm": 416.8631901948902,
+      "error_mm": 0.0014717952836917902,
+      "tolerance_mm": 1.260846,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 436.6944155020633,
+      "fitted_mm": 436.69770567848286,
+      "error_mm": 0.0032901764195685246,
+      "tolerance_mm": 0.849506,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 436.6943915640855,
+      "fitted_mm": 436.6976817404538,
+      "error_mm": 0.0032901763682957608,
+      "tolerance_mm": 0.807018,
+      "within": true,
+      "scored": true
+     }
+    }
+   },
+   "20260923_d0": {
+    "oracle": {
+     "trunk": {
+      "truth_mm": 625.5968643115351,
+      "fitted_mm": 604.7271965257264,
+      "error_mm": 20.8696677858087,
+      "tolerance_mm": 1.749619,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 100.82291529120741,
+      "fitted_mm": 104.13440171049977,
+      "error_mm": 3.3114864192923648,
+      "tolerance_mm": 2.4874535,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 379.90323200076494,
+      "fitted_mm": 383.1589005449987,
+      "error_mm": 3.2556685442337425,
+      "tolerance_mm": 1.8152625,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 200.01641308373266,
+      "fitted_mm": 201.9556092042325,
+      "error_mm": 1.9391961204998438,
+      "tolerance_mm": 1.7823324999999999,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 200.0164129970561,
+      "fitted_mm": 201.95560911755683,
+      "error_mm": 1.9391961205007249,
+      "tolerance_mm": 1.5067665,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 230.06756090702748,
+      "fitted_mm": 230.07542573964867,
+      "error_mm": 0.00786483262118054,
+      "tolerance_mm": 1.232599,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 230.06756090782898,
+      "fitted_mm": 230.07542574045019,
+      "error_mm": 0.007864832621208961,
+      "tolerance_mm": 0.940966,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 262.43205547332764,
+      "fitted_mm": 262.04752802848816,
+      "error_mm": 0.38452744483947754,
+      "tolerance_mm": 1.6417025,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 382.69808686726725,
+      "fitted_mm": 382.8038516143408,
+      "error_mm": 0.1057647470735219,
+      "tolerance_mm": 1.4692625000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 382.69806670502305,
+      "fitted_mm": 382.8038314463527,
+      "error_mm": 0.10576474132966496,
+      "tolerance_mm": 1.2343835,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 374.1656409733991,
+      "fitted_mm": 374.37889744396057,
+      "error_mm": 0.21325647056147545,
+      "tolerance_mm": 0.826658,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 374.1656204630182,
+      "fitted_mm": 374.3788769477321,
+      "error_mm": 0.21325648471395198,
+      "tolerance_mm": 0.765247,
+      "within": true,
+      "scored": true
+     }
+    },
+    "exact_identity": {
+     "trunk": {
+      "truth_mm": 625.5968643115351,
+      "fitted_mm": 625.5968643115351,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.749619,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 100.82291529120741,
+      "fitted_mm": 100.82291529120741,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.4874535,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 379.90323200076494,
+      "fitted_mm": 379.90323200076494,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.8152625,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 200.01641308373266,
+      "fitted_mm": 200.01641308373266,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.7823324999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 200.0164129970561,
+      "fitted_mm": 200.0164129970561,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.5067665,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 230.06756090702748,
+      "fitted_mm": 230.06756090702748,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.232599,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 230.06756090782898,
+      "fitted_mm": 230.06756090782898,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.940966,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 262.43205547332764,
+      "fitted_mm": 262.43205547332764,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6417025,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 382.69808686726725,
+      "fitted_mm": 382.69808686726725,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.4692625000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 382.69806670502305,
+      "fitted_mm": 382.69806670502305,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.2343835,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 374.1656409733991,
+      "fitted_mm": 374.1656409733991,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.826658,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 374.1656204630182,
+      "fitted_mm": 374.1656204630182,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.765247,
+      "within": true,
+      "scored": true
+     }
+    },
+    "mean_body": {
+     "trunk": {
+      "truth_mm": 625.5968643115351,
+      "fitted_mm": 517.9688142133693,
+      "error_mm": 107.62805009816577,
+      "tolerance_mm": 1.749619,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 100.82291529120741,
+      "fitted_mm": 99.29257303529033,
+      "error_mm": 1.530342255917077,
+      "tolerance_mm": 2.4874535,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 379.90323200076494,
+      "fitted_mm": 351.7220474690847,
+      "error_mm": 28.18118453168023,
+      "tolerance_mm": 1.8152625,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 200.01641308373266,
+      "fitted_mm": 256.80134505074824,
+      "error_mm": 56.78493196701558,
+      "tolerance_mm": 1.7823324999999999,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 200.0164129970561,
+      "fitted_mm": 256.8013449640917,
+      "error_mm": 56.78493196703559,
+      "tolerance_mm": 1.5067665,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 230.06756090702748,
+      "fitted_mm": 270.0000102548984,
+      "error_mm": 39.93244934787094,
+      "tolerance_mm": 1.232599,
+      "within": false,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 230.06756090782898,
+      "fitted_mm": 270.00001025583947,
+      "error_mm": 39.93244934801049,
+      "tolerance_mm": 0.940966,
+      "within": false,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 262.43205547332764,
+      "fitted_mm": 164.09299850463867,
+      "error_mm": 98.33905696868896,
+      "tolerance_mm": 1.6417025,
+      "within": false,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 382.69808686726725,
+      "fitted_mm": 419.764985279812,
+      "error_mm": 37.06689841254473,
+      "tolerance_mm": 1.4692625000000001,
+      "within": false,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 382.69806670502305,
+      "fitted_mm": 419.76496310459163,
+      "error_mm": 37.06689639956858,
+      "tolerance_mm": 1.2343835,
+      "within": false,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 374.1656409733991,
+      "fitted_mm": 420.5830128049798,
+      "error_mm": 46.41737183158068,
+      "tolerance_mm": 0.826658,
+      "within": false,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 374.1656204630182,
+      "fitted_mm": 420.58298975016976,
+      "error_mm": 46.41736928715159,
+      "tolerance_mm": 0.765247,
+      "within": false,
+      "scored": true
+     }
+    },
+    "spine_displaced": {
+     "trunk": {
+      "truth_mm": 625.5968643115351,
+      "fitted_mm": 610.711589480252,
+      "error_mm": 14.88527483128314,
+      "tolerance_mm": 1.749619,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 100.82291529120741,
+      "fitted_mm": 100.82291529120741,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.4874535,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 379.90323200076494,
+      "fitted_mm": 379.90323200076494,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.8152625,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 200.01641308373266,
+      "fitted_mm": 200.01641308373266,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.7823324999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 200.0164129970561,
+      "fitted_mm": 200.0164129970561,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.5067665,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 230.06756090702748,
+      "fitted_mm": 230.06756090702748,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.232599,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 230.06756090782898,
+      "fitted_mm": 230.06756090782898,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.940966,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 262.43205547332764,
+      "fitted_mm": 262.43205547332764,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6417025,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 382.69808686726725,
+      "fitted_mm": 382.69808686726725,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.4692625000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 382.69806670502305,
+      "fitted_mm": 382.69806670502305,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.2343835,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 374.1656409733991,
+      "fitted_mm": 374.1656409733991,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.826658,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 374.1656204630182,
+      "fitted_mm": 374.1656204630182,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.765247,
+      "within": true,
+      "scored": true
+     }
+    },
+    "warm": {
+     "trunk": {
+      "truth_mm": 625.5968643115351,
+      "fitted_mm": 625.2856353476504,
+      "error_mm": 0.31122896388467325,
+      "tolerance_mm": 1.749619,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 100.82291529120741,
+      "fitted_mm": 100.69473149908461,
+      "error_mm": 0.1281837921227975,
+      "tolerance_mm": 2.4874535,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 379.90323200076494,
+      "fitted_mm": 379.78162511397437,
+      "error_mm": 0.1216068867905733,
+      "tolerance_mm": 1.8152625,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 200.01641308373266,
+      "fitted_mm": 200.18687594319172,
+      "error_mm": 0.17046285945906448,
+      "tolerance_mm": 1.7823324999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 200.0164129970561,
+      "fitted_mm": 200.18687585651548,
+      "error_mm": 0.17046285945937711,
+      "tolerance_mm": 1.5067665,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 230.06756090702748,
+      "fitted_mm": 230.0691612916874,
+      "error_mm": 0.001600384659923293,
+      "tolerance_mm": 1.232599,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 230.06756090782898,
+      "fitted_mm": 230.0691612924889,
+      "error_mm": 0.001600384659923293,
+      "tolerance_mm": 0.940966,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 262.43205547332764,
+      "fitted_mm": 262.4187397956848,
+      "error_mm": 0.013315677642822266,
+      "tolerance_mm": 1.6417025,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 382.69808686726725,
+      "fitted_mm": 382.67202111500364,
+      "error_mm": 0.02606575226360519,
+      "tolerance_mm": 1.4692625000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 382.69806670502305,
+      "fitted_mm": 382.6720009541749,
+      "error_mm": 0.026065750848147218,
+      "tolerance_mm": 1.2343835,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 374.1656409733991,
+      "fitted_mm": 374.1613315566662,
+      "error_mm": 0.004309416732894533,
+      "tolerance_mm": 0.826658,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 374.1656204630182,
+      "fitted_mm": 374.1613110479577,
+      "error_mm": 0.0043094150604474635,
+      "tolerance_mm": 0.765247,
+      "within": true,
+      "scored": true
+     }
+    },
+    "converged": {
+     "trunk": {
+      "truth_mm": 625.5968643115351,
+      "fitted_mm": 581.1739904320324,
+      "error_mm": 44.42287387950273,
+      "tolerance_mm": 1.749619,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 100.82291529120741,
+      "fitted_mm": 107.86185227126211,
+      "error_mm": 7.0389369800547,
+      "tolerance_mm": 2.4874535,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 379.90323200076494,
+      "fitted_mm": 386.62514209589966,
+      "error_mm": 6.721910095134717,
+      "tolerance_mm": 1.8152625,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 200.01641308373266,
+      "fitted_mm": 203.69933250362163,
+      "error_mm": 3.682919419888975,
+      "tolerance_mm": 1.7823324999999999,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 200.0164129970561,
+      "fitted_mm": 203.6993324169467,
+      "error_mm": 3.6829194198905952,
+      "tolerance_mm": 1.5067665,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 230.06756090702748,
+      "fitted_mm": 229.84196031415325,
+      "error_mm": 0.22560059287422973,
+      "tolerance_mm": 1.232599,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 230.06756090782898,
+      "fitted_mm": 229.84196031495395,
+      "error_mm": 0.22560059287502554,
+      "tolerance_mm": 0.940966,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 262.43205547332764,
+      "fitted_mm": 262.1459174156189,
+      "error_mm": 0.28613805770874023,
+      "tolerance_mm": 1.6417025,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 382.69808686726725,
+      "fitted_mm": 388.2014448808763,
+      "error_mm": 5.503358013609045,
+      "tolerance_mm": 1.4692625000000001,
+      "within": false,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 382.69806670502305,
+      "fitted_mm": 388.2014244197642,
+      "error_mm": 5.503357714741128,
+      "tolerance_mm": 1.2343835,
+      "within": false,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 374.1656409733991,
+      "fitted_mm": 374.65575508090416,
+      "error_mm": 0.49011410750506457,
+      "tolerance_mm": 0.826658,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 374.1656204630182,
+      "fitted_mm": 374.6557345437125,
+      "error_mm": 0.49011408069435447,
+      "tolerance_mm": 0.765247,
+      "within": true,
+      "scored": true
+     }
+    }
+   },
+   "20260924_d0": {
+    "oracle": {
+     "trunk": {
+      "truth_mm": 422.63846485125777,
+      "fitted_mm": 439.55526557449156,
+      "error_mm": 16.91680072323379,
+      "tolerance_mm": 2.0302325,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 71.79684335947866,
+      "fitted_mm": 71.81096966016307,
+      "error_mm": 0.014126300684409898,
+      "tolerance_mm": 2.96515,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 363.58392971881517,
+      "fitted_mm": 365.0763683980158,
+      "error_mm": 1.4924386792006317,
+      "tolerance_mm": 1.8166095,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 260.7942685386866,
+      "fitted_mm": 261.6070845908029,
+      "error_mm": 0.8128160521163181,
+      "tolerance_mm": 1.7486065000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 260.79426845203125,
+      "fitted_mm": 261.6070845041478,
+      "error_mm": 0.8128160521165455,
+      "tolerance_mm": 1.5290715000000001,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 178.3524061601527,
+      "fitted_mm": 178.30744637806708,
+      "error_mm": 0.04495978208561269,
+      "tolerance_mm": 1.31121,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 178.3524061607735,
+      "fitted_mm": 178.30744637868773,
+      "error_mm": 0.04495978208578322,
+      "tolerance_mm": 0.9688945,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 189.4965398311615,
+      "fitted_mm": 189.4367891550064,
+      "error_mm": 0.05975067615509033,
+      "tolerance_mm": 2.3832575,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 441.38203168886844,
+      "fitted_mm": 442.20566413884444,
+      "error_mm": 0.823632449976003,
+      "tolerance_mm": 2.1009115,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 441.3820083396965,
+      "fitted_mm": 442.2056407449434,
+      "error_mm": 0.8236324052469399,
+      "tolerance_mm": 1.7428375000000003,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 366.75893811344827,
+      "fitted_mm": 366.7597666191157,
+      "error_mm": 0.0008285056674139923,
+      "tolerance_mm": 1.1164654999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 366.7589180090756,
+      "fitted_mm": 366.75974651272463,
+      "error_mm": 0.0008285036490178754,
+      "tolerance_mm": 1.120392,
+      "within": true,
+      "scored": true
+     }
+    },
+    "exact_identity": {
+     "trunk": {
+      "truth_mm": 422.63846485125777,
+      "fitted_mm": 422.63846485125777,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.0302325,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 71.79684335947866,
+      "fitted_mm": 71.79684335947866,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.96515,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 363.58392971881517,
+      "fitted_mm": 363.58392971881517,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.8166095,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 260.7942685386866,
+      "fitted_mm": 260.7942685386866,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.7486065000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 260.79426845203125,
+      "fitted_mm": 260.79426845203125,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.5290715000000001,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 178.3524061601527,
+      "fitted_mm": 178.3524061601527,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.31121,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 178.3524061607735,
+      "fitted_mm": 178.3524061607735,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.9688945,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 189.4965398311615,
+      "fitted_mm": 189.4965398311615,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.3832575,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 441.38203168886844,
+      "fitted_mm": 441.38203168886844,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.1009115,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 441.3820083396965,
+      "fitted_mm": 441.3820083396965,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.7428375000000003,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 366.75893811344827,
+      "fitted_mm": 366.75893811344827,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.1164654999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 366.7589180090756,
+      "fitted_mm": 366.7589180090756,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.120392,
+      "within": true,
+      "scored": true
+     }
+    },
+    "mean_body": {
+     "trunk": {
+      "truth_mm": 422.63846485125777,
+      "fitted_mm": 517.9688142133693,
+      "error_mm": 95.33034936211158,
+      "tolerance_mm": 2.0302325,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 71.79684335947866,
+      "fitted_mm": 99.29257303529033,
+      "error_mm": 27.495729675811674,
+      "tolerance_mm": 2.96515,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 363.58392971881517,
+      "fitted_mm": 351.7220474690847,
+      "error_mm": 11.861882249730456,
+      "tolerance_mm": 1.8166095,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 260.7942685386866,
+      "fitted_mm": 256.80134505074824,
+      "error_mm": 3.9929234879383557,
+      "tolerance_mm": 1.7486065000000002,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 260.79426845203125,
+      "fitted_mm": 256.8013449640917,
+      "error_mm": 3.9929234879395494,
+      "tolerance_mm": 1.5290715000000001,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 178.3524061601527,
+      "fitted_mm": 270.0000102548984,
+      "error_mm": 91.64760409474573,
+      "tolerance_mm": 1.31121,
+      "within": false,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 178.3524061607735,
+      "fitted_mm": 270.00001025583947,
+      "error_mm": 91.64760409506596,
+      "tolerance_mm": 0.9688945,
+      "within": false,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 189.4965398311615,
+      "fitted_mm": 164.09299850463867,
+      "error_mm": 25.403541326522827,
+      "tolerance_mm": 2.3832575,
+      "within": false,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 441.38203168886844,
+      "fitted_mm": 419.764985279812,
+      "error_mm": 21.617046409056456,
+      "tolerance_mm": 2.1009115,
+      "within": false,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 441.3820083396965,
+      "fitted_mm": 419.76496310459163,
+      "error_mm": 21.617045235104854,
+      "tolerance_mm": 1.7428375000000003,
+      "within": false,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 366.75893811344827,
+      "fitted_mm": 420.5830128049798,
+      "error_mm": 53.82407469153151,
+      "tolerance_mm": 1.1164654999999999,
+      "within": false,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 366.7589180090756,
+      "fitted_mm": 420.58298975016976,
+      "error_mm": 53.824071741094144,
+      "tolerance_mm": 1.120392,
+      "within": false,
+      "scored": true
+     }
+    },
+    "spine_displaced": {
+     "trunk": {
+      "truth_mm": 422.63846485125777,
+      "fitted_mm": 437.5080246511642,
+      "error_mm": 14.869559799906426,
+      "tolerance_mm": 2.0302325,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 71.79684335947866,
+      "fitted_mm": 71.79684335947866,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.96515,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 363.58392971881517,
+      "fitted_mm": 363.58392971881517,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.8166095,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 260.7942685386866,
+      "fitted_mm": 260.7942685386866,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.7486065000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 260.79426845203125,
+      "fitted_mm": 260.79426845203125,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.5290715000000001,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 178.3524061601527,
+      "fitted_mm": 178.3524061601527,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.31121,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 178.3524061607735,
+      "fitted_mm": 178.3524061607735,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.9688945,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 189.4965398311615,
+      "fitted_mm": 189.4965398311615,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.3832575,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 441.38203168886844,
+      "fitted_mm": 441.38203168886844,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.1009115,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 441.3820083396965,
+      "fitted_mm": 441.3820083396965,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.7428375000000003,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 366.75893811344827,
+      "fitted_mm": 366.75893811344827,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.1164654999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 366.7589180090756,
+      "fitted_mm": 366.7589180090756,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.120392,
+      "within": true,
+      "scored": true
+     }
+    },
+    "warm": {
+     "trunk": {
+      "truth_mm": 422.63846485125777,
+      "fitted_mm": 423.0838177396013,
+      "error_mm": 0.44535288834350695,
+      "tolerance_mm": 2.0302325,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 71.79684335947866,
+      "fitted_mm": 71.60007948814894,
+      "error_mm": 0.19676387132972195,
+      "tolerance_mm": 2.96515,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 363.58392971881517,
+      "fitted_mm": 363.5829609799302,
+      "error_mm": 0.0009687388849783929,
+      "tolerance_mm": 1.8166095,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 260.7942685386866,
+      "fitted_mm": 260.9781791174597,
+      "error_mm": 0.18391057877312278,
+      "tolerance_mm": 1.7486065000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 260.79426845203125,
+      "fitted_mm": 260.9781790308043,
+      "error_mm": 0.18391057877306594,
+      "tolerance_mm": 1.5290715000000001,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 178.3524061601527,
+      "fitted_mm": 178.35458172961594,
+      "error_mm": 0.0021755694632474842,
+      "tolerance_mm": 1.31121,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 178.3524061607735,
+      "fitted_mm": 178.3545817302367,
+      "error_mm": 0.002175569463190641,
+      "tolerance_mm": 0.9688945,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 189.4965398311615,
+      "fitted_mm": 189.48269069194794,
+      "error_mm": 0.013849139213562012,
+      "tolerance_mm": 2.3832575,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 441.38203168886844,
+      "fitted_mm": 441.36189585807165,
+      "error_mm": 0.020135830796789378,
+      "tolerance_mm": 2.1009115,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 441.3820083396965,
+      "fitted_mm": 441.36187250999296,
+      "error_mm": 0.020135829703519903,
+      "tolerance_mm": 1.7428375000000003,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 366.75893811344827,
+      "fitted_mm": 366.7575314429834,
+      "error_mm": 0.0014066704648598716,
+      "tolerance_mm": 1.1164654999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 366.7589180090756,
+      "fitted_mm": 366.7575113401603,
+      "error_mm": 0.0014066689153082734,
+      "tolerance_mm": 1.120392,
+      "within": true,
+      "scored": true
+     }
+    },
+    "converged": {
+     "trunk": {
+      "truth_mm": 422.63846485125777,
+      "fitted_mm": 423.1951800636507,
+      "error_mm": 0.5567152123929304,
+      "tolerance_mm": 2.0302325,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 71.79684335947866,
+      "fitted_mm": 71.81034977186316,
+      "error_mm": 0.013506412384501232,
+      "tolerance_mm": 2.96515,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 363.58392971881517,
+      "fitted_mm": 363.66954583389315,
+      "error_mm": 0.08561611507798261,
+      "tolerance_mm": 1.8166095,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 260.7942685386866,
+      "fitted_mm": 260.8509621497958,
+      "error_mm": 0.05669361110921045,
+      "tolerance_mm": 1.7486065000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 260.79426845203125,
+      "fitted_mm": 260.8509620631404,
+      "error_mm": 0.05669361110915361,
+      "tolerance_mm": 1.5290715000000001,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 178.3524061601527,
+      "fitted_mm": 178.35265649965262,
+      "error_mm": 0.00025033949992803173,
+      "tolerance_mm": 1.31121,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 178.3524061607735,
+      "fitted_mm": 178.35265650027335,
+      "error_mm": 0.0002503394998427666,
+      "tolerance_mm": 0.9688945,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 189.4965398311615,
+      "fitted_mm": 189.49680507183075,
+      "error_mm": 0.0002652406692504883,
+      "tolerance_mm": 2.3832575,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 441.38203168886844,
+      "fitted_mm": 441.36238454119837,
+      "error_mm": 0.019647147670070808,
+      "tolerance_mm": 2.1009115,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 441.3820083396965,
+      "fitted_mm": 441.3623611930932,
+      "error_mm": 0.019647146603290366,
+      "tolerance_mm": 1.7428375000000003,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 366.75893811344827,
+      "fitted_mm": 366.75667313698864,
+      "error_mm": 0.0022649764596280875,
+      "tolerance_mm": 1.1164654999999999,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 366.7589180090756,
+      "fitted_mm": 366.7566530325396,
+      "error_mm": 0.0022649765360256424,
+      "tolerance_mm": 1.120392,
+      "within": true,
+      "scored": true
+     }
+    }
+   },
+   "20260925_d0": {
+    "oracle": {
+     "trunk": {
+      "truth_mm": 443.1247635639415,
+      "fitted_mm": 458.39437347099806,
+      "error_mm": 15.269609907056577,
+      "tolerance_mm": 2.1105295,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 74.92250643302347,
+      "fitted_mm": 74.96177397264813,
+      "error_mm": 0.03926753962466023,
+      "tolerance_mm": 2.995149,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 349.55095656751485,
+      "fitted_mm": 350.5758286956731,
+      "error_mm": 1.0248721281582789,
+      "tolerance_mm": 1.796159,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 241.51648369748443,
+      "fitted_mm": 242.28525849303549,
+      "error_mm": 0.7687747955510531,
+      "tolerance_mm": 1.652025,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 241.51648361082349,
+      "fitted_mm": 242.2852584063747,
+      "error_mm": 0.7687747955512236,
+      "tolerance_mm": 1.38963,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 272.07911481913106,
+      "fitted_mm": 272.04104496122744,
+      "error_mm": 0.03806985790362205,
+      "tolerance_mm": 1.1274060000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 272.0791148200794,
+      "fitted_mm": 272.0410449621756,
+      "error_mm": 0.03806985790379258,
+      "tolerance_mm": 0.7396769999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 129.42859411239624,
+      "fitted_mm": 129.475559592247,
+      "error_mm": 0.04696547985076904,
+      "tolerance_mm": 3.031094,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 462.6269475970492,
+      "fitted_mm": 463.1497713370785,
+      "error_mm": 0.5228237400293096,
+      "tolerance_mm": 2.470406,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 462.6269230941324,
+      "fitted_mm": 463.1497468057687,
+      "error_mm": 0.5228237116363061,
+      "tolerance_mm": 2.2505245,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 411.32164952736457,
+      "fitted_mm": 411.3229682899238,
+      "error_mm": 0.001318762559208153,
+      "tolerance_mm": 1.3708775000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 411.3216269802284,
+      "fitted_mm": 411.32294572489906,
+      "error_mm": 0.001318744670641081,
+      "tolerance_mm": 1.322805,
+      "within": true,
+      "scored": true
+     }
+    },
+    "exact_identity": {
+     "trunk": {
+      "truth_mm": 443.1247635639415,
+      "fitted_mm": 443.1247635639415,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.1105295,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 74.92250643302347,
+      "fitted_mm": 74.92250643302347,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.995149,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 349.55095656751485,
+      "fitted_mm": 349.55095656751485,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.796159,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 241.51648369748443,
+      "fitted_mm": 241.51648369748443,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.652025,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 241.51648361082349,
+      "fitted_mm": 241.51648361082349,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.38963,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 272.07911481913106,
+      "fitted_mm": 272.07911481913106,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.1274060000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 272.0791148200794,
+      "fitted_mm": 272.0791148200794,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.7396769999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 129.42859411239624,
+      "fitted_mm": 129.42859411239624,
+      "error_mm": 0.0,
+      "tolerance_mm": 3.031094,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 462.6269475970492,
+      "fitted_mm": 462.6269475970492,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.470406,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 462.6269230941324,
+      "fitted_mm": 462.6269230941324,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.2505245,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 411.32164952736457,
+      "fitted_mm": 411.32164952736457,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.3708775000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 411.3216269802284,
+      "fitted_mm": 411.3216269802284,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.322805,
+      "within": true,
+      "scored": true
+     }
+    },
+    "mean_body": {
+     "trunk": {
+      "truth_mm": 443.1247635639415,
+      "fitted_mm": 517.9688142133693,
+      "error_mm": 74.84405064942786,
+      "tolerance_mm": 2.1105295,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 74.92250643302347,
+      "fitted_mm": 99.29257303529033,
+      "error_mm": 24.37006660226686,
+      "tolerance_mm": 2.995149,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 349.55095656751485,
+      "fitted_mm": 351.7220474690847,
+      "error_mm": 2.171090901569869,
+      "tolerance_mm": 1.796159,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 241.51648369748443,
+      "fitted_mm": 256.80134505074824,
+      "error_mm": 15.284861353263807,
+      "tolerance_mm": 1.652025,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 241.51648361082349,
+      "fitted_mm": 256.8013449640917,
+      "error_mm": 15.284861353268212,
+      "tolerance_mm": 1.38963,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 272.07911481913106,
+      "fitted_mm": 270.0000102548984,
+      "error_mm": 2.0791045642326367,
+      "tolerance_mm": 1.1274060000000001,
+      "within": false,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 272.0791148200794,
+      "fitted_mm": 270.00001025583947,
+      "error_mm": 2.0791045642399126,
+      "tolerance_mm": 0.7396769999999999,
+      "within": false,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 129.42859411239624,
+      "fitted_mm": 164.09299850463867,
+      "error_mm": 34.66440439224243,
+      "tolerance_mm": 3.031094,
+      "within": false,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 462.6269475970492,
+      "fitted_mm": 419.764985279812,
+      "error_mm": 42.861962317237214,
+      "tolerance_mm": 2.470406,
+      "within": false,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 462.6269230941324,
+      "fitted_mm": 419.76496310459163,
+      "error_mm": 42.861959989540765,
+      "tolerance_mm": 2.2505245,
+      "within": false,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 411.32164952736457,
+      "fitted_mm": 420.5830128049798,
+      "error_mm": 9.261363277615203,
+      "tolerance_mm": 1.3708775000000002,
+      "within": false,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 411.3216269802284,
+      "fitted_mm": 420.58298975016976,
+      "error_mm": 9.261362769941343,
+      "tolerance_mm": 1.322805,
+      "within": false,
+      "scored": true
+     }
+    },
+    "spine_displaced": {
+     "trunk": {
+      "truth_mm": 443.1247635639415,
+      "fitted_mm": 457.9970319010096,
+      "error_mm": 14.872268337068135,
+      "tolerance_mm": 2.1105295,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 74.92250643302347,
+      "fitted_mm": 74.92250643302347,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.995149,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 349.55095656751485,
+      "fitted_mm": 349.55095656751473,
+      "error_mm": 1.1368683772161603e-13,
+      "tolerance_mm": 1.796159,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 241.51648369748443,
+      "fitted_mm": 241.51648369748443,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.652025,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 241.51648361082349,
+      "fitted_mm": 241.5164836108235,
+      "error_mm": 2.842170943040401e-14,
+      "tolerance_mm": 1.38963,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 272.07911481913106,
+      "fitted_mm": 272.07911481913106,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.1274060000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 272.0791148200794,
+      "fitted_mm": 272.0791148200794,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.7396769999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 129.42859411239624,
+      "fitted_mm": 129.42859411239624,
+      "error_mm": 0.0,
+      "tolerance_mm": 3.031094,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 462.6269475970492,
+      "fitted_mm": 462.6269475970492,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.470406,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 462.6269230941324,
+      "fitted_mm": 462.6269230941324,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.2505245,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 411.32164952736457,
+      "fitted_mm": 411.32164952736457,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.3708775000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 411.3216269802284,
+      "fitted_mm": 411.3216269802284,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.322805,
+      "within": true,
+      "scored": true
+     }
+    },
+    "warm": {
+     "trunk": {
+      "truth_mm": 443.1247635639415,
+      "fitted_mm": 443.4360037009719,
+      "error_mm": 0.3112401370304383,
+      "tolerance_mm": 2.1105295,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 74.92250643302347,
+      "fitted_mm": 74.72334049453116,
+      "error_mm": 0.1991659384923139,
+      "tolerance_mm": 2.995149,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 349.55095656751485,
+      "fitted_mm": 349.5317625441336,
+      "error_mm": 0.019194023381260195,
+      "tolerance_mm": 1.796159,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 241.51648369748443,
+      "fitted_mm": 241.726494307963,
+      "error_mm": 0.2100106104785766,
+      "tolerance_mm": 1.652025,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 241.51648361082349,
+      "fitted_mm": 241.72649422130218,
+      "error_mm": 0.2100106104786903,
+      "tolerance_mm": 1.38963,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 272.07911481913106,
+      "fitted_mm": 272.0838140864245,
+      "error_mm": 0.004699267293460707,
+      "tolerance_mm": 1.1274060000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 272.0791148200794,
+      "fitted_mm": 272.08381408737284,
+      "error_mm": 0.004699267293460707,
+      "tolerance_mm": 0.7396769999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 129.42859411239624,
+      "fitted_mm": 129.40916001796722,
+      "error_mm": 0.019434094429016113,
+      "tolerance_mm": 3.031094,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 462.6269475970492,
+      "fitted_mm": 462.61842830245394,
+      "error_mm": 0.008519294595259908,
+      "tolerance_mm": 2.470406,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 462.6269230941324,
+      "fitted_mm": 462.6184037999997,
+      "error_mm": 0.008519294132668165,
+      "tolerance_mm": 2.2505245,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 411.32164952736457,
+      "fitted_mm": 411.3224519539591,
+      "error_mm": 0.000802426594532335,
+      "tolerance_mm": 1.3708775000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 411.3216269802284,
+      "fitted_mm": 411.32242940853246,
+      "error_mm": 0.0008024283040413138,
+      "tolerance_mm": 1.322805,
+      "within": true,
+      "scored": true
+     }
+    },
+    "converged": {
+     "trunk": {
+      "truth_mm": 443.1247635639415,
+      "fitted_mm": 444.27345550949616,
+      "error_mm": 1.148691945554674,
+      "tolerance_mm": 2.1105295,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 74.92250643302347,
+      "fitted_mm": 74.96116749539297,
+      "error_mm": 0.03866106236949918,
+      "tolerance_mm": 2.995149,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 349.55095656751485,
+      "fitted_mm": 349.6129947620675,
+      "error_mm": 0.06203819455265602,
+      "tolerance_mm": 1.796159,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 241.51648369748443,
+      "fitted_mm": 241.5736608355137,
+      "error_mm": 0.05717713802926028,
+      "tolerance_mm": 1.652025,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 241.51648361082349,
+      "fitted_mm": 241.57366074885283,
+      "error_mm": 0.05717713802934554,
+      "tolerance_mm": 1.38963,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 272.07911481913106,
+      "fitted_mm": 272.0806362276392,
+      "error_mm": 0.0015214085081538542,
+      "tolerance_mm": 1.1274060000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 272.0791148200794,
+      "fitted_mm": 272.0806362285876,
+      "error_mm": 0.0015214085082106976,
+      "tolerance_mm": 0.7396769999999999,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 129.42859411239624,
+      "fitted_mm": 129.43588972091675,
+      "error_mm": 0.0072956085205078125,
+      "tolerance_mm": 3.031094,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 462.6269475970492,
+      "fitted_mm": 462.5880133185745,
+      "error_mm": 0.03893427847469866,
+      "tolerance_mm": 2.470406,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 462.6269230941324,
+      "fitted_mm": 462.5879888177719,
+      "error_mm": 0.03893427636052138,
+      "tolerance_mm": 2.2505245,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 411.32164952736457,
+      "fitted_mm": 411.3148247954536,
+      "error_mm": 0.00682473191096733,
+      "tolerance_mm": 1.3708775000000002,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 411.3216269802284,
+      "fitted_mm": 411.31480224847144,
+      "error_mm": 0.006824731756978508,
+      "tolerance_mm": 1.322805,
+      "within": true,
+      "scored": true
+     }
+    }
+   },
+   "20260926_d0": {
+    "oracle": {
+     "trunk": {
+      "truth_mm": 592.1464610213044,
+      "fitted_mm": 577.0929001991344,
+      "error_mm": 15.05356082216997,
+      "tolerance_mm": 1.8698260000000002,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 125.34982806889558,
+      "fitted_mm": 127.22871248668758,
+      "error_mm": 1.8788844177920083,
+      "tolerance_mm": 2.435919,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 360.4916481834534,
+      "fitted_mm": 362.4582633253648,
+      "error_mm": 1.9666151419114044,
+      "tolerance_mm": 1.4429025000000002,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 315.2632173057007,
+      "fitted_mm": 316.39628841532914,
+      "error_mm": 1.1330711096284176,
+      "tolerance_mm": 1.266493,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 315.26321721905725,
+      "fitted_mm": 316.39628832868584,
+      "error_mm": 1.1330711096285881,
+      "tolerance_mm": 1.037408,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 364.32244422214984,
+      "fitted_mm": 364.36273696070197,
+      "error_mm": 0.04029273855212523,
+      "tolerance_mm": 0.7806170000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 364.3224442234205,
+      "fitted_mm": 364.3627369619728,
+      "error_mm": 0.04029273855229576,
+      "tolerance_mm": 0.535065,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 122.97398626804352,
+      "fitted_mm": 122.92846620082855,
+      "error_mm": 0.04552006721496582,
+      "tolerance_mm": 2.9722485,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 383.2295715277038,
+      "fitted_mm": 383.2188448745242,
+      "error_mm": 0.010726653179574441,
+      "tolerance_mm": 2.4994195,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 383.2295513365966,
+      "fitted_mm": 383.2188246839995,
+      "error_mm": 0.010726652597099928,
+      "tolerance_mm": 2.1379225,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.57897201339676,
+      "fitted_mm": 497.63894621092925,
+      "error_mm": 0.05997419753248323,
+      "tolerance_mm": 1.350272,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.57894473795204,
+      "fitted_mm": 497.6389189282522,
+      "error_mm": 0.05997419030018136,
+      "tolerance_mm": 1.2280075,
+      "within": true,
+      "scored": true
+     }
+    },
+    "exact_identity": {
+     "trunk": {
+      "truth_mm": 592.1464610213044,
+      "fitted_mm": 592.1464610213044,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.8698260000000002,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 125.34982806889558,
+      "fitted_mm": 125.34982806889558,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.435919,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 360.4916481834534,
+      "fitted_mm": 360.4916481834534,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.4429025000000002,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 315.2632173057007,
+      "fitted_mm": 315.2632173057007,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.266493,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 315.26321721905725,
+      "fitted_mm": 315.26321721905725,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.037408,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 364.32244422214984,
+      "fitted_mm": 364.32244422214984,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.7806170000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 364.3224442234205,
+      "fitted_mm": 364.3224442234205,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.535065,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 122.97398626804352,
+      "fitted_mm": 122.97398626804352,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.9722485,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 383.2295715277038,
+      "fitted_mm": 383.2295715277038,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.4994195,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 383.2295513365966,
+      "fitted_mm": 383.2295513365966,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.1379225,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.57897201339676,
+      "fitted_mm": 497.57897201339676,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.350272,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.57894473795204,
+      "fitted_mm": 497.57894473795204,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.2280075,
+      "within": true,
+      "scored": true
+     }
+    },
+    "mean_body": {
+     "trunk": {
+      "truth_mm": 592.1464610213044,
+      "fitted_mm": 517.9688142133693,
+      "error_mm": 74.17764680793505,
+      "tolerance_mm": 1.8698260000000002,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 125.34982806889558,
+      "fitted_mm": 99.29257303529033,
+      "error_mm": 26.057255033605244,
+      "tolerance_mm": 2.435919,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 360.4916481834534,
+      "fitted_mm": 351.7220474690847,
+      "error_mm": 8.769600714368664,
+      "tolerance_mm": 1.4429025000000002,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 315.2632173057007,
+      "fitted_mm": 256.80134505074824,
+      "error_mm": 58.46187225495248,
+      "tolerance_mm": 1.266493,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 315.26321721905725,
+      "fitted_mm": 256.8013449640917,
+      "error_mm": 58.461872254965556,
+      "tolerance_mm": 1.037408,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 364.32244422214984,
+      "fitted_mm": 270.0000102548984,
+      "error_mm": 94.32243396725141,
+      "tolerance_mm": 0.7806170000000001,
+      "within": false,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 364.3224442234205,
+      "fitted_mm": 270.00001025583947,
+      "error_mm": 94.32243396758105,
+      "tolerance_mm": 0.535065,
+      "within": false,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 122.97398626804352,
+      "fitted_mm": 164.09299850463867,
+      "error_mm": 41.119012236595154,
+      "tolerance_mm": 2.9722485,
+      "within": false,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 383.2295715277038,
+      "fitted_mm": 419.764985279812,
+      "error_mm": 36.535413752108184,
+      "tolerance_mm": 2.4994195,
+      "within": false,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 383.2295513365966,
+      "fitted_mm": 419.76496310459163,
+      "error_mm": 36.535411767995015,
+      "tolerance_mm": 2.1379225,
+      "within": false,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.57897201339676,
+      "fitted_mm": 420.5830128049798,
+      "error_mm": 76.99595920841699,
+      "tolerance_mm": 1.350272,
+      "within": false,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.57894473795204,
+      "fitted_mm": 420.58298975016976,
+      "error_mm": 76.99595498778228,
+      "tolerance_mm": 1.2280075,
+      "within": false,
+      "scored": true
+     }
+    },
+    "spine_displaced": {
+     "trunk": {
+      "truth_mm": 592.1464610213044,
+      "fitted_mm": 577.2629202634216,
+      "error_mm": 14.88354075788277,
+      "tolerance_mm": 1.8698260000000002,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 125.34982806889558,
+      "fitted_mm": 125.34982806889558,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.435919,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 360.4916481834534,
+      "fitted_mm": 360.4916481834534,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.4429025000000002,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 315.2632173057007,
+      "fitted_mm": 315.26321730570066,
+      "error_mm": 5.684341886080802e-14,
+      "tolerance_mm": 1.266493,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 315.26321721905725,
+      "fitted_mm": 315.26321721905725,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.037408,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 364.32244422214984,
+      "fitted_mm": 364.3224442221498,
+      "error_mm": 5.684341886080802e-14,
+      "tolerance_mm": 0.7806170000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 364.3224442234205,
+      "fitted_mm": 364.32244422342046,
+      "error_mm": 5.684341886080802e-14,
+      "tolerance_mm": 0.535065,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 122.97398626804352,
+      "fitted_mm": 122.97398626804352,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.9722485,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 383.2295715277038,
+      "fitted_mm": 383.2295715277038,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.4994195,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 383.2295513365966,
+      "fitted_mm": 383.2295513365966,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.1379225,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.57897201339676,
+      "fitted_mm": 497.57897201339676,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.350272,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.57894473795204,
+      "fitted_mm": 497.57894473795204,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.2280075,
+      "within": true,
+      "scored": true
+     }
+    },
+    "warm": {
+     "trunk": {
+      "truth_mm": 592.1464610213044,
+      "fitted_mm": 592.0517262073103,
+      "error_mm": 0.09473481399413686,
+      "tolerance_mm": 1.8698260000000002,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 125.34982806889558,
+      "fitted_mm": 125.23389703585094,
+      "error_mm": 0.1159310330446317,
+      "tolerance_mm": 2.435919,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 360.4916481834534,
+      "fitted_mm": 360.3361771339086,
+      "error_mm": 0.155471049544758,
+      "tolerance_mm": 1.4429025000000002,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 315.2632173057007,
+      "fitted_mm": 315.44266880853917,
+      "error_mm": 0.17945150283844669,
+      "tolerance_mm": 1.266493,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 315.26321721905725,
+      "fitted_mm": 315.44266872189587,
+      "error_mm": 0.17945150283861722,
+      "tolerance_mm": 1.037408,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 364.32244422214984,
+      "fitted_mm": 364.32566287286255,
+      "error_mm": 0.003218650712710769,
+      "tolerance_mm": 0.7806170000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 364.3224442234205,
+      "fitted_mm": 364.32566287413323,
+      "error_mm": 0.003218650712710769,
+      "tolerance_mm": 0.535065,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 122.97398626804352,
+      "fitted_mm": 122.95329451560974,
+      "error_mm": 0.020691752433776855,
+      "tolerance_mm": 2.9722485,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 383.2295715277038,
+      "fitted_mm": 383.2148253592391,
+      "error_mm": 0.014746168464682796,
+      "tolerance_mm": 2.4994195,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 383.2295513365966,
+      "fitted_mm": 383.21480516893274,
+      "error_mm": 0.014746167663872711,
+      "tolerance_mm": 2.1379225,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.57897201339676,
+      "fitted_mm": 497.57739248912696,
+      "error_mm": 0.0015795242698004586,
+      "tolerance_mm": 1.350272,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.57894473795204,
+      "fitted_mm": 497.5773652158435,
+      "error_mm": 0.00157952210855683,
+      "tolerance_mm": 1.2280075,
+      "within": true,
+      "scored": true
+     }
+    },
+    "converged": {
+     "trunk": {
+      "truth_mm": 592.1464610213044,
+      "fitted_mm": 587.4510989242947,
+      "error_mm": 4.695362097009706,
+      "tolerance_mm": 1.8698260000000002,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 125.34982806889558,
+      "fitted_mm": 125.91539567645401,
+      "error_mm": 0.5655676075584353,
+      "tolerance_mm": 2.435919,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 360.4916481834534,
+      "fitted_mm": 361.14447915856766,
+      "error_mm": 0.6528309751142842,
+      "tolerance_mm": 1.4429025000000002,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 315.2632173057007,
+      "fitted_mm": 315.61918180589953,
+      "error_mm": 0.35596450019880876,
+      "tolerance_mm": 1.266493,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 315.26321721905725,
+      "fitted_mm": 315.61918171925623,
+      "error_mm": 0.3559645001989793,
+      "tolerance_mm": 1.037408,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 364.32244422214984,
+      "fitted_mm": 364.3642926418798,
+      "error_mm": 0.04184841972994491,
+      "tolerance_mm": 0.7806170000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 364.3224442234205,
+      "fitted_mm": 364.36429264315063,
+      "error_mm": 0.04184841973011544,
+      "tolerance_mm": 0.535065,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 122.97398626804352,
+      "fitted_mm": 122.97521710395813,
+      "error_mm": 0.0012308359146118164,
+      "tolerance_mm": 2.9722485,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 383.2295715277038,
+      "fitted_mm": 383.1578966294034,
+      "error_mm": 0.07167489830038676,
+      "tolerance_mm": 2.4994195,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 383.2295513365966,
+      "fitted_mm": 383.15787644218864,
+      "error_mm": 0.07167489440797681,
+      "tolerance_mm": 2.1379225,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.57897201339676,
+      "fitted_mm": 497.5717538906547,
+      "error_mm": 0.007218122742074229,
+      "tolerance_mm": 1.350272,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.57894473795204,
+      "fitted_mm": 497.5717266156846,
+      "error_mm": 0.007218122267431681,
+      "tolerance_mm": 1.2280075,
+      "within": true,
+      "scored": true
+     }
+    }
+   },
+   "20260927_d0": {
+    "oracle": {
+     "trunk": {
+      "truth_mm": 429.5732219860623,
+      "fitted_mm": 444.42146221810606,
+      "error_mm": 14.848240232043736,
+      "tolerance_mm": 1.9148224999999999,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 91.3473402683978,
+      "fitted_mm": 91.23214386259343,
+      "error_mm": 0.11519640580436885,
+      "tolerance_mm": 2.7373184999999998,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 315.48430020815033,
+      "fitted_mm": 316.5795753044567,
+      "error_mm": 1.0952750963063522,
+      "tolerance_mm": 1.6954004999999999,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 336.46553270730976,
+      "fitted_mm": 337.1887509107182,
+      "error_mm": 0.7232182034084644,
+      "tolerance_mm": 1.6431749999999998,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 336.4655326206701,
+      "fitted_mm": 337.18875082407857,
+      "error_mm": 0.7232182034084644,
+      "tolerance_mm": 1.4817985,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 174.97245336298462,
+      "fitted_mm": 174.9350395286811,
+      "error_mm": 0.0374138343035213,
+      "tolerance_mm": 1.3013335000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 174.9724533635936,
+      "fitted_mm": 174.93503952928987,
+      "error_mm": 0.03741383430372025,
+      "tolerance_mm": 0.975136,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 244.3775463104248,
+      "fitted_mm": 244.2377734184265,
+      "error_mm": 0.13977289199829102,
+      "tolerance_mm": 1.967066,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 413.4737774895995,
+      "fitted_mm": 414.1026170663346,
+      "error_mm": 0.6288395767350607,
+      "tolerance_mm": 1.6959625,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 413.4737556560338,
+      "fitted_mm": 414.1025951986186,
+      "error_mm": 0.6288395425847852,
+      "tolerance_mm": 1.3640105,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.59823623516627,
+      "fitted_mm": 497.5768083584468,
+      "error_mm": 0.02142787671948554,
+      "tolerance_mm": 0.8809765,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.5982089586656,
+      "fitted_mm": 497.57678109459107,
+      "error_mm": 0.021427864074553327,
+      "tolerance_mm": 0.7601565,
+      "within": true,
+      "scored": true
+     }
+    },
+    "exact_identity": {
+     "trunk": {
+      "truth_mm": 429.5732219860623,
+      "fitted_mm": 429.5732219860623,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.9148224999999999,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 91.3473402683978,
+      "fitted_mm": 91.3473402683978,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.7373184999999998,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 315.48430020815033,
+      "fitted_mm": 315.48430020815033,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6954004999999999,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 336.46553270730976,
+      "fitted_mm": 336.46553270730976,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6431749999999998,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 336.4655326206701,
+      "fitted_mm": 336.4655326206701,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.4817985,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 174.97245336298462,
+      "fitted_mm": 174.97245336298462,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.3013335000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 174.9724533635936,
+      "fitted_mm": 174.9724533635936,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.975136,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 244.3775463104248,
+      "fitted_mm": 244.3775463104248,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.967066,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 413.4737774895995,
+      "fitted_mm": 413.4737774895995,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6959625,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 413.4737556560338,
+      "fitted_mm": 413.4737556560338,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.3640105,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.59823623516627,
+      "fitted_mm": 497.59823623516627,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.8809765,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.5982089586656,
+      "fitted_mm": 497.5982089586656,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.7601565,
+      "within": true,
+      "scored": true
+     }
+    },
+    "mean_body": {
+     "trunk": {
+      "truth_mm": 429.5732219860623,
+      "fitted_mm": 517.9688142133693,
+      "error_mm": 88.39559222730702,
+      "tolerance_mm": 1.9148224999999999,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 91.3473402683978,
+      "fitted_mm": 99.29257303529033,
+      "error_mm": 7.945232766892531,
+      "tolerance_mm": 2.7373184999999998,
+      "within": false,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 315.48430020815033,
+      "fitted_mm": 351.7220474690847,
+      "error_mm": 36.237747260934384,
+      "tolerance_mm": 1.6954004999999999,
+      "within": false,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 336.46553270730976,
+      "fitted_mm": 256.80134505074824,
+      "error_mm": 79.66418765656152,
+      "tolerance_mm": 1.6431749999999998,
+      "within": false,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 336.4655326206701,
+      "fitted_mm": 256.8013449640917,
+      "error_mm": 79.6641876565784,
+      "tolerance_mm": 1.4817985,
+      "within": false,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 174.97245336298462,
+      "fitted_mm": 270.0000102548984,
+      "error_mm": 95.0275568919138,
+      "tolerance_mm": 1.3013335000000001,
+      "within": false,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 174.9724533635936,
+      "fitted_mm": 270.00001025583947,
+      "error_mm": 95.02755689224588,
+      "tolerance_mm": 0.975136,
+      "within": false,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 244.3775463104248,
+      "fitted_mm": 164.09299850463867,
+      "error_mm": 80.28454780578613,
+      "tolerance_mm": 1.967066,
+      "within": false,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 413.4737774895995,
+      "fitted_mm": 419.764985279812,
+      "error_mm": 6.291207790212468,
+      "tolerance_mm": 1.6959625,
+      "within": false,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 413.4737556560338,
+      "fitted_mm": 419.76496310459163,
+      "error_mm": 6.291207448557827,
+      "tolerance_mm": 1.3640105,
+      "within": false,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.59823623516627,
+      "fitted_mm": 420.5830128049798,
+      "error_mm": 77.0152234301865,
+      "tolerance_mm": 0.8809765,
+      "within": false,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.5982089586656,
+      "fitted_mm": 420.58298975016976,
+      "error_mm": 77.01521920849586,
+      "tolerance_mm": 0.7601565,
+      "within": false,
+      "scored": true
+     }
+    },
+    "spine_displaced": {
+     "trunk": {
+      "truth_mm": 429.5732219860623,
+      "fitted_mm": 444.4437414709372,
+      "error_mm": 14.870519484874876,
+      "tolerance_mm": 1.9148224999999999,
+      "within": false,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 91.3473402683978,
+      "fitted_mm": 91.3473402683978,
+      "error_mm": 0.0,
+      "tolerance_mm": 2.7373184999999998,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 315.48430020815033,
+      "fitted_mm": 315.48430020815033,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6954004999999999,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 336.46553270730976,
+      "fitted_mm": 336.4655327073097,
+      "error_mm": 5.684341886080802e-14,
+      "tolerance_mm": 1.6431749999999998,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 336.4655326206701,
+      "fitted_mm": 336.4655326206701,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.4817985,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 174.97245336298462,
+      "fitted_mm": 174.97245336298462,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.3013335000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 174.9724533635936,
+      "fitted_mm": 174.9724533635936,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.975136,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 244.3775463104248,
+      "fitted_mm": 244.3775463104248,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.967066,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 413.4737774895995,
+      "fitted_mm": 413.4737774895995,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.6959625,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 413.4737556560338,
+      "fitted_mm": 413.4737556560338,
+      "error_mm": 0.0,
+      "tolerance_mm": 1.3640105,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.59823623516627,
+      "fitted_mm": 497.59823623516627,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.8809765,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.5982089586656,
+      "fitted_mm": 497.5982089586656,
+      "error_mm": 0.0,
+      "tolerance_mm": 0.7601565,
+      "within": true,
+      "scored": true
+     }
+    },
+    "warm": {
+     "trunk": {
+      "truth_mm": 429.5732219860623,
+      "fitted_mm": 429.98789407686354,
+      "error_mm": 0.4146720908012185,
+      "tolerance_mm": 1.9148224999999999,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 91.3473402683978,
+      "fitted_mm": 91.22185237570744,
+      "error_mm": 0.12548789269035865,
+      "tolerance_mm": 2.7373184999999998,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 315.48430020815033,
+      "fitted_mm": 315.4731399787839,
+      "error_mm": 0.011160229366453223,
+      "tolerance_mm": 1.6954004999999999,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 336.46553270730976,
+      "fitted_mm": 336.6489240969115,
+      "error_mm": 0.18339138960175205,
+      "tolerance_mm": 1.6431749999999998,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 336.4655326206701,
+      "fitted_mm": 336.6489240102717,
+      "error_mm": 0.18339138960158152,
+      "tolerance_mm": 1.4817985,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 174.97245336298462,
+      "fitted_mm": 174.97309113266286,
+      "error_mm": 0.000637769678235145,
+      "tolerance_mm": 1.3013335000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 174.9724533635936,
+      "fitted_mm": 174.97309113327185,
+      "error_mm": 0.0006377696782635667,
+      "tolerance_mm": 0.975136,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 244.3775463104248,
+      "fitted_mm": 244.37088251113892,
+      "error_mm": 0.006663799285888672,
+      "tolerance_mm": 1.967066,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 413.4737774895995,
+      "fitted_mm": 413.44956063043,
+      "error_mm": 0.024216859169484906,
+      "tolerance_mm": 1.6959625,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 413.4737556560338,
+      "fitted_mm": 413.4495387981793,
+      "error_mm": 0.024216857854526097,
+      "tolerance_mm": 1.3640105,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.59823623516627,
+      "fitted_mm": 497.5953752115305,
+      "error_mm": 0.002861023635773563,
+      "tolerance_mm": 0.8809765,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.5982089586656,
+      "fitted_mm": 497.595347936284,
+      "error_mm": 0.0028610223816372127,
+      "tolerance_mm": 0.7601565,
+      "within": true,
+      "scored": true
+     }
+    },
+    "converged": {
+     "trunk": {
+      "truth_mm": 429.5732219860623,
+      "fitted_mm": 430.68582077045454,
+      "error_mm": 1.112598784392219,
+      "tolerance_mm": 1.9148224999999999,
+      "within": true,
+      "scored": false
+     },
+     "neck_head": {
+      "truth_mm": 91.3473402683978,
+      "fitted_mm": 91.39720998411654,
+      "error_mm": 0.049869715718742214,
+      "tolerance_mm": 2.7373184999999998,
+      "within": true,
+      "scored": true
+     },
+     "shoulder_width": {
+      "truth_mm": 315.48430020815033,
+      "fitted_mm": 315.6342857086064,
+      "error_mm": 0.14998550045606862,
+      "tolerance_mm": 1.6954004999999999,
+      "within": true,
+      "scored": false
+     },
+     "l_upper_arm": {
+      "truth_mm": 336.46553270730976,
+      "fitted_mm": 336.5361820228409,
+      "error_mm": 0.07064931553111364,
+      "tolerance_mm": 1.6431749999999998,
+      "within": true,
+      "scored": true
+     },
+     "r_upper_arm": {
+      "truth_mm": 336.4655326206701,
+      "fitted_mm": 336.53618193620105,
+      "error_mm": 0.07064931553094311,
+      "tolerance_mm": 1.4817985,
+      "within": true,
+      "scored": true
+     },
+     "l_forearm": {
+      "truth_mm": 174.97245336298462,
+      "fitted_mm": 174.97383619069834,
+      "error_mm": 0.0013828277137122313,
+      "tolerance_mm": 1.3013335000000001,
+      "within": true,
+      "scored": true
+     },
+     "r_forearm": {
+      "truth_mm": 174.9724533635936,
+      "fitted_mm": 174.97383619130719,
+      "error_mm": 0.0013828277135985445,
+      "tolerance_mm": 0.975136,
+      "within": true,
+      "scored": true
+     },
+     "hip_width": {
+      "truth_mm": 244.3775463104248,
+      "fitted_mm": 244.37997817993164,
+      "error_mm": 0.0024318695068359375,
+      "tolerance_mm": 1.967066,
+      "within": true,
+      "scored": true
+     },
+     "l_thigh": {
+      "truth_mm": 413.4737774895995,
+      "fitted_mm": 413.4337286793022,
+      "error_mm": 0.040048810297321324,
+      "tolerance_mm": 1.6959625,
+      "within": true,
+      "scored": true
+     },
+     "r_thigh": {
+      "truth_mm": 413.4737556560338,
+      "fitted_mm": 413.4337068479113,
+      "error_mm": 0.04004880812249212,
+      "tolerance_mm": 1.3640105,
+      "within": true,
+      "scored": true
+     },
+     "l_shin": {
+      "truth_mm": 497.59823623516627,
+      "fitted_mm": 497.59058895916303,
+      "error_mm": 0.007647276003240222,
+      "tolerance_mm": 0.8809765,
+      "within": true,
+      "scored": true
+     },
+     "r_shin": {
+      "truth_mm": 497.5982089586656,
+      "fitted_mm": 497.59056168280574,
+      "error_mm": 0.00764727585988112,
+      "tolerance_mm": 0.7601565,
+      "within": true,
+      "scored": true
+     }
+    }
+   }
+  },
+  "floors_mm": {
+   "20260922_d0": {
+    "root": 0.379659,
+    "c_neck": 1.261011,
+    "c_head": 1.02353,
+    "l_uparm": 0.815362,
+    "r_uparm": 0.745006,
+    "l_lowarm": 0.587616,
+    "r_lowarm": 0.443336,
+    "l_wrist": 0.307149,
+    "r_wrist": 0.23215,
+    "l_upleg": 0.969494,
+    "r_upleg": 0.721294,
+    "l_lowleg": 0.555916,
+    "r_lowleg": 0.539552,
+    "l_foot": 0.29359,
+    "r_foot": 0.267466,
+    "l_eye": 0.552177,
+    "r_eye": 0.491363
+   },
+   "20260923_d0": {
+    "root": 0.390525,
+    "c_neck": 1.359094,
+    "c_head": 1.128359,
+    "l_uparm": 0.952557,
+    "r_uparm": 0.862706,
+    "l_lowarm": 0.829776,
+    "r_lowarm": 0.64406,
+    "l_wrist": 0.402823,
+    "r_wrist": 0.296905,
+    "l_upleg": 0.918527,
+    "r_upleg": 0.723176,
+    "l_lowleg": 0.550736,
+    "r_lowleg": 0.511208,
+    "l_foot": 0.275922,
+    "r_foot": 0.254039,
+    "l_eye": 0.618111,
+    "r_eye": 0.525218
+   },
+   "20260924_d0": {
+    "root": 0.485301,
+    "c_neck": 1.544931,
+    "c_head": 1.420219,
+    "l_uparm": 0.911609,
+    "r_uparm": 0.905,
+    "l_lowarm": 0.836998,
+    "r_lowarm": 0.624071,
+    "l_wrist": 0.474213,
+    "r_wrist": 0.344823,
+    "l_upleg": 1.366545,
+    "r_upleg": 1.016713,
+    "l_lowleg": 0.734367,
+    "r_lowleg": 0.726125,
+    "l_foot": 0.382099,
+    "r_foot": 0.394267,
+    "l_eye": 0.663202,
+    "r_eye": 0.589915
+   },
+   "20260925_d0": {
+    "root": 0.505437,
+    "c_neck": 1.605093,
+    "c_head": 1.390056,
+    "l_uparm": 0.895097,
+    "r_uparm": 0.901062,
+    "l_lowarm": 0.756928,
+    "r_lowarm": 0.488568,
+    "l_wrist": 0.370478,
+    "r_wrist": 0.251109,
+    "l_upleg": 1.616044,
+    "r_upleg": 1.41505,
+    "l_lowleg": 0.854362,
+    "r_lowleg": 0.835475,
+    "l_foot": 0.516516,
+    "r_foot": 0.48733,
+    "l_eye": 0.678132,
+    "r_eye": 0.622912
+   },
+   "20260926_d0": {
+    "root": 0.462047,
+    "c_neck": 1.407779,
+    "c_head": 1.02814,
+    "l_uparm": 0.764517,
+    "r_uparm": 0.678386,
+    "l_lowarm": 0.501977,
+    "r_lowarm": 0.359022,
+    "l_wrist": 0.278641,
+    "r_wrist": 0.176043,
+    "l_upleg": 1.637792,
+    "r_upleg": 1.334456,
+    "l_lowleg": 0.861627,
+    "r_lowleg": 0.803466,
+    "l_foot": 0.488645,
+    "r_foot": 0.424542,
+    "l_eye": 0.553086,
+    "r_eye": 0.533224
+   },
+   "20260927_d0": {
+    "root": 0.44575,
+    "c_neck": 1.469072,
+    "c_head": 1.268247,
+    "l_uparm": 0.823225,
+    "r_uparm": 0.872175,
+    "l_lowarm": 0.819949,
+    "r_lowarm": 0.609623,
+    "l_wrist": 0.481384,
+    "r_wrist": 0.365513,
+    "l_upleg": 1.110308,
+    "r_upleg": 0.856758,
+    "l_lowleg": 0.585655,
+    "r_lowleg": 0.507252,
+    "l_foot": 0.295322,
+    "r_foot": 0.252904,
+    "l_eye": 0.620951,
+    "r_eye": 0.543328
+   }
+  }
+ }
+}
