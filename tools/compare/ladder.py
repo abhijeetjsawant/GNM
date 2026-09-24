@@ -316,8 +316,9 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f11, c11 = _d9b_figures("converter")
     f12, c12 = _d7c_figures("converter")
     f13, c13 = _d4_figures("converter")
-    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13,
-            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13)
+    f14, c14 = _d4b_figures()
+    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14,
+            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13 + c14)
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -507,6 +508,21 @@ def _d4_figures(where: str) -> tuple[list, list]:
         return "masks" if key.startswith("silhouette_") else "converter"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _d4b_figures() -> tuple[list, list]:
+    """D4b figures from `tools/compare/extractors/d4b_o1.py` (the agent's stub, wired here by the registry
+    owner), all to rung 7. D4b merged 2026-09-24 as a measurement (src byte-identical): O1 re-registered
+    prospectively on rest-segment identity with paired per-fixture floors. STOPPED at stage 3 under the registered
+    must-fail (ii) (reading B, Astra's merge round): the frozen drawn-set rule left `scale_spine_length` out, the
+    trunk was not scored, and the band as scored accepted the displaced spine on D4's burned cells. The fresh
+    figures are POST-STOP EXPLORATORY, never acceptance evidence. D4 stays open; O1 is not superseded."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d4b_o1  # noqa: E402
+    except ImportError:
+        return [], []
+    return d4b_o1.x_body_model_o1({})
 
 
 def _d8b_figures(where: str) -> tuple[list, list]:
@@ -1640,6 +1656,11 @@ def _splice_d7_visuals() -> None:
         return
     VISUALS["pose"][0:0] = d4_body_model.VISUALS.get("converter", [])
     VISUALS["masks"][0:0] = d4_body_model.VISUALS.get("masks", [])
+    try:
+        from extractors import d4b_o1  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["pose"][0:0] = d4b_o1.VISUALS.get("converter", [])
 
 
 

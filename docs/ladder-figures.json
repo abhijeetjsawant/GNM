@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-22T02:12:11",
+ "rendered": "2026-09-24T20:37:40",
  "git": {
-  "sha": "285643c",
+  "sha": "d08929b",
   "dirty": true
  },
  "rungs": [
@@ -930,6 +930,39 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D4b: does the fitted body have the right proportions?",
+     "plain": "STOPPED: the check could not score the trunk, so it could not reject a deliberately shortened spine, and the step stopped before its real test. These bars come from an exploratory run after the stop and are not a pass mark. Each bar is the fitted bone length's error divided by what the pose solve alone already costs -- lower is better, 1.0 is the edge. The scored bones sit below 1.0; the unscored trunk is well past it.",
+     "better": "lower",
+     "unit": "x tolerance",
+     "bars": [
+      {
+       "label": "Our fit, scored bones (worst)",
+       "role": "ours",
+       "value": 0.5473
+      },
+      {
+       "label": "Our fit, the trunk (not scored)",
+       "role": "ours",
+       "value": 6.2791
+      },
+      {
+       "label": "Solver run 10x longer (probe)",
+       "role": "alt",
+       "value": 0.0998
+      },
+      {
+       "label": "No body fit at all (deliberately wrong)",
+       "role": "control",
+       "value": 41.9667
+      },
+      {
+       "label": "Spine shortened on purpose (deliberately wrong)",
+       "role": "control",
+       "value": 6.2457
+      }
+     ]
+    },
     {
      "title": "D4: on a body we built on purpose, how close does the fit get?",
      "plain": "Six synthetic bodies with a known answer; lower is better. The blue bar is our fit. The aqua bar beside it is the best this solver can do when it is HANDED the right body and only has to find the pose -- that is the floor, and our bar is close to it. The hatched bar is what happens if you skip fitting the body at all: it is ten to forty times worse, which is the whole point of the check.",

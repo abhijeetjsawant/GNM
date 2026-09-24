@@ -181,8 +181,19 @@
           "title": "The body-model exactness test, re-registered before it is run",
           "plain": "D4's synthetic exactness test failed at 1.03 mm against a 1 mm limit that was picked before anyone measured how exact the tracker can be. This step writes a fair test first -- does the fit recover the body's true bone lengths, measured against the tracker's own error on the same body -- then runs it on twelve fresh synthetic bodies. Nothing that ships changes; its verdict is D4's.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-24",
+          "finished": "2026-09-24",
+          "report": "artifacts/compare/d4b-o1/gate.json",
+          "blocked_on": null
+        },
+        {
+          "id": "D4c",
+          "title": "The body-model fit's start and stop, re-registered with the trunk as a prerequisite",
+          "plain": "D4b found that when the body fit starts from the true body it keeps it, and that almost every calibration solve stops at its iteration limit -- so the shortened spine looks like a fit that starts in the wrong place and stops too early. This step fixes one start-and-stop rule in advance, chosen without looking at the test, makes sure the test can actually score the trunk before anything runs, and then checks it on fresh synthetic bodies.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -879,6 +890,11 @@
       "date": "2026-09-24",
       "step": "D4b",
       "text": "D4b dispatched 2026-09-24: O1 re-registered prospectively (band L on rest-segment identity, paired per-fixture floors, 12 fresh fixtures on two donors, spine-displaced must-fail, burned-first STOP); measurement only, src byte-identical; Astra's one card round at medium: dispatchable, findings adopted; worktree .claude/worktrees/ladder-D4b on ladder/D4b"
+    },
+    {
+      "date": "2026-09-24",
+      "step": "D4b",
+      "text": "D4b MERGED 2026-09-24 (d08929b) as a measurement, src byte-identical: STOPPED at stage 3 under the registered must-fail (ii) (reading B, Astra's merge round). The frozen drawn-set rule (a first-order pose-Jacobian column-space test, blind to the configured limits) drew 6 channels, not 8: scale_spine_length and scale_shoulder_width sit in the pose span only through pose steps of 17-65 units against limits <= 1.5, so the trunk was not scored and the band as scored accepted the displaced spine 6/6 on D4's burned cells. Post-stop exploratory (not evidence; fixtures 20261001-06 x donors 0/1 now burned): scored bones within 0.55x tolerance 12/12, the trunk beyond tolerance 9/12; WARM (calibration from the truth) holds the spine within 0.005; 973 of 1056 calibration solves stopped at max_iter 30. D4 STAYS OPEN, O1 not superseded. The card contradicted itself (PASS closes D4 vs an unscored trunk cannot) -- the lane's fifth pre-registration error, the coordinator's."
     }
   ]
 }
