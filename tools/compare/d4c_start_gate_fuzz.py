@@ -38,6 +38,11 @@ import d4c_start_gate as gate  # noqa: E402
 FIXTURE = (20261101, 0)
 MISMATCH = "0" * 64
 
+CONJUNCT_KEYS = {"validity": "validity", "L": "L", "closure": "closure", "must_fail_i": "must_fail_i_mean_body_misses_L",
+                 "must_fail_ii": "must_fail_ii_spine_displaced_fails_L_at_the_trunk",
+                 "must_fail_iii": "must_fail_iii_exact_identity_reads_zero_and_passes", "B1": "B1", "B2": "B2",
+                 "hygiene": "hygiene", "population": None, "freeze_order": None, "construction": None}
+
 JUSTIFIED = {
     "cell(*).distance_mm*": "REPORTED as J and the pooled statistic; shape and finiteness are the population "
                             "(sampled members move a reported value only)",
@@ -78,6 +83,22 @@ def run(inputs: dict) -> str:
     return gate.build(inputs)["verdict"]
 
 
+FAILING = (20261106, 0)   # the one acceptance fixture whose trunk misses L on the measured run
+
+
+def repaired(base: dict) -> dict:
+    """The PASS baseline: the measured inputs with the ONE failing candidate trunk brought onto the truth.
+
+    The measured verdict is FAIL (L, one fixture), and a FAIL baseline makes every FAIL-direction mutation vacuous.
+    So each conjunct is turned from THIS baseline, which must read PASS -- itself the proof that L's FAIL is read
+    from the measurement and that a PASS is reachable -- and the conjunct each mutation targets is also checked to
+    flip on the measured inputs."""
+    inputs = copy.deepcopy(base)
+    c = cell(inputs, "candidate", *FAILING)
+    c["fitted_rest_mapped_cm"] = copy.deepcopy(c["truth_rest_mapped_cm"])
+    return inputs
+
+
 def cell(inputs: dict, arm: str, seed: int = FIXTURE[0], donor: int = FIXTURE[1]) -> dict:
     return inputs["acceptance"]["cells"][f"cell-{seed}-d{donor}-{arm}.json"]
 
@@ -85,12 +106,35 @@ def cell(inputs: dict, arm: str, seed: int = FIXTURE[0], donor: int = FIXTURE[1]
 def targeted(base: dict) -> list[dict]:
     rows = []
 
+    passing = repaired(base)
+    measured_conjuncts = gate.build(base)["conjuncts"]
+
     def attempt(name: str, conjunct: str, want: str, mutate):
-        inputs = copy.deepcopy(base)
+        inputs = copy.deepcopy(passing)
         mutate(inputs)
         got = run(inputs)
-        rows.append({"mutation": name, "conjunct": conjunct, "want": want, "got": got, "turns": got == want})
-        print(f"  {name:70s} want {want:8s} got {got:8s} {'ok' if got == want else 'MISSED'}", flush=True)
+        # the same mutation on the MEASURED inputs: the targeted conjunct (or the population rule) must fall
+        measured = copy.deepcopy(base)
+        mutate(measured)
+        report = gate.build(measured)
+        key = CONJUNCT_KEYS.get(conjunct)
+        # a conjunct already failing on the measured inputs (L) is turned by the REPAIR row instead; here it must
+        # stay failed
+        flipped = (not report["population_ok"]) if key is None else (
+            report["conjuncts"].get(key) is False and measured_conjuncts.get(key) in (True, False))
+        if conjunct in ("precondition_0", "stage_0b", "must_fail_iv"):
+            flipped = report["verdict"] == want
+        turns = got == want and flipped
+        rows.append({"mutation": name, "conjunct": conjunct, "want": want, "got_from_the_PASS_baseline": got,
+                     "measured_verdict": report["verdict"], "conjunct_flipped_on_the_measured_inputs": flipped,
+                     "turns": turns})
+        print(f"  {name:72s} want {want:8s} got {got:8s} measured-flip {str(flipped):5s} "
+              f"{'ok' if turns else 'MISSED'}", flush=True)
+
+    got = run(passing)
+    rows.append({"mutation": "REPAIR: the failing fixture's candidate trunk brought onto the truth", "conjunct": "L",
+                 "want": "PASS", "got_from_the_PASS_baseline": got, "turns": got == "PASS"})
+    print(f"  {'REPAIR: the one failing trunk onto the truth (the PASS baseline)':72s} want PASS     got {got}", flush=True)
 
     def drawn_without_spine(i):
         d = json.loads(i["drawn_set_bytes"])
@@ -348,11 +392,11 @@ def main() -> int:
     report = gate.build(base)
     baseline = report["verdict"]
     base["_chosen"] = report["chosen_trunk_statistic"]
-    print("baseline:", baseline, flush=True)
+    print("measured baseline:", baseline, "--", report["reason"], flush=True)
     rows = targeted(base)
-    walked = [] if arguments.no_walk else walk(base, baseline)
+    walked = [] if arguments.no_walk else walk(repaired(base), "PASS")
     unjustified = [w["leaf"] for w in walked if w["class"] == "REPORTED" and not w["justification"]]
-    result = {"baseline": baseline, "targeted": rows, "all_targeted_turn": all(r["turns"] for r in rows),
+    result = {"baseline": baseline, "walk_baseline": "PASS (the repaired inputs)", "targeted": rows, "all_targeted_turn": all(r["turns"] for r in rows),
               "leaf_walk": walked, "enforced": sum(w["class"] == "ENFORCED" for w in walked),
               "reported_justified": sum(w["class"] == "REPORTED" and bool(w["justification"]) for w in walked),
               "unjustified": unjustified,
