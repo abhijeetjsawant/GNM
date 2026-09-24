@@ -1,17 +1,18 @@
 # Body lane — where we are (generated, do not hand-edit)
 
-*Rendered from `docs/ladder-status.json` on 2026-09-22 by `tools/compare/status.py render`.*
+*Rendered from `docs/ladder-status.json` on 2026-09-24 by `tools/compare/status.py render`.*
 **Read this first in any body-lane session.** Then: `docs/LADDER_EXECUTION_PLAN.md` (what gets
 built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is measured and how).
 
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D7, D7b, D8, D9, D8b, D8c, D9b, D7c. In flight: D4. Blocked: nothing.
+Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D7, D7b, D8, D9, D8b, D8c, D9b, D7c. In flight: D4, D4b. Blocked: nothing.
 
 ## In flight
 
 - **D4** A real pose solver (momentum on the MHR body) — an Opus agent, since 2026-09-21
+- **D4b** The body-model exactness test, re-registered before it is run — an Opus agent, since 2026-09-24
 
 ## Next up (unblocked, not started)
 
@@ -28,12 +29,12 @@ Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D7, D7b, D8, D9, D8b, D8c,
 
 ## Recent log
 
-- 2026-09-21 [D4] card written 2026-09-21 after the pre-card measurement (MHR fitted 0.789/0.730 vs the rig 0.647/0.652, CI clear both performers); the user chose shape (a): MHR's own mesh is the delivered body; one Astra card review by the 2026-09-15 rule; .cache restored from the Modal volume (SMPL-X, the four fixture videos) and the pinned MAMMA repo (the calibration yaml)
 - 2026-09-21 [D4] D4 dispatched 2026-09-21: Astra's one card round (three blockers adopted: the O1 fixture on MHR's native scale channels with the 26 flexible length channels frozen, B1's comparators named with the band = fitted minus D7c lower CI > 0 on both performers, B2 on the consumed input; the rest instrument debt); worktree .claude/worktrees/ladder-D4 on ladder/D4 at 803f111, one Opus agent.
 - 2026-09-22 [D4] D4 STOPPED at O1 (ladder/D4 5ebdc28): the exactness oracle reads 0.80-1.03 mm over six seeds against the 1 mm band (FAIL on one seed); the fixture's donor pose violated 23 of MHR's configured limits and was clamped as a fixture parameter (1.25 -> 1.03); what remains is the tracker's own floor (truth identity handed in: 0.51-0.76 mm on exact data) plus scale_spine_length shrunk 14-20 % by momentum's default soft limit and scale_foot_length unidentifiable without toe landmarks. The must-fail (mean body) rejects by 9-39x; hygiene 8/8; the pre-card reproduced to 0.0 on all 600 cells. FINDING: momentum's calibrate_markers mutates a later Character.load_fbx in the same process -- the pre-card's performer-1 figure was contaminated (0.7295 -> 0.7503 repaired). COORDINATOR DECISION: the 1 mm band was set without measuring the instrument floor (the lane's recorded pre-registration error, fourth time); the band is NOT moved, O1 is recorded as a standing FAIL attributed to floor + regulariser, and the step continues to the delivery and B1-B5 under the D3 precedent (a stated, attributed oracle fail beside the photograph band); the merge rule's O1 conjunct becomes a recorded exception, decided at the merge on B1.
 - 2026-09-22 [D4] Astra's one merge round on D4 (e209eea): NO MERGE -- the coordinator's 'O1 a recorded exception' was an override (never merge on an override), and the gate accepted a 15-frame truncation of B1 and left the frozen control, closure and mean-body must-fail unwired. DISPOSITION (2026-09-22): D4's ACCEPTANCE = FAIL on O1 (1.030 mm vs 1 mm; B1 +0.156/+0.115 PASS, B2 PASS, hygiene 8/8); the implementation merges OPT-IN (--body mhr; default rig unchanged; nothing shipped changes) after the agent's gate repair; O1 is re-registered prospectively as D4b (statistic, calibrated baseline from the measured 0.757 mm tracker floor, identifiable channels, mean-body rejection, fresh fixtures); the default flip is its own gated integration step (compositor, schema-aware checks, instrument compatibility, an end-to-end MHR rebuild). No further review rounds on D4.
 - 2026-09-22 [D4] D4 MERGED OPT-IN 2026-09-22 (285643c, --no-ff): --body mhr available, default rig unchanged, the rig path rebuilds the D7c delivery 8/8; D4 acceptance stays FAIL on O1 and OPEN (status stays in_progress until D4b re-registers O1 prospectively). Extractor wired into the ladder (rungs 1 and 7); close-out running on the rig default.
 - 2026-09-22 [D4] D4 close-out (post_merge.sh D4 on the rig default): the delivery rebuilt in place 8/8 byte-identical to D7c's; every instrument logged under artifacts/compare/post-merge-D4; the D3 gate line-identical to D7c's close-out (exact-skeleton oracle PASS 0.35 mm; the frozen D2c/D3 reference clauses still moved-by-design); head gate line-identical; three instruments first failed on cache paths and pass after restoring the body-provider run from artifacts/compare/d1-fix/body-run-regenerated and downsampled_verts from the Modal volume; the D4 gate rerun reads acceptance FAIL (O1) with every other conjunct PASS. Nothing shipped changed.
+- 2026-09-24 [D4b] D4b dispatched 2026-09-24: O1 re-registered prospectively (band L on rest-segment identity, paired per-fixture floors, 12 fresh fixtures on two donors, spine-displaced must-fail, burned-first STOP); measurement only, src byte-identical; Astra's one card round at medium: dispatchable, findings adopted; worktree .claude/worktrees/ladder-D4b on ladder/D4b
 
 ## How to resume
 

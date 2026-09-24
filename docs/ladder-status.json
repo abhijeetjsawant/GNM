@@ -1,6 +1,6 @@
 {
   "_about": "Source of truth for where the body lane stands. Edit ONLY through tools/compare/status.py (set / log / render). render writes docs/LADDER_STATUS.md and docs/progress.html from this file. Plan of record: docs/LADDER_EXECUTION_PLAN.md; what is measured and how: docs/SUBSTITUTION_LADDER.md.",
-  "updated": "2026-09-22",
+  "updated": "2026-09-24",
   "goal": "An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.",
   "lanes": [
     {
@@ -172,6 +172,17 @@
           "owner": "opus-agent",
           "state": "in_progress",
           "started": "2026-09-21",
+          "finished": null,
+          "report": null,
+          "blocked_on": null
+        },
+        {
+          "id": "D4b",
+          "title": "The body-model exactness test, re-registered before it is run",
+          "plain": "D4's synthetic exactness test failed at 1.03 mm against a 1 mm limit that was picked before anyone measured how exact the tracker can be. This step writes a fair test first -- does the fit recover the body's true bone lengths, measured against the tracker's own error on the same body -- then runs it on twelve fresh synthetic bodies. Nothing that ships changes; its verdict is D4's.",
+          "owner": "opus-agent",
+          "state": "in_progress",
+          "started": "2026-09-24",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -863,6 +874,11 @@
       "date": "2026-09-22",
       "step": "D4",
       "text": "D4 close-out (post_merge.sh D4 on the rig default): the delivery rebuilt in place 8/8 byte-identical to D7c's; every instrument logged under artifacts/compare/post-merge-D4; the D3 gate line-identical to D7c's close-out (exact-skeleton oracle PASS 0.35 mm; the frozen D2c/D3 reference clauses still moved-by-design); head gate line-identical; three instruments first failed on cache paths and pass after restoring the body-provider run from artifacts/compare/d1-fix/body-run-regenerated and downsampled_verts from the Modal volume; the D4 gate rerun reads acceptance FAIL (O1) with every other conjunct PASS. Nothing shipped changed."
+    },
+    {
+      "date": "2026-09-24",
+      "step": "D4b",
+      "text": "D4b dispatched 2026-09-24: O1 re-registered prospectively (band L on rest-segment identity, paired per-fixture floors, 12 fresh fixtures on two donors, spine-displaced must-fail, burned-first STOP); measurement only, src byte-identical; Astra's one card round at medium: dispatchable, findings adopted; worktree .claude/worktrees/ladder-D4b on ladder/D4b"
     }
   ]
 }
