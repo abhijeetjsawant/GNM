@@ -254,7 +254,7 @@ def build(inputs: dict, *, burned: bool = False) -> dict:
                 bad.append("identity channel names differ between cells")
             prov = record.get("provenance") or {}
             for key in ("fitter_sha256", "d4_fixture_sha256", "model_sha256", "fbx_sha256", "drawn_set_sha256",
-                        "pymomentum") + (() if burned else ("this_file_sha256",)):
+                        "pymomentum", "this_file_sha256"):
                 if prov.get(key) != expected[key] or expected[key] is None:
                     bad.append(f"provenance {key}")
             if "retained_from" not in record:

@@ -7,6 +7,26 @@
 D4."* Reported, the fitted trunk is beyond its paired tolerance on **9 of 12** fresh fixtures (1.15–14.94 mm
 against 1.84–2.38 mm). That is the defect D4 found, and it is still there. D4's 1.030 mm FAIL stays on record.
 
+**Read first, for the merge review. The contradiction below is the card's; the decisions are the executor's.**
+
+* **The card says two things that cannot both hold on this run.** Its outcome clause: *"PASS → D4's acceptance
+  closes as 'O1 superseded by D4b: PASS'"*, together with the merge rule *"its verdict is D4's O1 verdict"*. Its
+  drawn-set clause: *"a trunk that cannot be scored and rejected is not a demonstrated trunk failure, and such a
+  run cannot close D4."* The conjunction reads PASS, and the trunk is not scored. The gate prints both lines,
+  `verdict` (the conjunction) and `d4_disposition` (STAYS OPEN), and does not fold one into the other. The
+  specific clause governs: **D4 does not close.**
+* **What caused this is the drawn-set rule itself** (§4a). The card's first-order column-space test, implemented
+  literally at the card's own 1e-6 rank convention, finds the along-spine displacement inside the pose Jacobian's
+  span. It gets there through absorbing poses of 17–65 parameter units (±12 000 under plain `lstsq`) against
+  limits of at most 1.5. A least-squares fit bounded by the configured limits was considered and rejected, because
+  it would change a frozen rule after seeing its reading. Both readings are on record.
+* **(ii) was implemented as reading (A):** the trunk's error against the trunk's tolerance, whether or not the
+  trunk is scored. Two clauses presuppose that the run completes: *"exclusion never skips must-fail (ii)"* and
+  *"such a run cannot close D4"*. A reviewer who reads (ii) as (B), *the band as scored must reject the displaced
+  spine*, would put a STOP at stage 3, and stages 4–6 would then be an overrun. The (B) quantity is in
+  `gate.json` and `burned.json`: the band as scored passes the displaced spine on 12/12 fresh and 6/6 burned
+  (§7, item 2).
+
 Nothing under `src/` changed. `tools/fitter/mhr_delivery.py` is byte-identical at `3136befb…` at every commit.
 The momentum settings in every banded arm are the pre-card's.
 
