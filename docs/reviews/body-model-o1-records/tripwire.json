@@ -1,0 +1,44 @@
+{
+ "step": "D4b",
+ "what": "the calibration proxy proved inert on D4's burned fixture 20260922 (one process per cell)",
+ "cells": {
+  "oracle": {
+   "identity_bit_identical_to_plain_oracle": true,
+   "motion_bit_identical_to_plain_oracle": true,
+   "calibrate_markers_calls": 2,
+   "calibration_iterations": null
+  },
+  "tripwire_zero_start": {
+   "identity_bit_identical_to_plain_oracle": true,
+   "motion_bit_identical_to_plain_oracle": true,
+   "calibrate_markers_calls": 2,
+   "calibration_iterations": null
+  },
+  "tripwire_debug": {
+   "identity_bit_identical_to_plain_oracle": true,
+   "motion_bit_identical_to_plain_oracle": true,
+   "calibrate_markers_calls": 2,
+   "calibration_iterations": {
+    "max_iter": 30,
+    "calls": 2,
+    "solves_per_call": [
+     1054,
+     1056
+    ],
+    "max_iteration_index_reached": [
+     49,
+     49
+    ],
+    "solves_stopped_at_the_cap": [
+     582,
+     973
+    ],
+    "note": "momentum's own debug log; the last index reached by each solve inside calibrate_markers (stage A locators-only, then the full calibration). An index of max_iter-1 is a solve stopped by the cap, not converged; below it the solver stopped on its own criterion. Tracking ran at the same max_iter (fit_one's single setting) and is not logged."
+   }
+  }
+ },
+ "plain_oracle_rerun_equals_D4_retained": {
+  "fitted_identity_max_abs_diff": 0.0,
+  "distance_mm_max_abs_diff": 0.0
+ }
+}
