@@ -1,0 +1,32 @@
+{
+ "step": "D4c",
+ "stage": 1,
+ "date": "2026-09-25",
+ "base_commit": "a58e447f18fc7492e6d494ee3656720dc5f0086f",
+ "sha256": {
+  "fitter tools/fitter/mhr_delivery.py (pre-change)": "3136befb6cd0415fe746a208f73e15be0f1c8af1ad3594cad277c7f9e5b13535",
+  "D4 fixture tools/fitter/d4_o1_exactness.py": "24c92d4c876ccaec87cfb09ead3b4462ed410b411351323ef5f05a2777d97ab0",
+  "D4b fixture tools/fitter/d4b_o1_fixture.py": "42965ebcf7d6b960c62965e8b67c465c7b56cd05dc02d6ddd75baf0d007a2144",
+  "D4b identifiability tools/fitter/d4b_identifiability.py": "6cdff94f5ea82c463176a8a481b366dd27d4c2a65cbd55f6fea4a8a6ad3a3398",
+  "D4c identifiability tools/fitter/d4c_identifiability.py": "5702a702337892641af7f54909b28e431063c77e8a1b6972866e47f23d321947",
+  "donor 0 artifacts/compare/d4-body/fitted/motion_0.npz": "a485d0567920fb9bd37f26747dd8f67a8140ad95583467b9f184e7462e6b3cdc",
+  "donor 1 artifacts/compare/d4-body/fitted/motion_1.npz": "c4901716e459a3b51532b37d1537ba9442bf563e7981903b9a99162f2748b159",
+  "model .cache/mhr/assets/compact_v6_1.model": "9b4e48e6216296c0a8a47e8e1d210b42ca8b194b9f61409adc5d7a3873dcf08e",
+  "fbx .cache/mhr/assets/lod2.fbx": "2d49872b57f07181302e268124f6528a64de319a048b375d3cb5af5e8bcf94da",
+  "joint layout artifacts/compare/d4-body/repro-v2/converter-inputs/subject-00-consumed.npz": "003efbde37684e0aa57b34430e82078e5d039bf480b08a3c149aaf95e6718095",
+  "D4b frozen drawn set docs/reviews/body-model-o1-records/drawn-set.json": "0368a1a9ef74718172db48e11c7e8dc6dbdc63b70a24949035c23c29343e74fb",
+  "D4c drawn set docs/reviews/body-model-start-records/drawn-set.json": "430f1f67ea27123969ea5bafde01eb607b0092cb7a47d6a69f451038052163b7"
+ },
+ "environment": {
+  "momenv": "/tmp/momenv (rebuilt 2026-09-24 by D4b; unchanged)",
+  "pymomentum-cpu": "0.1.114.post0",
+  "scipy": "1.18.1",
+  "numpy": "2.5.3",
+  "python": "3.12.13",
+  "platform": "macOS-26.2-arm64-arm-64bit"
+ },
+ "acceptance_population_absent_on_disk_at_stage_1": {
+  "artifacts/compare/d4c-start existed before this stage": false,
+  "cells with seeds 2026110x anywhere under artifacts/compare": 0
+ }
+}

@@ -1,0 +1,40 @@
+# Astra GPT6 merge review of D4c (2026-09-25), one round at MEDIUM effort. Verdict: FAIL (L) is the registered verdict; the fitter change does not merge; RECORDS ONLY (option c)
+
+Verified against the source before adoption:
+- the fuzz assigns `got = "CRASH"` and counts `got != baseline` as ENFORCED (`d4c_start_gate_fuzz.py`, the leaf walk), so a
+  crash on a mutated input is counted as enforcement;
+- the tooling imports the new `fit_one` (`d4c_fixture.py`), and the gate reads the fitter source;
+- the review's own attribution line reads the spine LONG (+0.033 units).
+
+| # | finding | change |
+|---|---|---|
+| 1 | FAIL (L) is correct: 2.1341 mm vs 1.9352 mm on 20261106/d0; the band is all twelve fixtures | recorded; D4 stays open, O1 not superseded |
+| 2 | option (a) is an override (a dormant keyword still changes `fit_one`); none of (a)–(c) executes the card's sentence literally; (c) needs no override but must not be called the tooling merge | ADOPTED (c): records only on main; tooling and the fitter change pinned at `1a89cc73b2ced93543e9cbfb191d79208aef423b`, tag `ladder/D4c-fail-1a89cc7`; the tooling merge is recorded as DEFERRED debt, not done |
+| debt | sign: a LONG read of a shortened spine (+0.03244 start, +0.02138 recovered); "the cap caused the miss" unsupported | the coordinator's summary corrected; the review already says no single cause is measured |
+| debt | D4d: separate wrong-start recovery from drift off a correct start on burned fixtures (e.g. only the shoulder-width start set to the truth, stages A/B separate); one frozen intervention; do not raise the shared `max_iter` | carried into the D4d handoff |
+| debt | commit ancestry proves record order, not the moment acceptance was generated; the fixture checks only that the development file exists | recorded |
+| debt | the fuzz counts crashes as enforced; tripwire and B2 read producer booleans | recorded as instrument debt |
+
+---
+
+**FAIL (L) is the correct registered verdict. No STOP, no demonstrated INVALID. D4 remains open.**
+
+Only these block:
+
+1. **The fitter change cannot merge or supersede O1.** The failing trunk is **429.2054 mm versus 427.0713 mm truth**: error **2.1341 mm > 1.9352 mm tolerance**. The card requires every scored segment on **all twelve** fixtures. “Most or all” was a prediction, not the band. Precondition 0 and stage 0b hold; exact-arm validity passes; init-only misses L on all twelve. Its failure through shoulder width satisfies the registered control—missing specifically at the trunk was only predicted. [Deciding card line](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/docs/LADDER_EXECUTION_PLAN.md:159), [verdict precedence](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/compare/d4c_start_gate.py:811).
+
+2. **Option (a) requires an override.** The deciding words are “Otherwise tooling and records merge and `fit_one` does not.” A dormant keyword still changes `fit_one`; zero-start equivalence does not erase that prohibition. **None of (a)–(c) fully executes the literal sentence.** (b) defers everything; (c) defers tooling. I recommend **(c) as a records-only disposition**, with tooling explicitly deferred as debt. It needs no override permitting the failed fitter to land, but must not be described as completing the tooling-merge obligation. Pin `1a89cc73b2ced93543e9cbfb191d79208aef423b`, retain the proposed tag, and make the records’ reproduction instructions point to that checkout. The dependencies are real. [Fixture dependency](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/fitter/d4c_fixture.py:171), [source dependency](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/compare/d4c_start_gate.py:729).
+
+**Everything below is debt, not another merge condition.**
+
+- **Attribution: fair descriptive account, with a sign correction.** This is a **long read of a shortened spine**, not a short chord read: start-minus-truth is **+0.03244 units**, recovered error **+0.02138**. Calibration removes about **0.01106**, leaving the trunk too long. “Incomplete recovery under the registered 30-iteration budget” is supported; “the cap caused the miss” is not. The record appropriately says “No single cause is measured.” Shoulder-width coupling is properly held as a hypothesis: donor 1’s nearly exact spine start drifts while companion channels start incorrectly, but that does not identify shoulder width or stage A/B coupling causally. [Deciding attribution](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/docs/reviews/body-model-start-2026-09-25.md:102), [hypothesis qualification](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/docs/reviews/body-model-start-2026-09-25.md:134).
+
+- **D4d must carry both observations, then register one intervention.** On burned development fixtures, distinguish incorrect-start recovery from drift away from a correct start. A useful diagnostic changes only the shoulder-width start to truth while holding the other starts and budget fixed, with stage A/B readings separated. Truth-seeded probes remain diagnostics. Either proposed direction is reasonable; neither is established here. Freeze the chosen change before fresh acceptance identities, retain the scored trunk, paired floors, controls, closure and rebuilt-delivery B1/B2. A `Spine1` feed changes the input and needs explicit scope; a start-only solution needs its own registration. Do not quietly raise shared `max_iter`, which also changes tracking. [Registered scope and consequences](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/docs/LADDER_EXECUTION_PLAN.md:159).
+
+- **No demonstrated D4/D4b population or closure recurrence.** All 72 cells are present; seeded draws are regenerated; start constructions are checked. The development commit precedes the acceptance manifest, and fitter/fixture sources did not change after the development freeze. Closure now checks measured hashes against both candidate records and actual files. However, commit ancestry proves record ordering, not independently the moment acceptance was first generated; the fixture’s prerequisite checks only that the development file exists. Keep that limitation explicit. [Ordering checks](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/compare/d4c_start_gate.py:740), [existence-only prerequisite](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/fitter/d4c_fixture.py:135), [closure binding](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/compare/d4c_start_gate.py:774).
+
+- **The fuzz overstates enforcement.** It assigns `got = "CRASH"` and then treats `got != baseline` as `ENFORCED`, despite the adjacent comment saying crashes are holes. Separate crashes from card-banded rejections. This weakens the leaf-walk claim; it does not change the measured L failure or establish INVALID. [Deciding lines](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/compare/d4c_start_gate_fuzz.py:373).
+
+- **Some checks still trust producer assertions.** Normalised tripwire equality is read as a boolean; B2 reads numbered booleans and binds by paths. These remain instrument debt. I independently recomputed the normalised tripwire comparison and it passed. [Tripwire](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/compare/d4c_start_gate.py:697), [B2](/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4c/tools/compare/d4c_start_gate.py:686).
+
+I reproduced `gate.json` identically and **17 tests passed**. All 72 cells’ distance arrays and truth/fitted rest FK matched their records; checked provenance files matched their hashes. I did not rerun calibration, the identifiability sweep or B1’s bootstrap. No files changed.
