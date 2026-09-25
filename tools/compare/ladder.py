@@ -204,7 +204,8 @@ def x_delivered_all(spec: dict) -> tuple[list, list]:
     sys.path.insert(0, str(ROOT / "tools/compare"))
     from extractors.d1_facing import x_facing  # noqa: E402
     f2, c2 = x_facing(spec)
-    return figs + f2, ctrls + c2
+    f3, c3 = _d4i_figures("delivered")
+    return figs + f2 + f3, ctrls + c2 + c3
 
 
 def x_hands_report(spec: dict) -> tuple[list, list]:
@@ -240,8 +241,9 @@ def x_silhouette(spec: dict) -> tuple[list, list]:
     f11, c11 = _d9b_figures("masks")
     f12, c12 = _d7c_figures("masks")
     f13, c13 = _d4_figures("masks")
-    return (figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13,
-            ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13)
+    f14, c14 = _d4i_figures("masks")
+    return (figs + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14,
+            ctrls + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13 + c14)
 
 
 def x_head_and_provenance(spec: dict) -> tuple[list, list]:
@@ -523,6 +525,29 @@ def _stub_figures(module: str, function: str) -> tuple[list, list]:
     except ImportError:
         return [], []
     return getattr(extractor, function)({})
+
+
+def _d4i_figures(where: str) -> tuple[list, list]:
+    """D4i figures from `tools/compare/extractors/d4i_flip.py` (the agent's stub, wired here by the registry owner):
+    the MHR default's silhouette (`bodymodel_flip_sil_`) to rung 1; its placement against our own capture (B3,
+    `bodymodel_flip_place_`) and B4 against MAMMA's joints (`x_body_model_flip_b4`, its own extractor and reference)
+    to rung 11. From D4i the delivered body is MHR, so the rig figures on rungs 7 and 11 that read
+    `scoreboard-commercial-multiview-soma77.json` and `facing-location.json` are a RIG ARM frozen at the D7c
+    close-out (2026-09-15), dated as such in those rungs' status."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        from extractors import d4i_flip  # noqa: E402
+    except ImportError:
+        return [], []
+    figs, ctrls = d4i_flip.x_body_model_flip({})
+    if where == "delivered":
+        b4f, b4c = d4i_flip.x_body_model_flip_b4({})
+        figs, ctrls = figs + b4f, ctrls + b4c
+
+    def dest(key: str) -> str:
+        return "masks" if key.startswith("bodymodel_flip_sil_") else "delivered"
+    return ([f for f in figs if dest(f["key"]) == where],
+            [c for c in ctrls if dest(c["key"]) == where])
 
 
 def _d4b_figures() -> tuple[list, list]:
@@ -893,7 +918,7 @@ RUNGS: list[dict[str, Any]] = [
         blind="accuracy: the reference is itself SMPL-X, so fitting SMPL-X to our points shares its joint "
               "regressor with the thing scored against -- some of a gain can be convention convergence. Hands, "
               "feet, head: not in the 15.",
-        status="measured; converter split by I1 (2026-09-02)", extract=x_pose_and_retarget,
+        status="measured; converter split by I1 (2026-09-02); the scoreboard arm is the RIG, frozen at the D7c close-out (2026-09-15); the delivered body is MHR from D4i", extract=x_pose_and_retarget,
         reports=["artifacts/compare/scoreboard-commercial-multiview-soma77.json", "artifacts/compare/smplx-pose-fit.json",
                  "artifacts/compare/retarget-cost.json"],
         both_directions="MAMMA->ours (I1 arm B, built 2026-09-02): its `pred_joints` mapped through the scoreboard's "
@@ -1022,7 +1047,7 @@ RUNGS: list[dict[str, Any]] = [
                   "rungs and only those two may sit on one axis",
         blind="everything the per-stage rungs are blind to, compounded; and it cannot attribute -- that is what "
               "the rungs above are for",
-        status="measured; faces the right way since 2026-09-02 (D1: the naming mirror relabelled at five sites)", extract=x_delivered_all,
+        status="measured; the scoreboard and facing figures are the RIG ARM frozen at the D7c close-out (2026-09-15); the delivered body is MHR from D4i (B3 and B4 below)", extract=x_delivered_all,
         reports=["artifacts/compare/scoreboard-commercial-multiview-soma77.json", "artifacts/compare/facing-location.json"],
         both_directions="-",
     ),
@@ -1682,6 +1707,12 @@ def _splice_d7_visuals() -> None:
         except ImportError:
             continue
         VISUALS["pose"][0:0] = extractor.VISUALS.get("converter", [])
+    try:
+        from extractors import d4i_flip  # noqa: E402
+    except ImportError:
+        return
+    VISUALS["masks"][0:0] = d4i_flip.VISUALS.get("masks", [])
+    VISUALS["delivered"][0:0] = d4i_flip.VISUALS.get("delivered", [])
 
 
 
