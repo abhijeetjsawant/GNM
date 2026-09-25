@@ -407,143 +407,154 @@ def check_phase1(inputs: dict, problems: list[str]) -> dict:
     for p, s, d in population:
         # retained D4c cells, bound by content to D4c's own records
         for a in fx4.PHASE1_RETAINED_ARMS:
-            got = inputs["retained"].get(f"{p}/{s}/d{d}/{a}")
-            tag = f"phase 1 retained {p} {s}/d{d}/{a}"
-            if got is None:
-                problems.append(f"{tag}: missing")
-                continue
-            bound = (manifest.get(got["name"]) == got["file_sha256"] if got["stage"] == "acceptance"
-                     else development.get(got["name"]) == got["sorted_dump_sha256"])
-            record = got["record"]
-            arr = _cell_arrays(record)
-            want_arm = {"d4c_start": "candidate" if p == "d4c" else "candidate_p90"}.get(a, a)
-            want_pop = "acceptance" if p == "d4c" else p
-            bad = []
-            if not bound:
-                bad.append("not bound by content to D4c's record")
-            if (record.get("schema"), record.get("seed"), record.get("donor"), record.get("arm"),
-                    record.get("population")) != (D4C_SCHEMA, s, d, want_arm, want_pop):
-                bad.append("identity fields")
-            if record.get("lod") != 2 or record.get("frames") != FRAMES or list(record.get("mapped_joints") or []) != list(MAPPED_JOINTS):
-                bad.append("lod, frames or mapped joints")
-            if arr is None:
-                bad.append("arrays short, missing or non-finite")
-            if a == "d4c_start" and (record.get("start") or {}).get("trunk_statistic") != statistic:
-                bad.append("the D4c start's trunk statistic is not D4c's frozen choice")
-            if bad:
-                problems.append(f"{tag}: " + "; ".join(bad))
-                continue
-            names = list(record.get("identity_channel_names") or [])
-            cells[(p, s, d, a)] = dict(arr, record=record, names=names)
+            try:
+                got = inputs["retained"].get(f"{p}/{s}/d{d}/{a}")
+                tag = f"phase 1 retained {p} {s}/d{d}/{a}"
+                if got is None:
+                    problems.append(f"{tag}: missing")
+                    continue
+                bound = (manifest.get(got["name"]) == got["file_sha256"] if got["stage"] == "acceptance"
+                         else development.get(got["name"]) == got["sorted_dump_sha256"])
+                record = got["record"]
+                arr = _cell_arrays(record)
+                want_arm = {"d4c_start": "candidate" if p == "d4c" else "candidate_p90"}.get(a, a)
+                want_pop = "acceptance" if p == "d4c" else p
+                bad = []
+                if not bound:
+                    bad.append("not bound by content to D4c's record")
+                if (record.get("schema"), record.get("seed"), record.get("donor"), record.get("arm"),
+                        record.get("population")) != (D4C_SCHEMA, s, d, want_arm, want_pop):
+                    bad.append("identity fields")
+                if record.get("lod") != 2 or record.get("frames") != FRAMES or list(record.get("mapped_joints") or []) != list(MAPPED_JOINTS):
+                    bad.append("lod, frames or mapped joints")
+                if arr is None:
+                    bad.append("arrays short, missing or non-finite")
+                if a == "d4c_start" and (record.get("start") or {}).get("trunk_statistic") != statistic:
+                    bad.append("the D4c start's trunk statistic is not D4c's frozen choice")
+                if bad:
+                    problems.append(f"{tag}: " + "; ".join(bad))
+                    continue
+                names = list(record.get("identity_channel_names") or [])
+                cells[(p, s, d, a)] = dict(arr, record=record, names=names)
+            except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+                problems.append(f"{f"phase 1 retained {p} {s}/d{d}/{a}"}: unreadable ({type(error).__name__})")
         for a in fx4.PHASE1_NEW_ARMS:
-            record = inputs["new"].get(f"cell-{s}-d{d}-{a}.json")
-            if record is None:
-                continue
-            tag, bad = f"phase 1 {p} {s}/d{d}/{a}", []
-            if (record.get("schema"), record.get("seed"), record.get("donor"), record.get("arm"),
-                    record.get("population")) != (fx4.SCHEMA, s, d, a, p):
-                bad.append("identity fields")
-            if record.get("lod") != 2 or record.get("frames") != FRAMES or list(record.get("mapped_joints") or []) != list(MAPPED_JOINTS):
-                bad.append("lod, frames or mapped joints")
-            if record.get("phase1_decision_sha256") is not None:
-                bad.append("a Phase-1 cell carries a decision hash")
-            arr = _cell_arrays(record)
-            if arr is None:
-                bad.append("arrays short, missing or non-finite")
-            names = list(record.get("identity_channel_names") or [])
-            if not _names_ok(names):
-                bad.append("identity channel names")
-            elif canonical is None:
-                canonical = names
-            elif names != canonical:
-                bad.append("identity channel names differ between cells")
-            layout = record.get("truth_rest_full_vs_simplified_character_max_abs_cm")
-            if not isinstance(layout, (int, float)) or not math.isfinite(layout) or layout > LAYOUT_AGREEMENT_CM:
-                bad.append("the truth rest differs between the 204- and 178-parameter characters")
-            got = record.get("provenance") or {}
-            for field, value in prov.items():
-                if value is None or got.get(field) != value:
-                    bad.append(f"provenance {field}")
-            settings = record.get("settings") or {}
-            for field, value in SETTINGS.items():
-                if settings.get(field) != value:
-                    bad.append(f"settings {field}")
-            if inputs["new_files"].get(record.get("arrays")) != record.get("arrays_sha256") or not record.get("arrays_sha256"):
-                bad.append("arrays file hash")
-            start = record.get("start") or {}
-            if start.get("trunk_statistic") != statistic or start.get("kind") != fx4.CALIBRATING[a][0]:
-                bad.append("start kind or trunk statistic")
-            if arr is not None and not bad:
-                check_calibrating(record, arr, names, fx4.CALIBRATING[a][1], bad)
-            if bad:
-                problems.append(f"{tag}: " + "; ".join(bad))
-                continue
-            cells[(p, s, d, a)] = dict(arr, record=record, names=names)
+            try:
+                record = inputs["new"].get(f"cell-{s}-d{d}-{a}.json")
+                if record is None:
+                    continue
+                tag, bad = f"phase 1 {p} {s}/d{d}/{a}", []
+                if (record.get("schema"), record.get("seed"), record.get("donor"), record.get("arm"),
+                        record.get("population")) != (fx4.SCHEMA, s, d, a, p):
+                    bad.append("identity fields")
+                if record.get("lod") != 2 or record.get("frames") != FRAMES or list(record.get("mapped_joints") or []) != list(MAPPED_JOINTS):
+                    bad.append("lod, frames or mapped joints")
+                if record.get("phase1_decision_sha256") is not None:
+                    bad.append("a Phase-1 cell carries a decision hash")
+                arr = _cell_arrays(record)
+                if arr is None:
+                    bad.append("arrays short, missing or non-finite")
+                names = list(record.get("identity_channel_names") or [])
+                if not _names_ok(names):
+                    bad.append("identity channel names")
+                elif canonical is None:
+                    canonical = names
+                elif names != canonical:
+                    bad.append("identity channel names differ between cells")
+                layout = record.get("truth_rest_full_vs_simplified_character_max_abs_cm")
+                if not isinstance(layout, (int, float)) or not math.isfinite(layout) or layout > LAYOUT_AGREEMENT_CM:
+                    bad.append("the truth rest differs between the 204- and 178-parameter characters")
+                got = record.get("provenance") or {}
+                for field, value in prov.items():
+                    if value is None or got.get(field) != value:
+                        bad.append(f"provenance {field}")
+                settings = record.get("settings") or {}
+                for field, value in SETTINGS.items():
+                    if settings.get(field) != value:
+                        bad.append(f"settings {field}")
+                if inputs["new_files"].get(record.get("arrays")) != record.get("arrays_sha256") or not record.get("arrays_sha256"):
+                    bad.append("arrays file hash")
+                start = record.get("start") or {}
+                if start.get("trunk_statistic") != statistic or start.get("kind") != fx4.CALIBRATING[a][0]:
+                    bad.append("start kind or trunk statistic")
+                if start.get("held_identity") is not None:
+                    bad.append("start: a calibrating arm holds an identity")
+                if arr is not None and not bad:
+                    check_calibrating(record, arr, names, fx4.CALIBRATING[a][1], bad)
+                if bad:
+                    problems.append(f"{tag}: " + "; ".join(bad))
+                    continue
+                cells[(p, s, d, a)] = dict(arr, record=record, names=names)
+            except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+                problems.append(f"{f"phase 1 {p} {s}/d{d}/{a}"}: unreadable ({type(error).__name__})")
     # fixture identity and each arm's construction, verified
     for p, s, d in population:
-        group = {a: cells.get((p, s, d, a)) for a in fx4.PHASE1_ARMS}
-        if any(c is None for c in group.values()):
-            continue
-        tag = f"phase 1 fixture {p} {s}/d{d}"
-        names = group["warm"]["names"]
-        truth = group["exact_identity"]
-        if any(c["names"] != names for c in group.values()):
-            problems.append(f"{tag}: the arms' identity layouts differ")
-            continue
-        if any(not np.array_equal(c["truth_id"], truth["truth_id"]) or not np.array_equal(c["truth_rest"], truth["truth_rest"])
-               for c in group.values()):
-            problems.append(f"{tag}: the arms do not share one truth")
-            continue
-        sha = {(c["record"].get("fixture") or {}).get("truth_motion_sha256") for c in group.values()}
-        if len(sha) != 1 or None in sha:
-            problems.append(f"{tag}: the arms' truth motions differ")
-        if p == "d4c":
-            regenerated = fx4.fx.acceptance_draw(s, d, list(drawn["drawn_set"]), drawn["configured_limits"], CHANNELS)
-            if any(np.float32(truth["truth_id"][i]) != np.float32(regenerated.get(n, 0.0)) for i, n in enumerate(names)):
-                problems.append(f"{tag}: the truth is not the regenerated draw")
-        if not np.array_equal(truth["fitted_id"], truth["truth_id"]):
-            problems.append(f"{tag}: exact_identity is not the truth")
-        spine = names.index("scale_spine_length")
-        sd = group["spine_displaced"]
-        other = np.arange(len(names)) != spine
-        if (not np.array_equal(sd["fitted_id"][other], sd["truth_id"][other])
-                or abs(sd["fitted_id"][spine] - fx4.fx.displaced_spine(float(sd["truth_id"][spine]))) > 1e-6):
-            problems.append(f"{tag}: spine_displaced is not the truth with the spine moved")
-        # the landmark start: recomputed from the consumed landmarks (D4c's momentum-free rule), shared by D4c's
-        # one-pass cell and every new arm that starts from it
-        arr = inputs["arrays"].get(group["two_pass"]["record"].get("arrays"))
-        if arr is None:
-            problems.append(f"{tag}: the two-pass consumed landmarks are not readable")
-            continue
-        consumed, joint_names, truth_cm = arr["consumed_landmarks_z_up_m"], arr["consumed_joint_names"], arr["truth_mapped_cm"]
-        as_capture = np.stack([truth_cm[..., 0], -truth_cm[..., 2], truth_cm[..., 1]], axis=-1) / 100.0
-        columns = [joint_names.index(l) for l in d4cg.MAP]
-        if consumed.shape != (FRAMES, len(joint_names), 3) or np.nanmax(np.abs(consumed[:, columns] - as_capture)) * 100.0 > LANDMARK_AGREEMENT_CM:
-            problems.append(f"{tag}: the consumed landmarks are not the truth's joints")
-            continue
-        recomputed = d4cg.recompute_start(consumed, joint_names, drawn, statistic)
-        want = np.array([recomputed.get(n, 0.0) for n in names])
-        landmark = np.asarray(group["two_pass"]["record"]["start"]["landmark_start_identity"], float)
-        d4c_start = np.asarray((group["d4c_start"]["record"].get("start") or {}).get("start_identity") or [np.nan] * len(names), float)
-        if np.max(np.abs(landmark - want)) > START_AGREEMENT or not np.array_equal(landmark, d4c_start):
-            problems.append(f"{tag}: the landmark start is not the frozen rule's, or not D4c's one-pass start")
-        for a in fx4.PHASE1_NEW_ARMS:
-            if not np.array_equal(np.asarray(group[a]["record"]["start"]["landmark_start_identity"], float), landmark):
-                problems.append(f"{tag}/{a}: a different landmark start")
-        starts = {a: np.asarray(group[a]["record"]["start"]["start_identity"], float) for a in fx4.PHASE1_NEW_ARMS}
-        sw = names.index("scale_shoulder_width")
-        want_sw = landmark.copy()
-        want_sw[sw] = float(np.float32(truth["truth_id"][sw]))
-        if not np.array_equal(starts["two_pass"], landmark):
-            problems.append(f"{tag}: two_pass does not start from the landmark start")
-        if not np.array_equal(starts["warm"].astype(np.float32), truth["truth_id"].astype(np.float32)):
-            problems.append(f"{tag}: warm does not start from the truth")
-        if not np.array_equal(starts["sw_star"], want_sw):
-            problems.append(f"{tag}: sw_star is not the landmark start with only shoulder width at the truth")
-        # pass 1 of two-pass IS D4c's one pass (the same code at passes = 1, proved by the tripwire)
-        pass1 = np.asarray(group["two_pass"]["record"]["calibration_calls"][1]["identity_returned"], float)
-        if not np.array_equal(pass1, group["d4c_start"]["fitted_id"]):
-            problems.append(f"{tag}: two-pass's first pass is not D4c's one-pass identity")
+        try:
+            group = {a: cells.get((p, s, d, a)) for a in fx4.PHASE1_ARMS}
+            if any(c is None for c in group.values()):
+                continue
+            tag = f"phase 1 fixture {p} {s}/d{d}"
+            names = group["warm"]["names"]
+            truth = group["exact_identity"]
+            if any(c["names"] != names for c in group.values()):
+                problems.append(f"{tag}: the arms' identity layouts differ")
+                continue
+            if any(not np.array_equal(c["truth_id"], truth["truth_id"]) or not np.array_equal(c["truth_rest"], truth["truth_rest"])
+                   for c in group.values()):
+                problems.append(f"{tag}: the arms do not share one truth")
+                continue
+            sha = {(c["record"].get("fixture") or {}).get("truth_motion_sha256") for c in group.values()}
+            if len(sha) != 1 or None in sha:
+                problems.append(f"{tag}: the arms' truth motions differ")
+            if p == "d4c":
+                regenerated = fx4.fx.acceptance_draw(s, d, list(drawn["drawn_set"]), drawn["configured_limits"], CHANNELS)
+                if any(np.float32(truth["truth_id"][i]) != np.float32(regenerated.get(n, 0.0)) for i, n in enumerate(names)):
+                    problems.append(f"{tag}: the truth is not the regenerated draw")
+            if not np.array_equal(truth["fitted_id"], truth["truth_id"]):
+                problems.append(f"{tag}: exact_identity is not the truth")
+            spine = names.index("scale_spine_length")
+            sd = group["spine_displaced"]
+            other = np.arange(len(names)) != spine
+            if (not np.array_equal(sd["fitted_id"][other], sd["truth_id"][other])
+                    or abs(sd["fitted_id"][spine] - fx4.fx.displaced_spine(float(sd["truth_id"][spine]))) > 1e-6):
+                problems.append(f"{tag}: spine_displaced is not the truth with the spine moved")
+            # the landmark start: recomputed from the consumed landmarks (D4c's momentum-free rule), shared by D4c's
+            # one-pass cell and every new arm that starts from it
+            arr = inputs["arrays"].get(group["two_pass"]["record"].get("arrays"))
+            if arr is None:
+                problems.append(f"{tag}: the two-pass consumed landmarks are not readable")
+                continue
+            consumed, joint_names, truth_cm = arr["consumed_landmarks_z_up_m"], arr["consumed_joint_names"], arr["truth_mapped_cm"]
+            as_capture = np.stack([truth_cm[..., 0], -truth_cm[..., 2], truth_cm[..., 1]], axis=-1) / 100.0
+            columns = [joint_names.index(l) for l in d4cg.MAP]
+            if consumed.shape != (FRAMES, len(joint_names), 3) or np.nanmax(np.abs(consumed[:, columns] - as_capture)) * 100.0 > LANDMARK_AGREEMENT_CM:
+                problems.append(f"{tag}: the consumed landmarks are not the truth's joints")
+                continue
+            recomputed = d4cg.recompute_start(consumed, joint_names, drawn, statistic)
+            want = np.array([recomputed.get(n, 0.0) for n in names])
+            landmark = np.asarray(group["two_pass"]["record"]["start"]["landmark_start_identity"], float)
+            d4c_start = np.asarray((group["d4c_start"]["record"].get("start") or {}).get("start_identity") or [np.nan] * len(names), float)
+            if np.max(np.abs(landmark - want)) > START_AGREEMENT or not np.array_equal(landmark, d4c_start):
+                problems.append(f"{tag}: the landmark start is not the frozen rule's, or not D4c's one-pass start")
+            for a in fx4.PHASE1_NEW_ARMS:
+                if not np.array_equal(np.asarray(group[a]["record"]["start"]["landmark_start_identity"], float), landmark):
+                    problems.append(f"{tag}/{a}: a different landmark start")
+            starts = {a: np.asarray(group[a]["record"]["start"]["start_identity"], float) for a in fx4.PHASE1_NEW_ARMS}
+            sw = names.index("scale_shoulder_width")
+            want_sw = landmark.copy()
+            want_sw[sw] = float(np.float32(truth["truth_id"][sw]))
+            if not np.array_equal(starts["two_pass"], landmark):
+                problems.append(f"{tag}: two_pass does not start from the landmark start")
+            if not np.array_equal(starts["warm"].astype(np.float32), truth["truth_id"].astype(np.float32)):
+                problems.append(f"{tag}: warm does not start from the truth")
+            if not np.array_equal(starts["sw_star"], want_sw):
+                problems.append(f"{tag}: sw_star is not the landmark start with only shoulder width at the truth")
+            # pass 1 of two-pass IS D4c's one pass (the same code at passes = 1, proved by the tripwire)
+            pass1 = np.asarray(group["two_pass"]["record"]["calibration_calls"][1]["identity_returned"], float)
+            if not np.array_equal(pass1, group["d4c_start"]["fitted_id"]):
+                problems.append(f"{tag}: two-pass's first pass is not D4c's one-pass identity")
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+            problems.append(f"{f"phase 1 fixture {p} {s}/d{d}"}: unreadable ({type(error).__name__})")
     return cells
 
 
@@ -573,31 +584,34 @@ def phase1(inputs: dict) -> dict:
     population = phase1_population()
     rows = {}
     for p, s, d in population:
-        if not all((p, s, d, a) in cells for a in fx4.PHASE1_ARMS):
-            continue
-        floor = d4bg.floors_mm(cells[(p, s, d, "exact_identity")]["distance"])
-        names = cells[(p, s, d, "warm")]["names"]
-        truth = cells[(p, s, d, "exact_identity")]["truth_id"]
-        spine_truth = float(truth[names.index("scale_spine_length")])
-        row = {"population": p, "spine_draw": spine_truth, "spine_tercile": fx4.spine_tercile(spine_truth),
-               "floor_mm": {j: float(floor[i]) for i, j in enumerate(MAPPED_JOINTS)},
-               "segments": {a: d4bg.segment_rows(cells[(p, s, d, a)]["truth_rest"], cells[(p, s, d, a)]["fitted_rest"],
-                                                 floor, scored) for a in fx4.PHASE1_ARMS},
-               "pooled_mm": {a: d4bg.pooled_mm(cells[(p, s, d, a)]["distance"]) for a in fx4.PHASE1_ARMS}}
-        start_of = {"d4c_start": np.asarray(cells[(p, s, d, "d4c_start")]["record"]["start"]["start_identity"], float)}
-        for a in fx4.PHASE1_NEW_ARMS:
-            start_of[a] = np.asarray(cells[(p, s, d, a)]["record"]["start"]["start_identity"], float)
-        row["start_error"] = {a: {c: float(start_of[a][names.index(c)] - truth[names.index(c)]) for c in drawn}
-                              for a in start_of}
-        row["recovered_error"] = {a: {c: float(cells[(p, s, d, a)]["fitted_id"][names.index(c)] - truth[names.index(c)])
-                                      for c in drawn} for a in start_of}
-        row["per_stage"] = {a: call_readings(cells[(p, s, d, a)], floor, scored) for a in fx4.PHASE1_NEW_ARMS}
-        row["cap_exhaustion"] = {a: [{k: c.get(k) for k in ("stage", "solves", "stopped_below_the_cap",
-                                                             "stopped_at_the_configured_cap",
-                                                             "stopped_above_the_configured_cap", "max_index")}
-                                     for c in cells[(p, s, d, a)]["record"]["calibration_iterations"]["per_call"]]
-                                 for a in fx4.PHASE1_NEW_ARMS}
-        rows[f"{p}/{s}_d{d}"] = row
+        try:
+            if not all((p, s, d, a) in cells for a in fx4.PHASE1_ARMS):
+                continue
+            floor = d4bg.floors_mm(cells[(p, s, d, "exact_identity")]["distance"])
+            names = cells[(p, s, d, "warm")]["names"]
+            truth = cells[(p, s, d, "exact_identity")]["truth_id"]
+            spine_truth = float(truth[names.index("scale_spine_length")])
+            row = {"population": p, "spine_draw": spine_truth, "spine_tercile": fx4.spine_tercile(spine_truth),
+                   "floor_mm": {j: float(floor[i]) for i, j in enumerate(MAPPED_JOINTS)},
+                   "segments": {a: d4bg.segment_rows(cells[(p, s, d, a)]["truth_rest"], cells[(p, s, d, a)]["fitted_rest"],
+                                                     floor, scored) for a in fx4.PHASE1_ARMS},
+                   "pooled_mm": {a: d4bg.pooled_mm(cells[(p, s, d, a)]["distance"]) for a in fx4.PHASE1_ARMS}}
+            start_of = {"d4c_start": np.asarray(cells[(p, s, d, "d4c_start")]["record"]["start"]["start_identity"], float)}
+            for a in fx4.PHASE1_NEW_ARMS:
+                start_of[a] = np.asarray(cells[(p, s, d, a)]["record"]["start"]["start_identity"], float)
+            row["start_error"] = {a: {c: float(start_of[a][names.index(c)] - truth[names.index(c)]) for c in drawn}
+                                  for a in start_of}
+            row["recovered_error"] = {a: {c: float(cells[(p, s, d, a)]["fitted_id"][names.index(c)] - truth[names.index(c)])
+                                          for c in drawn} for a in start_of}
+            row["per_stage"] = {a: call_readings(cells[(p, s, d, a)], floor, scored) for a in fx4.PHASE1_NEW_ARMS}
+            row["cap_exhaustion"] = {a: [{k: c.get(k) for k in ("stage", "solves", "stopped_below_the_cap",
+                                                                 "stopped_at_the_configured_cap",
+                                                                 "stopped_above_the_configured_cap", "max_index")}
+                                         for c in cells[(p, s, d, a)]["record"]["calibration_iterations"]["per_call"]]
+                                     for a in fx4.PHASE1_NEW_ARMS}
+            rows[f"{p}/{s}_d{d}"] = row
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+            problems.append(f"{f"phase 1 rows {p}/{s}_d{d}"}: unreadable ({type(error).__name__})")
     complete = len(rows) == len(population) and not problems
 
     def ratio(row: dict, arm: str, segment: str = "trunk") -> float:
@@ -743,7 +757,39 @@ def load_phase2(out_dir: Path = OUT_DIR) -> dict:
                           "D4c_mesh": sha256_file(ROOT / "artifacts/compare/d4c-start/work-delivery/delivered-mesh.npz"),
                           **{f"delivery/subject-{s:02d}.glb": sha256_file(delivery / f"subject-{s:02d}.glb") for s in (0, 1)}}
     inputs["delivery"] = load_delivery(delivery, out_dir / "hygiene")
+    # REPORTED, bound by elimination: D4c's one-pass fit of the same consumed bytes (its retained fit report, bound
+    # by content to D4c's record), against this delivery's
+    d4c_report = ROOT / "artifacts/compare/d4c-start/delivery/fit-report.json"
+    d4c_record = ROOT / "docs/reviews/body-model-start-records/real-take/fit-report.json"
+    inputs["one_pass_reference"] = {
+        "d4c_fit_report": json.loads(d4c_report.read_text(encoding="utf-8")) if d4c_report.is_file() else None,
+        "d4c_fit_report_is_d4c_s_record": sha256_file(d4c_report) == sha256_file(d4c_record) and d4c_report.is_file(),
+        "d4d_fit_report": json.loads((delivery / "fit-report.json").read_text(encoding="utf-8"))
+        if (delivery / "fit-report.json").is_file() else None,
+        "consumed_sha256_d4c": {s: sha256_file(ROOT / f"artifacts/compare/d4c-start/delivery/converter-inputs/subject-{s[-2:]}-consumed.npz")
+                                for s in SUBJECTS},
+        "consumed_sha256_d4d": {s: sha256_file(delivery / f"converter-inputs/subject-{s[-2:]}-consumed.npz") for s in SUBJECTS}}
     return inputs
+
+
+def not_the_one_pass_fit(ref: dict | None) -> dict:
+    """REPORTED (never banded): the delivery's `passes: 2` label, bound by elimination. The consumed arrays are
+    byte-identical to D4c's delivery's, D4c's delivery IS the one-pass fit of those bytes (the tripwire), and the fit
+    is deterministic -- so an identity that differs from D4c's cannot have come from the one-pass path."""
+    ref = ref or {}
+    rows = {}
+    for s in SUBJECTS:
+        try:
+            a = ref["d4c_fit_report"]["subjects"][s]["subjects"][s]["identity_channels"]
+            b = ref["d4d_fit_report"]["subjects"][s]["subjects"][s]["identity_channels"]
+        except (KeyError, TypeError):
+            rows[s] = None
+            continue
+        rows[s] = {"same_consumed_bytes": ref["consumed_sha256_d4c"].get(s) == ref["consumed_sha256_d4d"].get(s)
+                   and ref["consumed_sha256_d4d"].get(s) is not None,
+                   "identity_differs_from_the_one_pass_fit": a != b,
+                   "spine_one_pass": a.get("scale_spine_length"), "spine_delivered": b.get("scale_spine_length")}
+    return {"d4c_fit_report_is_d4c_s_record": bool(ref.get("d4c_fit_report_is_d4c_s_record")), "rows": rows}
 
 
 def load_delivery(delivery: Path, rig_build: Path) -> dict:
@@ -927,123 +973,141 @@ def check_phase2(inputs: dict, phase1_inputs: dict, decision_sha: str, problems:
     cells, canonical = {}, None
     for s, d in population:
         for a in arms:
-            record = inputs["cells"].get(f"cell-{s}-d{d}-{a}.json")
-            if record is None:
-                continue
-            tag, bad = f"phase 2 {s}/d{d}/{a}", []
-            if (record.get("schema"), record.get("seed"), record.get("donor"), record.get("arm"),
-                    record.get("population")) != (fx4.SCHEMA, s, d, a, "phase2"):
-                bad.append("identity fields")
-            if record.get("lod") != 2 or record.get("frames") != FRAMES or list(record.get("mapped_joints") or []) != list(MAPPED_JOINTS):
-                bad.append("lod, frames or mapped joints")
-            if record.get("phase1_decision_sha256") != decision_sha or not decision_sha:
-                bad.append("the cell does not carry the committed Phase-1 decision's sha256")
-            arr = _cell_arrays(record)
-            if arr is None:
-                bad.append("arrays short, missing or non-finite")
-            names = list(record.get("identity_channel_names") or [])
-            if not _names_ok(names):
-                bad.append("identity channel names")
-            elif canonical is None:
-                canonical = names
-            elif names != canonical:
-                bad.append("identity channel names differ between cells")
-            layout = record.get("truth_rest_full_vs_simplified_character_max_abs_cm")
-            if not isinstance(layout, (int, float)) or not math.isfinite(layout) or layout > LAYOUT_AGREEMENT_CM:
-                bad.append("the truth rest differs between the 204- and 178-parameter characters")
-            got = record.get("provenance") or {}
-            for field, value in prov.items():
-                if value is None or got.get(field) != value:
-                    bad.append(f"provenance {field}")
-            settings = record.get("settings") or {}
-            for field, value in SETTINGS.items():
-                if settings.get(field) != value:
-                    bad.append(f"settings {field}")
-            if inputs["files"].get(record.get("arrays")) != record.get("arrays_sha256") or not record.get("arrays_sha256"):
-                bad.append("arrays file hash")
-            start = record.get("start") or {}
-            if start.get("trunk_statistic") != statistic:
-                bad.append("start: trunk statistic")
-            if a in fx4.CALIBRATING:
-                if start.get("kind") != fx4.CALIBRATING[a][0]:
-                    bad.append("start kind")
-                if arr is not None and not bad:
-                    check_calibrating(record, arr, names, fx4.CALIBRATING[a][1], bad)
-            else:
-                if record.get("calibrate_markers_calls") != 0 or (settings.get("passes"), settings.get(
-                        "calibration_debug_captured")) != (0, False) or record.get("calibration_calls"):
-                    bad.append("a non-calibrating arm calibrated")
-            if a != "spine_displaced" and a != "sw_star" and record.get("arm_note") != {}:
-                bad.append("arm_note on an arm that carries none")
-            if a == "candidate":
-                for key, sha_key in (("glb", "glb_sha256"), ("track", "track_sha256")):
-                    if not record.get(key) or inputs["files"].get(record.get(key)) != record.get(sha_key):
-                        bad.append(f"{key} file hash")
-            if bad:
-                problems.append(f"{tag}: " + "; ".join(bad))
-                continue
-            cells[(s, d, a)] = dict(arr, record=record, names=names)
+            try:
+                record = inputs["cells"].get(f"cell-{s}-d{d}-{a}.json")
+                if record is None:
+                    continue
+                tag, bad = f"phase 2 {s}/d{d}/{a}", []
+                if (record.get("schema"), record.get("seed"), record.get("donor"), record.get("arm"),
+                        record.get("population")) != (fx4.SCHEMA, s, d, a, "phase2"):
+                    bad.append("identity fields")
+                if record.get("lod") != 2 or record.get("frames") != FRAMES or list(record.get("mapped_joints") or []) != list(MAPPED_JOINTS):
+                    bad.append("lod, frames or mapped joints")
+                if record.get("phase1_decision_sha256") != decision_sha or not decision_sha:
+                    bad.append("the cell does not carry the committed Phase-1 decision's sha256")
+                arr = _cell_arrays(record)
+                if arr is None:
+                    bad.append("arrays short, missing or non-finite")
+                names = list(record.get("identity_channel_names") or [])
+                if not _names_ok(names):
+                    bad.append("identity channel names")
+                elif canonical is None:
+                    canonical = names
+                elif names != canonical:
+                    bad.append("identity channel names differ between cells")
+                layout = record.get("truth_rest_full_vs_simplified_character_max_abs_cm")
+                if not isinstance(layout, (int, float)) or not math.isfinite(layout) or layout > LAYOUT_AGREEMENT_CM:
+                    bad.append("the truth rest differs between the 204- and 178-parameter characters")
+                got = record.get("provenance") or {}
+                for field, value in prov.items():
+                    if value is None or got.get(field) != value:
+                        bad.append(f"provenance {field}")
+                settings = record.get("settings") or {}
+                for field, value in SETTINGS.items():
+                    if settings.get(field) != value:
+                        bad.append(f"settings {field}")
+                if inputs["files"].get(record.get("arrays")) != record.get("arrays_sha256") or not record.get("arrays_sha256"):
+                    bad.append("arrays file hash")
+                start = record.get("start") or {}
+                if start.get("trunk_statistic") != statistic:
+                    bad.append("start: trunk statistic")
+                if a in fx4.CALIBRATING:
+                    if start.get("kind") != fx4.CALIBRATING[a][0]:
+                        bad.append("start kind")
+                    if arr is not None and not bad:
+                        check_calibrating(record, arr, names, fx4.CALIBRATING[a][1], bad)
+                else:
+                    if record.get("calibrate_markers_calls") != 0 or (settings.get("passes"), settings.get(
+                            "calibration_debug_captured")) != (0, False) or record.get("calibration_calls"):
+                        bad.append("a non-calibrating arm calibrated")
+                    held = d4bg.finite_array(start.get("held_identity"), (IDENTITY_CHANNELS,))
+                    want_kind = "landmark_held" if a == "init_only" else None
+                    if start.get("kind") != want_kind or start.get("start_identity") is not None:
+                        bad.append("start: kind or a start on an arm that does not calibrate")
+                    if a == "mean_body":
+                        if start.get("held_identity") is not None:
+                            bad.append("start: the mean body holds an identity")
+                    elif held is None or arr is None or not np.array_equal(held.astype(np.float32),
+                                                                         arr["fitted_id"].astype(np.float32)):
+                        bad.append("start: the held identity is not the identity the arm fitted with")
+                if a in fx4.CALIBRATING and start.get("held_identity") is not None:
+                    bad.append("start: a calibrating arm holds an identity")
+                if a != "spine_displaced" and a != "sw_star" and record.get("arm_note") != {}:
+                    bad.append("arm_note on an arm that carries none")
+                if a == "candidate":
+                    for key, sha_key in (("glb", "glb_sha256"), ("track", "track_sha256")):
+                        if not record.get(key) or inputs["files"].get(record.get(key)) != record.get(sha_key):
+                            bad.append(f"{key} file hash")
+                if bad:
+                    problems.append(f"{tag}: " + "; ".join(bad))
+                    continue
+                cells[(s, d, a)] = dict(arr, record=record, names=names)
+            except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+                problems.append(f"{f"phase 2 {s}/d{d}/{a}"}: unreadable ({type(error).__name__})")
     truths, clamps = {}, {}
     for s, d in population:
-        group = {a: cells.get((s, d, a)) for a in arms}
-        if any(c is None for c in group.values()):
-            continue
-        tag = f"phase 2 fixture {s}/d{d}"
-        first = group["exact_identity"]
-        names = first["names"]
-        fixture = first["record"].get("fixture") or {}
-        if any(c["record"].get("fixture") != fixture or not np.array_equal(c["truth_id"], first["truth_id"])
-               or not np.array_equal(c["truth_rest"], first["truth_rest"]) for c in group.values()):
-            problems.append(f"{tag}: the arms do not share one truth")
-            continue
-        if fixture.get("generator") != f"numpy default_rng([{s}, {d}]) (seeded by the pair)" or list(
-                fixture.get("drawn_channels") or []) != list(drawn["drawn_set"]):
-            problems.append(f"{tag}: generator or drawn channels")
-        regenerated = fx4.fx.acceptance_draw(s, d, list(drawn["drawn_set"]), drawn["configured_limits"], CHANNELS)
-        if any(np.float32(first["truth_id"][i]) != np.float32(regenerated.get(n, 0.0)) for i, n in enumerate(names)):
-            problems.append(f"{tag}: the truth is not the regenerated draw")
-        clamps.setdefault(d, set()).add(fixture.get("clamped_parameter_frames"))
-        truths[(s, d)] = first["truth_id"]
-        if not np.array_equal(group["exact_identity"]["fitted_id"], first["truth_id"]):
-            problems.append(f"{tag}: exact_identity is not the truth")
-        if np.any(group["mean_body"]["fitted_id"] != 0.0):
-            problems.append(f"{tag}: mean_body is not zero")
-        spine = names.index("scale_spine_length")
-        sd = group["spine_displaced"]
-        other = np.arange(len(names)) != spine
-        if (not np.array_equal(sd["fitted_id"][other], sd["truth_id"][other])
-                or abs(sd["fitted_id"][spine] - fx4.fx.displaced_spine(float(sd["truth_id"][spine]))) > 1e-6):
-            problems.append(f"{tag}: spine_displaced is not the truth with the spine moved")
-        arr = inputs["arrays"].get(group["candidate"]["record"].get("arrays"))
-        if arr is None:
-            problems.append(f"{tag}: the consumed landmarks are not readable")
-            continue
-        consumed, joint_names, truth_cm = arr["consumed_landmarks_z_up_m"], arr["consumed_joint_names"], arr["truth_mapped_cm"]
-        as_capture = np.stack([truth_cm[..., 0], -truth_cm[..., 2], truth_cm[..., 1]], axis=-1) / 100.0
-        columns = [joint_names.index(l) for l in d4cg.MAP]
-        if consumed.shape != (FRAMES, len(joint_names), 3) or np.nanmax(np.abs(consumed[:, columns] - as_capture)) * 100.0 > LANDMARK_AGREEMENT_CM:
-            problems.append(f"{tag}: the consumed landmarks are not the truth's joints")
-            continue
-        recomputed = d4cg.recompute_start(consumed, joint_names, drawn, statistic)
-        want = np.array([recomputed.get(n, 0.0) for n in names])
-        landmark = np.asarray(group["candidate"]["record"]["start"]["landmark_start_identity"], float)
-        if np.max(np.abs(landmark - want)) > START_AGREEMENT:
-            problems.append(f"{tag}: the landmark start is not the frozen rule's")
-        for a in arms:
-            if not np.array_equal(np.asarray(group[a]["record"]["start"]["landmark_start_identity"], float), landmark):
-                problems.append(f"{tag}/{a}: a different landmark start")
-        for a in ("candidate", "one_pass"):
-            if not np.array_equal(np.asarray(group[a]["record"]["start"]["start_identity"], float), landmark):
-                problems.append(f"{tag}/{a}: does not start from the landmark start")
-        if group["legacy"]["record"]["start"].get("start_identity") is not None:
-            problems.append(f"{tag}/legacy: not the zero start")
-        held = np.asarray(group["init_only"]["record"]["start"].get("held_identity") or [], float)
-        if held.shape != landmark.shape or not np.array_equal(held, landmark) or not np.array_equal(
-                group["init_only"]["fitted_id"].astype(np.float32), landmark.astype(np.float32)):
-            problems.append(f"{tag}/init_only: not the landmark start held")
-        pass1 = np.asarray(group["candidate"]["record"]["calibration_calls"][1]["identity_returned"], float)
-        if not np.array_equal(pass1, group["one_pass"]["fitted_id"]):
-            problems.append(f"{tag}: the candidate's first pass is not the one-pass arm's identity")
+        try:
+            group = {a: cells.get((s, d, a)) for a in arms}
+            if any(c is None for c in group.values()):
+                continue
+            tag = f"phase 2 fixture {s}/d{d}"
+            first = group["exact_identity"]
+            names = first["names"]
+            fixture = first["record"].get("fixture") or {}
+            if any(c["record"].get("fixture") != fixture or not np.array_equal(c["truth_id"], first["truth_id"])
+                   or not np.array_equal(c["truth_rest"], first["truth_rest"]) for c in group.values()):
+                problems.append(f"{tag}: the arms do not share one truth")
+                continue
+            if fixture.get("generator") != f"numpy default_rng([{s}, {d}]) (seeded by the pair)" or list(
+                    fixture.get("drawn_channels") or []) != list(drawn["drawn_set"]):
+                problems.append(f"{tag}: generator or drawn channels")
+            regenerated = fx4.fx.acceptance_draw(s, d, list(drawn["drawn_set"]), drawn["configured_limits"], CHANNELS)
+            if any(np.float32(first["truth_id"][i]) != np.float32(regenerated.get(n, 0.0)) for i, n in enumerate(names)):
+                problems.append(f"{tag}: the truth is not the regenerated draw")
+            clamps.setdefault(d, set()).add(fixture.get("clamped_parameter_frames"))
+            truths[(s, d)] = first["truth_id"]
+            if not np.array_equal(group["exact_identity"]["fitted_id"], first["truth_id"]):
+                problems.append(f"{tag}: exact_identity is not the truth")
+            if np.any(group["mean_body"]["fitted_id"] != 0.0):
+                problems.append(f"{tag}: mean_body is not zero")
+            spine = names.index("scale_spine_length")
+            sd = group["spine_displaced"]
+            other = np.arange(len(names)) != spine
+            if (not np.array_equal(sd["fitted_id"][other], sd["truth_id"][other])
+                    or abs(sd["fitted_id"][spine] - fx4.fx.displaced_spine(float(sd["truth_id"][spine]))) > 1e-6):
+                problems.append(f"{tag}: spine_displaced is not the truth with the spine moved")
+            arr = inputs["arrays"].get(group["candidate"]["record"].get("arrays"))
+            if arr is None:
+                problems.append(f"{tag}: the consumed landmarks are not readable")
+                continue
+            consumed, joint_names, truth_cm = arr["consumed_landmarks_z_up_m"], arr["consumed_joint_names"], arr["truth_mapped_cm"]
+            as_capture = np.stack([truth_cm[..., 0], -truth_cm[..., 2], truth_cm[..., 1]], axis=-1) / 100.0
+            columns = [joint_names.index(l) for l in d4cg.MAP]
+            if consumed.shape != (FRAMES, len(joint_names), 3) or np.nanmax(np.abs(consumed[:, columns] - as_capture)) * 100.0 > LANDMARK_AGREEMENT_CM:
+                problems.append(f"{tag}: the consumed landmarks are not the truth's joints")
+                continue
+            recomputed = d4cg.recompute_start(consumed, joint_names, drawn, statistic)
+            want = np.array([recomputed.get(n, 0.0) for n in names])
+            landmark = np.asarray(group["candidate"]["record"]["start"]["landmark_start_identity"], float)
+            if np.max(np.abs(landmark - want)) > START_AGREEMENT:
+                problems.append(f"{tag}: the landmark start is not the frozen rule's")
+            for a in arms:
+                if not np.array_equal(np.asarray(group[a]["record"]["start"]["landmark_start_identity"], float), landmark):
+                    problems.append(f"{tag}/{a}: a different landmark start")
+            for a in ("candidate", "one_pass"):
+                if not np.array_equal(np.asarray(group[a]["record"]["start"]["start_identity"], float), landmark):
+                    problems.append(f"{tag}/{a}: does not start from the landmark start")
+            if group["legacy"]["record"]["start"].get("start_identity") is not None:
+                problems.append(f"{tag}/legacy: not the zero start")
+            held = np.asarray(group["init_only"]["record"]["start"].get("held_identity") or [], float)
+            if held.shape != landmark.shape or not np.array_equal(held, landmark) or not np.array_equal(
+                    group["init_only"]["fitted_id"].astype(np.float32), landmark.astype(np.float32)):
+                problems.append(f"{tag}/init_only: not the landmark start held")
+            pass1 = np.asarray(group["candidate"]["record"]["calibration_calls"][1]["identity_returned"], float)
+            if not np.array_equal(pass1, group["one_pass"]["fitted_id"]):
+                problems.append(f"{tag}: the candidate's first pass is not the one-pass arm's identity")
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+            problems.append(f"{f"phase 2 fixture {s}/d{d}"}: unreadable ({type(error).__name__})")
     for d, counts in clamps.items():
         if len(counts) != 1 or not all(isinstance(c, int) and c > 0 for c in counts):
             problems.append(f"phase 2 donor {d}: the fixture clamp is not one donor-determined count")
@@ -1100,22 +1164,25 @@ def build(phase1_inputs: dict, phase2_inputs: dict | None, hygiene_inputs: dict 
         cells = check_phase2(phase2_inputs, phase1_inputs, decision_sha, problems)
         scored = pre0["scored"]
         for s, d in fx4.POPULATIONS["phase2"]:
-            if not all((s, d, a) in cells for a in fx4.PHASE2_ARMS):
-                continue
-            floor = d4bg.floors_mm(cells[(s, d, "exact_identity")]["distance"])
-            names = cells[(s, d, "candidate")]["names"]
-            spine = float(cells[(s, d, "candidate")]["truth_id"][names.index("scale_spine_length")])
-            rows[f"{s}_d{d}"] = {
-                "spine_draw": spine, "spine_tercile": fx4.spine_tercile(spine),
-                "floor_mm": {j: float(floor[i]) for i, j in enumerate(MAPPED_JOINTS)},
-                "pooled_mm": {a: d4bg.pooled_mm(cells[(s, d, a)]["distance"]) for a in fx4.PHASE2_ARMS},
-                "segments": {a: d4bg.segment_rows(cells[(s, d, a)]["truth_rest"], cells[(s, d, a)]["fitted_rest"], floor, scored)
-                             for a in fx4.PHASE2_ARMS},
-                "identity_error": {a: {n: float(cells[(s, d, a)]["fitted_id"][i] - cells[(s, d, a)]["truth_id"][i])
-                                       for i, n in enumerate(names) if n in pre0["drawn_set"]} for a in fx4.PHASE2_ARMS},
-                "per_stage": {a: call_readings(cells[(s, d, a)], floor, scored) for a in ("candidate", "one_pass", "legacy")},
-                "cap_exhaustion": {a: cells[(s, d, a)]["record"]["calibration_iterations"]["per_call"]
-                                   for a in ("candidate", "one_pass", "legacy")}}
+            try:
+                if not all((s, d, a) in cells for a in fx4.PHASE2_ARMS):
+                    continue
+                floor = d4bg.floors_mm(cells[(s, d, "exact_identity")]["distance"])
+                names = cells[(s, d, "candidate")]["names"]
+                spine = float(cells[(s, d, "candidate")]["truth_id"][names.index("scale_spine_length")])
+                rows[f"{s}_d{d}"] = {
+                    "spine_draw": spine, "spine_tercile": fx4.spine_tercile(spine),
+                    "floor_mm": {j: float(floor[i]) for i, j in enumerate(MAPPED_JOINTS)},
+                    "pooled_mm": {a: d4bg.pooled_mm(cells[(s, d, a)]["distance"]) for a in fx4.PHASE2_ARMS},
+                    "segments": {a: d4bg.segment_rows(cells[(s, d, a)]["truth_rest"], cells[(s, d, a)]["fitted_rest"], floor, scored)
+                                 for a in fx4.PHASE2_ARMS},
+                    "identity_error": {a: {n: float(cells[(s, d, a)]["fitted_id"][i] - cells[(s, d, a)]["truth_id"][i])
+                                           for i, n in enumerate(names) if n in pre0["drawn_set"]} for a in fx4.PHASE2_ARMS},
+                    "per_stage": {a: call_readings(cells[(s, d, a)], floor, scored) for a in ("candidate", "one_pass", "legacy")},
+                    "cap_exhaustion": {a: cells[(s, d, a)]["record"]["calibration_iterations"]["per_call"]
+                                       for a in ("candidate", "one_pass", "legacy")}}
+            except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+                problems.append(f"{f"phase 2 rows {s}_d{d}"}: unreadable ({type(error).__name__})")
     population = fx4.POPULATIONS["phase2"]
     population_ok = bool(rule_two_pass and decision_ok and not problems and len(rows) == len(population))
 
@@ -1127,19 +1194,22 @@ def build(phase1_inputs: dict, phase2_inputs: dict | None, hygiene_inputs: dict 
     if population_ok:
         pairs = (phase2_inputs.get("closure") or {}).get("pairs") or {}
         for s, d in population:
-            tag, record = f"{s}_d{d}", cells[(s, d, "candidate")]["record"]
-            pair = pairs.get(tag) or {}
-            ok = (pair.get("glb_sha256") == record.get("glb_sha256") == phase2_inputs["files"].get(record.get("glb"))
-                  and pair.get("track_sha256") == record.get("track_sha256") == phase2_inputs["files"].get(record.get("track"))
-                  and phase2_inputs["files"].get(record.get("glb")) is not None
-                  and pair.get("frames_in_glb") == FRAMES and pair.get("frames_in_track") == FRAMES
-                  and pair.get("joints_missing_from_the_glb") == [] and (pair.get("joints_compared") or 0) >= 127)
-            value = pair.get("max_abs_m")
-            finite = isinstance(value, (int, float)) and math.isfinite(value)
-            closure_rows[tag] = {"max_abs_m": value, "bound_by_content": ok,
-                                 "within": bool(ok and finite and value <= CLOSURE_BAND_M)}
-            if not ok:
-                closure_problems.append(f"closure {tag}: not this cell's GLB and track by content, or not a full read")
+            try:
+                tag, record = f"{s}_d{d}", cells[(s, d, "candidate")]["record"]
+                pair = pairs.get(tag) or {}
+                ok = (pair.get("glb_sha256") == record.get("glb_sha256") == phase2_inputs["files"].get(record.get("glb"))
+                      and pair.get("track_sha256") == record.get("track_sha256") == phase2_inputs["files"].get(record.get("track"))
+                      and phase2_inputs["files"].get(record.get("glb")) is not None
+                      and pair.get("frames_in_glb") == FRAMES and pair.get("frames_in_track") == FRAMES
+                      and pair.get("joints_missing_from_the_glb") == [] and (pair.get("joints_compared") or 0) >= 127)
+                value = pair.get("max_abs_m")
+                finite = isinstance(value, (int, float)) and math.isfinite(value)
+                closure_rows[tag] = {"max_abs_m": value, "bound_by_content": ok,
+                                     "within": bool(ok and finite and value <= CLOSURE_BAND_M)}
+                if not ok:
+                    closure_problems.append(f"closure {tag}: not this cell's GLB and track by content, or not a full read")
+            except (ValueError, TypeError, KeyError, IndexError, AttributeError) as error:
+                closure_problems.append(f"{f"closure {s}_d{d}"}: unreadable ({type(error).__name__})")
     validity = population_ok and all(v["pooled_mm"]["exact_identity"] <= VALIDITY_CEILING_MM for v in rows.values())
     l_fixture = {k: d4bg.l_passes(v["segments"]["candidate"]) for k, v in rows.items()}
     mean_misses = {k: d4bg.misses_l(v["segments"]["mean_body"]) for k, v in rows.items()}
@@ -1229,6 +1299,8 @@ def build(phase1_inputs: dict, phase2_inputs: dict | None, hygiene_inputs: dict 
             "identity_error": {k: v["identity_error"] for k, v in rows.items()},
             "B1_REPORTED_D4d_minus_D4c": b1.get("REPORTED_D4d_minus_D4c"),
             "the_delivery_is_the_combined_fitter_s": binding,
+            "REPORTED_the_delivery_is_not_the_one_pass_fit": not_the_one_pass_fit(
+                (phase2_inputs or {}).get("one_pass_reference")),
         })
     worst_candidate = max((ratio(v, "candidate") for v in rows.values()), default=None)
     worst_row = max(rows.items(), key=lambda kv: ratio(kv[1], "candidate"))[0] if rows else None
