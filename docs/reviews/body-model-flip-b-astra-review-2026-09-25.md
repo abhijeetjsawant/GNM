@@ -1,0 +1,37 @@
+# Astra GPT6 card review of D4i-b (2026-09-25), one round at MEDIUM effort. Verdict: one blocker, adopted; then dispatchable
+
+Verified against the source before adoption: `tools/fitter/mhr_delivery.py` builds ASSETS from its own file's resolved
+parent (`ROOT = Path(__file__).resolve().parents[2]`), then appends `.cache/mhr/assets` unresolved.
+`d4_silhouette_paired.py` writes rounded medians and stores no per-cell rows.
+
+| # | finding | change |
+|---|---|---|
+| blocker | row equality with no D4d reference rows: the reconstruction must be registered | ADOPTED. The reconstruction from D4d's hash-bound inputs through unchanged scoring with additive emission must reproduce D4d's existing reports exactly (else INVALID). Frozen: the row identity (arm, subject, camera, frame), float64 precision, nulls with an exclusion reason, full coverage. Candidate rows are sha-bound; must-fail (v) carries to the rows |
+| 1b | substantively met; the path spelling can still differ (a symlinked fitter, a different checkout spelling, a trailing slash) and must stay FAIL | stated in the card, with a spelling check before execution |
+| 2 | FULL rollback keeps its inherited meaning (ladder.py, republished pages, recorded FAIL); demonstrate the git revert in a disposable checkout too; "anything else" includes unreadable reports and execution failures | adopted |
+| 3 | the population and roster repairs discharge; row equality supplements summary equality | adopted |
+| debt | the gate itself must stop trusting `held` (the pinned `d4i_flip_gate.py:248–259`); the expected population comes from the registration; the historical OBSERVED classes keep their original producer provenance | adopted into the card |
+
+---
+
+**Not dispatchable yet: one blocker.** The remaining requirements are adequate registration commitments; their implementation belongs in the single merge review.
+
+1. **Freeze how the missing D4d reference rows will be reconstructed.** The card requires row equality but specifies only that B1 and silhouette will preserve a new output. D4d has no saved per-cell reference: the prior record explicitly says neither instrument stores those rows, and B1 rounds its reported medians. [Card:16](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:16), [record:284](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-2026-09-25.md:284), [B1:139](/Users/abhi_macbook/Projects/apps/autoanim/tools/compare/d4_silhouette_paired.py:139).
+
+   Before dispatch, register reconstruction from D4d’s hash-bound delivery and scoring inputs using unchanged scoring logic with additive row emission. Freeze row identities—arm, subject, camera, frame—precision, exclusions/nonfinite representation, and complete population coverage. Require the reconstructed reference to reproduce D4d’s existing reports exactly, and bind candidate rows to the fresh candidate run. Comparing two newly written sidecars without that provenance could certify copied or constant rows.
+
+**The rest is debt and merge-review verification, not additional dispatch blockers:**
+
+- **Item 1b: yes, substantively met.** The exact files are inherited, the pointer and independently obtained expected string are specified, whole-structure equality is required, fresh execution is required, and main uses the same comparator. Key-order equality is an additional restriction, not a relaxation. [Prior terms:26](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-astra-merge-review-2026-09-25.md:26), [card:2](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:2).
+
+  Independence does **not** guarantee matching path spelling. The fitter resolves its **source-file path**, then appends `.cache/mhr/assets`; it does not resolve the appended asset path. A symlinked `.cache` therefore does not itself change the written string. A symlinked fitter or differing checkout spelling can produce disagreement; an added trailing slash also fails literal equality. Such disagreement must remain FAIL, without post-result normalization. Verify the spelling before execution. [Fitter:62](/Users/abhi_macbook/Projects/apps/autoanim/tools/fitter/mhr_delivery.py:62).
+
+- **Item 2: adequate as a commitment, provided “FULL” retains its inherited meaning.** Besides restoring delivery bytes, code, roster and `post_merge.sh`, rollback must restore `ladder.py`, **republish the pages and record the step as FAIL**. Those last two obligations remain expressly inherited despite their omission from the shortened script description. [Inheritance:1](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:1), [original rollback:132](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-2026-09-25.md:132).
+
+  Demonstrate actual Git rollback in a disposable checkout as well as delivery restoration on a scratch tree. Copying files alone cannot demonstrate the promised reverts. Record the migration commits and merge-parent treatment, preserve failure evidence, and verify no MHR-only files survive restoration. The existing “anything else” requirement includes unreadable reports and execution failures, not merely the four injected mismatches. [Card:11](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:11).
+
+- **Item 3: the population and roster repairs discharge their registration defects; the row repair does so after blocker 1.** “Existing reports unchanged” is compatible with exact reproduction: add sidecars while retaining every existing numerical result, applying only the frozen arm-name map. Row equality supplements summary equality; it must not replace it. [Card:4](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:4), [card:14](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:14).
+
+- **Constants and provenance:** changing a sidecar tests the comparator, not the scoring producer. Carry must-fail v through to the emitted rows: perturbing mesh motion must change the applicable rows. Expected population must come from the frozen registration, not merely agree with another mutable report field. Also remove the pinned gate’s reliance on `held` at `d4i_flip_gate.py:248–259`; changing only the fuzz mutation leaves that trust hole intact. The inherited underlying-evidence requirement already demands this repair. [Positive control:121](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-2026-09-25.md:121), [card:17](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:17).
+
+- **Ordering:** preserve historical OBSERVED classes with their original producer provenance; imported migration code must not masquerade as the pre-migration instruments. The coordinator’s final edits, fresh roster evidence and rollback demonstration must all precede merge review. No further ordering blocker is established. [Original ORDER:89](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-2026-09-25.md:89), [card:12](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-flip-b-card-2026-09-25.md:12).
