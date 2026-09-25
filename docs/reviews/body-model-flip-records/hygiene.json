@@ -1,0 +1,67 @@
+{
+ "stage": 4,
+ "what": "hygiene",
+ "rig_arm_build": {
+  "command": "PYTHONPATH=$PWD/src .venv/bin/python scripts/build_commercial_multiview_comparison.py --videos .cache/mamma/data/mamma_example/pushing_and_lifting_from_ground/videos --calibration-yaml .cache/mamma/configs/examples/calib/iphones_outdoors.yaml --detector soma77 --body rig --body-run artifacts/compare/d1-fix/body-run-regenerated --output artifacts/compare/soma77-rig-d4i",
+  "detections": "artifacts/commercial-multiview-soma77/work copied in (cp -Rp); the mixed-directory refusal did not fire on a directory holding only work/",
+  "eight_files": {
+   "subject-00.glb": {
+    "rig_arm": "1bca2b500aa1fb6983e8d053e740e99515d0fe54ea96eb569bbf1abc7465c9d7",
+    "shipped_D7c": "1bca2b500aa1fb6983e8d053e740e99515d0fe54ea96eb569bbf1abc7465c9d7",
+    "identical": true
+   },
+   "subject-00.body-track.npz": {
+    "rig_arm": "affce2418bbc3acbd391290d28a69552674310272a0a8a05ca1786aea9c0eccb",
+    "shipped_D7c": "affce2418bbc3acbd391290d28a69552674310272a0a8a05ca1786aea9c0eccb",
+    "identical": true
+   },
+   "subject-00.body-track.json": {
+    "rig_arm": "e37ff748a977e227b46d611e86c363df844ff7b3dd8894cf101aec11a87823a1",
+    "shipped_D7c": "e37ff748a977e227b46d611e86c363df844ff7b3dd8894cf101aec11a87823a1",
+    "identical": true
+   },
+   "subject-00.mapping.npz": {
+    "rig_arm": "4c9a9ec15f0e48a185d1ff3df72d7ea95c54a36c3b0de9124a4c01b03ba4d684",
+    "shipped_D7c": "4c9a9ec15f0e48a185d1ff3df72d7ea95c54a36c3b0de9124a4c01b03ba4d684",
+    "identical": true
+   },
+   "subject-01.glb": {
+    "rig_arm": "3765d7455afbf6224260eb68eba58f65de8a2bb7dc777c98925b04ab4d276a2d",
+    "shipped_D7c": "3765d7455afbf6224260eb68eba58f65de8a2bb7dc777c98925b04ab4d276a2d",
+    "identical": true
+   },
+   "subject-01.body-track.npz": {
+    "rig_arm": "637df508e3672f7c0e60499ceb3be89c4fed5ebc7408a65e91f75aecfd0d9e53",
+    "shipped_D7c": "637df508e3672f7c0e60499ceb3be89c4fed5ebc7408a65e91f75aecfd0d9e53",
+    "identical": true
+   },
+   "subject-01.body-track.json": {
+    "rig_arm": "93a287307042e39c66910fba9ed9532f50e66af35512ab6ff84f632deb3f075e",
+    "shipped_D7c": "93a287307042e39c66910fba9ed9532f50e66af35512ab6ff84f632deb3f075e",
+    "identical": true
+   },
+   "subject-01.mapping.npz": {
+    "rig_arm": "fe11b0c66cbdcc356727e5eda967b2a4d4804f677e29ee91b349ea73ddfafe1e",
+    "shipped_D7c": "fe11b0c66cbdcc356727e5eda967b2a4d4804f677e29ee91b349ea73ddfafe1e",
+    "identical": true
+   }
+  },
+  "eight_of_eight": 8,
+  "run_report": "byte-identical to D4d's rig hygiene run-report; differs from the shipped D7c run-report only by runtime_dependencies.body = 'rig', which D4 added after the shipped build (rig mode unchanged by D4i)",
+  "verifier_rig_scope": "pass",
+  "logs": [
+   "artifacts/compare/d4i-flip/logs/09-hygiene-rig-build.log",
+   "artifacts/compare/d4i-flip/logs/10-hygiene-byteidentity.log",
+   "artifacts/compare/d4i-flip/logs/11-hygiene-checks.log"
+  ]
+ },
+ "frozen_sources": {
+  "src_and_mhr_delivery_byte_identical_to_acceb55": true,
+  "command": "git diff --quiet acceb55 -- src tools/fitter/mhr_delivery.py"
+ },
+ "i6_baseline": {
+  "all_seven_unchanged": true,
+  "when": "after Phase 1, the oracle and the hygiene build; the FULL roster run is the coordinator's, re-checked at stage 6"
+ },
+ "live_reports": "UNCHANGED (docs/reviews/body-model-flip-records/live-reports-after-hygiene.json)"
+}
