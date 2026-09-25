@@ -1,0 +1,112 @@
+{
+ "entries": {
+  "silhouette": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": "frame alignment (the instrument exits unless 'aligned')",
+    "value": "aligned"
+   },
+   "population_mismatches": []
+  },
+  "b1": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": "paired/<candidate>_minus_baseline_D7c_rig_subject_XX/ci95_of_the_median_difference[0] > 0 (D4's registered B1 band, read from the instrument's rows)",
+    "lower_ci": {
+     "subject_00": 0.12954502516444144,
+     "subject_01": 0.08355692479284826
+    },
+    "band_holds": {
+     "subject_00": true,
+     "subject_01": true
+    }
+   },
+   "population_mismatches": []
+  },
+  "b2": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": "verdict",
+    "value": "PASS"
+   },
+   "population_mismatches": []
+  },
+  "b3": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": null,
+    "value": "REPORTED (B3 has no verdict)"
+   },
+   "population_mismatches": []
+  },
+  "b4": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": null,
+    "value": "REPORTED, never selected (B4)"
+   },
+   "population_mismatches": []
+  },
+  "closure": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": "all_within_band",
+    "value": true,
+    "worst_max_abs_m": 2.2932970340505676e-06,
+    "band_m": 0.0001
+   },
+   "population_mismatches": []
+  },
+  "b5": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": "verdict_bytes",
+    "value": "PASS",
+    "facing_positive_on_every_frame_both_performers (REPORTED)": false
+   },
+   "population_mismatches": []
+  },
+  "verifier": {
+   "section": "MHR",
+   "field": "verdict",
+   "value": "PASS",
+   "instrument_verdict_field": {
+    "field": "status",
+    "value": "pass",
+    "error": null
+   },
+   "population_mismatches": []
+  },
+  "captured_limb_stability": {
+   "section": "CAPTURE",
+   "field": "verdict",
+   "value": "REPORTED"
+  },
+  "oracle_2d": {
+   "section": "CAPTURE",
+   "field": null,
+   "value": "REPORTED (report written)"
+  },
+  "rig_arm_retarget_cost": {
+   "section": "RIG-ARM",
+   "field": null,
+   "value": "REPORTED (report written)"
+  }
+ },
+ "mhr_all_pass": true,
+ "no_entry_crashed": true
+}
