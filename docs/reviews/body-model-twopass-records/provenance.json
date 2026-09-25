@@ -1,0 +1,43 @@
+{
+ "step": "D4d",
+ "stage": 1,
+ "date": "2026-09-25",
+ "base_commit": "f04bd9bd766a6755fe3ead4ccf9fb5d1d836f6eb",
+ "base": "main at fedd834 merged with tag ladder/D4c-fail-1a89cc7 (1a89cc73b2ced93543e9cbfb191d79208aef423b)",
+ "sha256": {
+  "fitter tools/fitter/mhr_delivery.py (pre-change; the D4c tag's)": "dd54443dffcdc9821b58f8e82091ebe709f7b80cee33e9aede197eab4c009389",
+  "D4 fixture tools/fitter/d4_o1_exactness.py": "24c92d4c876ccaec87cfb09ead3b4462ed410b411351323ef5f05a2777d97ab0",
+  "D4b fixture tools/fitter/d4b_o1_fixture.py": "42965ebcf7d6b960c62965e8b67c465c7b56cd05dc02d6ddd75baf0d007a2144",
+  "D4c fixture tools/fitter/d4c_fixture.py": "c4635ae31403761b63e636e6b47ada418ce6af18e4f2f882da969513fe0eb308",
+  "D4c gate tools/compare/d4c_start_gate.py": "f53e477cd4388fd77b5ada249f0ea8dbd12e15027f843ca9d3ff58255e45b730",
+  "donor 0 artifacts/compare/d4-body/fitted/motion_0.npz": "a485d0567920fb9bd37f26747dd8f67a8140ad95583467b9f184e7462e6b3cdc",
+  "donor 1 artifacts/compare/d4-body/fitted/motion_1.npz": "c4901716e459a3b51532b37d1537ba9442bf563e7981903b9a99162f2748b159",
+  "model .cache/mhr/assets/compact_v6_1.model": "9b4e48e6216296c0a8a47e8e1d210b42ca8b194b9f61409adc5d7a3873dcf08e",
+  "fbx .cache/mhr/assets/lod2.fbx": "2d49872b57f07181302e268124f6528a64de319a048b375d3cb5af5e8bcf94da",
+  "D4c drawn set docs/reviews/body-model-start-records/drawn-set.json": "430f1f67ea27123969ea5bafde01eb607b0092cb7a47d6a69f451038052163b7",
+  "D4c development JSON docs/reviews/body-model-start-records/development.json": "922a5134f17e74a7cbdcdf3b405d041e15df2d439c2571aa0b3a035527b00882",
+  "D4c acceptance manifest docs/reviews/body-model-start-records/acceptance-manifest.json": "7c1e849f5a1521be24eeeacfe8cf8584dd1be1fbb45a5feebbf9ae754221a7f3",
+  "D4b frozen drawn set docs/reviews/body-model-o1-records/drawn-set.json": "0368a1a9ef74718172db48e11c7e8dc6dbdc63b70a24949035c23c29343e74fb"
+ },
+ "environment": {
+  "momenv": "/tmp/momenv",
+  "pymomentum-cpu": "0.1.114.post0",
+  "numpy": "2.5.3",
+  "python": "3.12.13"
+ },
+ "retained_d4c_cells": {
+  "acceptance": {
+   "count": 72,
+   "all_equal_to_the_manifest": true
+  },
+  "development": {
+   "count": 108,
+   "all_equal_to_the_development_json": true,
+   "hash": "sha256 of json.dumps(record, sort_keys=True) (D4c's development convention)"
+  }
+ },
+ "phase2_population_absent_on_disk_at_stage_1": {
+  "paths_with_seeds_2026120x_under_artifacts_compare": 0,
+  "examples": []
+ }
+}
