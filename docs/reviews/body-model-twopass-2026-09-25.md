@@ -295,5 +295,40 @@ PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/test_d4d_twopass.py
 The report frames are in `artifacts/compare/d4d-twopass/report/`: 25 JPEGs, 480 px, q40, every 6th frame, camera
 A001. The panels are stacked: the D4c fit (aqua) sits above the D4d fit (blue), over the SAM2 mask outline. The
 full-rate `d4d-twopass-A001.mp4` is beside them. They are rendered by D4's own `d4_report_frames.py`, imported and
-re-pointed (`report-driver.py`, log 23). The extractor stub is `tools/compare/extractors/d4d_twopass.py`, and the
+re-pointed by the driver below (kept as `artifacts/compare/d4d-twopass/report-driver.py`; log 23):
+
+```python
+"""D4d report frames: D4's own d4_report_frames.py, imported and re-pointed (D4c's precedent, its log 23).
+Stacked panels: the D4c fit (aqua, the alternative) above the D4d combined fit (blue, ours), over the SAM2 outline."""
+import sys
+from pathlib import Path
+import numpy as np
+ROOT = Path("/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4d")
+sys.path.insert(0, str(ROOT / "tools/compare"))
+import d4_report_frames as rf  # noqa: E402
+
+rf.FRAMES_DIR = ROOT / "artifacts/compare/d4d-twopass/delivery/work/frames"
+rf.ARMS = {"D4c fit, one pass": ROOT / "artifacts/compare/d4c-start/work-delivery/delivered-mesh.npz",
+           "D4d fit, two passes": ROOT / "artifacts/compare/d4d-twopass/work-delivery/delivered-mesh.npz"}
+rf.COLOURS = {"D4c fit, one pass": (225, 225, 90), "D4d fit, two passes": (255, 150, 40)}
+rf.PANEL_WIDTH, rf.JPEG_QUALITY = 480, 40
+
+
+class _NP:
+    def __getattr__(self, name):
+        return getattr(np, name)
+
+    @staticmethod
+    def hstack(panels):
+        return np.vstack(panels)
+
+
+rf.np = _NP()
+sys.argv = ["d4_report_frames.py", "--out", str(ROOT / "artifacts/compare/d4d-twopass/report"), "--cameras", "A001",
+            "--mp4-camera", "A001"]
+raise SystemExit(rf.main())
+```
+
+It was run as `PYTHONPATH=$PWD/src .venv/bin/python report-driver.py`, and the mp4 was renamed to
+`d4d-twopass-A001.mp4`. The extractor stub is `tools/compare/extractors/d4d_twopass.py`, and the
 registry is not edited.
