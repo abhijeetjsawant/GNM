@@ -1,0 +1,39 @@
+{
+ "stage": 0,
+ "recorded": "2026-09-25T18:13:51",
+ "what": "the D7c silhouette baseline (artifacts/compare/i6), archived BEFORE Phase 1 because the legacy silhouette command (default --work artifacts/compare/i6) can overwrite it",
+ "source": "artifacts/compare/i6",
+ "archive": "artifacts/compare/d4i-flip/i6-baseline-archive",
+ "archive_made_with": "cp -Rp artifacts/compare/i6 artifacts/compare/d4i-flip/i6-baseline-archive && chmod -R a-w artifacts/compare/d4i-flip/i6-baseline-archive",
+ "archive_verified": "shasum -a 256 -c i6-baseline.sha256 inside the archive: 7/7 OK",
+ "files": {
+  "delivered-mesh.npz": {
+   "sha256": "f67f05d45bb4b0766712386ef49f5a7dd4c690c13f8a7f114ed3efa0bcc9561b",
+   "bytes": 42149097
+  },
+  "masks-1920x1080-A001.npz": {
+   "sha256": "872de563a3e54b94e2c19d285480a9ee9d4359e69fb2d7aa1ee31956521d5e0a",
+   "bytes": 530916
+  },
+  "masks-960x540-A001_B001_C001_D001.npz": {
+   "sha256": "45f4fce89494ce17e020edeed86e4178047aec57b624a85217f41fd2f02befe3",
+   "bytes": 740878
+  },
+  "masks-960x540.npz": {
+   "sha256": "45f4fce89494ce17e020edeed86e4178047aec57b624a85217f41fd2f02befe3",
+   "bytes": 740878
+  },
+  "mean-body-00.npy": {
+   "sha256": "bd6a519ef0d3a720ba76f2a1c84309beb7aeba353e63099d53ff05cb7c901955",
+   "bytes": 18855128
+  },
+  "mean-body-01.npy": {
+   "sha256": "29c553ecd23eaa8fc3ba13b5ce761045ad6d307fd3312dec2f8fe3bcd408981c",
+   "bytes": 18855128
+  },
+  "silhouette-1920x1080-A001.json": {
+   "sha256": "81e69a0e57f1dbb521d4e20befb5f0d34988fd5c59510cdf8340bcea88107a7d",
+   "bytes": 219099
+  }
+ }
+}

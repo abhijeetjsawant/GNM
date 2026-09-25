@@ -1,0 +1,281 @@
+{
+ "conjuncts": {
+  "oracle": {
+   "holds": false,
+   "legs": {
+    "per_subject_files_byte_identical": false,
+    "manifest_equal": true,
+    "reference_hashes_equal": true,
+    "subject_identities_equal": true,
+    "draws_equal": true,
+    "scored_rows_equal": true,
+    "closure_reproduced": true,
+    "b2_reproduced": true,
+    "b5_reproduced": true
+   },
+   "files": {
+    "subject-00.glb": {
+     "default_sha256": "9dec34a7a53c86dc2a1b7e492947aead40d3b244430ff402e4c47892f140741d",
+     "d4d_sha256": "9dec34a7a53c86dc2a1b7e492947aead40d3b244430ff402e4c47892f140741d",
+     "byte_identical": true
+    },
+    "subject-00.body-track.npz": {
+     "default_sha256": "d2f451db9b34b3f2bff0e12b12107fbb78526baca3c62e11e3ff0a2156df9a9e",
+     "d4d_sha256": "d2f451db9b34b3f2bff0e12b12107fbb78526baca3c62e11e3ff0a2156df9a9e",
+     "byte_identical": true
+    },
+    "subject-00.body-track.json": {
+     "default_sha256": "d44c24a7ba1e1aa915cf0cfd371e6f76a35860502c8e559e1203da3dbc06a67b",
+     "d4d_sha256": "e6bc5f4c41eb2f1441c9c1231ec39b78a0478bcb75d10b95bbf5c6111f4622b0",
+     "byte_identical": false,
+     "differing_leaves": [
+      "/body_model/assets"
+     ]
+    },
+    "subject-00.markers.npz": {
+     "default_sha256": "14a46c30f0764e9c252130cc088f009e9ddb727f86b3f486263a15ebbecf8d8d",
+     "d4d_sha256": "14a46c30f0764e9c252130cc088f009e9ddb727f86b3f486263a15ebbecf8d8d",
+     "byte_identical": true
+    },
+    "subject-00.calibration-start.json": {
+     "default_sha256": "88d0fa40ecc7036e8322a80ae957f85a53d7c63fe87105bae9e6b43bdce15409",
+     "d4d_sha256": "88d0fa40ecc7036e8322a80ae957f85a53d7c63fe87105bae9e6b43bdce15409",
+     "byte_identical": true
+    },
+    "subject-00.calibration-passes.json": {
+     "default_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+     "d4d_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+     "byte_identical": true
+    },
+    "subject-01.glb": {
+     "default_sha256": "6b3d870ef37f01d2c0eb72ea1bbf71e4e83ccb77321a185d038e66bd517b3d2d",
+     "d4d_sha256": "6b3d870ef37f01d2c0eb72ea1bbf71e4e83ccb77321a185d038e66bd517b3d2d",
+     "byte_identical": true
+    },
+    "subject-01.body-track.npz": {
+     "default_sha256": "9878ba586dd18a872c58d9231a00b77b4c18cb335baba60033106bf7561a4753",
+     "d4d_sha256": "9878ba586dd18a872c58d9231a00b77b4c18cb335baba60033106bf7561a4753",
+     "byte_identical": true
+    },
+    "subject-01.body-track.json": {
+     "default_sha256": "e268b71fadfcd68e8c6c9fd9be8bb1a1973a81fa7e23368bcdd250ef1fd2e5ae",
+     "d4d_sha256": "6649747c800ff02bbc826ec88e3e004b69f1c3dca0b28d27f672179c4bed1ce5",
+     "byte_identical": false,
+     "differing_leaves": [
+      "/body_model/assets"
+     ]
+    },
+    "subject-01.markers.npz": {
+     "default_sha256": "92de364df37801842fbc110366230f3fc48126dcabd55102f528479c72263d81",
+     "d4d_sha256": "92de364df37801842fbc110366230f3fc48126dcabd55102f528479c72263d81",
+     "byte_identical": true
+    },
+    "subject-01.calibration-start.json": {
+     "default_sha256": "c9cfb92547495d993e7ac4b525a4ed249ccfd6668d6022ee48d61f7b9f93c2a2",
+     "d4d_sha256": "c9cfb92547495d993e7ac4b525a4ed249ccfd6668d6022ee48d61f7b9f93c2a2",
+     "byte_identical": true
+    },
+    "subject-01.calibration-passes.json": {
+     "default_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+     "d4d_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+     "byte_identical": true
+    }
+   },
+   "references": {
+    "camera-rig.json": true,
+    "converter-inputs/subject-00-consumed.npz": true,
+    "converter-inputs/subject-01-consumed.npz": true,
+    "converter-inputs/rig-converter-input.npz": true
+   },
+   "failing_files": [
+    "subject-00.body-track.json",
+    "subject-01.body-track.json"
+   ],
+   "failing_leaves": {
+    "subject-00.body-track.json": [
+     "/body_model/assets"
+    ],
+    "subject-01.body-track.json": [
+     "/body_model/assets"
+    ]
+   },
+   "read": "LITERALLY: a per-subject file either is byte-identical or it is not; no normalisation"
+  },
+  "B1_reproduced_exactly": {
+   "holds": true,
+   "legs": {
+    "every_value_equal_to_D4d_except_the_arm_paths": true,
+    "same_keys": true,
+    "entry_verdict_PASS": true,
+    "band_from_the_rows": true,
+    "mesh_is_a_fresh_bound_export_of_this_delivery": true
+   },
+   "lower_ci": {
+    "subject_00": 0.12954502516444144,
+    "subject_01": 0.08355692479284826
+   }
+  },
+  "B2_PASS": {
+   "holds": true,
+   "legs": {
+    "instrument_verdict": true,
+    "entry_verdict_PASS": true
+   },
+   "instrument_field": {
+    "verdict": "PASS"
+   }
+  },
+  "closure_PASS": {
+   "holds": true,
+   "legs": {
+    "instrument_all_within_band": true,
+    "entry_verdict_PASS": true
+   },
+   "instrument_field": {
+    "all_within_band": true
+   }
+  },
+  "hygiene": {
+   "holds": true,
+   "legs": {
+    "rig_arm_8_of_8_against_the_shipped_D7c": true,
+    "src_and_the_fitter_byte_identical_to_the_base": true,
+    "i6_baseline_unchanged": true
+   },
+   "rig_eight": {
+    "subject-00.glb": true,
+    "subject-00.body-track.npz": true,
+    "subject-00.body-track.json": true,
+    "subject-00.mapping.npz": true,
+    "subject-01.glb": true,
+    "subject-01.body-track.npz": true,
+    "subject-01.body-track.json": true,
+    "subject-01.mapping.npz": true
+   },
+   "frozen_changed": [],
+   "src_files_added": [],
+   "i6": {
+    "delivered-mesh.npz": true,
+    "masks-1920x1080-A001.npz": true,
+    "masks-960x540-A001_B001_C001_D001.npz": true,
+    "masks-960x540.npz": true,
+    "mean-body-00.npy": true,
+    "mean-body-01.npy": true,
+    "silhouette-1920x1080-A001.json": true
+   }
+  },
+  "must_fails_i_to_v": {
+   "holds": true,
+   "legs": {
+    "every_entry_report_turned_or_stayed_as_required": true,
+    "record_read_cases_held": true
+   },
+   "entry_report_cases": 62,
+   "not_turned": [],
+   "record_read": {
+    "i_scope/silhouette_mhr_scope_on_the_rig_build": true,
+    "i_scope/silhouette_rig_scope_on_the_mhr_build": true,
+    "i_scope/silhouette_rig_scope_on_the_rig_build_accepts": true,
+    "i_scope/verifier_mhr_scope_on_the_rig_build": true,
+    "ii_mixed/the_default_build_refuses_a_stale_mapping": true,
+    "ii_mixed/a_rig_build_refuses_an_mhr_directory": true,
+    "ii_mixed/the_verifier_fails_a_stale_mapping": true,
+    "ii_mixed/the_verifier_fails_mhr_files_in_a_rig_directory": true,
+    "iv_head/head_removed_from_the_not_consumed_list": true,
+    "iv_head/head_marked_consumed": true,
+    "iv_head/the_marks_stripped_as_D4d_wrote_it": true
+   },
+   "prediction_misses_reported": [
+    "population/substituted_reference_b4"
+   ]
+  },
+  "population_and_own_verdicts": {
+   "holds": true,
+   "legs": {
+    "every_entry": true,
+    "the_recorded_run_agrees_with_the_entry_reports": true
+   },
+   "entries": {
+    "silhouette": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    },
+    "b1": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    },
+    "b2": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    },
+    "b3": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    },
+    "b4": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    },
+    "closure": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    },
+    "b5": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    },
+    "verifier": {
+     "verdict_PASS": true,
+     "population_checked_and_matched": true,
+     "own_verdict_field_reported": true,
+     "scope_checked": true,
+     "on_the_default_build_by_content": true
+    }
+   }
+  },
+  "roster_complete": {
+   "holds": true,
+   "legs": {
+    "every_instrument_has_all_three_fields": true
+   },
+   "instruments": 19,
+   "incomplete": []
+  },
+  "coordinator_migration_recorded": {
+   "holds": true,
+   "legs": {
+    "post_merge_sh_changed_on_the_branch": true,
+    "ladder_py_changed_on_the_branch": true,
+    "final_roster_run_recorded": true
+   },
+   "note": "ladder.py is the coordinator's, edited after stage 7 by the coordinator's own order; rerun the gate then"
+  }
+ },
+ "failed": [
+  "oracle"
+ ],
+ "crashed": [],
+ "verdict": "FAIL",
+ "line": "VERDICT: FAIL (failed: oracle)"
+}

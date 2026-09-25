@@ -1,0 +1,30 @@
+{
+ "step": "D4i",
+ "written": "2026-09-25, during stage 2, BEFORE any default build existed (committed with stage 2)",
+ "why": "Found while reading the fitter: tools/fitter/mhr_delivery.py (frozen by the card) writes body_model.assets = str(ROOT / '.cache/mhr/assets') with ROOT = Path(__file__).resolve().parents[2]. D4d's delivery carries '/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4d/.cache/mhr/assets'. A build from this worktree must carry '.../worktrees/ladder-D4i/.cache/mhr/assets'. The card lists subject-XX.body-track.json among the files that must be BYTE-identical, so the literal oracle cannot hold on that file from any checkout other than ladder-D4d. This is attributed here in advance, not normalised: D4d's own tripwire (docs/reviews/body-model-twopass-2026-09-25.md section 7) already names exactly this leaf as its one track-JSON normalisation.",
+ "predictions": {
+  "byte_identical": [
+   "subject-00.glb", "subject-01.glb",
+   "subject-00.body-track.npz", "subject-01.body-track.npz",
+   "subject-00.markers.npz", "subject-01.markers.npz",
+   "subject-00.calibration-start.json", "subject-01.calibration-start.json",
+   "subject-00.calibration-passes.json", "subject-01.calibration-passes.json",
+   "camera-rig.json",
+   "converter-inputs/subject-00-consumed.npz", "converter-inputs/subject-01-consumed.npz",
+   "converter-inputs/rig-converter-input.npz"
+  ],
+  "differs_in_exactly_one_leaf": {
+   "subject-00.body-track.json": "body_model.assets: the worktree segment ladder-D4d -> ladder-D4i, nothing else",
+   "subject-01.body-track.json": "body_model.assets: the worktree segment ladder-D4d -> ladder-D4i, nothing else"
+  },
+  "outside_the_card_byte_list_but_in_the_manifest": {
+   "fit-report-subject-00.json": "subjects.*.module (or the one 'module' leaf): /private/tmp/momenv/... -> this worktree's .venv-mhr/...; anything else that moves is a finding",
+   "fit-report-subject-01.json": "as subject 00",
+   "fit-report.json": "the same two module leaves, nested",
+   "run-report.json": "INTENTIONALLY corrected (the not-consumed marks and the MHR limitations); outside the oracle by the card"
+  },
+  "B1": "d4_silhouette_paired.py with seed 20260921 on the schema-aware silhouette's FRESH export of the default build reproduces D4d's b1-paired.json exactly (every value), with the D4d arm named D4d_fitted_MHR_lod2 and the baseline pointed at the i6 archive",
+  "closure_B2_B5": "each equal to its D4d-delivery reading (Phase 1) with only the path and provenance-hash fields differing; the closure's track_sha256 WILL differ because the track npz is not what it hashes -- it hashes the npz, which is predicted identical, so track_sha256 is predicted EQUAL"
+ },
+ "close_out_hazard_for_the_coordinator": "The card's frozen close-out requires the in-place rebuild on main to be byte-identical to the branch build. On main the fitter will write '/Users/abhi_macbook/Projects/apps/AutoAnim/.cache/mhr/assets', so the two track JSONs will differ from this branch's build in body_model.assets by construction, and the literal close-out rule would trigger the FULL ROLLBACK. This needs the coordinator's (and the merge review's) ruling before the close-out, not after it."
+}

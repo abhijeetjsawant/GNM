@@ -1,0 +1,32 @@
+--- silhouette: .venv/bin/python tools/compare/d4i_mhr_roster.py silhouette --delivery artifacts/compare/d4i-flip/default --work artifacts/compare/d4i-flip/final-roster/silhouette-work --out artifacts/compare/d4i-flip/final-roster/silhouette.json
+--- b1: .venv/bin/python tools/compare/d4i_mhr_roster.py b1 --delivery artifacts/compare/d4i-flip/default --work artifacts/compare/d4i-flip/final-roster/silhouette-work --candidate-name D4d_fitted_MHR_lod2 --extra-arm D4c_fitted_MHR_lod2=artifacts/compare/d4c-start/work-delivery/delivered-mesh.npz --extra-pair D4d_fitted_MHR_lod2,D4c_fitted_MHR_lod2 --out artifacts/compare/d4i-flip/final-roster/b1.json
+--- b2: .venv/bin/python tools/compare/d4i_mhr_roster.py b2 --delivery artifacts/compare/d4i-flip/default --rig-build artifacts/compare/soma77-rig-d4i --out artifacts/compare/d4i-flip/final-roster/b2.json
+--- b3: .venv/bin/python tools/compare/d4i_mhr_roster.py b3 --delivery artifacts/compare/d4i-flip/default --out artifacts/compare/d4i-flip/final-roster/b3.json
+--- b4: .venv/bin/python tools/compare/d4i_mhr_roster.py b4 --delivery artifacts/compare/d4i-flip/default --out artifacts/compare/d4i-flip/final-roster/b4.json
+--- closure: .venv/bin/python tools/compare/d4i_mhr_roster.py closure --delivery artifacts/compare/d4i-flip/default --out artifacts/compare/d4i-flip/final-roster/closure.json
+--- b5: .venv/bin/python tools/compare/d4i_mhr_roster.py b5 --delivery artifacts/compare/d4i-flip/default --mesh artifacts/compare/d4i-flip/final-roster/silhouette-work/delivered-mesh.npz --out artifacts/compare/d4i-flip/final-roster/b5.json
+--- verifier: .venv/bin/python tools/compare/d4i_mhr_roster.py verifier --delivery artifacts/compare/d4i-flip/default --out artifacts/compare/d4i-flip/final-roster/verifier.json
+--- captured_limb_stability: .venv/bin/python tools/compare/captured_limb_stability.py --landmarks-from artifacts/compare/d4i-flip/default --skip-reproduction --out artifacts/compare/d4i-flip/final-roster/limb-stability.json
+--- oracle_2d: .venv/bin/python tools/compare/oracle_2d.py --out artifacts/compare/d4i-flip/final-roster/oracle-2d.json
+--- rig_arm_retarget_cost: python3 tools/swap-harness/retarget_cost.py --tracks artifacts/compare/soma77-rig-d4i --out artifacts/compare/d4i-flip/final-roster/rig-arm-retarget-cost.json
+MHR      silhouette                 PASS
+MHR      b1                         PASS
+MHR      b2                         PASS
+MHR      b3                         PASS
+MHR      b4                         PASS
+MHR      closure                    PASS
+MHR      b5                         PASS
+MHR      verifier                   PASS
+CAPTURE  captured_limb_stability    REPORTED
+CAPTURE  oracle_2d                  REPORTED (report written)
+RIG-ARM  rig_arm_retarget_cost      REPORTED (report written)
+MHR ROSTER: every entry PASS | no entry crashed
+--- D7c silhouette baseline (i6) against its archived hashes:
+delivered-mesh.npz: OK
+masks-1920x1080-A001.npz: OK
+masks-960x540-A001_B001_C001_D001.npz: OK
+masks-960x540.npz: OK
+mean-body-00.npy: OK
+mean-body-01.npy: OK
+silhouette-1920x1080-A001.json: OK
+zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default    608,04s user 6,80s system 82% cpu 12:28,47 total

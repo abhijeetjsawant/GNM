@@ -1,0 +1,769 @@
+{
+ "i_scope": {
+  "silhouette_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b1_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b2_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b3_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b4_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "closure_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b5_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "verifier_on_the_rig_build": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "silhouette_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b1_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b2_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b3_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b4_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "closure_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "b5_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "verifier_on_a_rig_track_swapped_into_the_mhr_delivery": {
+   "predicted": "REFUSED, before the instrument runs",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "refused": "called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read",
+   "turned": null
+  },
+  "silhouette_mhr_scope_on_the_rig_build": {
+   "predicted": "refused by schema before any payload",
+   "observed": {
+    "exit": 1,
+    "tail": "REFUSED (mhr scope): called in MHR scope on a rig-schema track (subject-00: 'autoanim.body-track/1.3'); refused before any payload field is read"
+   },
+   "held": true,
+   "turned": null
+  },
+  "silhouette_rig_scope_on_the_mhr_build": {
+   "predicted": "refused by schema before any payload",
+   "observed": {
+    "exit": 1,
+    "tail": "REFUSED (rig scope): called in RIG scope on a mhr-schema track (subject-00: 'autoanim.body-track/2.0-mhr'); refused before any payload field is read"
+   },
+   "held": true,
+   "turned": null
+  },
+  "silhouette_rig_scope_on_the_rig_build_accepts": {
+   "predicted": "accepted in rig scope (id resolution runs)",
+   "observed": {
+    "exit": 0,
+    "tail": "}"
+   },
+   "held": true,
+   "turned": null
+  },
+  "verifier_mhr_scope_on_the_rig_build": {
+   "predicted": "refused by schema before any payload",
+   "observed": {
+    "exit": 1,
+    "tail": "}"
+   },
+   "held": true,
+   "turned": null
+  }
+ },
+ "ii_mixed": {
+  "the_default_build_refuses_a_stale_mapping": {
+   "predicted": "refused, nothing written",
+   "observed": {
+    "exit": 1,
+    "untouched": true,
+    "tail": "body_delivery_schema.SchemaScopeError: refusing to build a --body mhr delivery into /Users/abhi_macbook/Projects/apps/AutoAnim/artifacts/compare/d4i-flip/mustfail/ii-mixed/mhr-with-a-stale-mapping: it holds the other schema's files (file on"
+   },
+   "held": true,
+   "turned": null
+  },
+  "a_rig_build_refuses_an_mhr_directory": {
+   "predicted": "refused, nothing written",
+   "observed": {
+    "exit": 1,
+    "untouched": true
+   },
+   "held": true,
+   "turned": null
+  },
+  "the_verifier_fails_a_stale_mapping": {
+   "predicted": "status fail, 'Mixed delivery directory'",
+   "observed": {
+    "status": "fail",
+    "error": "Mixed delivery directory: MHR-only files ['subject-00.markers.npz', 'subject-01.markers.npz', 'subject-00.calibration-start.json', 'subject-01.calibration-start.json', 'subject-00.calibration-passes.json', 'subject-01.calibration-passes.json', 'fit-report-subject-00.json', 'fit-report-subject-01.json', 'fit-report.json', 'converter-inputs'] beside rig files ['subject-00.mapping.npz']; rig-only files ['subject-00.mapping.npz'] beside MHR tracks"
+   },
+   "held": true,
+   "turned": null
+  },
+  "the_verifier_fails_mhr_files_in_a_rig_directory": {
+   "predicted": "status fail, mixed",
+   "observed": {
+    "status": "fail",
+    "error": "Mixed delivery directory: MHR-only files ['subject-00.markers.npz'] beside rig tracks"
+   },
+   "held": true,
+   "turned": null
+  },
+  "silhouette_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  },
+  "b1_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  },
+  "b2_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  },
+  "b3_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  },
+  "b4_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  },
+  "closure_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  },
+  "b5_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  },
+  "verifier_refuses_the_stale_mapping_directory": {
+   "predicted": "REFUSED",
+   "observed": {
+    "verdict": "REFUSED",
+    "instrument_ran": false
+   },
+   "held": true,
+   "turned": null
+  }
+ },
+ "iv_head": {
+  "head_removed_from_the_not_consumed_list": {
+   "predicted": "verifier status fail; the roster's verifier entry FAIL",
+   "observed": {
+    "verifier": {
+     "status": "fail",
+     "error": "MHR run report claims head_orientation is consumed by the delivered body"
+    },
+    "entry": "FAIL"
+   },
+   "held": true,
+   "turned": null
+  },
+  "head_marked_consumed": {
+   "predicted": "verifier status fail; the roster's verifier entry FAIL",
+   "observed": {
+    "verifier": {
+     "status": "fail",
+     "error": "MHR run report claims a delivered head_orientation (solved) that the MHR body does not carry"
+    },
+    "entry": "FAIL"
+   },
+   "held": true,
+   "turned": null
+  },
+  "the_marks_stripped_as_D4d_wrote_it": {
+   "predicted": "verifier status fail; the roster's verifier entry FAIL",
+   "observed": {
+    "verifier": {
+     "status": "fail",
+     "error": "MHR run report does not declare what the delivered body leaves unconsumed"
+    },
+    "entry": "FAIL"
+   },
+   "held": true,
+   "turned": null
+  }
+ },
+ "summary": {
+  "cases": 70,
+  "held": 69,
+  "failed": [
+   "population/substituted_reference_b4"
+  ],
+  "every_mutation_turned_its_entry_or_left_a_negative_control_unchanged": true,
+  "note": "'held' is the PREDICTION (the exact verdict class). The one miss is population/substituted_reference_b4: predicted FAIL, observed CRASH (the subject map refuses an ambiguous pairing); it still turns."
+ },
+ "iii_negative": {
+  "silhouette_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  },
+  "b1_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  },
+  "b2_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  },
+  "b3_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  },
+  "b4_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  },
+  "closure_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  },
+  "b5_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  },
+  "verifier_reading_unchanged_under_a_mutated_mean_body": {
+   "predicted": "the same verdict and every scored figure equal (provenance and path fields excluded)",
+   "observed": {
+    "verdict": "PASS",
+    "figures_equal_to_the_default": true
+   },
+   "held": true,
+   "rest_positions_max_change_m": {
+    "subject_00": 0.7683255672454834,
+    "subject_01": 0.7683255672454834
+   },
+   "turned": null
+  }
+ },
+ "v_positive": {
+  "b3_moves_when_the_scored_joints_move": {
+   "predicted": "B3's all-landmark median changes",
+   "observed": {
+    "all_landmarks_median_mm (default, shifted)": {
+     "subject_00": [
+      21.82,
+      100.659
+     ],
+     "subject_01": [
+      18.508,
+      101.182
+     ]
+    },
+    "entry": "PASS"
+   },
+   "held": true,
+   "glb_shift": {
+    "subject_00": {
+     "node": "root",
+     "delta_local": [
+      0.0,
+      0.0,
+      0.1
+     ],
+     "joint_displacement_m": {
+      "min": 0.0,
+      "median": 0.09999990463256836,
+      "max": 0.09999990463257014
+     }
+    },
+    "subject_01": {
+     "node": "root",
+     "delta_local": [
+      0.0,
+      0.0,
+      0.1
+     ],
+     "joint_displacement_m": {
+      "min": 0.0,
+      "median": 0.09999990463256836,
+      "max": 0.09999990463256836
+     }
+    }
+   },
+   "turned": null
+  },
+  "closure_fails_when_the_glb_leaves_its_track": {
+   "predicted": "closure FAIL",
+   "observed": {
+    "entry": "FAIL"
+   },
+   "held": true,
+   "turned": null
+  },
+  "b1_moves_when_the_mesh_motion_moves": {
+   "predicted": "the pooled IoU changes, on a FRESH export of the shifted GLBs",
+   "observed": {
+    "pooled_median_iou (default, shifted)": {
+     "subject_00": [
+      0.7987,
+      0.5367
+     ],
+     "subject_01": [
+      0.7682,
+      0.625
+     ]
+    },
+    "silhouette_entry": "PASS",
+    "b1_entry": "FAIL",
+    "mesh_fresh_export": true
+   },
+   "held": true,
+   "turned": null
+  }
+ },
+ "population": {
+  "missing_subject_b2": {
+   "predicted": "not PASS (REFUSED: the track is missing)",
+   "observed": "REFUSED",
+   "held": true,
+   "turned": null
+  },
+  "missing_subject_b3": {
+   "predicted": "not PASS (REFUSED: the track is missing)",
+   "observed": "REFUSED",
+   "held": true,
+   "turned": null
+  },
+  "missing_subject_b4": {
+   "predicted": "not PASS (REFUSED: the track is missing)",
+   "observed": "REFUSED",
+   "held": true,
+   "turned": null
+  },
+  "missing_subject_closure": {
+   "predicted": "not PASS (REFUSED: the track is missing)",
+   "observed": "REFUSED",
+   "held": true,
+   "turned": null
+  },
+  "missing_subject_b5": {
+   "predicted": "not PASS (REFUSED: the track is missing)",
+   "observed": "REFUSED",
+   "held": true,
+   "turned": null
+  },
+  "missing_subject_verifier": {
+   "predicted": "not PASS (REFUSED: the track is missing)",
+   "observed": "REFUSED",
+   "held": true,
+   "turned": null
+  },
+  "missing_glb_b3": {
+   "predicted": "CRASH (the instrument cannot run)",
+   "observed": "CRASH",
+   "held": true,
+   "turned": null
+  },
+  "truncated_frames_b2": {
+   "predicted": "not PASS for every entry that reads the captured landmarks (b2 b3 b4 b5 verifier); the closure does not read them",
+   "observed": {
+    "verdict": "CRASH",
+    "mismatches": []
+   },
+   "held": true,
+   "turned": null
+  },
+  "truncated_frames_b3": {
+   "predicted": "not PASS for every entry that reads the captured landmarks (b2 b3 b4 b5 verifier); the closure does not read them",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/capture_frames",
+     "subject_00/root/frames",
+     "subject_00/neck/frames",
+     "subject_00/nose/frames",
+     "subject_00/left_shoulder/frames",
+     "subject_00/right_shoulder/frames"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "truncated_frames_b4": {
+   "predicted": "not PASS for every entry that reads the captured landmarks (b2 b3 b4 b5 verifier); the closure does not read them",
+   "observed": {
+    "verdict": "CRASH",
+    "mismatches": []
+   },
+   "held": true,
+   "turned": null
+  },
+  "truncated_frames_closure": {
+   "predicted": "not PASS for every entry that reads the captured landmarks (b2 b3 b4 b5 verifier); the closure does not read them",
+   "observed": {
+    "verdict": "PASS",
+    "mismatches": []
+   },
+   "held": true,
+   "turned": null
+  },
+  "truncated_frames_b5": {
+   "predicted": "not PASS for every entry that reads the captured landmarks (b2 b3 b4 b5 verifier); the closure does not read them",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/capture_frames",
+     "subject_00/facing_frames_scored",
+     "subject_01/capture_frames",
+     "subject_01/facing_frames_scored"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "truncated_frames_verifier": {
+   "predicted": "not PASS for every entry that reads the captured landmarks (b2 b3 b4 b5 verifier); the closure does not read them",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": []
+   },
+   "held": true,
+   "turned": null
+  },
+  "substituted_reference_b3": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/reference_is_the_array_the_fit_was_handed"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "substituted_reference_b4": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "CRASH",
+    "mismatches": []
+   },
+   "held": false,
+   "turned": true,
+   "attribution": "FAILED PREDICTION (the class, not the turn). Substituting subject 01's captured array into subject 00 makes both performers' pelvis tracks identical, so B4's own subject map (tools/head/subject_map.py, >=5x margin) refuses: 'subject correspondence is ambiguous (margin 1.00x) -- refusing to guess', exit 1, and the entry records CRASH before its population check can read FAIL. The mutation turns the entry (not PASS); the predicted verdict class was wrong. The 1 mm nudge on one value, which leaves the subject map resolvable, reads FAIL as predicted."
+  },
+  "substituted_reference_b5": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/reference_is_the_array_the_fit_was_handed"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "substituted_reference_b2": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/reference_is_the_array_the_fit_was_handed"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "reference_nudged_1mm_on_one_value_b3": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/reference_is_the_array_the_fit_was_handed"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "reference_nudged_1mm_on_one_value_b4": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/reference_is_the_array_the_fit_was_handed"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "reference_nudged_1mm_on_one_value_b5": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/reference_is_the_array_the_fit_was_handed"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "reference_nudged_1mm_on_one_value_b2": {
+   "predicted": "FAIL (the reference is not the array the fit was handed)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "subject_00/reference_is_the_array_the_fit_was_handed"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "b1_truncated_mesh_with_a_forged_binding": {
+   "predicted": "CRASH (d4_silhouette_paired refuses a short arm)",
+   "observed": "CRASH",
+   "held": true,
+   "turned": null
+  },
+  "b1_substituted_baseline": {
+   "predicted": "FAIL (baseline sha256 is not the D7c mesh)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "baseline_sha256",
+     "arm_file_sha256/baseline"
+    ]
+   },
+   "held": true,
+   "turned": null
+  },
+  "b5_mesh_not_bound_to_this_delivery": {
+   "predicted": "FAIL (no binding naming these GLBs)",
+   "observed": {
+    "verdict": "FAIL",
+    "mismatches": [
+     "mesh_binding/present",
+     "mesh_binding/glb_sha256",
+     "mesh_binding/scope",
+     "mesh_binding/exporter"
+    ]
+   },
+   "held": true,
+   "turned": null
+  }
+ }
+}

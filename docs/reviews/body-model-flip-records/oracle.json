@@ -1,0 +1,322 @@
+{
+ "stage": 3,
+ "what": "THE oracle: the flipped default (no --body flag) against D4d's gated --body mhr delivery",
+ "build": {
+  "command": "PYTHONPATH=$PWD/src .venv/bin/python scripts/build_commercial_multiview_comparison.py --videos .cache/mamma/data/mamma_example/pushing_and_lifting_from_ground/videos --calibration-yaml .cache/mamma/configs/examples/calib/iphones_outdoors.yaml --detector soma77 --output artifacts/compare/d4i-flip/default",
+  "no_body_flag": true,
+  "mhr_python": "the default: .venv-mhr/bin/python (scripts/bootstrap_mhr.sh; mhr-bootstrap-record.json)",
+  "detections": "artifacts/commercial-multiview-soma77/work copied in with cp -Rp before the build (as D4d did); the SOMA-77 detector was not re-run",
+  "log": "artifacts/compare/d4i-flip/logs/03-oracle-default-build.log"
+ },
+ "manifest_equal_outside_work": true,
+ "files": {
+  "camera-rig.json": {
+   "default_sha256": "80d28a4179e16810ffda80f20db67b69c5e671c1ccb109ca5094765c3cf1c4e4",
+   "d4d_sha256": "80d28a4179e16810ffda80f20db67b69c5e671c1ccb109ca5094765c3cf1c4e4",
+   "byte_identical": true
+  },
+  "converter-inputs/rig-converter-input.npz": {
+   "default_sha256": "305345af7da56825c10f42140bbfcada12da066ccc90bd0edd74d818925592e4",
+   "d4d_sha256": "305345af7da56825c10f42140bbfcada12da066ccc90bd0edd74d818925592e4",
+   "byte_identical": true
+  },
+  "converter-inputs/subject-00-consumed.npz": {
+   "default_sha256": "003efbde37684e0aa57b34430e82078e5d039bf480b08a3c149aaf95e6718095",
+   "d4d_sha256": "003efbde37684e0aa57b34430e82078e5d039bf480b08a3c149aaf95e6718095",
+   "byte_identical": true
+  },
+  "converter-inputs/subject-01-consumed.npz": {
+   "default_sha256": "3a619d2c26597d87da4733a189b589d5ac9329eee1d21e868f920d559578d34d",
+   "d4d_sha256": "3a619d2c26597d87da4733a189b589d5ac9329eee1d21e868f920d559578d34d",
+   "byte_identical": true
+  },
+  "fit-report-subject-00.json": {
+   "default_sha256": "fd216a6ea2a7a4ee03f3bfa71907eb4bed5c4cc040cad531f19200744f230f1c",
+   "d4d_sha256": "0139a88925068dc1c3ec40510f8ca9d28595e6842be44e82a21db180ebdc1bc6",
+   "byte_identical": false,
+   "differing_leaves": {
+    "/module": {
+     "default": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/.venv-mhr/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so",
+     "d4d": "/private/tmp/momenv/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so"
+    }
+   }
+  },
+  "fit-report-subject-01.json": {
+   "default_sha256": "6628102d64b4e081092b84ff2db4ceccb34f54c3ed13415f4d0662f36ba1f3ed",
+   "d4d_sha256": "0b168573b950c3251bc42547eac82e8395cd6553a24a8ef81407bc6d73f6b7bb",
+   "byte_identical": false,
+   "differing_leaves": {
+    "/module": {
+     "default": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/.venv-mhr/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so",
+     "d4d": "/private/tmp/momenv/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so"
+    }
+   }
+  },
+  "fit-report.json": {
+   "default_sha256": "aee01c4e7a93cd8d372b62fa2356295ad96e7d6b91cbc256ef45bff027f8e353",
+   "d4d_sha256": "53cb78c677bf49e0ec7202ced580581793618e6d5bc5a168498ae934fa5e541a",
+   "byte_identical": false,
+   "differing_leaves": {
+    "/subjects/subject_00/module": {
+     "default": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/.venv-mhr/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so",
+     "d4d": "/private/tmp/momenv/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so"
+    },
+    "/subjects/subject_01/module": {
+     "default": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/.venv-mhr/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so",
+     "d4d": "/private/tmp/momenv/lib/python3.12/site-packages/pymomentum/geometry.cpython-312-darwin.so"
+    }
+   }
+  },
+  "only-3d-review.html": {
+   "default_sha256": "1e79c10d166b22fbfc682bd57d1d097e0c43d3f63a1994985fb6c8c24af066e1",
+   "d4d_sha256": "1e79c10d166b22fbfc682bd57d1d097e0c43d3f63a1994985fb6c8c24af066e1",
+   "byte_identical": true
+  },
+  "review.html": {
+   "default_sha256": "fcfdb3ea72d910b8c347b0d355ae98e5bb029a44bb34f5d7be489e23cf599f12",
+   "d4d_sha256": "fcfdb3ea72d910b8c347b0d355ae98e5bb029a44bb34f5d7be489e23cf599f12",
+   "byte_identical": true
+  },
+  "run-report.json": {
+   "default_sha256": "00e281b20401ad86c24598b1f205f92ebd9203177dda91090b4ccf1d255dcd71",
+   "d4d_sha256": "e1158eafbd2838da322c17dc214170b51e46ccab40606aea3ad5ec6875cf5873",
+   "byte_identical": false,
+   "differing_leaves": {
+    "/head_orientation[0]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    },
+    "/head_orientation[1]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    },
+    "/limitations[0]": {
+     "default": "SOMA-77 emits finger and toe landmarks, but the MHR adapter maps neither, so the delivered body has no articulated fingers or toes.",
+     "d4d": "SOMA-77 emits finger and toe landmarks, but the adapter maps neither, so the delivered track has no articulated fingers."
+    },
+    "/limitations[2]": {
+     "default": "The delivered MHR body does not carry the multi-frame head solve, the toe input, SOMA-77 Spine1, the foot contacts or the ground projection: the run report keeps those capture-side solves and marks each NOT CONSUMED by the delivered body (not_consumed_by_delivered_body). Its head, feet and pelvis follow MHR's own skeleton fitted to the 17 mapped landmarks.",
+     "d4d": "Sparse IK preserves canonical body proportions instead of estimating a dense shape model."
+    },
+    "/limitations[3]": {
+     "default": "The track's rest_positions_z_up_m is MHR's MEAN body, never a rest of this performer: the fitted identity rides in identity_values and the animation channels.",
+     "d4d": "<absent>"
+    },
+    "/limitations[4]": {
+     "default": "The fitted spine-length channel reads subject 00 1.102, subject 01 0.823 against a configured limit of 1.1 (a soft penalty). Past the limit is an OBSERVED excursion, not evidence of accuracy; missing spine information or a landmark-to-joint convention mismatch is a hypothesis, not a measured cause.",
+     "d4d": "<absent>"
+    },
+    "/limitations[5]": {
+     "default": "The combined fitter's acceptance (D4d) holds on 12 fresh identities under two donor motions; it does not show improvement over D4c, repair of the shortened-spine failure class on fresh bodies, general pose robustness, full identity recovery or convergence. The real take has no truth for its identity.",
+     "d4d": "<absent>"
+    },
+    "/not_consumed_by_delivered_body[0]": {
+     "default": "head_orientation",
+     "d4d": "<absent>"
+    },
+    "/not_consumed_by_delivered_body[1]": {
+     "default": "toe_triangulation",
+     "d4d": "<absent>"
+    },
+    "/not_consumed_by_delivered_body[2]": {
+     "default": "spine_triangulation",
+     "d4d": "<absent>"
+    },
+    "/not_consumed_by_delivered_body[3]": {
+     "default": "pelvis_frame",
+     "d4d": "<absent>"
+    },
+    "/not_consumed_by_delivered_body[4]": {
+     "default": "contact_frames",
+     "d4d": "<absent>"
+    },
+    "/pelvis_frame[0]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    },
+    "/pelvis_frame[1]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    },
+    "/spine_triangulation[0]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    },
+    "/spine_triangulation[1]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    },
+    "/toe_triangulation[0]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    },
+    "/toe_triangulation[1]/consumed_by_delivered_body": {
+     "default": false,
+     "d4d": "<absent>"
+    }
+   }
+  },
+  "source.mp4": {
+   "default_sha256": "1854cc1cb0e7ecd856a724c17d058cd3a2a5c69fb7693e79a4023fbf5aaf1bc8",
+   "d4d_sha256": "1854cc1cb0e7ecd856a724c17d058cd3a2a5c69fb7693e79a4023fbf5aaf1bc8",
+   "byte_identical": true
+  },
+  "subject-00.body-track.json": {
+   "default_sha256": "d44c24a7ba1e1aa915cf0cfd371e6f76a35860502c8e559e1203da3dbc06a67b",
+   "d4d_sha256": "e6bc5f4c41eb2f1441c9c1231ec39b78a0478bcb75d10b95bbf5c6111f4622b0",
+   "byte_identical": false,
+   "differing_leaves": {
+    "/body_model/assets": {
+     "default": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/.cache/mhr/assets",
+     "d4d": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4d/.cache/mhr/assets"
+    }
+   }
+  },
+  "subject-00.body-track.npz": {
+   "default_sha256": "d2f451db9b34b3f2bff0e12b12107fbb78526baca3c62e11e3ff0a2156df9a9e",
+   "d4d_sha256": "d2f451db9b34b3f2bff0e12b12107fbb78526baca3c62e11e3ff0a2156df9a9e",
+   "byte_identical": true
+  },
+  "subject-00.calibration-passes.json": {
+   "default_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+   "d4d_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+   "byte_identical": true
+  },
+  "subject-00.calibration-start.json": {
+   "default_sha256": "88d0fa40ecc7036e8322a80ae957f85a53d7c63fe87105bae9e6b43bdce15409",
+   "d4d_sha256": "88d0fa40ecc7036e8322a80ae957f85a53d7c63fe87105bae9e6b43bdce15409",
+   "byte_identical": true
+  },
+  "subject-00.glb": {
+   "default_sha256": "9dec34a7a53c86dc2a1b7e492947aead40d3b244430ff402e4c47892f140741d",
+   "d4d_sha256": "9dec34a7a53c86dc2a1b7e492947aead40d3b244430ff402e4c47892f140741d",
+   "byte_identical": true
+  },
+  "subject-00.markers.npz": {
+   "default_sha256": "14a46c30f0764e9c252130cc088f009e9ddb727f86b3f486263a15ebbecf8d8d",
+   "d4d_sha256": "14a46c30f0764e9c252130cc088f009e9ddb727f86b3f486263a15ebbecf8d8d",
+   "byte_identical": true
+  },
+  "subject-01.body-track.json": {
+   "default_sha256": "e268b71fadfcd68e8c6c9fd9be8bb1a1973a81fa7e23368bcdd250ef1fd2e5ae",
+   "d4d_sha256": "6649747c800ff02bbc826ec88e3e004b69f1c3dca0b28d27f672179c4bed1ce5",
+   "byte_identical": false,
+   "differing_leaves": {
+    "/body_model/assets": {
+     "default": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/.cache/mhr/assets",
+     "d4d": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4d/.cache/mhr/assets"
+    }
+   }
+  },
+  "subject-01.body-track.npz": {
+   "default_sha256": "9878ba586dd18a872c58d9231a00b77b4c18cb335baba60033106bf7561a4753",
+   "d4d_sha256": "9878ba586dd18a872c58d9231a00b77b4c18cb335baba60033106bf7561a4753",
+   "byte_identical": true
+  },
+  "subject-01.calibration-passes.json": {
+   "default_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+   "d4d_sha256": "dd592ff11379f88d60bc045712bbffdf44023d892157b27b726edf61d8816d5c",
+   "byte_identical": true
+  },
+  "subject-01.calibration-start.json": {
+   "default_sha256": "c9cfb92547495d993e7ac4b525a4ed249ccfd6668d6022ee48d61f7b9f93c2a2",
+   "d4d_sha256": "c9cfb92547495d993e7ac4b525a4ed249ccfd6668d6022ee48d61f7b9f93c2a2",
+   "byte_identical": true
+  },
+  "subject-01.glb": {
+   "default_sha256": "6b3d870ef37f01d2c0eb72ea1bbf71e4e83ccb77321a185d038e66bd517b3d2d",
+   "d4d_sha256": "6b3d870ef37f01d2c0eb72ea1bbf71e4e83ccb77321a185d038e66bd517b3d2d",
+   "byte_identical": true
+  },
+  "subject-01.markers.npz": {
+   "default_sha256": "92de364df37801842fbc110366230f3fc48126dcabd55102f528479c72263d81",
+   "d4d_sha256": "92de364df37801842fbc110366230f3fc48126dcabd55102f528479c72263d81",
+   "byte_identical": true
+  }
+ },
+ "card_byte_list": {
+  "subject-00.glb": true,
+  "subject-00.body-track.npz": true,
+  "subject-00.body-track.json": false,
+  "subject-00.markers.npz": true,
+  "subject-00.calibration-start.json": true,
+  "subject-00.calibration-passes.json": true,
+  "subject-01.glb": true,
+  "subject-01.body-track.npz": true,
+  "subject-01.body-track.json": false,
+  "subject-01.markers.npz": true,
+  "subject-01.calibration-start.json": true,
+  "subject-01.calibration-passes.json": true
+ },
+ "card_byte_list_all_identical": false,
+ "prediction_check": {
+  "predicted_differs_in_exactly_one_leaf": {
+   "subject-00.body-track.json": [
+    "/body_model/assets"
+   ],
+   "subject-01.body-track.json": [
+    "/body_model/assets"
+   ]
+  },
+  "held": true,
+  "attribution": "tools/fitter/mhr_delivery.py (frozen) writes body_model.assets = str(ROOT/.cache/mhr/assets), ROOT its own checkout. The literal byte-identity clause cannot hold on the track JSON from any checkout but ladder-D4d. Pre-registered in stage3-predictions.json before this build.",
+  "fit_reports": "the one module leaf per subject moves (/private/tmp/momenv -> .venv-mhr); the loaded geometry .so is byte-identical in both interpreters (sha256 d72271532766895663ac...)",
+  "run_report": "differs by the intended corrections only: the five not-consumed marks and the MHR limitations (18 leaves)"
+ },
+ "B1": {
+  "instrument_report_equal_except_arm_paths": true,
+  "draws": {
+   "seed": 20260921,
+   "block_length": 15,
+   "resamples": 2000
+  },
+  "arm_file_sha256_equal": true,
+  "delivered_mesh": "a FRESH export by the schema-aware silhouette.py (mesh_cache.fresh_export = true), byte-identical to D4d's work-delivery/delivered-mesh.npz (2b7ba78d4c19e8f8...)",
+  "lower_ci_vs_D7c": {
+   "subject_00": [
+    0.12954502516444144,
+    0.15913276573087665
+   ],
+   "subject_01": [
+    0.08355692479284826,
+    0.13373558014725132
+   ]
+  },
+  "scored_rows": "the per-cell IoU rows are a function of byte-identical inputs (the mesh npz, the i6 mask cache, the same code); every derived row in the report (per-arm per-camera medians, paired medians, CIs, n, cells_required, exclusions) is equal",
+  "evidence": "artifacts/compare/d4i-flip/oracle/b1.instrument.json vs artifacts/compare/d4d-twopass/b1-paired.json; logs/07-oracle-b1.log"
+ },
+ "silhouette": {
+  "report_equal_to_D4d_silhouette_delivery_json_except_the_two_new_fields": true,
+  "fresh_mask_and_mean_body_caches_equal_D4d_seeded_ones": true,
+  "log": "artifacts/compare/d4i-flip/logs/06-oracle-silhouette-compare.log"
+ },
+ "closure_B2_B5": {
+  "closure": "equal to D4d's delivery-closure.json (paths dropped); track_sha256 and glb_sha256 equal",
+  "B2": "equal to D4d's b2-same-denominator.json (paths dropped), against D4d's own rig hygiene build",
+  "B5": "equal to the Phase-1 reading on D4d's delivery (paths dropped); its mesh is the fresh default export",
+  "B3_B4": "equal to the Phase-1 readings on D4d's delivery (the delivery path dropped)",
+  "log": "artifacts/compare/d4i-flip/logs/08-oracle-b2-b5-closure-verifier.log"
+ },
+ "subject_identities": {
+  "silhouette_identity_block_equal": true,
+  "B4_subject_to_mamma_body_id": {
+   "0": 1,
+   "1": 0
+  }
+ },
+ "verifier": {
+  "status": "pass",
+  "placement_median_m": 0.018609214134880807,
+  "placement_p95_m": 0.09753126771620996
+ },
+ "roster_entry_verdicts_on_the_default_build": {
+  "silhouette": "PASS",
+  "b1": "PASS",
+  "closure": "PASS",
+  "b3": "PASS",
+  "b4": "PASS",
+  "b5": "PASS",
+  "verifier": "PASS",
+  "b2 (vs D4d's rig hygiene build)": "PASS"
+ }
+}

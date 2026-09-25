@@ -1,0 +1,549 @@
+{
+ "baseline": "VERDICT: FAIL (failed: oracle, coordinator_migration_recorded)",
+ "targeted": [
+  {
+   "mutation": "oracle: a GLB byte",
+   "conjunct": "oracle",
+   "evidence": "default",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "B1_reproduced_exactly",
+    "population_and_own_verdicts"
+   ]
+  },
+  {
+   "mutation": "oracle: a markers byte",
+   "conjunct": "oracle",
+   "evidence": "default",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "population_and_own_verdicts"
+   ]
+  },
+  {
+   "mutation": "oracle: the calibration pass count",
+   "conjunct": "oracle",
+   "evidence": "default",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "population_and_own_verdicts"
+   ]
+  },
+  {
+   "mutation": "oracle: the track npz's mean body (the roster cannot see it; the oracle must)",
+   "conjunct": "oracle",
+   "evidence": "default",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "population_and_own_verdicts"
+   ]
+  },
+  {
+   "mutation": "oracle: a delivered file missing",
+   "conjunct": "oracle",
+   "evidence": "default",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "oracle: a converter-input byte",
+   "conjunct": "oracle",
+   "evidence": "default",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "oracle: the silhouette's identity block",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "oracle: B4's subject map crossed",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "oracle: B1's seed",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "B1_reproduced_exactly",
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "oracle: one B1 paired row",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "B1_reproduced_exactly",
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "oracle: one silhouette figure",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "oracle: the closure residual",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "oracle: a B2 check",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "oracle: a B5 figure",
+   "conjunct": "oracle",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "B1: the band from the rows",
+   "conjunct": "B1_reproduced_exactly",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "oracle",
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "B1: the entry's verdict",
+   "conjunct": "B1_reproduced_exactly",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "population_and_own_verdicts"
+   ]
+  },
+  {
+   "mutation": "B1: a cached (not fresh) mesh",
+   "conjunct": "B1_reproduced_exactly",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "B1: a mesh bound to other GLBs",
+   "conjunct": "B1_reproduced_exactly",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "B2: the instrument's own verdict",
+   "conjunct": "B2_PASS",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "oracle",
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "closure: the instrument's own band",
+   "conjunct": "closure_PASS",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "oracle",
+    "must_fails_i_to_v"
+   ]
+  },
+  {
+   "mutation": "hygiene: a rig-arm byte",
+   "conjunct": "hygiene",
+   "evidence": "rig_arm",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "hygiene: a src byte",
+   "conjunct": "hygiene",
+   "evidence": "worktree",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "hygiene: a file added under src",
+   "conjunct": "hygiene",
+   "evidence": "worktree",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "hygiene: the fitter",
+   "conjunct": "hygiene",
+   "evidence": "worktree",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "hygiene: an i6 byte",
+   "conjunct": "hygiene",
+   "evidence": "i6",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "must-fail (i): a scope refusal that ran instead",
+   "conjunct": "must_fails_i_to_v",
+   "evidence": "mustfail",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "must-fail (iii): the negative control moved a figure",
+   "conjunct": "must_fails_i_to_v",
+   "evidence": "mustfail",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "must-fail (population): a report missing",
+   "conjunct": "must_fails_i_to_v",
+   "evidence": "mustfail",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "must-fail (v): the positive control did not move B3",
+   "conjunct": "must_fails_i_to_v",
+   "evidence": "mustfail",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "must-fail (ii): a record-read case",
+   "conjunct": "must_fails_i_to_v",
+   "evidence": "mustfail_record",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "population: a mismatch in B3's entry",
+   "conjunct": "population_and_own_verdicts",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "population: an entry run on another delivery",
+   "conjunct": "population_and_own_verdicts",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "population: an entry without its own verdict field",
+   "conjunct": "population_and_own_verdicts",
+   "evidence": "final_roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "population: the recorded run disagrees",
+   "conjunct": "population_and_own_verdicts",
+   "evidence": "final_roster_record",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": [
+    "coordinator_migration_recorded"
+   ]
+  },
+  {
+   "mutation": "roster: a missing post-migration evidence",
+   "conjunct": "roster_complete",
+   "evidence": "roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "roster: a (d) instrument kept",
+   "conjunct": "roster_complete",
+   "evidence": "roster",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "coordinator: post_merge.sh reverted",
+   "conjunct": "coordinator_migration_recorded",
+   "evidence": "worktree",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "coordinator: the recorded run not all PASS",
+   "conjunct": "coordinator_migration_recorded",
+   "evidence": "final_roster_record",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  },
+  {
+   "mutation": "coordinator: the recorded run log missing",
+   "conjunct": "coordinator_migration_recorded",
+   "evidence": "final_roster_log",
+   "before": true,
+   "after": false,
+   "outcome": "TURNED",
+   "conjunct_holds_after": false,
+   "verdict_after": "FAIL",
+   "other_conjuncts_moved": []
+  }
+ ],
+ "crashes": [
+  {
+   "mutation": "crash: B1's report unreadable",
+   "conjunct": "B1_reproduced_exactly",
+   "class": "CRASH",
+   "fails_closed": true,
+   "verdict_after": "FAIL",
+   "crash": "JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+  },
+  {
+   "mutation": "crash: the closure's report missing",
+   "conjunct": "closure_PASS",
+   "class": "CRASH",
+   "fails_closed": true,
+   "verdict_after": "FAIL",
+   "crash": "FileNotFoundError: [Errno 2] No such file or directory: '/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/artifacts/compare/d4i-flip/fuzz-scratch/c01/final-roster/closure.instrument.json'"
+  },
+  {
+   "mutation": "crash: the roster unreadable",
+   "conjunct": "roster_complete",
+   "class": "CRASH",
+   "fails_closed": true,
+   "verdict_after": "FAIL",
+   "crash": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+  }
+ ],
+ "negatives": [
+  {
+   "mutation": "negative: every delivered file's mtime moved",
+   "moved": [],
+   "unmoved": true
+  },
+  {
+   "mutation": "negative: the review page (not a per-subject file) edited",
+   "moved": [],
+   "unmoved": true
+  },
+  {
+   "mutation": "negative: a line appended to the recorded run's log",
+   "moved": [],
+   "unmoved": true
+  },
+  {
+   "mutation": "negative: B3's REPORTED figures in the ENTRY report (not the instrument's) edited",
+   "moved": [],
+   "unmoved": true
+  }
+ ],
+ "counterfactual": {
+  "what": "the default's two track JSONs replaced by D4d's bytes (the ONLY difference being body_model.assets); REPORTED, never admitted into the verdict",
+  "oracle_holds": true,
+  "legs": {
+   "per_subject_files_byte_identical": true,
+   "manifest_equal": true,
+   "reference_hashes_equal": true,
+   "subject_identities_equal": true,
+   "draws_equal": true,
+   "scored_rows_equal": true,
+   "closure_reproduced": true,
+   "b2_reproduced": true,
+   "b5_reproduced": true
+  }
+ },
+ "summary": {
+  "targeted": 39,
+  "turned": 39,
+  "unmoved": [],
+  "crash_in_targeted": [],
+  "crash_class": {
+   "cases": 3,
+   "all_crash_and_fail_closed": true
+  },
+  "negative_controls_unmoved": true,
+  "baseline_verdict": "VERDICT: FAIL (failed: oracle, coordinator_migration_recorded)"
+ }
+}
