@@ -36,9 +36,16 @@ legacy arm). The start actually used is written beside the delivery as
 `subject-XX.calibration-start.json`, never into the fit report or the track (so the zero start leaves
 both byte-identical).
 
+D4d, A SECOND CALIBRATION PASS. `fit_one(..., passes=2)` repeats the full calibration (stage A, then stage B)
+from its own copy of the first pass's identity, each pass at `max_iter` 30; tracking is untouched. `fit_one`
+defaults to ONE pass (D4c's fitter, byte for byte); this CLI, which `--body mhr` runs, defaults to TWO, and
+`--passes 1` is the tripwire. The pass count is written beside the delivery as
+`subject-XX.calibration-passes.json`, never into the fit report, the track or `calibration-start.json` (so one pass
+leaves every D4c file byte-identical).
+
 Usage:
   /tmp/momenv/bin/python tools/fitter/mhr_delivery.py --inputs DIR --out DIR --subject N \
-      [--lod 2] [--landmarks smoothed|raw] [--mean-body] [--free-offsets] [--zero-start]
+      [--lod 2] [--landmarks smoothed|raw] [--mean-body] [--free-offsets] [--zero-start] [--passes 1|2]
 """
 
 from __future__ import annotations
@@ -242,11 +249,13 @@ def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_b
             free_offsets: bool, calib_frames: int = 100, max_iter: int = 30,
             loss_alpha: float = 2.0, smoothing: float = 0.0,
             freeze_flexible: bool = False, fixed_identity: np.ndarray | None = None,
-            start_identity: np.ndarray | None = None) -> dict:
+            start_identity: np.ndarray | None = None, passes: int = 1) -> dict:
     """Two-stage calibration then per-frame tracking. Returns everything the delivery needs.
 
     `start_identity` (D4c) is where BOTH calibration stages start, each from its own copy; None is the zero
-    start, exactly the D4 fitter's.
+    start, exactly the D4 fitter's. `passes` (D4d): 1 is D4c's fitter byte for byte; 2 runs the full calibration
+    (stage A, then stage B) a second time, started from its own copy of the first pass's identity, at the same
+    `max_iter`. Tracking is untouched. Fixed at 1 or 2, never swept.
     """
     array_cm = to_mhr_cm(np.asarray(array_zup_m, np.float64))
     character = with_pinned_locators(load_character(lod, drop_flexible=freeze_flexible),
@@ -280,6 +289,13 @@ def fit_one(array_zup_m: np.ndarray, joint_names: list[str], *, lod: int, mean_b
         mt.calibrate_markers(character, start.copy(), markers, stage_a)
         identity, _, _ = mt.calibrate_markers(character, start.copy(), markers, calibration)
         identity = np.asarray(identity, np.float32)
+        if passes == 2:
+            first = identity.copy()
+            mt.calibrate_markers(character, first.copy(), markers, stage_a)
+            identity, _, _ = mt.calibrate_markers(character, first.copy(), markers, calibration)
+            identity = np.asarray(identity, np.float32)
+        elif passes != 1:
+            raise ValueError(f"passes is 1 or 2, never swept (got {passes!r})")
 
     tracking = mt.TrackingConfig()
     tracking.smoothing = smoothing
@@ -414,6 +430,10 @@ def main() -> int:
     parser.add_argument("--zero-start", action="store_true",
                         help="D4c: force the ZERO calibration start (the D4 fitter, byte for byte): the "
                              "tripwire and the legacy arm. The delivery default is the landmark start.")
+    parser.add_argument("--passes", type=int, choices=(1, 2), default=2,
+                        help="D4d: calibration passes. 2 (the default, what --body mhr runs) repeats stage A and "
+                             "stage B from the first pass's identity; 1 is D4c's fitter byte for byte (the "
+                             "tripwire).")
     parser.add_argument("--dump-reference", type=Path,
                         help="B5: write MHR's OWN rest, hierarchy and skin weights at this lod to "
                              "an npz and exit, so a .venv instrument can compare the delivered "
@@ -468,7 +488,7 @@ def main() -> int:
             start, start_record = landmark_start(array, joint_names, export_character)
             start_record["mode"] = "landmark"
         fit = fit_one(array, joint_names, lod=arguments.lod, mean_body=arguments.mean_body,
-                      free_offsets=arguments.free_offsets, start_identity=start)
+                      free_offsets=arguments.free_offsets, start_identity=start, passes=arguments.passes)
         if list(export_character.parameter_transform.names) != fit["parameter_names"]:
             raise SystemExit("the start was built on a different parameter layout from the fitted character's")
         (out / f"subject-{subject:02d}.calibration-start.json").write_text(
@@ -476,6 +496,10 @@ def main() -> int:
                             identity=None if start is None else
                             {n: float(v) for n, v in zip(fit["parameter_names"], start) if v != 0.0}),
                        indent=1), encoding="utf-8")
+        (out / f"subject-{subject:02d}.calibration-passes.json").write_text(
+            json.dumps({"passes": arguments.passes,
+                        "calibrating": not arguments.mean_body, "max_iter_per_pass": 30,
+                        "tracking_max_iter": 30}, indent=1), encoding="utf-8")
         prefix = out / f"subject-{subject:02d}"
         export_glb(fit, export_character, prefix.with_suffix(".glb"))
         written = write_track(fit, prefix, subject=subject, consumed=consumed, lod=arguments.lod,
