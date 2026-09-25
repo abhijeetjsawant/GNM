@@ -1,0 +1,316 @@
+{
+ "step": "D4i",
+ "schema": "d4i-roster/1",
+ "classes": {
+  "a": "it runs and scores the delivered body",
+  "b": "it runs but scores a rig arm or a capture-side quantity",
+  "c": "it crashes or refuses",
+  "d": "it runs GREEN on a delivered capability the MHR delivery does not carry",
+  "precedence": "(d) takes precedence over (b): an unsupported delivered-capability GREEN is never relabelled as capture-side work"
+ },
+ "fields": [
+  "observed (pre-migration, on D4d's gated MHR delivery)",
+  "final_action (keep / relabel / replace / remove)",
+  "post_migration (the final entry, measured on the default build)"
+ ],
+ "exit_status_is_not_a_verdict": "every entry records its OWN verdict field; the exit code is recorded beside it and never read as a verdict",
+ "phase1": {
+  "delivery": "artifacts/compare/d4d-twopass/delivery (D4d's gated --body mhr delivery); the shadow's clone checked byte-identical on all 17 top-level and converter-input files",
+  "tools_at": "git archive HEAD at 2146a22 (roster tools unchanged since fc1a052)",
+  "runner": "docs/reviews/body-model-flip-records/phase1_run.sh (the post_merge.sh step-4 lines verbatim, ID=D4i-observed, cwd = the shadow root; the mechanism is in its header)",
+  "shadow_root": "artifacts/compare/d4i-flip/phase1/shadow",
+  "silhouette_work": "the legacy DEFAULT (artifacts/compare/i6 inside the shadow, an APFS clone), exactly as post_merge.sh invokes it; the mesh was NOT seeded",
+  "live_reports": {
+   "before": "docs/reviews/body-model-flip-records/live-reports-before.json (4530 files)",
+   "after_phase1": "docs/reviews/body-model-flip-records/live-reports-after-phase1.json: UNCHANGED",
+   "tool": "tools/compare/d4i_live_reports.py"
+  }
+ },
+ "instruments": {
+  "delivered_vs_capture": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "c",
+   "observed": {
+    "class": "c",
+    "own_verdict_field": "none written (crash before any report)",
+    "exit_status": 1,
+    "reading": "KeyError: 1 in d3_skeleton_gate.glb_joint_positions (rotation_channels[node]): momentum's GLB gives rotation channels to 45 of 127 joints. Crashes on the 'after' (MHR) arm; the D4 record (logs/22-b3-dvc-attempt.log) saw the same.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/delivered_vs_capture.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/delivered_vs_capture.py --delivery before=artifacts/compare/delivered-before-D4i-observed --delivery after=artifacts/commercial-multiview-soma77 --out artifacts/compare/post-merge-D4i-observed/delivered-vs-capture.json",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "captured_limb_stability": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "b",
+   "observed": {
+    "class": "b",
+    "own_verdict_field": "verdict = REPORTED (limb-stability.json)",
+    "exit_status": 0,
+    "reading": "Runs. Reads only the capture side of the delivery: both landmark arrays (triangulated_world_positions_z_up_m, raw_...), work/*-soma77-observations.jsonl and camera-rig.json. Nothing of the delivered MHR body is read; every figure is a capture-side quantity (identical bytes across schemas, B2 1a/1b).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/captured_limb_stability.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/captured_limb_stability.py --out artifacts/compare/post-merge-D4i-observed/limb-stability.json --skip-reproduction",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "mamma_scoreboard": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "c",
+   "observed": {
+    "class": "c",
+    "own_verdict_field": "none written (crash)",
+    "exit_status": 1,
+    "reading": "BodyValidationError: 'Body track joint order does not match a supported skeleton' at skeleton_for_joint_names (the 127 MHR joints).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/mamma_scoreboard.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/mamma_scoreboard.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "retarget_cost": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "b",
+   "observed": {
+    "class": "b",
+    "own_verdict_field": "no verdict field (report-only; retarget-cost.json)",
+    "exit_status": 0,
+    "reading": "Runs on system python3. Reads only triangulated_world_positions_z_up_m from the delivery and RE-RUNS THE RIG CONVERTER (DETAILED_HUMANOID, 55 joints) on it. It scores a rig arm, never the delivered MHR body.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/retarget_cost.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src python3 tools/swap-harness/retarget_cost.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "d3_skeleton_gate": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "c",
+   "observed": {
+    "class": "c",
+    "own_verdict_field": "none written (crash)",
+    "exit_status": 1,
+    "reading": "BodyValidationError: 'Serialized body track fields are missing or unknown' at BodyTrack.from_dict (oracle_block -> load_track(DELIVERED, 0)).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/d3_skeleton_gate.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d3_skeleton_gate.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "facing_location": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "c",
+   "observed": {
+    "class": "c",
+    "own_verdict_field": "none written (crash)",
+    "exit_status": 1,
+    "reading": "BodyValidationError: 'Body track joint order does not match a supported skeleton' at skeleton_for_track_dict.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/facing_location.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/facing_location.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "silhouette": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "c",
+   "observed": {
+    "class": "c",
+    "own_verdict_field": "none written (crash)",
+    "exit_status": 1,
+    "reading": "CalledProcessError: the mesh cache (default --work artifacts/compare/i6 inside the shadow) is older than the MHR GLBs, so it re-exports with the RIG exporter blender_export_mesh.py, which exits non-zero on the MHR GLB. In the shipped tree this legacy command would have written into artifacts/compare/i6, the D7c baseline.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/silhouette.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/silhouette.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "delivered_foot": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "c",
+   "observed": {
+    "class": "c",
+    "own_verdict_field": "none written (crash)",
+    "exit_status": 1,
+    "reading": "KeyError: 'local_rotations_xyzw is not a file in the archive' (rig-schema key).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/delivered_foot.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/feet/delivered_foot_is_fiction.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "head_gate": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "d or c",
+   "observed": {
+    "class": "d",
+    "own_verdict_field": "per-arm verdict column: candidate_multiview_fit PASS on both subjects (ungated and gated); ORACLE PASS; controls C1/C2 FAIL",
+    "exit_status": 0,
+    "reading": "Runs GREEN. It scores artifacts/head-lane/head-solve-shipped.npz, a RIG pipeline head solve that is not in the MHR delivery at all, against a thorax frame built from the delivery's triangulated landmarks. The MHR delivery carries no multi-frame head solve, so this is a GREEN on a delivered capability the delivery does not carry: (d), which takes precedence over (b).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/head_gate.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/head/head_gate.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "bootstrap_margin": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "d or c",
+   "observed": {
+    "class": "d",
+    "own_verdict_field": "P(pass) per subject and block: candidate 0.91-0.92 / 1.00; oracle 1.00 (no verdict word; the P(pass) figures are its reading)",
+    "exit_status": 0,
+    "reading": "Runs GREEN on the same head-lane/head-solve-shipped.npz rig head solve (imports head_gate); only triangulated_world_positions_z_up_m comes from the delivery. A pass probability for a head the MHR delivery does not carry: (d).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/bootstrap_margin.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/head/bootstrap_margin.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "oracle_2d": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "b",
+   "observed": {
+    "class": "b",
+    "own_verdict_field": "no verdict field (report-only; oracle-2d.json)",
+    "exit_status": 0,
+    "reading": "Runs. Reads only the delivery's camera-rig.json (identical across schemas) and MAMMA's retained 2D/3D output. It scores our triangulation stage against MAMMA's own projected joints: a capture-side quantity, never the delivered body.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/oracle_2d.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/oracle_2d.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "fit_smplx_pose": {
+   "in_post_merge_sh_today": true,
+   "predicted_observed_class": "b",
+   "observed": {
+    "class": "b",
+    "own_verdict_field": "no verdict field (report-only; smplx-pose-fit.json)",
+    "exit_status": 0,
+    "reading": "Runs. Reads only triangulated_world_positions_z_up_m and fits SMPL-X to it (vs MAMMA and vs our capture). Capture-side; the delivered MHR body is never read.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/fit_smplx_pose.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/fit_smplx_pose.py",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "b2": {
+   "in_post_merge_sh_today": false,
+   "predicted_observed_class": "a (final)",
+   "observed": {
+    "class": "a",
+    "own_verdict_field": "verdict = PASS (both subjects PASS); exit 0 whatever the verdict",
+    "exit_status": 0,
+    "reading": "Runs and scores the delivered track's consumed input and markers against the rig build's array. Equal to D4d's b2-same-denominator.json with the two path fields dropped.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/b2.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b2_same_denominator.py --delivery artifacts/commercial-multiview-soma77 --rig-build artifacts/compare/d4d-twopass/hygiene --out artifacts/compare/post-merge-D4i-observed/b2-same-denominator.json",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "b3": {
+   "in_post_merge_sh_today": false,
+   "predicted_observed_class": "a (final)",
+   "observed": {
+    "class": "a",
+    "own_verdict_field": "no verdict field (REPORTED); takes min(frames) and drops nonfinite distances, so it cannot refuse a short population",
+    "exit_status": 0,
+    "reading": "Runs and scores the delivered GLB's own joints (read from its bytes) against the delivery's captured landmarks through the declared landmark_to_joint. All-landmark median printed per subject.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/b3.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b3_placement.py --delivery artifacts/commercial-multiview-soma77 --out artifacts/compare/post-merge-D4i-observed/b3-placement.json",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "b4": {
+   "in_post_merge_sh_today": false,
+   "predicted_observed_class": "a (final)",
+   "observed": {
+    "class": "a",
+    "own_verdict_field": "no verdict field (REPORTED, never selected)",
+    "exit_status": 0,
+    "reading": "Runs and scores the delivered GLB joints against MAMMA pred_joints (subject map by pelvis agreement).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/b4.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b4_mamma_arm.py --delivery artifacts/commercial-multiview-soma77 --out artifacts/compare/post-merge-D4i-observed/b4-mamma-arm.json",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "closure": {
+   "in_post_merge_sh_today": false,
+   "predicted_observed_class": "a (final)",
+   "observed": {
+    "class": "a",
+    "own_verdict_field": "all_within_band = true, worst 2.293e-06 m; exit 0 whatever the band",
+    "exit_status": 0,
+    "reading": "Runs; equal to D4d's delivery-closure.json with the path fields dropped.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/closure.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_glb_closure.py --pair subject_00=artifacts/commercial-multiview-soma77/subject-00.glb,artifacts/commercial-multiview-soma77/subject-00.body-track.npz --pair subject_01=artifacts/commercial-multiview-soma77/subject-01.glb,artifacts/commercial-multiview-soma77/subject-01.body-track.npz --out artifacts/compare/post-merge-D4i-observed/delivery-closure.json",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "b5": {
+   "in_post_merge_sh_today": false,
+   "predicted_observed_class": "a (final)",
+   "observed": {
+    "class": "a",
+    "own_verdict_field": "verdict_bytes = PASS (both subjects PASS); facing reported",
+    "exit_status": 0,
+    "reading": "Runs on the delivered GLB bytes against mhr-reference-lod2.npz and D4d's exported mesh (work-delivery/delivered-mesh.npz, from blender_export_mesh_momentum.py).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/b5.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b5_delivered_bytes.py --delivery artifacts/commercial-multiview-soma77 --reference artifacts/compare/d4-body/mhr-reference-lod2.npz --mesh artifacts/compare/d4d-twopass/work-delivery/delivered-mesh.npz --out artifacts/compare/post-merge-D4i-observed/b5-delivered-bytes.json",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "b1_paired": {
+   "in_post_merge_sh_today": false,
+   "predicted_observed_class": "a (final)",
+   "observed": {
+    "class": "a",
+    "own_verdict_field": "no verdict word; per pair the paired bootstrap rows (n, cells_required, population_as_named, CI); the band is read by the step gate",
+    "exit_status": 0,
+    "reading": "Runs on D4d's exported MHR mesh against the D7c baseline mesh, seed 20260921. Equal to D4d's b1-paired.json to the byte of every value.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/b1_paired.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_silhouette_paired.py --out artifacts/compare/post-merge-D4i-observed/b1-paired.json --arm baseline_D7c_rig=artifacts/compare/i6/delivered-mesh.npz --arm D4c_fitted_MHR_lod2=artifacts/compare/d4c-start/work-delivery/delivered-mesh.npz --arm D4d_fitted_MHR_lod2=artifacts/compare/d4d-twopass/work-delivery/delivered-mesh.npz --pair D4d_fitted_MHR_lod2,baseline_D7c_rig --pair D4d_fitted_MHR_lod2,D4c_fitted_MHR_lod2",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  },
+  "verifier": {
+   "in_post_merge_sh_today": false,
+   "predicted_observed_class": "(not predicted; rostered because must-fails ii and iv run through it)",
+   "observed": {
+    "class": "c",
+    "own_verdict_field": "status = fail",
+    "exit_status": 1,
+    "reading": "Refuses: 'Subject 0 JSON is not AutoAnim-55'. It has no MHR branch.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/verifier.log",
+    "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python scripts/verify_commercial_multiview_artifact.py artifacts/commercial-multiview-soma77",
+    "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
+   },
+   "final_action": null,
+   "post_migration": null
+  }
+ }
+}
