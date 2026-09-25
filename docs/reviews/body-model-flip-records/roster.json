@@ -48,7 +48,13 @@
     "why": "Rig-only (d3_skeleton_gate.glb_joint_positions assumes a rotation channel on every skin joint; AutoAnim-55 PAIRS). B3 is its ROLE on the MHR joint set (B3's own docstring). Removed from the MHR roster; not kept as a rig arm.",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/delivered_vs_capture.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action replace -> d4i_mhr_roster.py b3; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "captured_limb_stability": {
    "in_post_merge_sh_today": true,
@@ -71,7 +77,21 @@
     "why": "Scores the captured landmarks only (byte-identical across the schemas, B2 1a/1b); relabelled capture-side, never a delivered-body claim; pointed at the delivery under test with --landmarks-from (its observations, rig and association still come from the shipped build, which are schema-free). Its own verdict REPORTED is recorded.",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/captured_limb_stability.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "b",
+    "section": "CAPTURE",
+    "roster_entry": "captured_limb_stability",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "REPORTED",
+     "instrument_verdict_field": null
+    },
+    "population_mismatches": null,
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/limb-stability.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "mamma_scoreboard": {
    "in_post_merge_sh_today": true,
@@ -94,7 +114,13 @@
     "why": "Rig-only (skeleton_for_joint_names refuses the 127 MHR joints). B4 is the MHR joints against MAMMA. The ladder's scoreboard-commercial-multiview-soma77.json rungs stay frozen at D7c's close-out (the card).",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/mamma_scoreboard.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action replace -> d4i_mhr_roster.py b4; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "retarget_cost": {
    "in_post_merge_sh_today": true,
@@ -117,7 +143,21 @@
     "why": "Re-runs the RIG converter on the captured landmarks: a rig diagnostic. Kept only as a separately named rig-arm entry against the explicit --body rig build, writing its own --out (never the live artifacts/compare/retarget-cost.json).",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/retarget_cost.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "b",
+    "section": "RIG-ARM",
+    "roster_entry": "rig_arm_retarget_cost",
+    "own_verdict_field": {
+     "field": null,
+     "value": "REPORTED (report written)",
+     "instrument_verdict_field": null
+    },
+    "population_mismatches": null,
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/rig-arm-retarget-cost.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "d3_skeleton_gate": {
    "in_post_merge_sh_today": true,
@@ -140,7 +180,13 @@
     "why": "BodyTrack.from_dict refuses the MHR track. Its delivered-bytes closure has its MHR counterpart in the closure entry; its exact-skeleton oracle arms are rig-only. It hardcodes the shipped delivery, so it cannot be pointed at a rig arm without an edit: removed.",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/d3_skeleton_gate.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action replace -> d4i_mhr_roster.py closure (its delivered-file closure); the rest is rig-only and removed; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "facing_location": {
    "in_post_merge_sh_today": true,
@@ -163,7 +209,13 @@
     "why": "Rig-only (skeleton_for_track_dict). The nearest MHR reading is B5's facing clause, which stays REPORTED. facing-location.json on the ladder stays frozen at D7c's close-out (the card).",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/facing_location.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action remove; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "silhouette": {
    "in_post_merge_sh_today": true,
@@ -186,7 +238,24 @@
     "why": "Kept, made schema-aware in place: --scope, the exporter chosen by schema_version, the mesh cache bound by content (GLBs, exporter, mesh sha256), i6 and its archive refused as work. Run through the roster wrapper so its population (150 frames x 4 cameras x 2 performers minus mask-floor cells) and its bound export are checked. Its per-arm figures stay REPORTED.",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "silhouette",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": "frame alignment (the instrument exits unless 'aligned')",
+      "value": "aligned"
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/silhouette.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "delivered_foot": {
    "in_post_merge_sh_today": true,
@@ -209,7 +278,13 @@
     "why": "Rig-only (local_rotations_xyzw). The MHR delivery carries no foot contacts and no ground projection (the run report's limitations say so), so there is nothing delivered for it to score.",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/delivered_foot.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action remove; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "head_gate": {
    "in_post_merge_sh_today": true,
@@ -232,7 +307,13 @@
     "why": "(d): GREEN on artifacts/head-lane/head-solve-shipped.npz, a RIG head solve the MHR delivery does not carry. (d) is always removed from the MHR roster. It hardcodes its paths, so no rig-arm entry survives.",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/head_gate.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action remove; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "bootstrap_margin": {
    "in_post_merge_sh_today": true,
@@ -255,7 +336,13 @@
     "why": "(d): P(pass) on the same rig head solve. Removed.",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/bootstrap_margin.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action remove; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "oracle_2d": {
    "in_post_merge_sh_today": true,
@@ -278,7 +365,21 @@
     "why": "Reads only the camera rig (byte-identical across schemas) and MAMMA's retained output: our triangulation stage against MAMMA's projected joints. Relabelled capture-side; its own --out. No verdict field (report-only).",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/oracle_2d.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "b",
+    "section": "CAPTURE",
+    "roster_entry": "oracle_2d",
+    "own_verdict_field": {
+     "field": null,
+     "value": "REPORTED (report written)",
+     "instrument_verdict_field": null
+    },
+    "population_mismatches": null,
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/oracle-2d.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "fit_smplx_pose": {
    "in_post_merge_sh_today": true,
@@ -301,7 +402,13 @@
     "why": "Capture-side (a SMPL-X fit to our triangulated landmarks, byte-identical across schemas), so rerunning it on the MHR delivery measures nothing new, and it has no --out: it would rewrite the live artifacts/compare/smplx-pose-fit.json and smplx-posed-subject-XX.npz. Removed from the roster; the coordinator may restore it as capture-side if it gains an --out.",
     "evidence": "artifacts/compare/d4i-flip/logs/phase1/fit_smplx_pose.log"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "not in the roster (removed)",
+    "own_verdict_field": null,
+    "reading": "final action remove; nothing of it runs on the default build",
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster"
+   }
   },
   "b2": {
    "in_post_merge_sh_today": false,
@@ -324,7 +431,24 @@
     "why": "d4_b2_same_denominator.py unchanged; the entry refuses a non-rig --rig-build, reads B2's own verdict, and checks the population. B2 exits 0 on a FAIL: the entry never reads the exit code.",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "b2",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": "verdict",
+      "value": "PASS"
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/b2.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "b3": {
    "in_post_merge_sh_today": false,
@@ -347,7 +471,24 @@
     "why": "d4_b3_placement.py unchanged; REPORTED. It takes the shorter sequence and drops nonfinite distances, so the entry derives EXPECTED frames per landmark from the files (150 frames, both ends finite) and binds the reference to the array the fit was handed. Missing-subject, truncated-frame and substituted-reference mutations each turn it (mustfail.json). No threshold on its figures.",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "b3",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": null,
+      "value": "REPORTED (B3 has no verdict)"
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/b3.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "b4": {
    "in_post_merge_sh_today": false,
@@ -370,7 +511,24 @@
     "why": "d4_b4_mamma_arm.py unchanged; REPORTED, never selected. The entry checks its 15 SMPL-X pairs, 150 frames on both sides and the subject map (our 0 -> body_id-01). No threshold.",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "b4",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": null,
+      "value": "REPORTED, never selected (B4)"
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/b4.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "closure": {
    "in_post_merge_sh_today": false,
@@ -393,7 +551,26 @@
     "why": "d4_glb_closure.py unchanged; the entry reads all_within_band (1e-4 m, D3/D4), binds the GLB and track sha256 to the delivery's files, and requires 127 joints x 150 frames. The closure exits 0 on a FAIL: never read.",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "closure",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": "all_within_band",
+      "value": true,
+      "worst_max_abs_m": 2.2932970340505676e-06,
+      "band_m": 0.0001
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/closure.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "b5": {
    "in_post_merge_sh_today": false,
@@ -416,7 +593,25 @@
     "why": "d4_b5_delivered_bytes.py unchanged; the entry reads verdict_bytes and requires its mesh to carry a binding naming THIS delivery's GLBs (a mesh from another build FAILs). Facing stays REPORTED.",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "b5",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": "verdict_bytes",
+      "value": "PASS",
+      "facing_positive_on_every_frame_both_performers (REPORTED)": false
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/b5.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "b1_paired": {
    "in_post_merge_sh_today": false,
@@ -439,7 +634,31 @@
     "why": "d4_silhouette_paired.py unchanged, now fed the silhouette's FRESH bound export of THIS delivery (Phase 1 scored D4d's pre-exported mesh) and the D7c baseline from the read-only archive, bound by sha256. The entry reads D4's registered band (lower CI of delivered minus D7c > 0, both performers) from the instrument's own rows.",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "b1",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": "paired/<candidate>_minus_baseline_D7c_rig_subject_XX/ci95_of_the_median_difference[0] > 0 (D4's registered B1 band, read from the instrument's rows)",
+      "lower_ci": {
+       "subject_00": 0.12954502516444144,
+       "subject_01": 0.08355692479284826
+      },
+      "band_holds": {
+       "subject_00": true,
+       "subject_01": true
+      }
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/b1.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   },
   "verifier": {
    "in_post_merge_sh_today": false,
@@ -462,7 +681,25 @@
     "why": "The verifier gained an MHR branch (2.0-mhr, 127 joints, pose shape, finite joints, placement through landmark_to_joint on the rig's existing 0.18/0.40 m bands), fails a mixed directory, and fails a run report that claims a capture-side solve as delivered (must-fail iv).",
     "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
    },
-   "post_migration": null
+   "post_migration": {
+    "class": "a",
+    "section": "MHR",
+    "roster_entry": "verifier",
+    "own_verdict_field": {
+     "field": "verdict",
+     "value": "PASS",
+     "instrument_verdict_field": {
+      "field": "status",
+      "value": "pass",
+      "error": null
+     }
+    },
+    "population_mismatches": [],
+    "evidence": "docs/reviews/body-model-flip-records/final-roster-coordinator-run.log; artifacts/compare/d4i-flip/final-roster/verifier.json",
+    "command": "zsh tools/compare/post_merge.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/final-roster",
+    "measured_by": "the coordinator's recorded final roster run (commit 1242ed0)",
+    "predicted_class_held": true
+   }
   }
  },
  "final_roster": {
@@ -495,7 +732,6 @@
    "fit_smplx_pose"
   ],
   "verdict_reading": "each entry's own field from its own report (roster-verdicts.json); the exit status is logged and never read",
-  "deviation_for_the_coordinator": "B2, B3, B4, B5 and the closure are NOT edited (they are outside the brief's may-change list). Must-fail (i) and the frozen population are met by REPLACING each with a named wrapper entry in tools/compare/d4i_mhr_roster.py that refuses by schema_version before the unchanged instrument runs. Invoked directly (outside the roster), those five still do not refuse a rig track by schema; they crash on a missing key. Accept the wrappers as the roster's entries, or reverse this by adding a one-line guard to each.",
   "agent_dry_run": {
    "what": "the proposed roster run by the agent on the default build, to prove the script; NOT the coordinator's recorded final roster run",
    "command": "zsh docs/reviews/body-model-flip-records/post_merge.proposed.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/proposed-roster-dryrun",
@@ -516,6 +752,14 @@
    "b1_equal_to_the_oracle_b1_except_arm_paths": true,
    "i6_after": "7/7 OK",
    "live_reports_after": "UNCHANGED (live-reports-after-stage5.json)"
+  },
+  "deviation_for_the_coordinator": "B2, B3, B4, B5 and the closure are NOT edited (they are outside the brief's may-change list). Must-fail (i) and the frozen population are met by REPLACING each with a named wrapper entry in tools/compare/d4i_mhr_roster.py that refuses by schema_version before the unchanged instrument runs. Invoked directly (outside the roster), those five still do not refuse a rig track by schema; they crash on a missing key. Accept the wrappers as the roster's entries, or reverse this by adding a one-line guard to each.",
+  "coordinator_rulings_2026_09_25": {
+   "wrappers": "ACCEPTED as the final class-(a) entries; must-fail (i) is defined on the roster's final entries.",
+   "debt": "B2, B3, B4, B5 and the closure, invoked DIRECTLY outside the roster, crash on a missing key instead of refusing a rig track by schema_version.",
+   "post_merge_sh": "installed on the branch by the coordinator at 1242ed0 from the proposal (cd depth fixed for tools/compare/); the final roster run recorded in final-roster-coordinator-run.log and final-roster-verdicts.json is the post-migration measurement.",
+   "b1_arm_name": "stays D4d_fitted_MHR_lod2 for D4i; the rename to delivered_MHR belongs to D4i-b.",
+   "oracle": "the track-JSON leg FAILS read literally; no normalisation is admitted into this card's verdict; D4i is FAIL; records only."
   }
  },
  "full_suite_stage5": {
