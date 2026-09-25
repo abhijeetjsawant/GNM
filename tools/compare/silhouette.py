@@ -22,8 +22,8 @@ since D4i) or `--scope rig`. The scope is checked against every track's `schema_
 rig delivery, a rig-scope run refuses an MHR one, and a MIXED directory is refused in both.
 The exporter follows the schema -- `blender_export_mesh_momentum.py` for MHR, the rig's
 `blender_export_mesh.py` for the rig. The posed-mesh cache is BOUND: `delivered-mesh.binding.json`
-beside it records the GLBs' sha256, the exporter's path and sha256, the fps and the scope, and
-the cache is used only when every field matches (it used to be accepted by modification time).
+beside it records the GLBs' sha256, the exporter's path and sha256, the fps, the scope and the
+exported mesh's own sha256, and the cache is used only when every field matches (it used to be accepted by modification time).
 A `delivered-mesh.npz` with no binding is never overwritten. The default `--work` is
 `artifacts/compare/silhouette-work/<scope>`; `artifacts/compare/i6` (the D7c rig mesh every B1
 since D4 compares against) and its D4i archive are READ-ONLY baselines, refused as `--work`.
@@ -251,9 +251,12 @@ def delivered_mesh() -> dict[str, np.ndarray]:
     sidecar = WORK / "delivered-mesh.binding.json"
     binding = mesh_binding(DELIVERY, SCOPE)
     recorded = json.loads(sidecar.read_text()) if sidecar.is_file() else None
-    if out.exists() and recorded == binding:
-        MESH_CACHE.update({"fresh_export": False, "reason": "cache bound to these GLBs and this exporter",
-                           "binding": binding})
+    # The sidecar also names the mesh file's own sha256, so a mesh swapped in beside a copied sidecar is not a hit.
+    if (out.exists() and recorded is not None
+            and {k: v for k, v in recorded.items() if k != "mesh_sha256"} == binding
+            and recorded.get("mesh_sha256") == sha256(out)):
+        MESH_CACHE.update({"fresh_export": False, "reason": "cache bound to these GLBs, this exporter and this mesh",
+                           "binding": recorded})
         return dict(np.load(out))
     if out.exists() and recorded is None:
         raise SystemExit(f"{out} exists with no binding sidecar: it was not written by this instrument's bound "
@@ -267,10 +270,11 @@ def delivered_mesh() -> dict[str, np.ndarray]:
                    stdout=subprocess.DEVNULL)
     if mesh_binding(DELIVERY, SCOPE) != binding:
         raise SystemExit("the delivered GLBs or the exporter changed during the export")
+    binding = {**binding, "mesh_sha256": sha256(out)}
     sidecar.write_text(json.dumps(binding, indent=1))
     MESH_CACHE.update({"fresh_export": True,
-                       "reason": ("no cache" if recorded is None else "the cache was bound to other GLBs or "
-                                  "another exporter"), "binding": binding})
+                       "reason": ("no cache" if recorded is None else "the cache was bound to other GLBs, another "
+                                  "exporter or another mesh file"), "binding": binding})
     return dict(np.load(out))
 
 

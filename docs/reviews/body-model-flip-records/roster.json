@@ -39,7 +39,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/delivered_vs_capture.py --delivery before=artifacts/compare/delivered-before-D4i-observed --delivery after=artifacts/commercial-multiview-soma77 --out artifacts/compare/post-merge-D4i-observed/delivered-vs-capture.json",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py b3",
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "Rig-only (d3_skeleton_gate.glb_joint_positions assumes a rotation channel on every skin joint; AutoAnim-55 PAIRS). B3 is its ROLE on the MHR joint set (B3's own docstring). Removed from the MHR roster; not kept as a rig arm.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/delivered_vs_capture.log"
+   },
    "post_migration": null
   },
   "captured_limb_stability": {
@@ -54,7 +62,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/captured_limb_stability.py --out artifacts/compare/post-merge-D4i-observed/limb-stability.json --skip-reproduction",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "relabel",
+    "replacement": "CAPTURE-SIDE",
+    "section": "CAPTURE",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/captured_limb_stability.py --landmarks-from $DELIVERY --skip-reproduction --out $OUT/limb-stability.json",
+    "predicted_post_migration_class": "b",
+    "why": "Scores the captured landmarks only (byte-identical across the schemas, B2 1a/1b); relabelled capture-side, never a delivered-body claim; pointed at the delivery under test with --landmarks-from (its observations, rig and association still come from the shipped build, which are schema-free). Its own verdict REPORTED is recorded.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/captured_limb_stability.log"
+   },
    "post_migration": null
   },
   "mamma_scoreboard": {
@@ -69,7 +85,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/mamma_scoreboard.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py b4",
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "Rig-only (skeleton_for_joint_names refuses the 127 MHR joints). B4 is the MHR joints against MAMMA. The ladder's scoreboard-commercial-multiview-soma77.json rungs stay frozen at D7c's close-out (the card).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/mamma_scoreboard.log"
+   },
    "post_migration": null
   },
   "retarget_cost": {
@@ -84,7 +108,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src python3 tools/swap-harness/retarget_cost.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "relabel",
+    "replacement": "RIG-ARM: rig_arm_retarget_cost",
+    "section": "RIG-ARM",
+    "command": "python3 tools/swap-harness/retarget_cost.py --tracks $RIG_BUILD --out $OUT/rig-arm-retarget-cost.json",
+    "predicted_post_migration_class": "b",
+    "why": "Re-runs the RIG converter on the captured landmarks: a rig diagnostic. Kept only as a separately named rig-arm entry against the explicit --body rig build, writing its own --out (never the live artifacts/compare/retarget-cost.json).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/retarget_cost.log"
+   },
    "post_migration": null
   },
   "d3_skeleton_gate": {
@@ -99,7 +131,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d3_skeleton_gate.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py closure (its delivered-file closure); the rest is rig-only and removed",
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "BodyTrack.from_dict refuses the MHR track. Its delivered-bytes closure has its MHR counterpart in the closure entry; its exact-skeleton oracle arms are rig-only. It hardcodes the shipped delivery, so it cannot be pointed at a rig arm without an edit: removed.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/d3_skeleton_gate.log"
+   },
    "post_migration": null
   },
   "facing_location": {
@@ -114,7 +154,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/facing_location.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "remove",
+    "replacement": null,
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "Rig-only (skeleton_for_track_dict). The nearest MHR reading is B5's facing clause, which stays REPORTED. facing-location.json on the ladder stays frozen at D7c's close-out (the card).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/facing_location.log"
+   },
    "post_migration": null
   },
   "silhouette": {
@@ -129,7 +177,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/silhouette.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "keep",
+    "replacement": null,
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py silhouette --delivery $DELIVERY --work $OUT/silhouette-work --out $OUT/silhouette.json  (runs silhouette.py --scope mhr --delivery $DELIVERY --work $OUT/silhouette-work)",
+    "predicted_post_migration_class": "a",
+    "why": "Kept, made schema-aware in place: --scope, the exporter chosen by schema_version, the mesh cache bound by content (GLBs, exporter, mesh sha256), i6 and its archive refused as work. Run through the roster wrapper so its population (150 frames x 4 cameras x 2 performers minus mask-floor cells) and its bound export are checked. Its per-arm figures stay REPORTED.",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   },
   "delivered_foot": {
@@ -144,7 +200,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/feet/delivered_foot_is_fiction.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "remove",
+    "replacement": null,
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "Rig-only (local_rotations_xyzw). The MHR delivery carries no foot contacts and no ground projection (the run report's limitations say so), so there is nothing delivered for it to score.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/delivered_foot.log"
+   },
    "post_migration": null
   },
   "head_gate": {
@@ -159,7 +223,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/head/head_gate.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "remove",
+    "replacement": null,
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "(d): GREEN on artifacts/head-lane/head-solve-shipped.npz, a RIG head solve the MHR delivery does not carry. (d) is always removed from the MHR roster. It hardcodes its paths, so no rig-arm entry survives.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/head_gate.log"
+   },
    "post_migration": null
   },
   "bootstrap_margin": {
@@ -174,7 +246,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/head/bootstrap_margin.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "remove",
+    "replacement": null,
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "(d): P(pass) on the same rig head solve. Removed.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/bootstrap_margin.log"
+   },
    "post_migration": null
   },
   "oracle_2d": {
@@ -189,7 +269,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/oracle_2d.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "relabel",
+    "replacement": "CAPTURE-SIDE",
+    "section": "CAPTURE",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/oracle_2d.py --out $OUT/oracle-2d.json",
+    "predicted_post_migration_class": "b",
+    "why": "Reads only the camera rig (byte-identical across schemas) and MAMMA's retained output: our triangulation stage against MAMMA's projected joints. Relabelled capture-side; its own --out. No verdict field (report-only).",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/oracle_2d.log"
+   },
    "post_migration": null
   },
   "fit_smplx_pose": {
@@ -204,7 +292,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/fit_smplx_pose.py",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "remove",
+    "replacement": null,
+    "section": null,
+    "command": null,
+    "predicted_post_migration_class": null,
+    "why": "Capture-side (a SMPL-X fit to our triangulated landmarks, byte-identical across schemas), so rerunning it on the MHR delivery measures nothing new, and it has no --out: it would rewrite the live artifacts/compare/smplx-pose-fit.json and smplx-posed-subject-XX.npz. Removed from the roster; the coordinator may restore it as capture-side if it gains an --out.",
+    "evidence": "artifacts/compare/d4i-flip/logs/phase1/fit_smplx_pose.log"
+   },
    "post_migration": null
   },
   "b2": {
@@ -219,7 +315,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b2_same_denominator.py --delivery artifacts/commercial-multiview-soma77 --rig-build artifacts/compare/d4d-twopass/hygiene --out artifacts/compare/post-merge-D4i-observed/b2-same-denominator.json",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py b2",
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py b2 --delivery $DELIVERY --rig-build $RIG_BUILD --out $OUT/b2.json",
+    "predicted_post_migration_class": "a",
+    "why": "d4_b2_same_denominator.py unchanged; the entry refuses a non-rig --rig-build, reads B2's own verdict, and checks the population. B2 exits 0 on a FAIL: the entry never reads the exit code.",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   },
   "b3": {
@@ -234,7 +338,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b3_placement.py --delivery artifacts/commercial-multiview-soma77 --out artifacts/compare/post-merge-D4i-observed/b3-placement.json",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py b3",
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py b3 --delivery $DELIVERY --out $OUT/b3.json",
+    "predicted_post_migration_class": "a",
+    "why": "d4_b3_placement.py unchanged; REPORTED. It takes the shorter sequence and drops nonfinite distances, so the entry derives EXPECTED frames per landmark from the files (150 frames, both ends finite) and binds the reference to the array the fit was handed. Missing-subject, truncated-frame and substituted-reference mutations each turn it (mustfail.json). No threshold on its figures.",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   },
   "b4": {
@@ -249,7 +361,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b4_mamma_arm.py --delivery artifacts/commercial-multiview-soma77 --out artifacts/compare/post-merge-D4i-observed/b4-mamma-arm.json",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py b4",
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py b4 --delivery $DELIVERY --out $OUT/b4.json",
+    "predicted_post_migration_class": "a",
+    "why": "d4_b4_mamma_arm.py unchanged; REPORTED, never selected. The entry checks its 15 SMPL-X pairs, 150 frames on both sides and the subject map (our 0 -> body_id-01). No threshold.",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   },
   "closure": {
@@ -264,7 +384,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_glb_closure.py --pair subject_00=artifacts/commercial-multiview-soma77/subject-00.glb,artifacts/commercial-multiview-soma77/subject-00.body-track.npz --pair subject_01=artifacts/commercial-multiview-soma77/subject-01.glb,artifacts/commercial-multiview-soma77/subject-01.body-track.npz --out artifacts/compare/post-merge-D4i-observed/delivery-closure.json",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py closure",
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py closure --delivery $DELIVERY --out $OUT/closure.json",
+    "predicted_post_migration_class": "a",
+    "why": "d4_glb_closure.py unchanged; the entry reads all_within_band (1e-4 m, D3/D4), binds the GLB and track sha256 to the delivery's files, and requires 127 joints x 150 frames. The closure exits 0 on a FAIL: never read.",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   },
   "b5": {
@@ -279,7 +407,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_b5_delivered_bytes.py --delivery artifacts/commercial-multiview-soma77 --reference artifacts/compare/d4-body/mhr-reference-lod2.npz --mesh artifacts/compare/d4d-twopass/work-delivery/delivered-mesh.npz --out artifacts/compare/post-merge-D4i-observed/b5-delivered-bytes.json",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py b5",
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py b5 --delivery $DELIVERY --mesh $OUT/silhouette-work/delivered-mesh.npz --out $OUT/b5.json",
+    "predicted_post_migration_class": "a",
+    "why": "d4_b5_delivered_bytes.py unchanged; the entry reads verdict_bytes and requires its mesh to carry a binding naming THIS delivery's GLBs (a mesh from another build FAILs). Facing stays REPORTED.",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   },
   "b1_paired": {
@@ -294,7 +430,15 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4_silhouette_paired.py --out artifacts/compare/post-merge-D4i-observed/b1-paired.json --arm baseline_D7c_rig=artifacts/compare/i6/delivered-mesh.npz --arm D4c_fitted_MHR_lod2=artifacts/compare/d4c-start/work-delivery/delivered-mesh.npz --arm D4d_fitted_MHR_lod2=artifacts/compare/d4d-twopass/work-delivery/delivered-mesh.npz --pair D4d_fitted_MHR_lod2,baseline_D7c_rig --pair D4d_fitted_MHR_lod2,D4c_fitted_MHR_lod2",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py b1",
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py b1 --delivery $DELIVERY --work $OUT/silhouette-work --candidate-name D4d_fitted_MHR_lod2 --extra-arm D4c_fitted_MHR_lod2=artifacts/compare/d4c-start/work-delivery/delivered-mesh.npz --extra-pair D4d_fitted_MHR_lod2,D4c_fitted_MHR_lod2 --out $OUT/b1.json",
+    "predicted_post_migration_class": "a",
+    "why": "d4_silhouette_paired.py unchanged, now fed the silhouette's FRESH bound export of THIS delivery (Phase 1 scored D4d's pre-exported mesh) and the D7c baseline from the read-only archive, bound by sha256. The entry reads D4's registered band (lower CI of delivered minus D7c > 0, both performers) from the instrument's own rows.",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   },
   "verifier": {
@@ -309,8 +453,74 @@
     "command": "cd artifacts/compare/d4i-flip/phase1/shadow && PYTHONPATH=$PWD/src .venv/bin/python scripts/verify_commercial_multiview_artifact.py artifacts/commercial-multiview-soma77",
     "outputs_under": "artifacts/compare/d4i-flip/phase1/shadow/artifacts/compare"
    },
-   "final_action": null,
+   "final_action": {
+    "action": "replace",
+    "replacement": "d4i_mhr_roster.py verifier (verify_commercial_multiview_artifact.py --scope mhr, its new MHR branch)",
+    "section": "MHR",
+    "command": "PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4i_mhr_roster.py verifier --delivery $DELIVERY --out $OUT/verifier.json",
+    "predicted_post_migration_class": "a",
+    "why": "The verifier gained an MHR branch (2.0-mhr, 127 joints, pose shape, finite joints, placement through landmark_to_joint on the rig's existing 0.18/0.40 m bands), fails a mixed directory, and fails a run report that claims a capture-side solve as delivered (must-fail iv).",
+    "evidence": "docs/reviews/body-model-flip-records/oracle.json; docs/reviews/body-model-flip-records/mustfail.json"
+   },
    "post_migration": null
   }
+ },
+ "final_roster": {
+  "proposed_script": "docs/reviews/body-model-flip-records/post_merge.proposed.sh (roster <delivery-dir> <rig-build-dir> <out-dir>; closeout <ID> <branch-delivery> <branch-rig-build>)",
+  "MHR (class a, the step verdict reads these)": [
+   "silhouette",
+   "b1",
+   "b2",
+   "b3",
+   "b4",
+   "closure",
+   "b5",
+   "verifier"
+  ],
+  "CAPTURE (relabelled b)": [
+   "captured_limb_stability",
+   "oracle_2d"
+  ],
+  "RIG-ARM (relabelled b, against the explicit --body rig build)": [
+   "rig_arm_retarget_cost"
+  ],
+  "removed": [
+   "head_gate",
+   "bootstrap_margin",
+   "delivered_vs_capture",
+   "mamma_scoreboard",
+   "d3_skeleton_gate",
+   "facing_location",
+   "delivered_foot",
+   "fit_smplx_pose"
+  ],
+  "verdict_reading": "each entry's own field from its own report (roster-verdicts.json); the exit status is logged and never read",
+  "deviation_for_the_coordinator": "B2, B3, B4, B5 and the closure are NOT edited (they are outside the brief's may-change list). Must-fail (i) and the frozen population are met by REPLACING each with a named wrapper entry in tools/compare/d4i_mhr_roster.py that refuses by schema_version before the unchanged instrument runs. Invoked directly (outside the roster), those five still do not refuse a rig track by schema; they crash on a missing key. Accept the wrappers as the roster's entries, or reverse this by adding a one-line guard to each.",
+  "agent_dry_run": {
+   "what": "the proposed roster run by the agent on the default build, to prove the script; NOT the coordinator's recorded final roster run",
+   "command": "zsh docs/reviews/body-model-flip-records/post_merge.proposed.sh roster artifacts/compare/d4i-flip/default artifacts/compare/soma77-rig-d4i artifacts/compare/d4i-flip/proposed-roster-dryrun",
+   "log": "artifacts/compare/d4i-flip/logs/17-proposed-roster-dryrun.log",
+   "verdicts": {
+    "silhouette": "PASS",
+    "b1": "PASS",
+    "b2": "PASS",
+    "b3": "PASS",
+    "b4": "PASS",
+    "closure": "PASS",
+    "b5": "PASS",
+    "verifier": "PASS",
+    "captured_limb_stability": "REPORTED",
+    "oracle_2d": "REPORTED (report written)",
+    "rig_arm_retarget_cost": "REPORTED (report written)"
+   },
+   "b1_equal_to_the_oracle_b1_except_arm_paths": true,
+   "i6_after": "7/7 OK",
+   "live_reports_after": "UNCHANGED (live-reports-after-stage5.json)"
+  }
+ },
+ "full_suite_stage5": {
+  "log": "artifacts/compare/d4i-flip/logs/18-full-suite.log",
+  "result": "4 failed, 1293 passed, 43 skipped",
+  "failures": "the four pre-existing failures D4d recorded (test_body_compositor unified preview, test_body_export GLB hash-bound, two test_phase4_app)"
  }
 }

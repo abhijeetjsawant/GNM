@@ -220,10 +220,18 @@ def test_a_bound_cache_is_used_and_an_unbound_one_is_never_overwritten(silhouett
     monkeypatch.setattr(silhouette.subprocess, "run", lambda *a, **k: calls.append(a))
     with pytest.raises(SystemExit, match="never overwritten"):
         silhouette.delivered_mesh()
-    (silhouette.WORK / "delivered-mesh.binding.json").write_text(
-        json.dumps(silhouette.mesh_binding(silhouette.DELIVERY, "mhr")))
+    binding = silhouette.mesh_binding(silhouette.DELIVERY, "mhr")
+    mesh_sha = silhouette.sha256(silhouette.WORK / "delivered-mesh.npz")
+    (silhouette.WORK / "delivered-mesh.binding.json").write_text(json.dumps({**binding, "mesh_sha256": mesh_sha}))
     silhouette.delivered_mesh()
     assert silhouette.MESH_CACHE["fresh_export"] is False and not calls
+    # a mesh swapped in beside the copied sidecar is not a cache hit: it is re-exported
+    np.savez(silhouette.WORK / "delivered-mesh.npz", verts_00=np.ones((1, 3, 3)))
+    try:
+        silhouette.delivered_mesh()
+    except (FileNotFoundError, KeyError, OSError, ValueError):
+        pass                                      # the stubbed export wrote nothing new; what matters is below
+    assert calls, "a substituted mesh was accepted as a bound cache"
 
 
 def test_the_d7c_baseline_is_refused_as_work_and_a_rig_delivery_in_mhr_scope(silhouette, tmp_path, monkeypatch):

@@ -148,6 +148,8 @@ def mesh_bound(entry: Entry, mesh: Path) -> None:
     entry.expect("mesh_binding/scope", "mhr", (recorded or {}).get("scope"))
     entry.expect("mesh_binding/exporter", "tools/compare/blender_export_mesh_momentum.py",
                  (recorded or {}).get("exporter"))
+    entry.expect("mesh_binding/mesh_sha256", sha256(mesh) if mesh.is_file() else None,
+                 (recorded or {}).get("mesh_sha256"))
     entry.report["mesh"] = {"path": str(mesh), "sha256": sha256(mesh) if mesh.is_file() else None,
                             "binding": recorded}
 
