@@ -37,7 +37,7 @@ def baseline():
 def test_the_gate_reproduces_its_committed_verdict(baseline):
     committed = json.loads((ROOT / "docs/reviews/body-model-flip-records/gate.json").read_text())
     assert baseline["line"] == committed["line"]
-    assert baseline["line"] == "VERDICT: FAIL (failed: oracle, coordinator_migration_recorded)"
+    assert baseline["line"] == "VERDICT: FAIL (failed: oracle)"  # after the coordinator's ladder.py edit (a044913)
     for name, conjunct in committed["conjuncts"].items():
         assert baseline["conjuncts"][name]["legs"] == conjunct["legs"], name
 
