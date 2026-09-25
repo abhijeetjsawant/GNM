@@ -287,7 +287,7 @@
 - **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
   script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
   and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
-  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v15).
+  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v16).
 - **zsh does not word-split an unquoted `$VAR`**: pass file lists as `${=VAR}` / an array, or use a glob.
 - **The D3 gate's oracle score is translation-aligned (D9b, 2026-09-07).** `retarget_cost.score` subtracts the leg-root midpoint
   per frame, so the exact-skeleton oracle cannot see a root move: it read identical before and after the foot-contact projection
@@ -385,3 +385,14 @@
 - **A draw that never realises the failure class cannot confirm its repair (D4d).** Uniform identity draws gave donor 0 no
   spine below −0.40, so the fresh acceptance set could not discriminate the candidate from the fitter it replaced. When a
   step exists to fix a class, register a population that contains that class, as a declared fixture parameter.
+- **A byte-identity oracle must name its environment leaves up front (D4i, 2026-09-25).** The MHR fitter writes its own
+  checkout's absolute path into `body_model.assets` in every track JSON, so builds made in different checkouts (worktree
+  against worktree, or branch against main) can never be byte-identical there. D4i's oracle said "every delivered file
+  byte-identical" and FAILED on exactly that leaf (records only; the candidate is pinned at tag `ladder/D4i-fail-b073253`;
+  the default on main stays `rig`). Before registering byte identity, diff two builds from two checkouts and name each
+  environment leaf, with the value it must take.
+- **A close-out script must ENFORCE its registered outcomes, not print them (D4i, Astra).** A comparison that echoes
+  `DIFFERENT` and continues is a log, not a gate. Missing files hash to empty strings; a reused output dir keeps stale
+  reports; verdict equality and rollback have to be executed. Likewise, a gate check such as `len(rows) >= 18` or
+  `mismatches == []` trusts the producer; compare the registered identities and the expected against observed fields
+  directly.

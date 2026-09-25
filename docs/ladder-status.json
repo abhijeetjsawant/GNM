@@ -214,8 +214,19 @@
           "title": "The body model becomes the default delivery (the integration step)",
           "plain": "The new body model is proven and available behind an opt-in switch, but the rest of the pipeline -- the scene assembly, the file checks and most measuring tools -- still expects the old rig's format. This step teaches each of them the new format (or scopes them out), rebuilds the whole delivery end to end on the new body, and only then makes it the default.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-25",
+          "finished": "2026-09-25",
+          "report": "docs/reviews/body-model-flip-records/gate.json",
+          "blocked_on": null
+        },
+        {
+          "id": "D4i-b",
+          "title": "The default flip, re-registered with the one environment value named",
+          "plain": "D4i did everything needed to make the new body the default, and every check passed except one: a file records the folder path of the computer copy it was built in, so two builds in different folders can never match byte for byte. This step re-registers the switch with that one value named in advance, rebuilds fresh, and also makes the close-out script actually enforce its own rules.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -952,6 +963,11 @@
       "date": "2026-09-25",
       "step": "D4i",
       "text": "D4i dispatched 2026-09-25: the default flip to --body mhr plus the instrument-roster migration (N5.1 scoped out: nothing in src/ reads this delivery). Oracle: the default build = D4d's gated MHR delivery byte-identical, B1 reproduced exactly. A three-field roster by a frozen rule; must-fails i-v; the coordinator edits post_merge.sh/ladder.py ON THE BRANCH before the one merge review; the close-out outcomes and the full rollback frozen. Astra's one card round at medium: two blockers, adopted."
+    },
+    {
+      "date": "2026-09-25",
+      "step": "D4i",
+      "text": "D4i FAIL (oracle), 2026-09-25, records only on main (96f0bc9); the candidate (the flip, roster tooling, schema-aware silhouette/verifier, build refusals, bootstrap, the coordinator's post_merge.sh and ladder.py) pinned at tag ladder/D4i-fail-b073253. The default on main stays rig. The oracle failed only on body_model.assets in both track JSONs (the fitter writes its checkout's absolute path; the other 10 per-subject files byte-identical) -- the coordinator's pre-registration error, the lane's sixth. Every other conjunct held: B1 reproduced exactly, B2, closure, hygiene 8/8, must-fails i-v (70 cases), the frozen population, the three-field roster (head_gate/bootstrap_margin removed as class d), the migration recorded. Astra: D4i-b is a legitimate new registration on stated terms, and must also make the close-out enforce itself and repair three gate holes."
     }
   ]
 }
