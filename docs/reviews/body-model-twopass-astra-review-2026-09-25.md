@@ -1,0 +1,36 @@
+# Astra GPT6 card review of D4d (2026-09-25), one round at MEDIUM effort. Verdict: DISPATCHABLE, no blockers
+
+Verified against the source before adoption: at tag `ladder/D4c-fail-1a89cc7`, `fit_one` sets the calibration, stage A and
+tracking caps from one argument (`tracking.max_iter = max_iter`), so a second calibration pass leaves tracking untouched.
+
+| # | finding | change |
+|---|---|---|
+| 1 | WARM may decide STOP-or-proceed; the fork is complete; SW* cannot become the candidate | recorded (the card already says so) |
+| 2 | "neither start nor effort can fix it" overclaims; drift under a finite procedure is not the objective's minimum | reworded: the basin is D4e's HYPOTHESIS; the STOP is kept |
+| 3 | TWO-PASS is one intervention, distinct from the shared cap, but does not isolate iterations from the restart and stage effects | the attribution limit is added to the card |
+| 4 | reusing D4c's acceptance fixtures as development is sound; pose dependence remains | recorded (the card states it) |
+| 5 | the merge rule repairs D4c's problem; the tag merge belongs on `ladder/D4d` | recorded |
+| 6 | constant exclusion is narrower than the slogan; the intersection check stays report-only | recorded |
+| 7 | Phase 1's population omits the supporting floors and spine controls; ordering needs a generator-side guard | added: supporting cells bound by content hash; the Phase-2 generator refuses to run without the committed decision JSON and stamps its hash |
+
+---
+
+**Dispatchable. No dispatch blockers found.** This is the card review, not certification of the eventual implementation or results.
+
+The nonblocking rulings and debt are:
+
+1. **WARM may legitimately decide STOP-or-proceed.** It selects whether to test an already fixed intervention; it supplies neither the shipped identity nor a tuned value. Calling it diagnostic remains legitimate, provided it is not counted as acceptance evidence. The frozen fork is complete for valid, complete data: WARM fails → STOP; WARM holds and TWO-PASS passes every segment → proceed; otherwise → STOP. SW* cannot become the candidate under this registration. Missing or non-finite data are separately FAIL. Deciding lines: [fork, lines 7–9](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:7), [malformed populations, line 43](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:43).
+
+2. **The causal explanation overclaims; the STOP does not.** “Neither start nor effort can fix it” does not follow from a finite-budget truth-started fit drifting. That establishes drift under that procedure, not the objective’s minimum, convergence, or impossibility of another successful start. Likewise, WARM holding does not establish that more effort is safe. D4b explicitly makes this distinction and says 300 iterations did not prove convergence. Keep the registered STOP and D4e handoff; record the stronger basin claim as attribution debt. Deciding lines: [D4d claim, line 7](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:7), [D4b qualification, line 187](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-o1-2026-09-24.md:187).
+
+3. **TWO-PASS is one intervention relative to pinned D4c, and distinct from raising the shared cap.** At the tag, `fit_one` sets calibration’s cap at line 264, stage A’s at 278, and tracking’s at 286 from the same argument. Repeating A→B with the first pass’s identity preserves tracking’s budget. Fixed count 2, independent copies, the one-pass tripwire, and the restricted source diff suffice for implementation attribution when verified. They do **not** isolate extra iterations from restart/stage effects, or prove cap exhaustion caused the original miss. The merge against main contains both D4c’s start and D4d’s intervention, as declared. Deciding lines: [intervention, line 3](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:3), [attribution checks, line 24](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:24).
+
+4. **Reusing D4c acceptance as development is sound.** Those identities are now burned; requiring success there before fresh acceptance is legitimate selection. There is no remaining identity leakage inherent in that design. There is still shared-pose dependence and limited coverage of strongly negative spines; twelve fresh identities cannot establish general pose robustness. The card acknowledges both the unchanged sampling distribution and the held-out dimension. Deciding line: [Phase 2 and blindness, line 11](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:11).
+
+5. **The merge rule repairs D4c’s disposition problem.** PASS lands the pinned dependency together with the successful combined fitter and discharges deferred tooling debt. Non-PASS means records only; merging the candidate branch itself would violate that rule. The integration merge belongs on `ladder/D4d`, not main. Deciding line: [merge rule, line 47](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:47).
+
+6. **Constant exclusion remains narrower than the slogan.** Mean-body and init-only rejection demonstrate that those degeneracies fail. They do not prove that every common constant identity fails. An empty intersection on any scored segment would exclude every common rest-length vector; nonempty intersections would not prove a realizable MHR identity exists. The card explicitly makes this intersection check reported-only, so it cannot become a surprise acceptance condition. Deciding lines: [controls, line 16](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:16), [reported-only intersection, line 30](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:30).
+
+7. **Population, provenance, and ordering enforcement remain implementation debt.** Phase 1’s four-arm enumeration omits the supporting exact-identity floors and displaced-spine controls that its paired tolerances and stage 0b require. Bind retained supporting cells by content and fixture identity; do not silently omit those obligations. Commit ancestry still proves record order, not the first generation of acceptance data. The prospective generator should require the committed decision and carry its hash. The promised CRASH separation and file-derived B2/tripwire checks also remain unverified until implemented. Deciding lines: [stage 0b, line 13](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:13), [population and provenance, line 39](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-twopass-card-2026-09-25.md:39), [prior ordering ruling, line 34](/Users/abhi_macbook/Projects/apps/autoanim/docs/reviews/body-model-start-astra-merge-review-2026-09-25.md:34).
+
+Read-only review; no calibration rerun or files changed.

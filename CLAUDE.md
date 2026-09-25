@@ -370,5 +370,7 @@
   without the candidate, or register the non-PASS merge as records-only up front.
 - **D4c: a landmark-derived calibration start gets 11 of 12 bodies and FAILS L** (the trunk 1.10× on a strongly
   shortened spine, which the p90 chord read LONG and 30 iterations recovered a third of). D4 stays open. Burned: 20261001–06
-  and 20261101–06 × donors 0/1. The SOMA-77 detection model is missing from `.cache/autoanim_gnm/gem-x`; builds reuse cached
-  detections until it is restored.
+  and 20261101–06 × donors 0/1. The SOMA-77 detector (`.cache/autoanim_gnm/gem-x/inputs/onnx/vitpose.onnx` + `.data`, 3.4 GB) was
+  restored 2026-09-25: `hf download nvidia/GEM-X onnx/vitpose.onnx onnx/vitpose.onnx.data --revision
+  5ccf5ca3746c3620aa4016114f069a5f6ae399cd --local-dir .cache/autoanim_gnm/gem-x/inputs`; verify both sha256 against
+  `docs/GEM_X_REPRODUCTION.md` and delete the stray `inputs/.cache/`. It reproduces the cached detections numerically exactly.
