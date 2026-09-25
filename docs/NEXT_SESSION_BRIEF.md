@@ -1,4 +1,4 @@
-# Resume brief — body-capture lane, written 2026-09-25 after D4c (paste this into a fresh session)
+# Resume brief — body-capture lane, written 2026-09-25 after D4d closed D4 (paste this into a fresh session)
 
 Resume the AutoAnim body-capture lane. Read, in this order: `docs/LADDER_STATUS.md` (the SessionStart hook prints it),
 `docs/LADDER_EXECUTION_PLAN.md` §2 (the D7c row is the newest card; the D7 → D9b rows are the shape of a step) and §6, the
@@ -33,23 +33,20 @@ pinned at tag `ladder/D4c-fail-1a89cc7` and NOT merged; D4 stays open.** The tru
 drew 8). Development picked p90. L passed on 11 of 12 fresh bodies; the trunk read 1.10× on one body with a strongly
 shortened spine. The photographs held (+0.156 / +0.118 over the rig). Records: `docs/reviews/body-model-start-*-2026-09-25.md`.
 
-**NEXT, in order:** **D4d**, carded prospectively (Astra's D4c merge review, the D4d item):
-- first, on BURNED fixtures only, separate wrong-start recovery from drift off a correct start: e.g. set only the
-  shoulder-width start to the truth, with stages A and B read separately;
-- then freeze ONE intervention before new acceptance identities;
-- never raise the shared `max_iter` (it also changes tracking);
-- keep the scored trunk, the paired floors, the controls, the hash-bound closure and the rebuilt-delivery B1/B2;
-- register the non-PASS merge as records-only, or write tooling that stands without the candidate;
-- a `Spine1` feed changes the input and needs explicit scope.
+**D4d (2026-09-25, merged 35abd4d): PASS, and D4 is CLOSED.** It is D4c's landmark start plus a second calibration pass.
+Phase 1: the truth-started fit held on D4c's 12 and two passes closed all 12 (1.103 → 0.676× on the failing body). Phase 2:
+12/12 fresh, B1 +0.152 / +0.116 over the D7c rig. The permitted claim and its limits are in CLAUDE.md. Records:
+`docs/reviews/body-model-twopass-*-2026-09-25.md`. Open, reported only: the real-take spine at 1.102 against its 1.1 limit;
+a fresh population containing the shortened-spine class under donor 0; the shoulder-width start (SW* was the lead).
 
-Then the **integration step that flips the default to `mhr`**:
+**NEXT: the integration step, D4i, which flips the default to `mhr`:**
 - the compositor (`unified_gltf`, the N5.1 assembly) consuming the MHR track schema;
 - schema-aware artifact checks;
 - every rig-schema instrument made compatible or scoped;
 - `post_merge.sh` reading the MHR output;
 - an end-to-end rebuild.
 
-Usage is the constraint: one Astra card round and one merge round per step (the user asked for MEDIUM effort on D4b).
+Usage is the constraint: one Astra card round and one merge round per step (the user asked for MEDIUM effort from D4b onward).
 
 **PROCESS, CHANGED ON 2026-09-15 BY THE USER'S STEER.** One Astra card review and one Astra merge review per step; findings
 about a gate instrument that do not reach a card-banded verdict are instrument debt, never a merge blocker; when the

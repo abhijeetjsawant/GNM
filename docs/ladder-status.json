@@ -170,10 +170,10 @@
           "title": "A real pose solver (momentum on the MHR body)",
           "plain": "Replace the hand-written conversion with a proper solver, body size held fixed, so the solver is judged alone.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-21",
-          "finished": null,
-          "report": null,
+          "finished": "2026-09-25",
+          "report": "artifacts/compare/d4d-twopass/gate.json",
           "blocked_on": null
         },
         {
@@ -203,8 +203,19 @@
           "title": "The body-model fit's drift off a good start, measured, then one frozen fix",
           "plain": "D4c showed that starting the body fit from the performer's own measured bone lengths gets eleven of twelve test bodies right, and misses the twelfth by ten percent on the torso. On some bodies the fit also drifts away from a start that was already correct. This step first measures why on the bodies already used, then fixes one change in advance and tests it on fresh ones.",
           "owner": "opus-agent",
-          "state": "in_progress",
+          "state": "done",
           "started": "2026-09-25",
+          "finished": "2026-09-25",
+          "report": "artifacts/compare/d4d-twopass/gate.json",
+          "blocked_on": null
+        },
+        {
+          "id": "D4i",
+          "title": "The body model becomes the default delivery (the integration step)",
+          "plain": "The new body model is proven and available behind an opt-in switch, but the rest of the pipeline -- the scene assembly, the file checks and most measuring tools -- still expects the old rig's format. This step teaches each of them the new format (or scopes them out), rebuilds the whole delivery end to end on the new body, and only then makes it the default.",
+          "owner": "opus-agent",
+          "state": "planned",
+          "started": null,
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -921,6 +932,21 @@
       "date": "2026-09-25",
       "step": "D4d",
       "text": "D4d dispatched 2026-09-25: branch = main + tag ladder/D4c-fail-1a89cc7; Phase 1 on 30 burned fixtures (WARM decides the fork; TWO-PASS = a second full calibration pass from pass 1's identity, max_iter 30 each, tracking untouched; SW* report); Phase 2 on 12 untouched fixtures only if the frozen rule selects TWO-PASS; one verdict; PASS merges D4c+D4d, otherwise records only. Astra's one card round at medium: dispatchable, findings adopted. SOMA-77 detector restored and verified."
+    },
+    {
+      "date": "2026-09-25",
+      "step": "D4d",
+      "text": "D4d MERGED 2026-09-25 (35abd4d): PASS. D4c's landmark start (its deferred tooling merge discharged) + a second full calibration pass (max_iter 30 each, tracking untouched). Phase 1: WARM held on D4c's 12 (worst 0.214x) and TWO-PASS closed all 12 (worst 0.726x; 20261106/d0 1.103 -> 0.676x), so the frozen rule selected it. Phase 2 (12 fresh): L 12/12, must-fails i-iv, B1 +0.152/+0.116 over D7c, B2, hygiene PASS. Astra's permitted claim: the band holds on 12 fresh identities under two donor motions and the four burned one-pass misses close; fresh acceptance does NOT show improvement over D4c (no donor-0 spine below -0.40 was drawn and the one-pass arm also passed). Reported, not banded: the real-take spine 1.102 past its 1.1 limit, residual +1 mm, B1 vs D4c -0.0039 (CI < 0, performer 0)."
+    },
+    {
+      "date": "2026-09-25",
+      "step": "D4",
+      "text": "D4 CLOSED 2026-09-25: its O1 FAIL (1.030 mm, 2026-09-22) stays on record and is superseded, by the registered disposition, by D4d's PASS on the combined fitter (D4c's landmark start + a second calibration pass), with B1 re-shown on that fitter (+0.152/+0.116 over D7c). --body mhr carries the combined fitter; the default stays rig until the integration step flips it."
+    },
+    {
+      "date": "2026-09-25",
+      "step": "D4c",
+      "text": "D4c's record is unchanged: FAIL on L (1 of 12 at 1.10x). Its fitter change and tooling reached main only through D4d's PASS merge (35abd4d)."
     }
   ]
 }

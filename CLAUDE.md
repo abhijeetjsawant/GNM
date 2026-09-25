@@ -287,7 +287,7 @@
 - **Report pages:** one version tab per update (never a stacked section), frame PLAYERS (JPEG frames in a JSON
   script + play/pause/scrub/step) not animated images — the viewer blocks `<video>` from data: and blob: URLs —
   and keep a page under ~9.5 MB (10.6 MB froze the renderer). Full-rate mp4s go to the user via SendUserFile.
-  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v14).
+  "The Solve So Far": <https://claude.ai/code/artifact/9fc29718-f55d-478a-b0e7-6f59ee770e70> (v2–v15).
 - **zsh does not word-split an unquoted `$VAR`**: pass file lists as `${=VAR}` / an array, or use a glob.
 - **The D3 gate's oracle score is translation-aligned (D9b, 2026-09-07).** `retarget_cost.score` subtracts the leg-root midpoint
   per frame, so the exact-skeleton oracle cannot see a root move: it read identical before and after the foot-contact projection
@@ -374,3 +374,14 @@
   restored 2026-09-25: `hf download nvidia/GEM-X onnx/vitpose.onnx onnx/vitpose.onnx.data --revision
   5ccf5ca3746c3620aa4016114f069a5f6ae399cd --local-dir .cache/autoanim_gnm/gem-x/inputs`; verify both sha256 against
   `docs/GEM_X_REPRODUCTION.md` and delete the stray `inputs/.cache/`. It reproduces the cached detections numerically exactly.
+- **D4 is CLOSED (D4d, 2026-09-25, merged 35abd4d).** `--body mhr` now carries D4c's landmark-derived calibration start plus
+  D4d's second full calibration pass. Its O1 FAIL stays on record, superseded by D4d's registered PASS. The PERMITTED claim
+  (Astra): the band holds on 12 fresh identities under two donor motions, and the four burned one-pass misses close. Fresh
+  acceptance does NOT show improvement over D4c, because the draw never produced D4c's failure class. On the real take the
+  spine reaches 1.102 against a 1.1 limit: not evidence of accuracy.
+- **The fitter's pass count has two defaults:** `mhr_delivery.py`'s CLI defaults to `--passes 2`, and `fit_one(passes=1)` to
+  one. Reproducing D4 needs `--zero-start --passes 1`. The pass count lives in a sidecar
+  `subject-XX.calibration-passes.json`, not in the fit report or track (debt).
+- **A draw that never realises the failure class cannot confirm its repair (D4d).** Uniform identity draws gave donor 0 no
+  spine below −0.40, so the fresh acceptance set could not discriminate the candidate from the fitter it replaced. When a
+  step exists to fix a class, register a population that contains that class, as a declared fixture parameter.

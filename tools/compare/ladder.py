@@ -317,8 +317,10 @@ def x_pose_and_retarget(spec: dict) -> tuple[list, list]:
     f12, c12 = _d7c_figures("converter")
     f13, c13 = _d4_figures("converter")
     f14, c14 = _d4b_figures()
-    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14,
-            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13 + c14)
+    f15, c15 = _stub_figures("d4c_start", "x_body_model_start")
+    f16, c16 = _stub_figures("d4d_twopass", "x_body_model_twopass")
+    return (figs + f2 + f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14 + f15 + f16,
+            ctrls + c2 + c3 + c4 + c5 + c6 + c7 + c8 + c9 + c10 + c11 + c12 + c13 + c14 + c15 + c16)
 
 
 def _d7_figures(where: str) -> tuple[list, list]:
@@ -508,6 +510,19 @@ def _d4_figures(where: str) -> tuple[list, list]:
         return "masks" if key.startswith("silhouette_") else "converter"
     return ([f for f in figs if dest(f["key"]) == where],
             [c for c in ctrls if dest(c["key"]) == where])
+
+
+def _stub_figures(module: str, function: str) -> tuple[list, list]:
+    """Rung-7 figures from an agent's extractor stub, wired here by the registry owner. D4c (2026-09-25): the
+    calibration's landmark-derived start, FAIL on L (the trunk 1.10x on 1 of 12 fresh bodies), merged later with D4d.
+    D4d (2026-09-25): a second calibration pass on that start, PASS -- D4's O1 superseded by the registered disposition;
+    fresh acceptance did not draw D4c's failure class, so it does not show improvement over D4c."""
+    sys.path.insert(0, str(ROOT / "tools/compare"))
+    try:
+        extractor = __import__(f"extractors.{module}", fromlist=[function])
+    except ImportError:
+        return [], []
+    return getattr(extractor, function)({})
 
 
 def _d4b_figures() -> tuple[list, list]:
@@ -1661,6 +1676,12 @@ def _splice_d7_visuals() -> None:
     except ImportError:
         return
     VISUALS["pose"][0:0] = d4b_o1.VISUALS.get("converter", [])
+    for module in ("d4c_start", "d4d_twopass"):
+        try:
+            extractor = __import__(f"extractors.{module}", fromlist=["VISUALS"])
+        except ImportError:
+            continue
+        VISUALS["pose"][0:0] = extractor.VISUALS.get("converter", [])
 
 
 

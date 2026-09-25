@@ -1,7 +1,7 @@
 {
- "rendered": "2026-09-25T02:38:02",
+ "rendered": "2026-09-25T14:27:48",
  "git": {
-  "sha": "5d27b4f",
+  "sha": "35abd4d",
   "dirty": true
  },
  "rungs": [
@@ -930,6 +930,92 @@
    "title": "Pose recovery",
    "status": "measured; converter split by I1 (2026-09-02)",
    "visuals": [
+    {
+     "title": "D4d: does a second pass of the body fit get the proportions right?",
+     "plain": "Yes on all twelve new test bodies, so the registered test passes. But none of the twelve had the very short spine that tripped the one-pass fitter, and the one-pass fitter also passes all twelve -- the proof that the second pass fixes that case is on bodies we had already studied. Each bar is the fitted bone length's error divided by what the pose solve alone already costs -- lower is better, 1.0 is the edge.",
+     "better": "lower",
+     "unit": "x tolerance",
+     "bars": [
+      {
+       "label": "Our fit, the trunk (worst of 12)",
+       "role": "ours",
+       "value": 0.726
+      },
+      {
+       "label": "Our fit, arms, legs and widths (worst)",
+       "role": "ours",
+       "value": 0.3158
+      },
+      {
+       "label": "Our fit on the one body the old fit missed (studied before)",
+       "role": "ours",
+       "value": 0.6762
+      },
+      {
+       "label": "One pass only (D4c's fitter), the trunk",
+       "role": "alt",
+       "value": 0.8829
+      },
+      {
+       "label": "The original fitter (zero start), the trunk",
+       "role": "alt",
+       "value": 31.664
+      },
+      {
+       "label": "Starting guess only, no fit (deliberately wrong)",
+       "role": "control",
+       "value": 4.9293
+      },
+      {
+       "label": "No body fit at all (deliberately wrong)",
+       "role": "control",
+       "value": 36.3515
+      },
+      {
+       "label": "Spine shortened on purpose (deliberately wrong)",
+       "role": "control",
+       "value": 6.0285
+      }
+     ]
+    },
+    {
+     "title": "D4c: does starting the body fit from the measured bone lengths get the proportions right?",
+     "plain": "Almost, not quite: the trunk is now right on eleven of twelve test bodies (the old fitter got two), but the one miss fails the registered test, so this does not close D4. Each bar is the fitted bone length's error divided by what the pose solve alone already costs -- lower is better, 1.0 is the edge.",
+     "better": "lower",
+     "unit": "x tolerance",
+     "bars": [
+      {
+       "label": "Our fit, the trunk (worst of 12)",
+       "role": "ours",
+       "value": 1.1028
+      },
+      {
+       "label": "Our fit, arms and legs (worst)",
+       "role": "ours",
+       "value": 0.4748
+      },
+      {
+       "label": "The old fitter (zero start), the trunk",
+       "role": "alt",
+       "value": 30.142
+      },
+      {
+       "label": "Starting guess only, no fit (deliberately wrong)",
+       "role": "control",
+       "value": 3.0973
+      },
+      {
+       "label": "No body fit at all (deliberately wrong)",
+       "role": "control",
+       "value": 32.4297
+      },
+      {
+       "label": "Spine shortened on purpose (deliberately wrong)",
+       "role": "control",
+       "value": 6.0932
+      }
+     ]
+    },
     {
      "title": "D4b: does the fitted body have the right proportions?",
      "plain": "STOPPED: the check could not score the trunk, so it could not reject a deliberately shortened spine, and the step stopped before its real test. These bars come from an exploratory run after the stop and are not a pass mark. Each bar is the fitted bone length's error divided by what the pose solve alone already costs -- lower is better, 1.0 is the edge. The scored bones sit below 1.0; the unscored trunk is well past it.",
