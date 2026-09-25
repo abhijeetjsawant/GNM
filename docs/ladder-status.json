@@ -214,8 +214,8 @@
           "title": "The body model becomes the default delivery (the integration step)",
           "plain": "The new body model is proven and available behind an opt-in switch, but the rest of the pipeline -- the scene assembly, the file checks and most measuring tools -- still expects the old rig's format. This step teaches each of them the new format (or scopes them out), rebuilds the whole delivery end to end on the new body, and only then makes it the default.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-25",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -947,6 +947,11 @@
       "date": "2026-09-25",
       "step": "D4c",
       "text": "D4c's record is unchanged: FAIL on L (1 of 12 at 1.10x). Its fitter change and tooling reached main only through D4d's PASS merge (35abd4d)."
+    },
+    {
+      "date": "2026-09-25",
+      "step": "D4i",
+      "text": "D4i dispatched 2026-09-25: the default flip to --body mhr plus the instrument-roster migration (N5.1 scoped out: nothing in src/ reads this delivery). Oracle: the default build = D4d's gated MHR delivery byte-identical, B1 reproduced exactly. A three-field roster by a frozen rule; must-fails i-v; the coordinator edits post_merge.sh/ladder.py ON THE BRANCH before the one merge review; the close-out outcomes and the full rollback frozen. Astra's one card round at medium: two blockers, adopted."
     }
   ]
 }
