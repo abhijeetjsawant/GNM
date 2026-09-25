@@ -1,0 +1,25 @@
+{
+ "python": "3.12.13 (main, Mar 25 2026, 03:16:06) [Clang 22.1.1 ]",
+ "implementation": "CPython",
+ "platform": "macOS-26.2-arm64-arm-64bit",
+ "machine": "arm64",
+ "momentum": "pymomentum-cpu==0.1.114.post0",
+ "resolved": [
+  "filelock==4.0.3",
+  "fsspec==2026.9.0",
+  "jinja2==3.1.6",
+  "markupsafe==3.0.3",
+  "mpmath==1.3.0",
+  "networkx==3.7",
+  "numpy==2.5.3",
+  "pymomentum-cpu==0.1.114.post0",
+  "scipy==1.18.1",
+  "setuptools==84.0.0",
+  "sympy==1.14.0",
+  "torch==2.8.0",
+  "typing-extensions==4.16.0"
+ ],
+ "lock": "/Users/abhi_macbook/Projects/apps/AutoAnim/.claude/worktrees/ladder-D4i/scripts/mhr-requirements.lock",
+ "lock_sha256": "c97e29a056918a878e9ae5167f33071c11d1bcdc05a33d616e1d31b4eb1991fd",
+ "resolved_equals_lock": true
+}
