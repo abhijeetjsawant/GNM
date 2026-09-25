@@ -1,4 +1,6 @@
 .venv/
+# D4i: the momentum interpreter (scripts/bootstrap_mhr.sh)
+.venv-mhr/
 .pytest_cache/
 __pycache__/
 *.py[cod]

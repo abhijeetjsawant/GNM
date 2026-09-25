@@ -7,12 +7,16 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any
 
 import numpy as np
 
 from autoanim_gnm.body import DETAILED_HUMANOID, forward_kinematics_positions
 from autoanim_gnm.commercial_multiview import JOINT_INDEX
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import body_delivery_schema  # noqa: E402
 
 
 RETARGET_JOINTS = {
@@ -72,7 +76,9 @@ def _video_duration(path: Path) -> float:
         raise VerificationFailure(f"ffprobe returned no duration for {path}") from error
 
 
-def verify(output: Path) -> dict[str, Any]:
+def verify(output: Path, scope: str | None = None) -> dict[str, Any]:
+    """`scope` (D4i): 'mhr' or 'rig' refuses a delivery of the other schema before any track payload is read;
+    None dispatches on the run report's `runtime_dependencies.body`."""
     output = output.resolve(strict=True)
     report = _load_json(output / "run-report.json")
     _require(report.get("schema_version") == "autoanim.commercial-multiview/1.0", "Wrong report schema")
@@ -118,11 +124,29 @@ def verify(output: Path) -> dict[str, Any]:
     for prohibited in ("mamma", "mamma_outputs", "mamma_weights", "smplx_model"):
         _require(dependencies.get(prohibited) is False, f"Prohibited runtime dependency enabled: {prohibited}")
     _require(report.get("production_claim") is False, "Research fixture must not claim production qualification")
+    # D4i: decide the schema from `schema_version` before any track payload is read, and fail a MIXED directory
+    # (a stale mapping.npz beside an MHR delivery, or MHR files beside a rig one).
+    mixed = body_delivery_schema.mixed_reasons(output)
+    _require(not mixed, f"Mixed delivery directory: {'; '.join(mixed)}")
+    try:
+        declared = {subject: body_delivery_schema.schema_class(body_delivery_schema.track_schema(output, subject))
+                    for subject in range(2)}
+    except body_delivery_schema.SchemaScopeError as error:
+        raise VerificationFailure(f"Body track schema: {error}") from error
+    if scope is not None:
+        _require(set(declared.values()) == {scope},
+                 f"Refused in {scope.upper()} scope: the tracks are {sorted(set(declared.values()))}-schema")
+    body = dependencies.get("body", "rig")
+    _require(body in ("rig", "mhr"), f"Run report names an unknown body {body!r}")
+    _require(set(declared.values()) == {body},
+             f"Run report says body {body!r} but the tracks are {sorted(set(declared.values()))}")
 
     for page in ("review.html", "only-3d-review.html"):
         _require((output / page).stat().st_size > 2_000, f"Missing or empty viewer: {page}")
     source_duration_s = _video_duration(output / "source.mp4")
     _require(4.8 <= source_duration_s <= 5.1, "Source comparison clip is not the expected five-second window")
+    if body == "mhr":
+        return _verify_mhr(output, report, frame_count, source_duration_s)
 
     track_results: list[dict[str, Any]] = []
     all_retarget_errors_m: list[np.ndarray] = []
@@ -221,12 +245,125 @@ def verify(output: Path) -> dict[str, Any]:
     }
 
 
+MHR_JOINTS = 127
+MHR_POSE_CHANNELS = 136
+NOT_CONSUMED_BY_MHR = ("head_orientation", "toe_triangulation", "spine_triangulation", "pelvis_frame",
+                       "contact_frames")
+
+
+def check_mhr_report_marks(report: dict[str, Any]) -> None:
+    """An MHR build's run report must not claim a capture-side solve as a delivered capability.
+
+    Every one of the five capture-side solves the MHR body does not consume must be listed in
+    `not_consumed_by_delivered_body`, and every dict entry under it must carry `consumed_by_delivered_body: false`.
+    A report that says `status: solved` for the head without those marks is claiming a solved head the delivered
+    body does not carry, and fails.
+    """
+    listed = report.get("not_consumed_by_delivered_body")
+    _require(isinstance(listed, list), "MHR run report does not declare what the delivered body leaves unconsumed")
+    for key in NOT_CONSUMED_BY_MHR:
+        _require(key in listed, f"MHR run report claims {key} is consumed by the delivered body")
+        for entry in report.get(key, ()):
+            if isinstance(entry, dict):
+                _require(entry.get("consumed_by_delivered_body") is False,
+                         f"MHR run report claims a delivered {key} ({entry.get('status', 'no status')}) "
+                         "that the MHR body does not carry")
+
+
+def _verify_mhr(output: Path, report: dict[str, Any], frame_count: int, source_duration_s: float) -> dict[str, Any]:
+    """The MHR branch: schema 2.0-mhr, 127 joints, the pose-value shape, finite joints, and placement.
+
+    Placement is scored through the track's OWN declared `landmark_to_joint` against the captured landmarks it was
+    fitted to, with the rig branch's existing endpoint bands (median 180 mm, p95 400 mm). No new threshold is written
+    here: the bands are the rig's loose sparse-baseline gate, applied to the analogous quantity.
+    """
+    check_mhr_report_marks(report)
+    track_results: list[dict[str, Any]] = []
+    errors_all: list[np.ndarray] = []
+    for subject in range(2):
+        prefix = output / f"subject-{subject:02d}"
+        manifest = _load_json(prefix.with_suffix(".body-track.json"))
+        _require(manifest.get("schema_version") == body_delivery_schema.MHR_SCHEMA,
+                 f"Subject {subject} JSON is not {body_delivery_schema.MHR_SCHEMA}")
+        joint_names = manifest.get("joint_names", [])
+        _require(len(joint_names) == MHR_JOINTS, f"Subject {subject} JSON does not carry MHR's {MHR_JOINTS} joints")
+        _require(manifest.get("frame_count") == frame_count, f"Subject {subject} JSON frame count differs")
+        pose_names = manifest.get("pose_channel_names", [])
+        pose_values = manifest.get("pose_values", [])
+        _require(len(pose_names) == MHR_POSE_CHANNELS, f"Subject {subject} JSON pose channel count differs")
+        _require(len(pose_values) == frame_count and all(len(row) == len(pose_names) for row in pose_values),
+                 f"Subject {subject} JSON pose values are not frames x pose channels")
+        declared = manifest.get("landmark_to_joint")
+        _require(isinstance(declared, dict) and declared, f"Subject {subject} declares no landmark_to_joint")
+        with np.load(prefix.with_suffix(".body-track.npz"), allow_pickle=False) as archive:
+            _require(str(archive["schema_version"]) == body_delivery_schema.MHR_SCHEMA,
+                     f"Subject {subject} npz is not {body_delivery_schema.MHR_SCHEMA}")
+            ticks = archive["ticks"]
+            npz_names = [str(n) for n in archive["joint_names"]]
+            joints = archive["joint_positions_z_up_m"]
+            pose = archive["pose_values"]
+            world = archive["triangulated_world_positions_z_up_m"]
+            consumed = [str(n) for n in archive["consumed_joint_names"]]
+        _require(npz_names == list(joint_names), f"Subject {subject} npz and JSON joint names differ")
+        _require(ticks.shape == (frame_count,), f"Subject {subject} tick count differs")
+        _require(joints.shape == (frame_count, MHR_JOINTS, 3), f"Subject {subject} joint-position shape differs")
+        _require(pose.shape == (frame_count, MHR_POSE_CHANNELS), f"Subject {subject} pose-value shape differs")
+        _require(world.shape == (frame_count, 19, 3), f"Subject {subject} sparse-world shape differs")
+        _require(np.isfinite(joints).all(), f"Subject {subject} joints contain nonfinite values")
+        _require(np.isfinite(pose).all(), f"Subject {subject} pose values contain nonfinite values")
+        errors = []
+        for landmark, joint in declared.items():
+            _require(landmark in consumed, f"Subject {subject} maps an unknown landmark {landmark!r}")
+            _require(joint in npz_names, f"Subject {subject} maps {landmark!r} to an unknown joint {joint!r}")
+            distance = np.linalg.norm(joints[:, npz_names.index(joint)] - world[:, consumed.index(landmark)], axis=1)
+            errors.append(distance[np.isfinite(distance)])
+        subject_errors_m = np.concatenate(errors)
+        errors_all.append(subject_errors_m)
+        glb = prefix.with_suffix(".glb")
+        _require(glb.stat().st_size > 100_000, f"Subject {subject} GLB is unexpectedly small")
+        _require(glb.read_bytes()[:4] == b"glTF", f"Subject {subject} GLB header is invalid")
+        _require(prefix.with_suffix(".markers.npz").is_file(), f"Subject {subject} markers.npz is missing")
+        track_results.append({
+            "subject": subject, "schema": body_delivery_schema.MHR_SCHEMA, "frames": int(len(ticks)),
+            "joints": int(joints.shape[1]), "landmarks_mapped": len(declared),
+            "placement_median_m": float(np.median(subject_errors_m)),
+            "placement_p95_m": float(np.percentile(subject_errors_m, 95)),
+            "glb_bytes": glb.stat().st_size})
+    errors_m = np.concatenate(errors_all)
+    median_m, p95_m = float(np.median(errors_m)), float(np.percentile(errors_m, 95))
+    _require(median_m <= 0.18, "Landmark-to-joint median placement error exceeds 180 mm")
+    _require(p95_m <= 0.40, "Landmark-to-joint P95 placement error exceeds 400 mm")
+    return {
+        "status": "pass",
+        "artifact": str(output),
+        "body": "mhr",
+        "source_duration_s": source_duration_s,
+        "metrics": {
+            "detector": report.get("detector", "apple_vision"),
+            "valid_joint_fraction": report["valid_joint_fraction"],
+            "interpolated_joint_fraction": report["interpolated_joint_fraction"],
+            "median_reprojection_error_px": report["median_reprojection_error_px"],
+            "p95_reprojection_error_px": report["p95_reprojection_error_px"],
+            "maximum_reprojection_error_px": report["maximum_reprojection_error_px"],
+            "association_objective_median": report["association_objective_median"],
+            "temporally_rejected_subject_frames": report["temporally_rejected_subject_frames"],
+            "landmark_placement_median_m": median_m,
+            "landmark_placement_p95_m": p95_m,
+            "not_consumed_by_delivered_body": report["not_consumed_by_delivered_body"],
+        },
+        "tracks": track_results,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("artifact", type=Path)
+    parser.add_argument("--scope", choices=("mhr", "rig"), default=None,
+                        help="D4i: refuse a delivery of the other schema (checked by schema_version first). "
+                             "Omitted, the run report's runtime_dependencies.body decides.")
     arguments = parser.parse_args()
     try:
-        result = verify(arguments.artifact)
+        result = verify(arguments.artifact, arguments.scope)
     except (OSError, VerificationFailure) as error:
         print(json.dumps({"status": "fail", "error": str(error)}, indent=2))
         return 1

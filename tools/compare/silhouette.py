@@ -12,9 +12,21 @@ silhouette scored against it is the closest thing this fixture has to an observa
     .venv/bin/python tools/compare/silhouette.py --ids-only     # id resolution, then stop
     .venv/bin/python tools/compare/silhouette.py --scale 2      # 1920x1080 fidelity check
 
-It runs `tools/compare/blender_export_mesh.py` itself when the posed-mesh cache is
-missing or older than the GLBs (Blender's Python has no cv2 or scipy, so the render
-path and the scoring path cannot share a process).
+It runs the Blender exporter itself when the posed-mesh cache is missing or not bound to
+the delivered GLBs (Blender's Python has no cv2 or scipy, so the render path and the
+scoring path cannot share a process).
+
+D4i (2026-09-25): SCHEMA-AWARE and SCOPED. `--scope mhr` (the default, the delivered body
+since D4i) or `--scope rig`. The scope is checked against every track's `schema_version`
+(scripts/body_delivery_schema.py) BEFORE any payload field is read: an MHR-scope run refuses a
+rig delivery, a rig-scope run refuses an MHR one, and a MIXED directory is refused in both.
+The exporter follows the schema -- `blender_export_mesh_momentum.py` for MHR, the rig's
+`blender_export_mesh.py` for the rig. The posed-mesh cache is BOUND: `delivered-mesh.binding.json`
+beside it records the GLBs' sha256, the exporter's path and sha256, the fps and the scope, and
+the cache is used only when every field matches (it used to be accepted by modification time).
+A `delivered-mesh.npz` with no binding is never overwritten. The default `--work` is
+`artifacts/compare/silhouette-work/<scope>`; `artifacts/compare/i6` (the D7c rig mesh every B1
+since D4 compares against) and its D4i archive are READ-ONLY baselines, refused as `--work`.
 
 WHAT THIS IS BLIND TO, and it is on the report as `blind_to`: depth (a silhouette is a
 projection; the subject can be nearer or farther along the ray and still fill the same
@@ -64,6 +76,8 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools" / "head"))
 from autoanim_gnm.commercial_multiview import JOINT_INDEX, load_camera_rig  # noqa: E402
 from subject_map import mamma_index_for  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts"))
+import body_delivery_schema  # noqa: E402
 
 FIXTURE = "pushing_and_lifting_from_ground"
 MAMMA_OUT = ROOT / "artifacts/mamma/mamma-4cam-five-second-v2/output"
@@ -75,6 +89,14 @@ DELIVERY = ROOT / "artifacts/commercial-multiview-soma77"
 WORK = ROOT / "artifacts/compare/i6"
 REPORT = ROOT / "artifacts/compare/silhouette.json"
 BLENDER = "/Applications/Blender.app/Contents/MacOS/Blender"
+# D4i: the exporter follows the delivery's schema; the scope is checked before either runs.
+EXPORTERS = {"rig": ROOT / "tools/compare/blender_export_mesh.py",
+             "mhr": ROOT / "tools/compare/blender_export_mesh_momentum.py"}
+EXPORT_FPS = 30
+SCOPE = "mhr"
+# The D7c rig mesh and its D4i archive: read by B1 as the baseline, never a work directory.
+READ_ONLY_BASELINES = (ROOT / "artifacts/compare/i6", ROOT / "artifacts/compare/d4i-flip/i6-baseline-archive")
+MESH_CACHE: dict[str, Any] = {}
 
 CAMERAS = ("A001", "B001", "C001", "D001")
 TRACKLETS = (1, 2)
@@ -216,16 +238,39 @@ class SMPLXMesh:
 
 # --------------------------------------------------------------------------------- data
 
+def mesh_binding(delivery: Path, scope: str) -> dict[str, Any]:
+    """What a posed-mesh cache must have been exported from, by content. D4i: replaces the mtime test."""
+    exporter = EXPORTERS[scope]
+    return {"scope": scope, "exporter": str(exporter.relative_to(ROOT)), "exporter_sha256": sha256(exporter),
+            "fps": EXPORT_FPS, "blender": BLENDER,
+            "glb_sha256": {f"subject-{s:02d}.glb": sha256(delivery / f"subject-{s:02d}.glb") for s in (0, 1)}}
+
+
 def delivered_mesh() -> dict[str, np.ndarray]:
     out = WORK / "delivered-mesh.npz"
-    glbs = [DELIVERY / f"subject-{s:02d}.glb" for s in (0, 1)]
-    if not out.exists() or any(out.stat().st_mtime < g.stat().st_mtime for g in glbs):
-        WORK.mkdir(parents=True, exist_ok=True)
-        print("exporting the delivered mesh through Blender (fps 30 BEFORE import) ...")
-        subprocess.run([BLENDER, "--background", "--python",
-                        str(ROOT / "tools/compare/blender_export_mesh.py"), "--",
-                        str(out), str(DELIVERY), "30"], check=True, cwd=ROOT,
-                       stdout=subprocess.DEVNULL)
+    sidecar = WORK / "delivered-mesh.binding.json"
+    binding = mesh_binding(DELIVERY, SCOPE)
+    recorded = json.loads(sidecar.read_text()) if sidecar.is_file() else None
+    if out.exists() and recorded == binding:
+        MESH_CACHE.update({"fresh_export": False, "reason": "cache bound to these GLBs and this exporter",
+                           "binding": binding})
+        return dict(np.load(out))
+    if out.exists() and recorded is None:
+        raise SystemExit(f"{out} exists with no binding sidecar: it was not written by this instrument's bound "
+                         "export (a legacy cache or a baseline) and is never overwritten. Use a fresh --work.")
+    WORK.mkdir(parents=True, exist_ok=True)
+    print(f"exporting the delivered mesh through Blender with {binding['exporter']} "
+          f"(fps {EXPORT_FPS} BEFORE import) ...")
+    sidecar.unlink(missing_ok=True)
+    subprocess.run([BLENDER, "--background", "--python", str(EXPORTERS[SCOPE]), "--",
+                    str(out), str(DELIVERY), str(EXPORT_FPS)], check=True, cwd=ROOT,
+                   stdout=subprocess.DEVNULL)
+    if mesh_binding(DELIVERY, SCOPE) != binding:
+        raise SystemExit("the delivered GLBs or the exporter changed during the export")
+    sidecar.write_text(json.dumps(binding, indent=1))
+    MESH_CACHE.update({"fresh_export": True,
+                       "reason": ("no cache" if recorded is None else "the cache was bound to other GLBs or "
+                                  "another exporter"), "binding": binding})
     return dict(np.load(out))
 
 
@@ -519,7 +564,7 @@ def summary(rows: np.ndarray) -> dict:
 def main() -> None:
     # Rebound rather than threaded: DELIVERY and WORK are read from a dozen places and
     # threading them would be a rewrite of an instrument that is already trusted.
-    global DELIVERY, WORK          # noqa: PLW0603
+    global DELIVERY, WORK, SCOPE   # noqa: PLW0603
     ap = argparse.ArgumentParser()
     ap.add_argument("--scale", type=int, default=4,
                     help="native/scale is the render resolution (4 -> 960x540)")
@@ -530,9 +575,24 @@ def main() -> None:
     # D1 (fix): the same instrument pointed at a rebuild. The delivered directory is
     # never written to and its report stays the BEFORE arm.
     ap.add_argument("--delivery", default=str(DELIVERY))
-    ap.add_argument("--work", default=str(WORK))
+    ap.add_argument("--work", default=None,
+                    help="D4i: defaults to artifacts/compare/silhouette-work/<scope>. artifacts/compare/i6 and "
+                         "its archive are read-only baselines and are refused.")
+    ap.add_argument("--scope", choices=("mhr", "rig"), default="mhr",
+                    help="D4i: the schema this run is scoped to. A delivery of the other schema, or a mixed "
+                         "directory, is refused before any payload field is read.")
     args = ap.parse_args()
-    DELIVERY, WORK = Path(args.delivery).resolve(), Path(args.work).resolve()
+    SCOPE = args.scope
+    DELIVERY = Path(args.delivery).resolve()
+    WORK = (Path(args.work) if args.work else ROOT / "artifacts/compare/silhouette-work" / SCOPE).resolve()
+    for baseline in READ_ONLY_BASELINES:
+        if WORK == baseline.resolve() or baseline.resolve() in WORK.parents:
+            raise SystemExit(f"--work {WORK} is the read-only D7c silhouette baseline; use another directory")
+    try:
+        declared = body_delivery_schema.require_scope(DELIVERY, SCOPE)
+    except body_delivery_schema.SchemaScopeError as error:
+        raise SystemExit(f"REFUSED ({SCOPE} scope): {error}") from error
+    print(f"scope {SCOPE}: {declared}")
     cams = tuple(c for c in args.cameras.split(",") if c)
     width, height = NATIVE[0] // args.scale, NATIVE[1] // args.scale
     shape = (width, height)
@@ -798,6 +858,8 @@ def main() -> None:
 
     report = {
         "step": "I6",
+        "scope": SCOPE,
+        "mesh_cache": MESH_CACHE,
         "title": "surface instrument: silhouette of the delivered mesh vs MAMMA's SAM2 masks",
         "fixture": FIXTURE,
         "frame_window_of_take": list(FRAME_WINDOW),

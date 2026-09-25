@@ -1,0 +1,16 @@
+# D4i: the momentum interpreter's resolved set, frozen from /tmp/momenv (the interpreter every D4-D4d delivery ran on)
+# with `uv pip freeze --python /tmp/momenv/bin/python` on 2026-09-25. Python 3.12.13, macOS arm64.
+# scripts/bootstrap_mhr.sh installs exactly this (--no-deps: nothing resolves beyond these pins).
+filelock==4.0.3
+fsspec==2026.9.0
+jinja2==3.1.6
+markupsafe==3.0.3
+mpmath==1.3.0
+networkx==3.7
+numpy==2.5.3
+pymomentum-cpu==0.1.114.post0
+scipy==1.18.1
+setuptools==84.0.0
+sympy==1.14.0
+torch==2.8.0
+typing-extensions==4.16.0

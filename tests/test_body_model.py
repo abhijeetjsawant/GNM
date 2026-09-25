@@ -6,7 +6,7 @@ the part of D4 that is pure code and could rot silently:
   * the capture <-> MHR frame conversion is an exact inverse, and it is written out twice in the
     tree (the fitter under `tools/fitter/`, the B2 instrument under `tools/compare/`, on purpose,
     so B2 is an independent re-derivation) -- the two must agree;
-  * `--body` exists on the build script, defaults to `rig`, and the MHR flags exist;
+  * `--body` exists on the build script, defaults to `mhr` (D4i re-pin; `rig` until D4i), and the MHR flags exist;
   * the marker derivation turns a non-finite landmark into an OCCLUDED marker at the origin,
     never into a zero the solver would chase;
   * the part partition and the bent-tercile measure used by B1's reported diagnostics;
@@ -72,7 +72,8 @@ def test_the_conversion_is_a_rotation_not_a_reflection(b2):
     assert np.isclose(np.linalg.det(mapped), 1.0)
 
 
-def test_build_script_exposes_body_rig_by_default():
+def test_build_script_exposes_body_mhr_by_default():
+    # D4i RE-PIN: the default flipped from `rig` to `mhr` on purpose (the D4i card).
     source = (ROOT / "scripts/build_commercial_multiview_comparison.py").read_text()
     tree = ast.parse(source)
     found = {}
@@ -84,7 +85,7 @@ def test_build_script_exposes_body_rig_by_default():
             found[node.args[0].value] = keywords
     assert "--body" in found
     default = found["--body"].get("default")
-    assert isinstance(default, ast.Constant) and default.value == "rig"
+    assert isinstance(default, ast.Constant) and default.value == "mhr"
     choices = found["--body"].get("choices")
     assert isinstance(choices, ast.Tuple)
     assert {c.value for c in choices.elts} == {"rig", "mhr"}
@@ -313,9 +314,10 @@ def test_the_opt_in_line_needs_hygiene_and_a_rig_default_in_the_source(gate):
         assert gate.verdicts(mutated)["opt_in_implementation"]["mergeable"] is False
 
 
-def test_the_real_build_script_still_defaults_to_rig(gate):
+def test_the_real_build_script_defaults_to_mhr_since_d4i(gate):
+    # D4i RE-PIN: D4's gate reads the default from the source; it is `mhr` from D4i on (the D4i card).
     parsed = gate.build_script_body_argument()
-    assert parsed["default_body"] == "rig"
+    assert parsed["default_body"] == "mhr"
     assert "mhr" in parsed["body_choices"]
 
 

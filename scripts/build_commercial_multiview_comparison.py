@@ -33,6 +33,17 @@ WORKER_ROOT = ROOT / ".cache" / "autoanim_gnm" / "commercial-multiview"
 WORKER = WORKER_ROOT / "apple_vision_pose"
 MODULE_CACHE = ROOT / ".cache" / "clang-module-cache"
 DEFAULT_BODY_RUN = ROOT / ".cache" / "autoanim_gnm" / "body-provider" / "run" / "detailed-hands-fbd9784b"  # regenerated 2026-09-02 under the corrected joint map; the name carries its request hash
+# D4i: the momentum interpreter lives in a gitignored venv beside the checkout, created by
+# scripts/bootstrap_mhr.sh. It used to default into /tmp, which has been wiped once.
+DEFAULT_MHR_PYTHON = ROOT / ".venv-mhr" / "bin" / "python"
+MHR_BOOTSTRAP = "scripts/bootstrap_mhr.sh"
+sys.path.insert(0, str(ROOT / "scripts"))
+import body_delivery_schema  # noqa: E402
+
+# D4i: the capture-side solves the rig consumes and the MHR delivery does not. In an MHR build the run report keeps
+# them (they are what the capture measured) and marks every one NOT CONSUMED by the delivered body.
+NOT_CONSUMED_BY_MHR = ("head_orientation", "toe_triangulation", "spine_triangulation", "pelvis_frame",
+                       "contact_frames")
 
 
 def _run(command: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -319,6 +330,36 @@ html,body{{margin:0;height:100%;background:#0b0e12;color:#edf2f7;font:14px syste
 <script type=module>import * as THREE from 'three';import{{GLTFLoader}}from'three/addons/loaders/GLTFLoader.js';const canvas=document.querySelector('#view'),video=document.querySelector('#source'),play=document.querySelector('#play'),scrub=document.querySelector('#scrub'),time=document.querySelector('#time');const renderer=new THREE.WebGLRenderer({{canvas,antialias:true}}),scene=new THREE.Scene(),characters=new THREE.Group(),camera=new THREE.PerspectiveCamera(30,1,.01,100);renderer.outputColorSpace=THREE.SRGBColorSpace;scene.background=new THREE.Color(0x11161d);scene.add(characters);scene.add(new THREE.HemisphereLight(0xffffff,0x263044,2.4));const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(2,4,3);scene.add(key);const grid=new THREE.GridHelper(12,24,0x3b485a,0x232c37);scene.add(grid);let actions=[],mixers=[],loaded=0,duration={duration_s:.9f},manualTime=0,playing=false,last=performance.now();const files={glbs};for(const file of files)new GLTFLoader().load(file,g=>{{characters.add(g.scene);const mixer=new THREE.AnimationMixer(g.scene),action=mixer.clipAction(g.animations[0]);action.setLoop(THREE.LoopRepeat,Infinity);action.play();action.paused=true;mixers.push(mixer);actions.push(action);duration=Math.max(duration,g.animations[0].duration);loaded++;if(loaded===files.length){{const box=new THREE.Box3().setFromObject(characters),center=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3()),span=Math.max(size.x,size.y,size.z,1.2);camera.position.set(center.x,center.y+span*.12,center.z+span*1.8);camera.lookAt(center.x,center.y+size.y*.1,center.z)}}}});function seek(t){{manualTime=Math.max(0,Math.min(duration,t));for(const [i,a]of actions.entries()){{a.time=manualTime;mixers[i].update(0)}}if(video&&Math.abs(video.currentTime-manualTime)>.04)video.currentTime=manualTime;scrub.value=duration?manualTime/duration:0;time.textContent=`${{manualTime.toFixed(3)}} / ${{duration.toFixed(3)}} s`}}function loop(now){{const w=canvas.clientWidth,h=canvas.clientHeight;if(canvas.width!==w||canvas.height!==h){{renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}}if(playing){{let next=manualTime+(now-last)/1000;if(next>=duration)next%=duration;seek(next)}}last=now;renderer.render(scene,camera);play.textContent=playing?'Pause':'Play';requestAnimationFrame(loop)}}requestAnimationFrame(loop);play.onclick=()=>{{playing=!playing;if(video)playing?video.play():video.pause();last=performance.now()}};scrub.oninput=()=>seek(Number(scrub.value)*duration);if(video)video.onended=()=>seek(0);</script></body></html>"""
 
 
+def _mhr_limitations(detector: str, output: Path, subject_count: int) -> list[str]:
+    """D4i: what the MHR delivery does not carry, and what its identity is not evidence of."""
+
+    fingers = ("SOMA-77 emits finger and toe landmarks, but the MHR adapter maps neither, so the delivered "
+               "body has no articulated fingers or toes." if detector == "soma77"
+               else "Apple Vision body observations contain no articulated finger landmarks.")
+    spine = []
+    for subject in range(subject_count):
+        track = json.loads((output / f"subject-{subject:02d}.body-track.json").read_text(encoding="utf-8"))
+        values = dict(zip(track["identity_channel_names"], track["identity_values"]))
+        if "scale_spine_length" in values:
+            spine.append(f"subject {subject:02d} {values['scale_spine_length']:.3f}")
+    return [
+        fingers,
+        "This fixture is research-only and cannot qualify commercial capture data.",
+        "The delivered MHR body does not carry the multi-frame head solve, the toe input, SOMA-77 Spine1, the "
+        "foot contacts or the ground projection: the run report keeps those capture-side solves and marks each "
+        "NOT CONSUMED by the delivered body (not_consumed_by_delivered_body). Its head, feet and pelvis follow "
+        "MHR's own skeleton fitted to the 17 mapped landmarks.",
+        "The track's rest_positions_z_up_m is MHR's MEAN body, never a rest of this performer: the fitted "
+        "identity rides in identity_values and the animation channels.",
+        "The fitted spine-length channel reads " + (", ".join(spine) or "n/a") + " against a configured limit "
+        "of 1.1 (a soft penalty). Past the limit is an OBSERVED excursion, not evidence of accuracy; missing spine "
+        "information or a landmark-to-joint convention mismatch is a hypothesis, not a measured cause.",
+        "The combined fitter's acceptance (D4d) holds on 12 fresh identities under two donor motions; it does not "
+        "show improvement over D4c, repair of the shortened-spine failure class on fresh bodies, general pose "
+        "robustness, full identity recovery or convergence. The real take has no truth for its identity.",
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--videos", type=Path, required=True)
@@ -345,12 +386,12 @@ def main() -> int:
     parser.add_argument(
         "--body",
         choices=("rig", "mhr"),
-        default="rig",
-        help="D4: the body the delivery carries. 'rig' is the AutoAnim-55 rig driving the MPFB "
-             "asset (the path every step up to D7c shipped). 'mhr' fits MHR (Meta's open body "
-             "model, Apache; momentum, MIT) to the SAME converter output and delivers MHR's own "
-             "mesh and skeleton under schema autoanim.body-track/2.0-mhr. The rig path is "
-             "untouched by the choice and stays selectable.",
+        default="mhr",
+        help="D4: the body the delivery carries. 'mhr' (the default since D4i) fits MHR (Meta's "
+             "open body model, Apache; momentum, MIT) to the SAME converter output and delivers "
+             "MHR's own mesh and skeleton under schema autoanim.body-track/2.0-mhr. 'rig' is the "
+             "AutoAnim-55 rig driving the MPFB asset (the path every step up to D7c shipped); it "
+             "is untouched by the choice and stays selectable.",
     )
     parser.add_argument("--mhr-lod", type=int, default=2,
                         help="D4: MHR mesh LOD for the delivered body (2 = 10,661 vertices).")
@@ -358,13 +399,23 @@ def main() -> int:
                         help="D4: which converter array the MHR fit consumes. 'smoothed' is the "
                              "delivery (the SAME denominator as the rig, with D8/D8b/D8c's "
                              "repairs); 'raw' reproduces the pre-card.")
-    parser.add_argument("--mhr-python", type=Path, default=Path("/tmp/momenv/bin/python"),
+    parser.add_argument("--mhr-python", type=Path, default=DEFAULT_MHR_PYTHON,
                         help="D4: the interpreter carrying pymomentum. The build runs on .venv, "
-                             "which has no pymomentum, so the fit is a subprocess.")
+                             "which has no pymomentum, so the fit is a subprocess. D4i: defaults to "
+                             f"the gitignored .venv-mhr/ that {MHR_BOOTSTRAP} creates.")
     arguments = parser.parse_args()
     if arguments.end_frame - arguments.start_frame < 2:
         raise ValueError("Comparison requires at least two frames")
     output = arguments.output.resolve()
+    if arguments.body == "mhr" and not (arguments.mhr_python.is_file()
+                                        and __import__("os").access(arguments.mhr_python, __import__("os").X_OK)):
+        raise SystemExit(
+            f"--body mhr needs a momentum interpreter and {arguments.mhr_python} is not one. Create it with "
+            f"`{MHR_BOOTSTRAP}` (pymomentum-cpu 0.1.114.post0 into the gitignored .venv-mhr/), or pass "
+            "--mhr-python.")
+    # D4i: never write one schema's delivery into a directory holding the other's. A stale subject-XX.mapping.npz
+    # used to survive an MHR rebuild. Checked before anything is written; work/ (the cached detections) is exempt.
+    body_delivery_schema.refuse_other_schema(output, arguments.body)
     output.mkdir(parents=True, exist_ok=True)
     # Which `autoanim_gnm` is this? A worktree run without PYTHONPATH=$PWD/src silently
     # measures the main checkout's source through .venv's editable install (D7c's rule).
@@ -579,7 +630,7 @@ def main() -> int:
             "input_sha256": input_hashes,
             "joint_names": list(JOINT_NAMES),
             "production_claim": False,
-            "limitations": [
+            "limitations": ([
                 (
                     # SOMA-77 emits 77 joints including fingers and toes, but the
                     # adapter maps 17 of them -- see docs/HEAD_FEET_HANDS_PLAN.md.
@@ -592,9 +643,18 @@ def main() -> int:
                 ),
                 "This fixture is research-only and cannot qualify commercial capture data.",
                 "Sparse IK preserves canonical body proportions instead of estimating a dense shape model.",
-            ],
+            ] if arguments.body == "rig" else _mhr_limitations(arguments.detector, output, len(tracks))),
         }
     )
+    if arguments.body == "mhr":
+        # D4i: the capture still solves the head, toes, Spine1, the pelvis frame and the foot contacts (above), but
+        # the delivered MHR body consumes none of them. Each is kept, and marked, so no reader takes a capture-side
+        # "solved" for a delivered capability.
+        report["not_consumed_by_delivered_body"] = list(NOT_CONSUMED_BY_MHR)
+        for key in NOT_CONSUMED_BY_MHR:
+            for entry in report.get(key, ()):
+                if isinstance(entry, dict):
+                    entry["consumed_by_delivered_body"] = False
     write_json(output / "run-report.json", report)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
