@@ -25,11 +25,27 @@ repairs the failing class lives only in Phase 1, on burned fixtures. There, all 
 The card licenses this PASS. It registered a uniform draw, "not re-stratified, which would change the fixture
 distribution", with results reported by spine tercile. The gap is stated here, not repaired.
 
+**What this PASS permits claiming (Astra's merge round, adopted):** the combined fitter passes the registered
+acceptance band on twelve fresh identities under two retained donor motions, with B1 re-shown against D7c. It closes
+the four observed one-pass misses on burned fixtures. Fresh acceptance does not establish improvement over D4c or
+validate repair of its shortened-spine failure class.
+
+**What it may NOT claim:**
+
+* fresh confirmation that the shortened-spine class is repaired;
+* superiority over D4c;
+* general pose robustness (two donor motions);
+* full identity recovery (L scores lengths);
+* convergence (both passes stop at the cap on most solves).
+
+**The real-take spine is NOT evidence of accuracy.** Performer 0's spine is 1.102, past the configured limit of 1.1.
+The take has no truth (§5).
+
 | stage | commit | what |
 |---|---|---|
 | 1a | `f04bd9b` | Merge tag `ladder/D4c-fail-1a89cc7` (D4c's landmark start and tooling). One add/add conflict, D4c's review: main's copy kept, which is the tag's text plus the disposition header |
 | 1b | `48eb884` | Provenance and precondition 0. D4c's drawn set was reused by sha256: eight drawn, the spine among them, so no STOP. The retained D4c cells match D4c's records (72/72 and 108/108) |
-| 2 | `1efdf08` | The ONE code change and the tripwire. Hygiene HOLDS: 216/216 tripwire files, `--body rig` 8/8, the source diff is the second pass only |
+| 2 | `1efdf08` | The ONE code change and the tripwire. Hygiene HOLDS: tripwire 106 files byte-identical, 110 equal after named normalisations; `--body rig` 8/8; the source diff is the second pass only |
 | 3 | `8dda2ea` | Phase 1 on 30 burned fixtures. The decision JSON selects TWO-PASS and was committed before any Phase-2 fixture existed |
 | 4 | `4fb2e18` | Phase 2: 12 × 7 arms, each cell stamped with the decision's sha256. Closure on every candidate cell. The manifest |
 | 5 | `9be28b9` | The real take rebuilt through `--body mhr`; B1, B2 and the delivery closure |
@@ -65,7 +81,7 @@ in it was already in the card.
 | must-fail (iv), init-only | misses L (STOP if it passes) | 12/12. The closest fixture is 4.9×. It misses at the trunk on 3/12, and misses through shoulder width on every fixture (4.9–20.2×), as in D4c | PASS (held) |
 | **B1** | combined − D7c lower CI > 0 on both performers; combined − D4c within ±0.01 | **+0.1517 [+0.1295, +0.1591]** and **+0.1164 [+0.0836, +0.1337]**, 600/600 cells each. The frozen-pose control is below the candidate 8/8. MAMMA is bit-identical 8/8. The mesh and GLBs are bound by sha256. Reported, combined − D4c: −0.0039 [−0.0058, −0.0004] and −0.0014 [−0.0148, +0.0028] | PASS (held; see §5) |
 | B2 | (carried) same denominator | Every numbered check is re-derived by the gate from the delivery's own files, against this step's `--body rig` build. Both performers pass. D4's instrument agrees | PASS (held) |
-| hygiene | `--body rig` 8/8; passes = 1 reproduces D4c's delivery and cells; the source diff is the second pass only | 8/8. Tripwire 216/216: 106 byte-identical, 110 equal under the named normalisations only. Source diff: one kwarg (default 1) and exactly one statement | PASS (held) |
+| hygiene | `--body rig` 8/8; passes = 1 reproduces D4c's delivery and cells; the source diff is the second pass only | 8/8. Tripwire: 106 files byte-identical, 110 equal after named normalisations. Source diff: one kwarg (default 1) and exactly one statement | PASS (held) |
 | **overall** | **PASS** | **PASS** | **PASS** |
 
 The falsifier ("WARM drifts on 20261106/d0 → the basin → STOP") did not fire. WARM reads 0.214× there.
@@ -150,7 +166,8 @@ Every other prediction held: WARM 12/12, TWO-PASS selected, PASS, and B1 within 
   "started at the truth, the fit leaves it", with a second pass adding a little more of it. All stay well inside
   tolerance.
 * **The real take (no truth).** The second pass moves the fitted spine further:
-  * performer 0: 0.959 → **1.102**, at and just over the configured limit 1.1 (the limits are soft penalties);
+  * performer 0: 0.959 → **1.102**, past the configured limit 1.1 (the limits are soft penalties). This is NOT
+    evidence of accuracy;
   * performer 1: 0.420 → **0.823**.
 
   The landmark residual rises from 16.7 to 17.7 mm and from 16.7 to 17.1 mm. B1 against D4c reads −0.0039, with the CI
@@ -219,17 +236,31 @@ CRASH is its own class, never counted as ENFORCED.
 * **The real-take identity moves 0.14 / 0.40 units under the second pass** (§5), with no truth to referee it. Lane H's
   markers or a `Spine1` feed are the instruments that could.
 * **SW* is the lead** for a landmark-derived shoulder-width start (§3). That needs its own registration.
-* **Two of D4c's tests pin D4c's fitter and now fail on this branch, by design** (log 26). They are not edited: this
-  step may not touch an existing test.
-  * `test_the_source_diff_accepts_only_the_two_starts` asserts the fitter differs from `3136befb` in exactly D4c's
-    two starts.
-  * `test_the_gate_reproduces_its_committed_verdict_from_the_artifacts` re-runs D4c's gate, which checks every
-    acceptance cell's recorded fitter sha256 against the CURRENT fitter.
-
-  Both are true of D4c's tag and false of any later fitter. The merge that the PASS licenses needs the coordinator
-  to pin them to the tag's fitter or retire them. The rest of the suite reads 1261 passed, 43 skipped and 6 failed:
-  these two, plus D4c's four pre-existing (`test_body_compositor` unified preview, `test_body_export` GLB hash-bound,
-  and two `test_phase4_app`).
+* **Two of D4c's tests are RE-PINNED to D4c's own fitter** (the coordinator's merge-round fixes, authorised):
+  `test_the_source_diff_accepts_only_the_two_starts` and
+  `test_the_gate_reproduces_its_committed_verdict_from_the_artifacts`.
+  * Both read `tools/fitter/mhr_delivery.py` from tag `ladder/D4c-fail-1a89cc7` (commit `1a89cc73`) and verify its
+    sha256 `dd54443d…`.
+  * `d4c_start_gate.load_inputs` gains explicit, optional `fitter_source` / `fitter_sha256` overrides, which must be
+    passed together and must hash-agree. It also gains `history_ref`, because after D4c's records landed on main
+    alone and the tag was merged back, HEAD's simplified history shows the development JSON and the manifest added
+    by one commit. The freeze order is read on the tag's own line.
+  * The historical verdict reproduces exactly: `FAIL (failed: L)`, with the conjuncts, clauses and reported block
+    equal to D4c's committed `gate.json`.
+  * Before the re-pin, both tests failed on this branch (log 26, first run), because they read the working tree's
+    fitter.
+* **Instrument debt (Astra's merge round):**
+  * the pass count belongs in the fit report and the track metadata, including zero for held-identity arms. The
+    `calibration-passes.json` sidecar is easily detached from the files it describes.
+  * the tripwire's acceptance-cell set is checked by file COUNT (204), not by identity. The delivery set is checked
+    by name.
+  * the leaf walk labels a leaf ENFORCED when EITHER of its two mutations (mismatch, delete) is rejected. 291 leaves
+    are mixed, so the walk should report outcomes per mutation.
+  * the D4d gate accepts the current fitter as the one the cells ran on (stage 2's, `6dc12795…`) only when the two
+    are equal as code with docstrings and argparse help strings removed. The `--zero-start` help text is the one
+    later edit (merge round); any computed change still fails every cell's provenance.
+* **The full suite after the merge-round fixes (log 27): 4 failed, 1266 passed, 43 skipped.** The four are D4c's pre-existing failures (`test_body_compositor` unified preview, `test_body_export` GLB hash-bound, two `test_phase4_app`).
+* **`--zero-start` now reproduces D4 only with `--passes 1`.** Its help text says so; no computed byte changed.
 * **Cap exhaustion is unchanged in kind.** Neither pass converges. That is an attribution limit, not a clause.
 * **The detection cache.** Both real-take builds (`--body rig` hygiene and `--body mhr` delivery) reused the shipped
   delivery's cached detections (copied in). The SOMA-77 detector is restored on this machine but was not re-run.
@@ -290,7 +321,7 @@ PYTHONPATH=$PWD/src .venv/bin/python tools/compare/d4d_twopass_gate_fuzz.py --ou
 PYTHONPATH=$PWD/src .venv/bin/python -m pytest tests/test_d4d_twopass.py
 ```
 
-`tests/test_d4d_twopass.py` passes 16 tests (log 25). The full suite (log 26) reads 1261 passed, 43 skipped and 6 failed: D4c's four pre-existing failures and the two D4c tests that pin D4c's fitter (§8).
+`tests/test_d4d_twopass.py` passes 17 tests (log 25). The full suite after the merge-round re-pin (log 27) is given in §8.
 
 The report frames are in `artifacts/compare/d4d-twopass/report/`: 25 JPEGs, 480 px, q40, every 6th frame, camera
 A001. The panels are stacked: the D4c fit (aqua) sits above the D4d fit (blue), over the SAM2 mask outline. The

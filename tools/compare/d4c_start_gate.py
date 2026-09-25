@@ -545,11 +545,22 @@ def trunk_statistic_in_source(source: str) -> str | None:
 # ------------------------------------------------------------------------------------------ inputs
 
 def load_inputs(dev_cells: Path = DEV_CELLS, acc_cells: Path = ACC_CELLS, out_dir: Path = OUT_DIR,
-                development_only: bool = False) -> dict:
+                development_only: bool = False, fitter_source: str | None = None,
+                fitter_sha256: str | None = None, history_ref: str | None = None) -> dict:
+    """`fitter_source` / `fitter_sha256` (both or neither): replay the gate against a PINNED fitter -- D4c's, at tag
+    ladder/D4c-fail-1a89cc7 -- instead of the working tree's, which later steps change by design (D4d).
+    `history_ref`: read the freeze order (which commit ADDED the development JSON and the manifest) from that
+    commit's history instead of HEAD's. After D4c's records landed on main alone and the tag was later merged back,
+    HEAD's simplified history shows both files added by the one records-only commit, so the order D4c committed them
+    in is only visible on the tag's own line."""
+    if (fitter_source is None) != (fitter_sha256 is None):
+        raise ValueError("pass both the pinned fitter's source and its sha256, or neither")
+    if fitter_source is not None and sha256_bytes(fitter_source.encode()) != fitter_sha256:
+        raise ValueError("the pinned fitter's source does not hash to the sha256 given for it")
     inputs = {"drawn_set_bytes": DRAWN_SET.read_bytes(),
               "stage1_provenance": json.loads((RECORDS / "provenance.json").read_text(encoding="utf-8")),
-              "fitter_source": FITTER.read_text(encoding="utf-8"),
-              "fitter_sha256": sha256_file(FITTER),
+              "fitter_source": FITTER.read_text(encoding="utf-8") if fitter_source is None else fitter_source,
+              "fitter_sha256": sha256_file(FITTER) if fitter_sha256 is None else fitter_sha256,
               "fixture_sha256": sha256_file(ROOT / "tools/fitter/d4c_fixture.py")}
     cells, arrays, files = read_cells(dev_cells, fx.POPULATIONS["d4"] + fx.POPULATIONS["d4b"], fx.DEVELOPMENT_ARMS)
     inputs["development"] = {"cells": cells, "arrays": arrays, "files": files}
@@ -562,7 +573,8 @@ def load_inputs(dev_cells: Path = DEV_CELLS, acc_cells: Path = ACC_CELLS, out_di
     inputs["acceptance_cell_sha256"] = {n: sha256_file(Path(acc_cells) / n) for n in sorted(cells)}
 
     def added(path: Path) -> str:
-        lines = git("log", "--diff-filter=A", "--format=%H", "--", str(path.relative_to(ROOT))).splitlines()
+        lines = git("log", "--diff-filter=A", "--format=%H", *([history_ref] if history_ref else []), "--",
+                    str(path.relative_to(ROOT))).splitlines()
         return lines[-1] if lines else ""
 
     dev_commit, manifest_commit = added(DEVELOPMENT), added(MANIFEST)

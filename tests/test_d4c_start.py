@@ -161,12 +161,28 @@ def test_the_spine_control_fails_only_when_the_trunk_is_scored_and_beyond_tolera
     assert gate.trunk_ratio(_row(3.0, 2.0), "candidate") == pytest.approx(1.5)
 
 
+# D4c's fitter, PINNED: tag ladder/D4c-fail-1a89cc7 at commit 1a89cc73. Later steps change the working tree's
+# fitter by design (D4d added a second calibration pass), so D4c's own claims are replayed against the file D4c
+# measured, verified by its sha256, never against whatever the checkout now holds.
+D4C_TAG_COMMIT = "1a89cc73b2ced93543e9cbfb191d79208aef423b"
+D4C_FITTER_SHA256 = "dd54443dffcdc9821b58f8e82091ebe709f7b80cee33e9aede197eab4c009389"
+
+
+def d4c_fitter() -> str:
+    completed = gate.subprocess.run(["git", "show", f"{D4C_TAG_COMMIT}:tools/fitter/mhr_delivery.py"], cwd=ROOT,
+                                    capture_output=True)
+    if completed.returncode or not completed.stdout:
+        pytest.skip("the D4c tag's commit is not reachable from this checkout")
+    assert gate.sha256_bytes(completed.stdout) == D4C_FITTER_SHA256
+    return completed.stdout.decode("utf-8")
+
+
 def test_the_source_diff_accepts_only_the_two_starts():
     base = gate.subprocess.run(["git", "show", f"{gate.BASE_COMMIT}:tools/fitter/mhr_delivery.py"], cwd=ROOT,
                                capture_output=True, text=True).stdout
     if not base:
         pytest.skip("the base commit is not reachable from this checkout")
-    current = gate.FITTER.read_text(encoding="utf-8")
+    current = d4c_fitter()
     assert gate.source_diff({"fitter_base_source": base, "fitter_source": current})["only_the_two_starts"]
     for tamper in (("tracking.max_iter = max_iter", "tracking.max_iter = 300"),
                    ("mt.calibrate_markers(character, start.copy(), markers, stage_a)",
@@ -196,7 +212,8 @@ GATE_REPORT = ROOT / "artifacts/compare/d4c-start/gate.json"
 
 @pytest.mark.skipif(not GATE_REPORT.exists(), reason="the D4c artifacts are not on this machine")
 def test_the_gate_reproduces_its_committed_verdict_from_the_artifacts():
-    report = gate.build(gate.load_inputs())
+    report = gate.build(gate.load_inputs(fitter_source=d4c_fitter(), fitter_sha256=D4C_FITTER_SHA256,
+                                         history_ref=D4C_TAG_COMMIT))
     committed = json.loads((ROOT / "docs/reviews/body-model-start-records/gate.json").read_text(encoding="utf-8"))
     assert report["verdict"] == committed["verdict"]
     assert report["conjuncts"] == committed["conjuncts"]

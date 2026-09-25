@@ -212,3 +212,16 @@ def test_a_malformed_phase_2_cell_fails_closed_rather_than_crashing():
     cell = p2["cells"]["cell-20261201-d1-candidate.json"]
     cell["calibration_calls"] = cell["calibration_calls"][:1]
     assert gate.build(p1, p2, h)["verdict"] == "FAIL"
+
+
+def test_the_cells_fitter_is_accepted_only_for_text_edits():
+    ran_on = subprocess.run(["git", "show", f"{gate.RAN_ON_COMMIT}:tools/fitter/mhr_delivery.py"], cwd=ROOT,
+                            capture_output=True, text=True).stdout
+    if not ran_on:
+        pytest.skip("the stage-2 commit is not in this clone")
+    assert gate.cells_fitter_sha256(ran_on, ran_on) == gate.RAN_ON_FITTER_SHA256
+    assert gate.cells_fitter_sha256(NOW, ran_on) == gate.RAN_ON_FITTER_SHA256
+    for old, new in (("tracking.max_iter = max_iter", "tracking.max_iter = 31"),
+                     ("choices=(1, 2), default=2,", "choices=(1, 2), default=1,")):
+        assert NOW.count(old) == 1
+        assert gate.cells_fitter_sha256(NOW.replace(old, new), ran_on) != gate.RAN_ON_FITTER_SHA256

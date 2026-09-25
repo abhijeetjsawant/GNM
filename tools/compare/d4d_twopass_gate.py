@@ -265,6 +265,35 @@ RULE = ("Frozen by the card: STOP (D4e takes the objective) if WARM leaves the t
         "Stage 0b: the spine control fails L as scored on every Phase-1 fixture, else STOP.")
 
 
+# The fitter every D4d cell and the real-take delivery ran on: stage 2's commit. The merge round's only later edit to
+# the fitter is text (the `--zero-start` help and the module docstring); `cells_fitter_sha256` accepts the stage-2
+# sha for the current file ONLY when the two modules' ASTs are equal once docstrings and argparse `help=` strings are
+# removed -- so a change to any computed byte still moves the expected provenance and fails every cell.
+RAN_ON_COMMIT = "1efdf08457ee0d8a880fa5beb70a4cb39362359f"
+RAN_ON_FITTER_SHA256 = "6dc1279592959ffe7dc523bdfd7fde69e307697ae4e84a53add0ab6de97defd2"
+
+
+def _code_only(source: str) -> str:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) and isinstance(
+                getattr(body[0], "value", None), ast.Constant) and isinstance(body[0].value.value, str):
+            node.body = body[1:] or [ast.Pass()]
+        if isinstance(node, ast.Call):
+            node.keywords = [k for k in node.keywords if k.arg != "help"]
+    return ast.dump(tree, include_attributes=False)
+
+
+def cells_fitter_sha256(current: str, ran_on: str | None = None) -> str:
+    """The fitter sha the cells must carry: the stage-2 fitter's when the current file is it in code (text-only
+    edits since), else the current file's own sha (which then matches no cell)."""
+    ran_on = git_bytes(f"{RAN_ON_COMMIT}:tools/fitter/mhr_delivery.py").decode() if ran_on is None else ran_on
+    if sha256_bytes(ran_on.encode()) == RAN_ON_FITTER_SHA256 and _code_only(ran_on) == _code_only(current):
+        return RAN_ON_FITTER_SHA256
+    return sha256_bytes(current.encode())
+
+
 def phase1_population() -> list[tuple[str, int, int]]:
     return [(p, s, d) for p in fx4.PHASE1 for s, d in fx4.POPULATIONS[p]]
 
@@ -277,7 +306,7 @@ def stage1_sha(prefix: str, stage1: dict) -> str | None:
 def load_phase1(phase1_dir: Path = PHASE1_DIR) -> dict:
     inputs = {"drawn_bytes": D4C_DRAWN_SET.read_bytes(),
               "stage1": json.loads(PROVENANCE.read_text(encoding="utf-8")),
-              "fitter_sha256": sha256_file(FITTER),
+              "fitter_sha256": cells_fitter_sha256(FITTER.read_text(encoding="utf-8")),
               "fixture_sha256": sha256_file(ROOT / "tools/fitter/d4d_fixture.py"),
               "d4c_fixture_sha256": sha256_file(ROOT / "tools/fitter/d4c_fixture.py"),
               "d4c_manifest_bytes": fx4.D4C_MANIFEST.read_bytes(),

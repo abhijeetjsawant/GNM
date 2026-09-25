@@ -31,8 +31,8 @@ performer 1 was fitted on a model performer 0's calibration had moved.
 D4c, THE CALIBRATION'S START. Both `calibrate_markers` calls (stage A, locators only; stage B, identity)
 start from a LANDMARK-DERIVED identity (`landmark_start`) instead of zero, each receiving its own copy.
 Nothing else in the fit changes (`max_iter` 30, `calib_frames` 100, `loss_alpha` 2.0, pinned offsets,
-tracking). `--zero-start` forces the zero start, byte for byte the D4 fitter's (the tripwire and the
-legacy arm). The start actually used is written beside the delivery as
+tracking). `--zero-start --passes 1` is the D4 fitter byte for byte (the tripwire and the legacy arm); since
+D4d the CLI defaults to two passes, so `--zero-start` alone is a zero start with two passes. The start actually used is written beside the delivery as
 `subject-XX.calibration-start.json`, never into the fit report or the track (so the zero start leaves
 both byte-identical).
 
@@ -428,8 +428,9 @@ def main() -> int:
     parser.add_argument("--mean-body", action="store_true")
     parser.add_argument("--free-offsets", action="store_true")
     parser.add_argument("--zero-start", action="store_true",
-                        help="D4c: force the ZERO calibration start (the D4 fitter, byte for byte): the "
-                             "tripwire and the legacy arm. The delivery default is the landmark start.")
+                        help="D4c: force the ZERO calibration start. Reproducing the D4 fitter byte for byte "
+                             "now needs --zero-start --passes 1 (D4d: this CLI defaults to two passes). The "
+                             "delivery default is the landmark start.")
     parser.add_argument("--passes", type=int, choices=(1, 2), default=2,
                         help="D4d: calibration passes. 2 (the default, what --body mhr runs) repeats stage A and "
                              "stage B from the first pass's identity; 1 is D4c's fitter byte for byte (the "
