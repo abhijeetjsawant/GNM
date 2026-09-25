@@ -7,15 +7,16 @@ built, in what order, gated by what), `docs/SUBSTITUTION_LADDER.md` (what is mea
 ## Where we are
 
 An in-house, commercially clean body capture that reaches MAMMA, measured one part at a time so we always know which part moved a number.
-Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D4b, D4c, D7, D7b, D8, D9, D8b, D8c, D9b, D7c. In flight: D4. Blocked: nothing.
+Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D4b, D4c, D7, D7b, D8, D9, D8b, D8c, D9b, D7c. In flight: D4, D4d. Blocked: nothing.
 
 ## In flight
 
 - **D4** A real pose solver (momentum on the MHR body) — an Opus agent, since 2026-09-21
+- **D4d** The body-model fit's drift off a good start, measured, then one frozen fix — an Opus agent, since 2026-09-25
 
 ## Next up (unblocked, not started)
 
-- **D4d** The body-model fit's drift off a good start, measured, then one frozen fix — an Opus agent
+- none
 
 ## Blocked
 
@@ -28,12 +29,12 @@ Done: I0, I1, I2, I3, I4, I5, I6, I7, I8, D1, D2, D3, D4b, D4c, D7, D7b, D8, D9,
 
 ## Recent log
 
-- 2026-09-22 [D4] D4 MERGED OPT-IN 2026-09-22 (285643c, --no-ff): --body mhr available, default rig unchanged, the rig path rebuilds the D7c delivery 8/8; D4 acceptance stays FAIL on O1 and OPEN (status stays in_progress until D4b re-registers O1 prospectively). Extractor wired into the ladder (rungs 1 and 7); close-out running on the rig default.
 - 2026-09-22 [D4] D4 close-out (post_merge.sh D4 on the rig default): the delivery rebuilt in place 8/8 byte-identical to D7c's; every instrument logged under artifacts/compare/post-merge-D4; the D3 gate line-identical to D7c's close-out (exact-skeleton oracle PASS 0.35 mm; the frozen D2c/D3 reference clauses still moved-by-design); head gate line-identical; three instruments first failed on cache paths and pass after restoring the body-provider run from artifacts/compare/d1-fix/body-run-regenerated and downsampled_verts from the Modal volume; the D4 gate rerun reads acceptance FAIL (O1) with every other conjunct PASS. Nothing shipped changed.
 - 2026-09-24 [D4b] D4b dispatched 2026-09-24: O1 re-registered prospectively (band L on rest-segment identity, paired per-fixture floors, 12 fresh fixtures on two donors, spine-displaced must-fail, burned-first STOP); measurement only, src byte-identical; Astra's one card round at medium: dispatchable, findings adopted; worktree .claude/worktrees/ladder-D4b on ladder/D4b
 - 2026-09-24 [D4b] D4b MERGED 2026-09-24 (d08929b) as a measurement, src byte-identical: STOPPED at stage 3 under the registered must-fail (ii) (reading B, Astra's merge round). The frozen drawn-set rule (a first-order pose-Jacobian column-space test, blind to the configured limits) drew 6 channels, not 8: scale_spine_length and scale_shoulder_width sit in the pose span only through pose steps of 17-65 units against limits <= 1.5, so the trunk was not scored and the band as scored accepted the displaced spine 6/6 on D4's burned cells. Post-stop exploratory (not evidence; fixtures 20261001-06 x donors 0/1 now burned): scored bones within 0.55x tolerance 12/12, the trunk beyond tolerance 9/12; WARM (calibration from the truth) holds the spine within 0.005; 973 of 1056 calibration solves stopped at max_iter 30. D4 STAYS OPEN, O1 not superseded. The card contradicted itself (PASS closes D4 vs an unscored trunk cannot) -- the lane's fifth pre-registration error, the coordinator's.
 - 2026-09-25 [D4c] D4c dispatched 2026-09-25: ONE change, the calibration's landmark-derived starting identity (max_iter 30 kept); limit-aware drawn-set rule with the trunk a PRECONDITION (STOP); development on the 18 burned fixtures chooses only the trunk statistic from {median, p90, p95}, frozen before 12 untouched acceptance fixtures; init-only must-fail; B1 re-run on the D4c fitter; one verdict; fit_one merges only on PASS. Astra's one card round at medium: dispatchable, findings adopted. Worktree .claude/worktrees/ladder-D4c on ladder/D4c
 - 2026-09-25 [D4c] D4c FAIL (L), 2026-09-25, records only on main (5d27b4f); the tooling and the landmark-start fitter change pinned at tag ladder/D4c-fail-1a89cc7 (1a89cc7), NOT merged (the card: fit_one does not merge on a non-PASS; the tooling imports it, so its merge is deferred debt, Astra's option c). Precondition 0 held (limit-aware rule drew 8, spine included); stage 0b 18/18; development chose p90 (worst trunk ratio 11.93 -> 1.27); acceptance L 11/12 -- the trunk on 20261106/d0 read 2.1341 vs 1.9352 mm (1.10x; the p90 chord read a strongly shortened spine LONG by 0.032 units and 30 iterations recovered a third); must-fails i-iv hold; B1 +0.1555/+0.1178 vs the D7c rig, D4c-D4 ~0; B2 and hygiene PASS. D4 stays open; fixtures 20261101-06 x donors 0/1 now burned.
+- 2026-09-25 [D4d] D4d dispatched 2026-09-25: branch = main + tag ladder/D4c-fail-1a89cc7; Phase 1 on 30 burned fixtures (WARM decides the fork; TWO-PASS = a second full calibration pass from pass 1's identity, max_iter 30 each, tracking untouched; SW* report); Phase 2 on 12 untouched fixtures only if the frozen rule selects TWO-PASS; one verdict; PASS merges D4c+D4d, otherwise records only. Astra's one card round at medium: dispatchable, findings adopted. SOMA-77 detector restored and verified.
 
 ## How to resume
 

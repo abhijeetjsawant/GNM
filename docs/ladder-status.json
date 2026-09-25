@@ -203,8 +203,8 @@
           "title": "The body-model fit's drift off a good start, measured, then one frozen fix",
           "plain": "D4c showed that starting the body fit from the performer's own measured bone lengths gets eleven of twelve test bodies right, and misses the twelfth by ten percent on the torso. On some bodies the fit also drifts away from a start that was already correct. This step first measures why on the bodies already used, then fixes one change in advance and tests it on fresh ones.",
           "owner": "opus-agent",
-          "state": "planned",
-          "started": null,
+          "state": "in_progress",
+          "started": "2026-09-25",
           "finished": null,
           "report": null,
           "blocked_on": null
@@ -916,6 +916,11 @@
       "date": "2026-09-25",
       "step": "D4c",
       "text": "D4c FAIL (L), 2026-09-25, records only on main (5d27b4f); the tooling and the landmark-start fitter change pinned at tag ladder/D4c-fail-1a89cc7 (1a89cc7), NOT merged (the card: fit_one does not merge on a non-PASS; the tooling imports it, so its merge is deferred debt, Astra's option c). Precondition 0 held (limit-aware rule drew 8, spine included); stage 0b 18/18; development chose p90 (worst trunk ratio 11.93 -> 1.27); acceptance L 11/12 -- the trunk on 20261106/d0 read 2.1341 vs 1.9352 mm (1.10x; the p90 chord read a strongly shortened spine LONG by 0.032 units and 30 iterations recovered a third); must-fails i-iv hold; B1 +0.1555/+0.1178 vs the D7c rig, D4c-D4 ~0; B2 and hygiene PASS. D4 stays open; fixtures 20261101-06 x donors 0/1 now burned."
+    },
+    {
+      "date": "2026-09-25",
+      "step": "D4d",
+      "text": "D4d dispatched 2026-09-25: branch = main + tag ladder/D4c-fail-1a89cc7; Phase 1 on 30 burned fixtures (WARM decides the fork; TWO-PASS = a second full calibration pass from pass 1's identity, max_iter 30 each, tracking untouched; SW* report); Phase 2 on 12 untouched fixtures only if the frozen rule selects TWO-PASS; one verdict; PASS merges D4c+D4d, otherwise records only. Astra's one card round at medium: dispatchable, findings adopted. SOMA-77 detector restored and verified."
     }
   ]
 }
