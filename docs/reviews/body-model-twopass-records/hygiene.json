@@ -1,0 +1,951 @@
+{
+ "pass": true,
+ "tripwire": {
+  "rows": {
+   "delivery/subject-00.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/subject-00.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/subject-00.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "delivery/subject-00.markers.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/subject-00.calibration-start.json": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/subject-01.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/subject-01.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/subject-01.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "delivery/subject-01.markers.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/subject-01.calibration-start.json": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/fit-report-subject-00.json": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "delivery/fit-report-subject-01.json": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/cell-20261101-d0-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d0-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d0-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d0-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d0-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d0-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d1-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d1-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d1-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d1-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d1-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261101-d1-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d0-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d0-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d0-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d0-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d0-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d0-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d1-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d1-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d1-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d1-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d1-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261102-d1-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d0-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d0-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d0-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d0-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d0-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d0-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d1-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d1-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d1-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d1-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d1-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261103-d1-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d0-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d0-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d0-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d0-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d0-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d0-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d1-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d1-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d1-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d1-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d1-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261104-d1-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d0-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d0-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d0-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d0-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d0-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d0-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d1-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d1-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d1-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d1-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d1-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261105-d1-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d0-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d0-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d0-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d0-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d0-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d0-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d1-candidate.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d1-exact_identity.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d1-init_only.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d1-legacy.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d1-mean_body.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/cell-20261106-d1-spine_displaced.json": {
+    "equal": true,
+    "how": "normalised provenance.fitter_sha256"
+   },
+   "acceptance/fixture-20261101-d0-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d0-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261101-d0-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d0-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261101-d0-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d0-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d0-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d0-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d0-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261101-d0-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d0-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261101-d1-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261101-d1-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261101-d1-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261101-d1-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261102-d0-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261102-d0-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261102-d0-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d0-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261102-d1-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261102-d1-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261102-d1-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261102-d1-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261103-d0-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261103-d0-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261103-d0-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d0-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261103-d1-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261103-d1-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261103-d1-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261103-d1-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261104-d0-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261104-d0-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261104-d0-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d0-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261104-d1-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261104-d1-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261104-d1-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261104-d1-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261105-d0-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261105-d0-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261105-d0-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d0-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261105-d1-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261105-d1-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261105-d1-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261105-d1-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261106-d0-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261106-d0-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261106-d0-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d0-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-candidate.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-candidate.body-track.json": {
+    "equal": true,
+    "how": "normalised body_model.assets"
+   },
+   "acceptance/fixture-20261106-d1-candidate.body-track.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-candidate.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261106-d1-candidate.glb": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-exact_identity.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-init_only.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-legacy.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-legacy.calibration-debug.log": {
+    "equal": true,
+    "how": "normalised momentum timestamps"
+   },
+   "acceptance/fixture-20261106-d1-mean_body.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   },
+   "acceptance/fixture-20261106-d1-spine_displaced.arrays.npz": {
+    "equal": true,
+    "how": "bytes"
+   }
+  },
+  "sets_by_identity": {
+   "delivery_files": true,
+   "acceptance_files": true
+  },
+  "byte_identical": 106,
+  "equal_after_the_named_normalisation": 110,
+  "unequal": [],
+  "holds": true,
+  "normalisations_allowed": {
+   "*.body-track.json": [
+    "body_model.assets"
+   ],
+   "cell-*.json": [
+    "provenance.fitter_sha256"
+   ],
+   "*.calibration-debug.log": [
+    "momentum timestamps [YYYY-MM-DD HH:MM:SS.mmm]"
+   ]
+  }
+ },
+ "source_diff": {
+  "only_the_second_pass": true,
+  "kwonly_args_added": [
+   "passes"
+  ],
+  "passes_default_is_1": true,
+  "second_pass_blocks_removed": 1,
+  "placed_after_the_first_pass": true,
+  "ast_equal_after_undoing_it": true,
+  "base": "1a89cc73b2ced93543e9cbfb191d79208aef423b:tools/fitter/mhr_delivery.py",
+  "base_sha256": "dd54443dffcdc9821b58f8e82091ebe709f7b80cee33e9aede197eab4c009389"
+ },
+ "rig_rebuild": {
+  "rows": {
+   "subject-00.glb": {
+    "rebuild": "1bca2b500aa1fb6983e8d053e740e99515d0fe54ea96eb569bbf1abc7465c9d7",
+    "shipped": "1bca2b500aa1fb6983e8d053e740e99515d0fe54ea96eb569bbf1abc7465c9d7",
+    "identical": true
+   },
+   "subject-01.glb": {
+    "rebuild": "3765d7455afbf6224260eb68eba58f65de8a2bb7dc777c98925b04ab4d276a2d",
+    "shipped": "3765d7455afbf6224260eb68eba58f65de8a2bb7dc777c98925b04ab4d276a2d",
+    "identical": true
+   },
+   "subject-00.body-track.npz": {
+    "rebuild": "affce2418bbc3acbd391290d28a69552674310272a0a8a05ca1786aea9c0eccb",
+    "shipped": "affce2418bbc3acbd391290d28a69552674310272a0a8a05ca1786aea9c0eccb",
+    "identical": true
+   },
+   "subject-01.body-track.npz": {
+    "rebuild": "637df508e3672f7c0e60499ceb3be89c4fed5ebc7408a65e91f75aecfd0d9e53",
+    "shipped": "637df508e3672f7c0e60499ceb3be89c4fed5ebc7408a65e91f75aecfd0d9e53",
+    "identical": true
+   },
+   "subject-00.body-track.json": {
+    "rebuild": "e37ff748a977e227b46d611e86c363df844ff7b3dd8894cf101aec11a87823a1",
+    "shipped": "e37ff748a977e227b46d611e86c363df844ff7b3dd8894cf101aec11a87823a1",
+    "identical": true
+   },
+   "subject-01.body-track.json": {
+    "rebuild": "93a287307042e39c66910fba9ed9532f50e66af35512ab6ff84f632deb3f075e",
+    "shipped": "93a287307042e39c66910fba9ed9532f50e66af35512ab6ff84f632deb3f075e",
+    "identical": true
+   },
+   "subject-00.mapping.npz": {
+    "rebuild": "4c9a9ec15f0e48a185d1ff3df72d7ea95c54a36c3b0de9124a4c01b03ba4d684",
+    "shipped": "4c9a9ec15f0e48a185d1ff3df72d7ea95c54a36c3b0de9124a4c01b03ba4d684",
+    "identical": true
+   },
+   "subject-01.mapping.npz": {
+    "rebuild": "fe11b0c66cbdcc356727e5eda967b2a4d4804f677e29ee91b349ea73ddfafe1e",
+    "shipped": "fe11b0c66cbdcc356727e5eda967b2a4d4804f677e29ee91b349ea73ddfafe1e",
+    "identical": true
+   }
+  },
+  "identical_count": 8,
+  "holds": true
+ },
+ "base_fitter_is_the_tag_s": true,
+ "step": "D4d",
+ "stage": 2
+}

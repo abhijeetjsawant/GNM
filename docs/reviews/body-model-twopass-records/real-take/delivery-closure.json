@@ -1,0 +1,35 @@
+{
+ "band_m": 0.0001,
+ "pairs": {
+  "subject_00": {
+   "glb": "artifacts/compare/d4d-twopass/delivery/subject-00.glb",
+   "track": "artifacts/compare/d4d-twopass/delivery/subject-00.body-track.npz",
+   "glb_sha256": "9dec34a7a53c86dc2a1b7e492947aead40d3b244430ff402e4c47892f140741d",
+   "track_sha256": "d2f451db9b34b3f2bff0e12b12107fbb78526baca3c62e11e3ff0a2156df9a9e",
+   "frames_in_glb": 150,
+   "frames_in_track": 150,
+   "joints_compared": 127,
+   "joints_missing_from_the_glb": [],
+   "max_abs_m": 2.2932970340505676e-06,
+   "p95_abs_m": 5.392694813810549e-07,
+   "band_m": 0.0001,
+   "within_band": true
+  },
+  "subject_01": {
+   "glb": "artifacts/compare/d4d-twopass/delivery/subject-01.glb",
+   "track": "artifacts/compare/d4d-twopass/delivery/subject-01.body-track.npz",
+   "glb_sha256": "6b3d870ef37f01d2c0eb72ea1bbf71e4e83ccb77321a185d038e66bd517b3d2d",
+   "track_sha256": "9878ba586dd18a872c58d9231a00b77b4c18cb335baba60033106bf7561a4753",
+   "frames_in_glb": 150,
+   "frames_in_track": 150,
+   "joints_compared": 127,
+   "joints_missing_from_the_glb": [],
+   "max_abs_m": 1.9107285611497105e-06,
+   "p95_abs_m": 5.837924299534335e-07,
+   "band_m": 0.0001,
+   "within_band": true
+  }
+ },
+ "all_within_band": true,
+ "worst_max_abs_m": 2.2932970340505676e-06
+}

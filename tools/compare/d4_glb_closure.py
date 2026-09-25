@@ -22,6 +22,7 @@ band itself verifies rather than assumes.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -96,6 +97,10 @@ def to_capture(positions: np.ndarray) -> np.ndarray:
 
 
 def closure(glb: Path, track: Path) -> dict:
+    # D4c: the report carries the sha256 of the bytes it MEASURED, so a gate binds the residual to the files by
+    # content rather than by a path or a basename (D4b's closure-provenance debt). Hashed before and after the read.
+    glb_sha, track_sha = hashlib.sha256(Path(glb).read_bytes()).hexdigest(), \
+        hashlib.sha256(Path(track).read_bytes()).hexdigest()
     names, positions = glb_joint_positions(glb)
     captured = to_capture(positions)
     # allow_pickle: our own delivery npz (object arrays; CLAUDE.md).
@@ -107,7 +112,11 @@ def closure(glb: Path, track: Path) -> dict:
     columns = [i for i, n in enumerate(track_names) if n in names]
     frames = min(captured.shape[0], expected.shape[0])
     difference = np.abs(captured[:frames][:, rows] - expected[:frames][:, columns])
-    return {"glb": str(glb), "track": str(track), "frames_in_glb": int(captured.shape[0]),
+    if (hashlib.sha256(Path(glb).read_bytes()).hexdigest(), hashlib.sha256(Path(track).read_bytes()).hexdigest()) \
+            != (glb_sha, track_sha):
+        raise SystemExit(f"{glb} or {track} changed while it was measured")
+    return {"glb": str(glb), "track": str(track), "glb_sha256": glb_sha, "track_sha256": track_sha,
+            "frames_in_glb": int(captured.shape[0]),
             "frames_in_track": int(expected.shape[0]),
             "joints_compared": len(rows), "joints_missing_from_the_glb": missing,
             "max_abs_m": float(difference.max()), "p95_abs_m": float(np.percentile(difference, 95)),

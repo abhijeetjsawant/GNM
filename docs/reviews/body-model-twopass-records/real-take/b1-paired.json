@@ -1,0 +1,153 @@
+{
+ "pre_registration": "artifacts/compare/d4-body/PREREGISTRATION.md",
+ "arm_files": {
+  "baseline_D7c_rig": "artifacts/compare/i6/delivered-mesh.npz",
+  "D4c_fitted_MHR_lod2": "artifacts/compare/d4c-start/work-delivery/delivered-mesh.npz",
+  "D4d_fitted_MHR_lod2": "artifacts/compare/d4d-twopass/work-delivery/delivered-mesh.npz"
+ },
+ "arm_file_sha256": {
+  "baseline_D7c_rig": "f67f05d45bb4b0766712386ef49f5a7dd4c690c13f8a7f114ed3efa0bcc9561b",
+  "D4c_fitted_MHR_lod2": "bc606e91a5c4dd95cbcdb7a7b52cfe0c36815f6ff27a39f185a5dacabafc7499",
+  "D4d_fitted_MHR_lod2": "2b7ba78d4c19e8f85eca5d7659031f9056f69207701c6d133229c17e19bf017d"
+ },
+ "seed": 20260921,
+ "population": {
+  "named": "the whole take, the four cameras pooled, per performer: 150 frames x 4 cameras = 600 cells",
+  "frames_consumed_per_arm": {
+   "baseline_D7c_rig": {
+    "subject_00": 150,
+    "subject_01": 150
+   },
+   "D4c_fitted_MHR_lod2": {
+    "subject_00": 150,
+    "subject_01": 150
+   },
+   "D4d_fitted_MHR_lod2": {
+    "subject_00": 150,
+    "subject_01": 150
+   }
+  },
+  "frames_required": 150,
+  "cells_excluded_by_the_mask_cache": {
+   "subject_00": [],
+   "subject_01": []
+  },
+  "cells_required": {
+   "subject_00": 600,
+   "subject_01": 600
+  },
+  "min_mask_px": 200,
+  "every_arm_consumed_the_full_take": true,
+  "every_pair_scored_the_required_cells": true
+ },
+ "arms": {
+  "baseline_D7c_rig": {
+   "subject_00": {
+    "pooled_median_iou": 0.647,
+    "A001": 0.6339,
+    "B001": 0.6961,
+    "C001": 0.635,
+    "D001": 0.6804
+   },
+   "subject_01": {
+    "pooled_median_iou": 0.6518,
+    "A001": 0.6497,
+    "B001": 0.6581,
+    "C001": 0.6744,
+    "D001": 0.5694
+   }
+  },
+  "D4c_fitted_MHR_lod2": {
+   "subject_00": {
+    "pooled_median_iou": 0.8025,
+    "A001": 0.7891,
+    "B001": 0.8051,
+    "C001": 0.807,
+    "D001": 0.8169
+   },
+   "subject_01": {
+    "pooled_median_iou": 0.7696,
+    "A001": 0.7854,
+    "B001": 0.8161,
+    "C001": 0.7627,
+    "D001": 0.6604
+   }
+  },
+  "D4d_fitted_MHR_lod2": {
+   "subject_00": {
+    "pooled_median_iou": 0.7987,
+    "A001": 0.7834,
+    "B001": 0.804,
+    "C001": 0.8017,
+    "D001": 0.8167
+   },
+   "subject_01": {
+    "pooled_median_iou": 0.7682,
+    "A001": 0.7762,
+    "B001": 0.8016,
+    "C001": 0.7563,
+    "D001": 0.646
+   }
+  }
+ },
+ "paired": {
+  "D4d_fitted_MHR_lod2_minus_baseline_D7c_rig_subject_00": {
+   "median_difference": 0.15168143803543543,
+   "ci95_of_the_median_difference": [
+    0.12954502516444144,
+    0.15913276573087665
+   ],
+   "block_length": 15,
+   "resamples": 2000,
+   "lag1_autocorrelation": 0.9879201111920526,
+   "n": 600,
+   "cells_required": 600,
+   "population_as_named": true
+  },
+  "D4d_fitted_MHR_lod2_minus_baseline_D7c_rig_subject_01": {
+   "median_difference": 0.11642501569701591,
+   "ci95_of_the_median_difference": [
+    0.08355692479284826,
+    0.13373558014725132
+   ],
+   "block_length": 15,
+   "resamples": 2000,
+   "lag1_autocorrelation": 0.9858012882272299,
+   "n": 600,
+   "cells_required": 600,
+   "population_as_named": true
+  },
+  "D4d_fitted_MHR_lod2_minus_D4c_fitted_MHR_lod2_subject_00": {
+   "median_difference": -0.0038658358444415564,
+   "ci95_of_the_median_difference": [
+    -0.005762154428792199,
+    -0.0004495582977453044
+   ],
+   "block_length": 15,
+   "resamples": 2000,
+   "lag1_autocorrelation": 0.9879201111920526,
+   "n": 600,
+   "cells_required": 600,
+   "population_as_named": true
+  },
+  "D4d_fitted_MHR_lod2_minus_D4c_fitted_MHR_lod2_subject_01": {
+   "median_difference": -0.0013990488176185423,
+   "ci95_of_the_median_difference": [
+    -0.014768398603109967,
+    0.0027895329906303013
+   ],
+   "block_length": 15,
+   "resamples": 2000,
+   "lag1_autocorrelation": 0.9858012882272299,
+   "n": 600,
+   "cells_required": 600,
+   "population_as_named": true
+  }
+ },
+ "lower_ci_above_zero": {
+  "D4d_fitted_MHR_lod2_minus_baseline_D7c_rig_subject_00": true,
+  "D4d_fitted_MHR_lod2_minus_baseline_D7c_rig_subject_01": true,
+  "D4d_fitted_MHR_lod2_minus_D4c_fitted_MHR_lod2_subject_00": false,
+  "D4d_fitted_MHR_lod2_minus_D4c_fitted_MHR_lod2_subject_01": false
+ }
+}

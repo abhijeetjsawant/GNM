@@ -1,0 +1,36 @@
+{
+ "drawn_set": [
+  "scale_spine_length",
+  "scale_neck_length",
+  "scale_shoulder_width",
+  "scale_uparms",
+  "scale_lowarms",
+  "scale_hip_width",
+  "scale_uplegs",
+  "scale_lowlegs"
+ ],
+ "scored": [
+  "trunk",
+  "neck_head",
+  "shoulder_width",
+  "l_upper_arm",
+  "r_upper_arm",
+  "l_forearm",
+  "r_forearm",
+  "hip_width",
+  "l_thigh",
+  "r_thigh",
+  "l_shin",
+  "r_shin"
+ ],
+ "spine_drawn": true,
+ "trunk_scored": true,
+ "solver_failures": [],
+ "problems": [],
+ "holds": true,
+ "reused_by_sha256": true,
+ "drawn_set_sha256": "430f1f67ea27123969ea5bafde01eb607b0092cb7a47d6a69f451038052163b7",
+ "step": "D4d",
+ "stage": 1,
+ "what": "precondition 0: D4c's frozen limit-aware drawn set reused by sha256 and re-derived by D4c's own rule (imported); STOP if the spine is not drawn"
+}

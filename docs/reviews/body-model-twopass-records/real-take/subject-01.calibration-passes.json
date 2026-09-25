@@ -1,0 +1,6 @@
+{
+ "passes": 2,
+ "calibrating": true,
+ "max_iter_per_pass": 30,
+ "tracking_max_iter": 30
+}

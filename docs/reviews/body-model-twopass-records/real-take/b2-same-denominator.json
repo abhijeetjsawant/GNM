@@ -1,0 +1,92 @@
+{
+ "delivery": "/Users/abhi_macbook/Projects/apps/AutoAnim/artifacts/compare/d4d-twopass/delivery",
+ "rig_build": "/Users/abhi_macbook/Projects/apps/AutoAnim/artifacts/compare/d4d-twopass/hygiene",
+ "subjects": {
+  "subject_00": {
+   "consumed_array_key": "triangulated_world_positions_z_up_m",
+   "1a_handed_array_is_byte_identical_to_the_rig_converter_input_on_this_build": true,
+   "1b_handed_array_is_byte_identical_to_the_rig_BUILD_s_delivered_array": true,
+   "1c_the_array_is_the_SMOOTHED_repaired_one": true,
+   "2a_joint_names_and_order_identical_everywhere": true,
+   "2b_validity_mask_identical": true,
+   "3_frame_order_identical": true,
+   "4a_marker_values_match_the_declared_mapping_and_conversion": true,
+   "4b_occlusion_flags_match": true,
+   "marker_names_are_the_declared_map": true,
+   "landmarks_consumed": 17,
+   "landmarks_available": 19,
+   "landmarks_not_consumed": [
+    "right_ear",
+    "left_ear"
+   ],
+   "declared_landmark_to_joint": {
+    "root": "root",
+    "neck": "c_neck",
+    "nose": "c_head",
+    "left_shoulder": "l_uparm",
+    "right_shoulder": "r_uparm",
+    "left_elbow": "l_lowarm",
+    "right_elbow": "r_lowarm",
+    "left_wrist": "l_wrist",
+    "right_wrist": "r_wrist",
+    "left_hip": "l_upleg",
+    "right_hip": "r_upleg",
+    "left_knee": "l_lowleg",
+    "right_knee": "r_lowleg",
+    "left_ankle": "l_foot",
+    "right_ankle": "r_foot",
+    "left_eye": "l_eye",
+    "right_eye": "r_eye"
+   },
+   "occluded_marker_fraction": 0.0,
+   "max_abs_marker_difference_cm": 0.0,
+   "verdict": "PASS"
+  },
+  "subject_01": {
+   "consumed_array_key": "triangulated_world_positions_z_up_m",
+   "1a_handed_array_is_byte_identical_to_the_rig_converter_input_on_this_build": true,
+   "1b_handed_array_is_byte_identical_to_the_rig_BUILD_s_delivered_array": true,
+   "1c_the_array_is_the_SMOOTHED_repaired_one": true,
+   "2a_joint_names_and_order_identical_everywhere": true,
+   "2b_validity_mask_identical": true,
+   "3_frame_order_identical": true,
+   "4a_marker_values_match_the_declared_mapping_and_conversion": true,
+   "4b_occlusion_flags_match": true,
+   "marker_names_are_the_declared_map": true,
+   "landmarks_consumed": 17,
+   "landmarks_available": 19,
+   "landmarks_not_consumed": [
+    "right_ear",
+    "left_ear"
+   ],
+   "declared_landmark_to_joint": {
+    "root": "root",
+    "neck": "c_neck",
+    "nose": "c_head",
+    "left_shoulder": "l_uparm",
+    "right_shoulder": "r_uparm",
+    "left_elbow": "l_lowarm",
+    "right_elbow": "r_lowarm",
+    "left_wrist": "l_wrist",
+    "right_wrist": "r_wrist",
+    "left_hip": "l_upleg",
+    "right_hip": "r_upleg",
+    "left_knee": "l_lowleg",
+    "right_knee": "r_lowleg",
+    "left_ankle": "l_foot",
+    "right_ankle": "r_foot",
+    "left_eye": "l_eye",
+    "right_eye": "r_eye"
+   },
+   "occluded_marker_fraction": 0.0,
+   "max_abs_marker_difference_cm": 0.0,
+   "verdict": "PASS"
+  }
+ },
+ "omitted_feeds": {
+  "head_landmarks_by_camera": "the five skull-rigid SOMA-77 landmarks the head solve uses (Head, HeadEnd, Jaw, LeftEye, RightEye)",
+  "toe_landmarks_by_camera": "LeftToeBase / RightToeBase, the ball of each foot (D-lane feet)",
+  "spine_landmarks_by_camera": "SOMA-77 Spine1, which D7 gives Hips a frame of its own from"
+ },
+ "verdict": "PASS"
+}
