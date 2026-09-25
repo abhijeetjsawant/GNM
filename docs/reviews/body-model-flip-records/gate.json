@@ -263,20 +263,19 @@
    "incomplete": []
   },
   "coordinator_migration_recorded": {
-   "holds": false,
+   "holds": true,
    "legs": {
     "post_merge_sh_changed_on_the_branch": true,
-    "ladder_py_changed_on_the_branch": false,
+    "ladder_py_changed_on_the_branch": true,
     "final_roster_run_recorded": true
    },
    "note": "ladder.py is the coordinator's, edited after stage 7 by the coordinator's own order; rerun the gate then"
   }
  },
  "failed": [
-  "oracle",
-  "coordinator_migration_recorded"
+  "oracle"
  ],
  "crashed": [],
  "verdict": "FAIL",
- "line": "VERDICT: FAIL (failed: oracle, coordinator_migration_recorded)"
+ "line": "VERDICT: FAIL (failed: oracle)"
 }
